@@ -797,9 +797,35 @@ function CustomerApp() {
       case "address":
         return (
           <View style={styles.section}>
-            <Button label="‹ Trở về giỏ hàng" alternate onPress={() => setScreen("cart")} />
+            <Button label={addressReturnTo === "cart" ? "‹ Trở về giỏ hàng" : "‹ Trở về tài khoản"}
+              alternate onPress={() => setScreen(addressReturnTo)} />
             <Text style={styles.pageTitle}>Địa chỉ giao hàng</Text>
-            <Text style={styles.muted}>Số nhà, đường và tọa độ chính xác giúp cửa hàng xác nhận phạm vi giao.</Text>
+            <Text style={styles.muted}>Xác nhận số nhà, đường và vị trí ghim. Phí giao thực tế sẽ được máy chủ tính khi đặt hàng.</Text>
+            {!!principal && savedAddresses.length > 0 && (
+              <View style={styles.group}>
+                <Text style={styles.sectionTitle}>Địa chỉ đã lưu ({savedAddresses.length}/10)</Text>
+                {savedAddresses.map(saved => (
+                  <View key={saved.id} style={styles.savedAddress}>
+                    <View style={styles.cartLineDetails}>
+                      <Text style={styles.productName}>{saved.label}</Text>
+                      <Text style={styles.muted}>{saved.line1}</Text>
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
+                      style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved)}>
+                      <Text style={styles.linkText}>Chọn</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+                      style={styles.addressSmallButton} disabled={addressSaving}
+                      onPress={() => void deleteSavedAddress(saved)}>
+                      <Text style={styles.warning}>Xóa</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+            <Text style={styles.sectionTitle}>{principal ? "Thêm địa chỉ mới" : "Lưu địa chỉ tạm"}</Text>
+            <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
+              onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
             <Field label="Số điện thoại" value={address.phone}
               onChangeText={text => setAddress(old => ({ ...old, phone: text }))}
               keyboardType="phone-pad" placeholder="09..." />
@@ -825,9 +851,10 @@ function CustomerApp() {
                 void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=17/" + lat + "/" + lon);
               }} />
             )}
-            {addressErrorText ? <Notice message={addressErrorText} error /> : null}
-            <Button label="Lưu bản nháp địa chỉ" onPress={() => void saveAddress()} />
-            <Text style={styles.muted}>Bản nháp chỉ lưu trên thiết bị. Chưa có API lưu nhiều địa chỉ theo tài khoản.</Text>
+            {!!addressErrorText && <Notice message={addressErrorText} error />}
+            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
+              disabled={addressSaving} onPress={() => void saveAddress()} />
+            {!principal && <Text style={styles.muted}>Đăng nhập để đồng bộ nhiều địa chỉ. Bản nháp chỉ lưu trên thiết bị.</Text>}
           </View>
         );
     }
@@ -933,6 +960,8 @@ const styles = StyleSheet.create({
   branchActive: { borderColor: brand, backgroundColor: "#FAE6DC" },
   branchText: { color: "#56362C", fontSize: 13, fontWeight: "700" },
   productCard: { backgroundColor: "white", minHeight: 108, borderRadius: 16, padding: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#F1E3D6" },
+  productImage: { height: 86, width: 86, borderRadius: 12, backgroundColor: "#F8ECE2" },
+  productImageLarge: { width: "100%", height: "100%", borderRadius: 16, backgroundColor: "#F8ECE2" },
   iconTile: { backgroundColor: "#FCE4D8", height: 86, width: 86, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   iconTileTea: { backgroundColor: "#F5E2C7" },
   iconGlyph: { fontSize: 43 },
@@ -946,6 +975,10 @@ const styles = StyleSheet.create({
   detailPrice: { color: brand, fontSize: 24, fontWeight: "900" },
   group: { marginTop: 8, gap: 12, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#EBD9CA" },
   option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#F1E2D8" },
+  optionUnavailable: { opacity: 0.45 },
+  optionPrice: { color: "#A7382A", fontWeight: "700", fontSize: 13 },
+  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#EAD7C8", padding: 10, gap: 4 },
+  addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
   optionText: { color: "#482E25", fontSize: 15, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E8CBB9", borderRadius: 12 },
