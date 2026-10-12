@@ -1,0 +1,102 @@
+name: Vercel PWA release (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: PWA to publish
+        required: true
+        type: choice
+        options: [customer, admin]
+      sha:
+        description: "Exact 40-character current main SHA"
+        required: true
+        type: string
+      confirm:
+        description: "Type DEPLOY_PWA"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-pwa-${{ inputs.app }}-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: ${{ inputs.app == 'customer' && 'production-customer-pwa' || 'production-admin-pwa' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
+      TARGET_APP: ${{ inputs.app }}
+      REQUESTED_SHA: ${{ inputs.sha }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Production release gate and immutable source verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ENABLE_RELEASES" = "true" || { echo "::error::Release locked. Set HOTPOT_RELEASES_ENABLED only after bootstrap and explicit approval."; exit 1; }
+          test "$CONFIRM" = "DEPLOY_PWA"
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          test -f "apps/$TARGET_APP/package.json" || { echo "::error::Expo app not bootstrapped."; exit 1; }
+          test -f package-lock.json || { echo "::error::Monorepo lockfile missing."; exit 1; }
+          python3 - "$TARGET_APP" <<'PY'
+          import json, pathlib, sys
+          for path in ("vercel.json", f"apps/{sys.argv[1]}/vercel.json"):
+              assert json.loads(pathlib.Path(path).read_text())["git"]["deploymentEnabled"] is False
+          PY
+          test -n "$VERCEL_ORG_ID" && test -n "$VERCEL_PROJECT_ID" && test -n "$VERCEL_TOKEN"
+      - name: Verify Vercel target identity without changing its settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/vercel-target.json"
+          curl -fsS --retry 1 -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" > "$response"
+          node - "$response" "$TARGET_APP" "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" <<'NODE'
+          const fs=require('node:fs');
+          const [file,app,id,org]=process.argv.slice(2);
+          const p=JSON.parse(fs.readFileSync(file,'utf8'));
+          if(p.id!==id || p.accountId!==org || p.name!==('sichuan-hotpot-'+app)
+            || p.rootDirectory!==('apps/'+app) || p.link) {
+            throw Error('Vercel project identity/root/Git-link mismatch; release blocked');
+          }
+          console.log('Provider target verified: correct project, root and no Git link');
+          NODE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build selected app (no deploy yet)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          test -x node_modules/.bin/vercel || { echo "::error::Pin Vercel CLI in workspace before deployment."; exit 1; }
+          npm run lint --workspace "apps/$TARGET_APP"
+          npm run typecheck --workspace "apps/$TARGET_APP"
+          npm test --workspace "apps/$TARGET_APP" -- --runInBand
+          (cd "apps/$TARGET_APP" && npx expo export --platform web --output-dir dist)
+          test -f "apps/$TARGET_APP/dist/index.html"
+      - name: Manually requested Vercel release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "apps/$TARGET_APP"
+          ../../node_modules/.bin/vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+          ../../node_modules/.bin/vercel build --prod --token "$VERCEL_TOKEN"
+          ../../node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+          echo "Release requested for immutable SHA $REQUESTED_SHA; verify deployment health in Vercel."
