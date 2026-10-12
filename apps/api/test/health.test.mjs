@@ -45,7 +45,7 @@ test("unmatched routes use redacted structured error response", async () => {
 test("invalid caller request ID is replaced, not reflected", async () => {
   const res = await supertest(app.getHttpServer())
     .get("/health/live")
-    .set("x-request-id", "bad\nvalue")
+    .set("x-request-id", "bad!value")
     .expect(200);
   assert.match(res.headers["x-request-id"], /^[0-9a-f-]{36}$/);
 });
