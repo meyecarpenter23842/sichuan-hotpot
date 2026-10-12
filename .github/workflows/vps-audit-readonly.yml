@@ -1,0 +1,116 @@
+name: VPS audit (read-only; manual)
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type AUDIT; no VPS modifications"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-vps-audit-readonly
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/main'
+    environment: vps-readonly
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_SERVICE_NAME: ${{ vars.VPS_SERVICE_NAME }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_AUDIT_SSH_KEY: ${{ secrets.VPS_AUDIT_SSH_KEY }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Explicit manual authorization gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CONFIRM" = "AUDIT"
+          test -n "$VPS_HOST"
+          test -n "$VPS_KNOWN_HOSTS"
+          test -n "$VPS_AUDIT_SSH_KEY"
+          test "$VPS_USER" = "ubuntu"
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          [[ "$VPS_SERVICE_NAME" =~ ^[A-Za-z0-9@._-]+$ ]]
+          echo "::add-mask::$VPS_HOST"
+          echo "Audit approved via workflow_dispatch; executing bounded read-only diagnostics."
+      - name: Prepare pinned SSH host trust and isolated key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_AUDIT_SSH_KEY" > "$RUNNER_TEMP/audit.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/audit.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/audit.key" >/dev/null
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null
+          # Never use ssh-keyscan as a substitute for the operator-verified host key.
+      - name: Query only aggregate host metrics (no application logs or PII)
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/readonly.out"
+          errors="$RUNNER_TEMP/readonly.err"
+          if ! ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/audit.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectionAttempts=1 \
+            -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" \
+            "$VPS_USER@$VPS_HOST" "bash -s -- '$VPS_SERVICE_NAME'" \
+            >"$output" 2>"$errors" <<'REMOTE'
+          set -euo pipefail
+          service="$1"
+          # Output only a strict set of aggregate labels. No sudo, no mutations, no raw logs.
+          printf 'os_family=%s\n' "$(uname -s)"
+          printf 'uptime_days=%s\n' "$(awk '{printf "%.1f", $1/86400}' /proc/uptime)"
+          printf 'disk_root_pct=%s\n' "$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+          printf 'memory_available_mb=%s\n' "$(awk '/MemAvailable:/ {printf "%.0f", $2/1024}' /proc/meminfo)"
+          if command -v systemctl >/dev/null 2>&1; then
+            status="$(systemctl is-active "$service" 2>/dev/null || true)"
+            case "$status" in active|inactive|failed|activating|deactivating) ;; *) status=unknown ;; esac
+            printf 'api_service_state=%s\n' "$status"
+          else
+            printf 'api_service_state=unknown\n'
+          fi
+          if command -v pg_isready >/dev/null 2>&1; then
+            if pg_isready -q -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+              printf 'postgres_tcp_local=ready\n'
+            else
+              printf 'postgres_tcp_local=not_ready_or_restricted\n'
+            fi
+          else
+            printf 'postgres_tcp_local=not_tested\n'
+          fi
+          REMOTE
+          then
+            echo "::error::SSH audit failed. Verify pinned host key, SSH permissions and allowlisted commands; detailed stderr intentionally suppressed."
+            exit 1
+          fi
+          # Fail closed if remote stdout contains arbitrary or secret-bearing content.
+          python3 - "$output" <<'PY'
+          import re, sys
+          expected = {
+            "os_family": r"[A-Za-z0-9_-]{1,30}",
+            "uptime_days": r"\d{1,6}\.\d",
+            "disk_root_pct": r"\d{1,3}",
+            "memory_available_mb": r"\d{1,10}",
+            "api_service_state": r"(active|inactive|failed|activating|deactivating|unknown)",
+            "postgres_tcp_local": r"(ready|not_ready_or_restricted|not_tested)",
+          }
+          lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+          data = {}
+          for line in lines:
+            key, sep, val = line.partition("=")
+            if not sep or key in data or key not in expected or not re.fullmatch(expected[key], val):
+              raise SystemExit("Remote output failed strict allowlist; nothing will be printed.")
+            data[key] = val
+          if set(data) != set(expected):
+            raise SystemExit("Missing expected metrics; audit output withheld.")
+          for key, val in data.items():
+            print(f"{key}: {val}")
+          PY

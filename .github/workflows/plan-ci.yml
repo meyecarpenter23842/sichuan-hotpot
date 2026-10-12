@@ -37,3 +37,40 @@ jobs:
           assert all(x in plan for x in ("P0", "P1", "P2", "P3", "P4", "P5", "P6"))
           print("Docs, bundled QA skill and Vercel Git-deploy locks: PASS")
           PY
+
+      - name: Verify manual operations workflows and zero auto deploy
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet 'PyYAML==6.0.2'
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          import yaml
+          root=Path(".github/workflows")
+          manual=[
+            "vps-audit-readonly.yml",
+            "vps-api-release-manual.yml",
+            "vps-db-backup-manual.yml",
+            "vps-db-migrate-manual.yml",
+            "vercel-pwa-release-manual.yml",
+          ]
+          for name in manual:
+              content=(root/name).read_text(encoding="utf-8")
+              doc=yaml.load(content, Loader=yaml.BaseLoader)
+              assert isinstance(doc,dict),name
+              assert list(doc.get("on",{}))==["workflow_dispatch"],name
+              assert doc.get("permissions",{}).get("contents")=="read",name
+              assert doc.get("concurrency",{}).get("cancel-in-progress")=="false",name
+              jobs=doc.get("jobs",{})
+              assert len(jobs)==1,name
+              job=next(iter(jobs.values()))
+              assert job.get("environment"),name
+              assert "refs/heads/main" in job.get("if",""),name
+              assert "StrictHostKeyChecking=yes" in content or "vercel" in name,name
+              assert "HOTPOT_RELEASES_ENABLED" in content or "audit" in name,name
+              assert not re.search(r"(?m)^  (push|pull_request|issue_comment|schedule):",content),name
+              assert "ssh-keyscan -T" not in content,name
+              assert "127.0.0.1" not in content or "audit" in name,name
+              print("PASS",name,"dispatch-only")
+          assert Path("docs/ops/MANUAL-OPERATIONS.md").is_file()
+          PY

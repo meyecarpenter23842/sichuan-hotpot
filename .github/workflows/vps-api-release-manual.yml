@@ -1,0 +1,102 @@
+name: VPS API release (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Exact current main commit (40-char SHA)"
+        required: true
+        type: string
+      confirm:
+        description: "Type DEPLOY_API"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-production-vps-change
+  cancel-in-progress: false
+jobs:
+  api:
+    if: github.ref == 'refs/heads/main'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      REQUESTED_SHA: ${{ inputs.sha }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard exact SHA, pre-provisioned API runtime, and explicit release enablement
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$ENABLE_RELEASES" = true || { echo "::error::API release disabled until bootstrap and approved VPS setup."; exit 1; }
+          test "$CONFIRM" = DEPLOY_API
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          test -f apps/api/package.json && test -f package-lock.json || { echo "::error::NestJS app not bootstrapped."; exit 1; }
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
+          echo "::add-mask::$VPS_HOST"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Lint, typecheck, unit tests and compile API
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run lint --workspace apps/api
+          npm run typecheck --workspace apps/api
+          npm test --workspace apps/api -- --runInBand
+          npm run build --workspace apps/api
+          test -f apps/api/dist/main.js
+      - name: Create source-identified runtime archive and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
+            package.json package-lock.json apps/api packages
+          sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
+      - name: Deliver artifact to pre-provisioned inbox (no migration)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/deploy.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/deploy.key" >/dev/null
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null
+          # Host must have an independently reviewed hotpot-api-release-manual helper.
+          # The helper must validate artifact checksum, app path, service identity, health and rollback.
+          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+            'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming' \
+            >/dev/null 2>/dev/null || { echo "::error::VPS manual release hook/inbox not provisioned."; exit 1; }
+          scp -P "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" \
+            "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
+            "$VPS_USER@$VPS_HOST:/opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" \
+            >/dev/null 2>/dev/null || { echo "::error::Artifact transfer failed."; exit 1; }
+          digest="$(cat "$RUNNER_TEMP/api.sha256")"
+          ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+            "/usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" \
+            >/dev/null 2>/dev/null || { echo "::error::Manual API release failed; operator must check sanitized VPS logs and rollback plan."; exit 1; }
+          echo "VPS helper completed. Health/release ID must be confirmed by operator."
