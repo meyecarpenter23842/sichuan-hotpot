@@ -47,6 +47,15 @@ test("readiness rejects absent or invalid datasource with no secrets in response
   }
 });
 
+test("readiness endpoint refuses service when database connectivity fails", async () => {
+  const { HealthController } = require("../dist/health/health.controller.js");
+  const controller = new HealthController({ isReady: async () => false });
+  await assert.rejects(
+    controller.ready(),
+    (err) => err?.getStatus?.() === 503,
+  );
+});
+
 test("unmatched routes use redacted structured error response", async () => {
   const res = await supertest(app.getHttpServer())
     .get("/does-not-exist")

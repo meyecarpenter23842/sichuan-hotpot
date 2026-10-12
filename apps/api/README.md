@@ -1,4 +1,4 @@
-# NestJS API foundation — Issue #4, P1.1
+# NestJS API foundation — Issue #4, P1.1–P1.2
 
 The HTTP service is bootstrapped with NestJS, strict TypeScript, Helmet,
 a global request-id middleware, safe JSON exception responses and global
@@ -12,8 +12,9 @@ npm run start -w @hotpot/api
 ```
 
 - `GET /health/live`: 200 while the process handles HTTP.
-- `GET /health/ready`: **503 by design** until the database is reachable and a migration has been applied in the
-  current environment.
+- `GET /health/ready`: 200 only when the PostgreSQL connection responds;
+  503 otherwise. This verifies DB reachability, **not** Clerk/auth or complete
+  production readiness.
 - Default bind: `127.0.0.1:3000`, set `PORT` and `HOST` only with an
   operator-approved reverse-proxy/network configuration.
 - Missing endpoints intentionally return 404; this phase does **not** expose
@@ -21,10 +22,10 @@ npm run start -w @hotpot/api
 - Request identifiers are echoed only when sanitized. The error JSON never
   contains sensitive exception details or stacks.
 
-This is **not** a production-ready API. No database migration, credentials,
-Clerk config, routing, order storage, VPS restart or deployment is included.
-Future PRs within #4 add Prisma development schema, real readiness checks and
-JWT/RBAC with integration tests.
+This is **not** a production-ready API. Only the development baseline schema,
+isolated CI migration and DB connectivity check are implemented. No production
+migration, Clerk config, routing, order persistence API, VPS restart or deploy
+is included. Follow-up PRs within #4 add JWT verification/RBAC tests.
 
 ## Development database (P1.2)
 
