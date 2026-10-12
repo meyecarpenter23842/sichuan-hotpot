@@ -27,6 +27,7 @@ type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
 const CART_KEY = "hotpot.cart.v1";
+const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
 const brand = "#AD282A";
@@ -159,9 +160,12 @@ function CustomerApp() {
     try {
       let activeBranch = requestedBranch;
       if (!activeBranch) {
-        const list = await apiRequest<BranchSummary[]>("/catalog/branches");
+        const [list, savedId] = await Promise.all([
+          apiRequest<BranchSummary[]>("/catalog/branches"),
+          AsyncStorage.getItem(BRANCH_KEY).catch(() => null),
+        ]);
         setBranches(list);
-        activeBranch = list[0]?.id;
+        activeBranch = list.find(branch => branch.id === savedId)?.id ?? list[0]?.id;
       }
       if (!activeBranch) {
         setMenu(null);
@@ -173,6 +177,10 @@ function CustomerApp() {
       );
       setBranchId(activeBranch);
       setMenu(response);
+      // Preserve the live branch: cart product IDs are branch-scoped by catalogue.
+      await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
+        setNotice("Không thể lưu chi nhánh. Vui lòng kiểm tra dung lượng thiết bị.");
+      });
       setCategoryId(old => response.categories.some(cat => cat.id === old)
         ? old : (response.categories[0]?.id ?? ""));
     } catch (error) {
@@ -317,6 +325,10 @@ function CustomerApp() {
     const token = accessToken;
     setPrincipal(null);
     setAccessToken("");
+    setSavedAddresses([]);
+    setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
+    // Clear user-sensitive phone/GPS from local storage on logout.
+    await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
     if (Platform.OS !== "web") await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
     if (token) await apiRequest("/auth/logout", { method: "POST", accessToken: token }).catch(() => undefined);
     setNotice("Đã đăng xuất trên thiết bị.");
@@ -383,7 +395,12 @@ function CustomerApp() {
       } else {
         setNotice("Đã lưu bản nháp trên thiết bị. Đăng nhập để lưu nhiều địa chỉ.");
       }
-      await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
+      if (principal) {
+        // Account-owned address is stored on backend, not plain-text device cache.
+        await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
+      } else {
+        await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
+      }
       setScreen(addressReturnTo);
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
