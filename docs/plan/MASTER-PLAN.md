@@ -1,6 +1,6 @@
 # SICHUAN HOTPOT — Master implementation plan
 
-Status: PROPOSED / NOT IMPLEMENTED. This document defines the target architecture, sequence, tasks, dependencies and acceptance gates. It does not authorize production deployments or migrations.
+Status: ACTIVE IMPLEMENTATION (P1 API/Prisma done; auth and UI not implemented). Historical baseline follows. This document defines the target architecture, sequence, tasks, dependencies and acceptance gates. It does not authorize production deployments or migrations.
 
 ## 0. Verified starting point (2026-10-12)
 - Source: [sichuan-hotpot](https://github.com/meyecarpenter23842/sichuan-hotpot), main. Eight PNG UI/UX mockups committed in repository root; no application source, tests or workflow at inspection.
@@ -9,7 +9,7 @@ Status: PROPOSED / NOT IMPLEMENTED. This document defines the target architectur
 - Frontend skill: [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md), imported/adapted from owner-uploaded ZIP with accompanying references.
 
 ## 1. Goals and invariants
-Build a **single-store, multi-branch-ready** restaurant ordering system with one customer app (Android native + iPhone PWA), a separate admin app (Android + Web PWA), one NestJS API on VPS and one PostgreSQL instance on VPS. Self-delivery only; no third-party courier integration required. Browse menu anonymously; login Google with Clerk to checkout; require verified/usable phone, address and pinned coordinates. Ship charged on actual road route meters from store to customer, with editable fee policy. Backend is price authority.
+Build a **single-store, multi-branch-ready** restaurant ordering system with one customer app (Android native + iPhone PWA), a separate admin app (Android + Web PWA), one NestJS API on VPS and one PostgreSQL instance on VPS. Self-delivery only; no third-party courier integration required. Browse menu anonymously; login via direct Google OAuth/OIDC or a registered username/password account to checkout; require verified/usable phone, address and pinned coordinates. Ship charged on actual road route meters from store to customer, with editable fee policy. Backend is price authority.
 
 **Release invariant: absolutely no automatic deploy from Git push, PR, merge, tag, Vercel Git integration, Expo EAS submit/update or infra scripts.** CI may auto-run checks, and alerts may auto-notify; neither may promote a release. Do not confuse CI green, merge, staging test, deployment and production verification.
 
@@ -17,7 +17,7 @@ Build a **single-store, multi-branch-ready** restaurant ordering system with one
 ```text
 apps/customer   Expo React Native Android + Expo web iPhone PWA
 apps/admin      Expo React Native Android + web PWA (OWNER/MANAGER/KITCHEN/DRIVER)
-apps/api        NestJS TypeScript REST + WebSocket, Clerk JWT verification, Prisma
+apps/api        NestJS TypeScript REST + WebSocket, direct Google identity verification and first-party username session authorization, Prisma
 packages/shared DTO schemas, types, status machine, API contracts
 packages/ui     shared tokens/components only when cross-platform practical
 infra/          manual deployment templates, observability, release manifest
@@ -25,7 +25,9 @@ docs/           architecture, UX, runbooks, ADR, tests, operational checklist
 ```
 Start with a package-workspace monorepo (choose lockfile/package manager once during bootstrap). TypeScript strict, Zod/class-validator as suitable, Prisma migrations, ESLint, Prettier, Vitest/Jest appropriate to package, React Native Testing Library, API integration/e2e tests. Keep domain code separate from platform UI.
 
-- Auth: Clerk Google (Android Expo SDK, web integration); backend verifies issuer/audience/signature and maps immutable Clerk subject -> internal user ID; role permissions evaluated server-side. Guest browsing permitted.
+- Auth (owner decision, 2026-10-12): **no Clerk**. Sign in with Google directly via OAuth 2.0/OpenID Connect (Android Expo and iPhone web PWA) or register with a **unique username and password**. Google alone does not provide username/password accounts. NestJS verifies Google ID tokens and issues secure app sessions; local passwords are Argon2id hashed. User IDs are internal UUIDs, new accounts default to CUSTOMER; all staff/branch roles checked on backend. Account recovery, rate limits, rotation/revocation and identity-linking proof required. See [ADR-0001](../architecture/ADR-0001-google-username-auth.md).
+- Login UI/UX must be polished and closely match design language in the eight locked PNGs (no login mockup exists), with mandatory [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md), references, screenshots and PASS/FAIL/NOT TESTED evidence on Android and Safari iPhone PWA.
+- Optional Neon: connector can inspect a PG18 project; its current default branch is named `production` and showed no application tables. That is **not confirmed as Hotpot DEV**. Only use a separately confirmed, isolated Neon DEV/QA branch/project after explicit scoping. Actual production PostgreSQL remains on VPS; current CI uses disposable PG16. See [ADR-0002](../architecture/ADR-0002-neon-dev-policy.md).
 - Media: object storage with validated upload, image variants and file limits; never commit high-resolution menu images as runtime catalogue.
 - Push: Android FCM, Web Push for eligible installed iPhone PWA; user opt-in, retry/outbox and foreground sound in admin. Push not source of truth.
 - Real time: WebSocket event plus polling/reconciliation on reconnect; version/cursor replay or full refetch to avoid missing orders.
@@ -34,12 +36,12 @@ Start with a package-workspace monorepo (choose lockfile/package manager once du
 - Security: TLS, minimum DB privileges, private network access, no secrets in browser or logs, rate limits, audit trail, backups and retention policy.
 
 ## 3. User journeys and UI screens
-**Customer:** (1) home banners/catalogue/search; (2) category and product listing; (3) customizable Sichuan hotpot: portion/broth/spice/toppings; (4) milk tea: size/sugar/ice/toppings; (5) cart; (6) Google login then phone capture; (7) save/add address, GPS permission, manually drag pin and confirm street number; (8) server road-route fee quote; (9) COD/QR checkout; (10) order status + contact store; (11) order history/reorder; (12) profile, addresses, notification preferences.
+**Customer:** (1) home banners/catalogue/search; (2) category and product listing; (3) customizable Sichuan hotpot: portion/broth/spice/toppings; (4) milk tea: size/sugar/ice/toppings; (5) cart; (6) direct Google login or username registration/login then phone capture; (7) save/add address, GPS permission, manually drag pin and confirm street number; (8) server road-route fee quote; (9) COD/QR checkout; (10) order status + contact store; (11) order history/reorder; (12) profile, addresses, notification preferences.
 **Admin:** (1) owner dashboard; (2) new-order queue with bell/sound; (3) accept/reject with reason; (4) kitchen ticket/preparation; (5) ready queue; (6) driver dispatch and assignment; (7) driver mode pickup/navigation/call/COD confirmation/failure reason; (8) catalog/topping/stock toggle; (9) delivery-fee/branch/settings; (10) roles/staff; (11) sales/COD reconciliation; (12) audit/alerts.
 Mockups are visual references only; build realistic behavior, accessible interaction and operational density.
 
 ## 4. Business model and data design
-Initial Prisma entities: Branch, StoreSettings, DeliveryPolicyVersion, CatalogCategory, Product, ProductVariant, ModifierGroup, ModifierOption, InventoryAvailability, User, CustomerProfile, Address, Cart, CartItem, Order, OrderItem, OrderItemModifierSnapshot, DeliveryQuote, DeliveryAssignment, DriverShift, Payment, CODHandover, OrderStatusHistory, PushSubscription, NotificationOutbox, AuditEvent, IdempotencyKey.
+Initial/target Prisma entities also include AuthIdentity, LocalCredential and AuthSession for Google/username accounts (not yet implemented). Branch, StoreSettings, DeliveryPolicyVersion, CatalogCategory, Product, ProductVariant, ModifierGroup, ModifierOption, InventoryAvailability, User, CustomerProfile, Address, Cart, CartItem, Order, OrderItem, OrderItemModifierSnapshot, DeliveryQuote, DeliveryAssignment, DriverShift, Payment, CODHandover, OrderStatusHistory, PushSubscription, NotificationOutbox, AuditEvent, IdempotencyKey.
 
 - Index `(branch_id, status, created_at)`, `(customer_id, created_at)`, unique idempotency key scoped per checkout identity. Preserve price/fee/discount/distance/policy snapshots at order time.
 - Store monetary values integer VND; time UTC; sensitive phone/address/GPS access scoped to authorized roles.
@@ -62,16 +64,16 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 ### P1 — API foundation / DB / auth
 1. NestJS bootstrap, error model, health live/ready, structured redacted logging, trace/request IDs, input validation, security headers/rate limit.
 2. Prisma baseline for users, branches, catalog, orders, roles and delivery versions; development DB only.
-3. Clerk Google integration in Expo Android and web PWA; backend JWT verify and OWNER/MANAGER/KITCHEN/DRIVER/CUSTOMER authorization tests.
+3. P1.3: replace provisional `User.clerkSubject` in the DEV-only Prisma baseline using a reviewed identity migration (Google subject identities, normalized unique local usernames, hashed credentials and revocable sessions); do not store Google subject in a Clerk-named field. Implement direct Google OAuth/OIDC and local username/password registration/login, recovery, and backend OWNER/MANAGER/KITCHEN/DRIVER/CUSTOMER role + branch checks (401/403 and abuse/replay tests).
 4. Prisma migration test up/down feasibility, sample seed **development only**, backups and restore rehearsal doc.
-**Exit:** integration tests 401/403 pass, authenticated profile flow works, no production DB touched.
+**Exit:** Google and username signup/signin integration tests (401/403, duplicate usernames, tampered Google tokens, password hash and session rotation) pass, authenticated profile works; no production DB touched.
 
 ### P2 — Customer catalogue / cart
-1. Shared UI tokens informed by mockups; products/categories/search, detail/option selectors, stock and loading/error.
+1. Shared UI tokens informed by mockups; login/registration/password recovery screens must be exceptionally polished and derived from the eight original images, then products/categories/search, detail/option selectors, stock and loading/error.
 2. Persistent cart with modifiers and quantity; no client-side trust in price.
 3. Profile/phone/address forms, device GPS opt-in, manual pin fallback, saved addresses.
 4. Professional Frontend QA matrix and Android emulator / Safari iPhone PWA test plan.
-**Exit:** guest browse, login-on-checkout and stable cart; no accidental double-submit.
+**Exit:** guest browse, direct Google/username login-on-checkout, visually verified responsive signup/login, stable cart; no accidental double-submit.
 
 ### P3 — Routing / delivery quote / checkout
 1. Routing provider abstraction; store/customer geocode and route request, cache by coordinates/provider/time; timeout/retry budget.
@@ -100,7 +102,7 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 3. Configure Vercel PWA projects through correct owner account, verify Git auto deploy disabled for ALL branches; prepare manual CLI deployment.
 4. VPS baseline READ-ONLY inventory before changing anything; DB isolation, Postgres backup/restore test, TLS, reverse proxy, process manager, release staging.
 5. Explicit release approval -> manual DB migration if required -> manual backend release -> manual frontend release -> smoke/rollback readiness.
-**Exit:** health/live, health/ready, Clerk login, read menu, create controlled test order, admin receives, kitchen/driver/COD flows; evidence links. No unapproved deployment.
+**Exit:** health/live, health/ready, direct Google or username login, read menu, create controlled test order, admin receives, kitchen/driver/COD flows; evidence links. No unapproved deployment.
 
 ## 6. Release and change control
 - Separate release paths: frontend Customer PWA, Admin PWA, Android artifacts, NestJS backend, Prisma schema. Manual release request always names target+environment+immutable SHA; each subsystem may deploy independently.
@@ -116,6 +118,14 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 - Android production distribution strategy (APK internal vs Play Store), routing vendor and costs, QR reconciliation approach, DNS/SSL, branch protection settings and production naming require later approval.
 - Uploaded mockup prices, names and addresses must be replaced with admin-managed real data.
 - CI added with this documentation PR validates planning artifacts only; it does not mean app builds or production tests passed.
+
+## Owner-authored change request — 2026-10-12
+
+- Replace planned Clerk with **Google sign-in directly** plus **username/password sign-up and sign-in**; no finished auth code exists yet.
+- Login design quality is a hard acceptance criterion; it must inherit the exact visual system from the eight locked images and use the professional-frontend-qa skill and its references.
+- A connected Neon project can help inspect and test a **separate DEV/QA database** only after owner/project/branch verification. No Neon mutation has been authorized and the VPS PostgreSQL production target is unchanged.
+- P1.2 currently still has a DEV-only `User.clerkSubject` column. The next auth PR must migrate that schema safely, then implement the two auth paths and 401/403 RBAC tests.
+- Design and Neon decisions are recorded in [ADR-0001](../architecture/ADR-0001-google-username-auth.md) and [ADR-0002](../architecture/ADR-0002-neon-dev-policy.md). This PR makes **documentation changes only**; no auth feature, UI screen, DB migration, VPS/Neon write or deploy is claimed.
 
 ## 8. Acceptance evidence and handoff
 Every issue/PR names scope, dependency, test procedure and done definition; CI logs on exact HEAD; UX screenshots if available; production release has SHA/target/operator/timestamp/health/readback/rollback report. Report local Windows sync as NO unless actually accessed. No background monitoring or VPS repair implied by this plan.
