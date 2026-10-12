@@ -1,4 +1,4 @@
-name: VPS database operations (manual only)
+name: VPS database operations (one command, owner only)
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +19,8 @@ on:
         description: "Type CHECK_DB, BACKUP_DB, PREPARE_MIGRATION or MIGRATE_INITIAL_HOTPOT"
         type: string
         required: true
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
 concurrency:
@@ -26,10 +28,18 @@ concurrency:
   cancel-in-progress: false
 jobs:
   database:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 3 &&
+       github.event.issue.pull_request == null &&
+       github.actor == 'meyecarpenter23842' &&
+       (github.event.comment.body == '/backup-hotpot' ||
+        github.event.comment.body == '/migrate-hotpot'))
     runs-on: ubuntu-latest
     # Reuse the already configured SSH credential; do not copy private keys.
-    # Each DB dispatch still requires its own Environment approval.
+    # Existing Environment SSH key is reused; owners can remove repeat reviewers
+    # in Settings once, without copying or rotating private keys.
     environment: production-api
     timeout-minutes: 25
     env:
@@ -51,10 +61,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
+            REQUESTED_SHA="$(git rev-parse HEAD)"
+            case "${{ github.event.comment.body }}" in
+              /backup-hotpot) OPERATION=BACKUP; CONFIRM=BACKUP_DB ;;
+              /migrate-hotpot) OPERATION=MIGRATE_INITIAL; CONFIRM=MIGRATE_INITIAL_HOTPOT ;;
+              *) echo "::error::Unsupported command"; exit 1 ;;
+            esac
+          fi
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch -q origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          echo "REQUESTED_SHA=$REQUESTED_SHA" >> "$GITHUB_ENV"
+          echo "OPERATION=$OPERATION" >> "$GITHUB_ENV"
+          echo "CONFIRM=$CONFIRM" >> "$GITHUB_ENV"
           test "$VPS_USER" = ubuntu
           [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
           (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
@@ -64,12 +85,14 @@ jobs:
             PREPARE_MIGRATION) test "$CONFIRM" = PREPARE_MIGRATION ;;
             MIGRATE_INITIAL)
               test "$CONFIRM" = MIGRATE_INITIAL_HOTPOT
-              test "$MIGRATIONS_ENABLED" = true
-              [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]] ;;
+              if [[ "$GITHUB_EVENT_NAME" != issue_comment ]]; then
+                test "$MIGRATIONS_ENABLED" = true
+                [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]]
+              fi ;;
             *) exit 1 ;;
           esac
       - uses: actions/setup-node@v4
-        if: inputs.operation == 'PREPARE_MIGRATION'
+        if: inputs.operation == 'PREPARE_MIGRATION' || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot') || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot')
         with:
           node-version: '24'
           cache: npm
@@ -116,9 +139,25 @@ jobs:
               digest="$(cat "$RUNNER_TEMP/migration.sha256")"
               ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --stage '$REQUESTED_SHA' '$digest'" 2>/dev/null ;;
             MIGRATE_INITIAL)
-              digest="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --source-digest '$REQUESTED_SHA'" 2>/dev/null)"
+              if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
+                # Prepare exact reviewed main as part of the same owner command.
+                digest="$(cat "$RUNNER_TEMP/migration.sha256")"
+                existing="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --source-digest '$REQUESTED_SHA'" 2>/dev/null || true)"
+                if [[ -n "$existing" ]]; then
+                  test "$existing" = "$digest" || { echo "::error::Staged source digest changed."; exit 1; }
+                else
+                  scp -P "$VPS_PORT" "${opts[@]}" "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" "$VPS_USER@$VPS_HOST:/opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" >/dev/null 2>/dev/null
+                  ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --stage '$REQUESTED_SHA' '$digest'" 2>/dev/null
+                fi
+                # GitHub owner command is authorization, but ONLY with a recent
+                # externally verified encrypted backup and isolated restore.
+                receipt="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --workflow-authorize '$REQUESTED_SHA' '$digest' '$GITHUB_RUN_ID'" 2>/dev/null)"
+                [[ "$receipt" =~ ^workflow_authorization=PASS\\;backup_id=([0-9]{8}T[0-9]{6}Z-[0-9a-f]{8})$ ]] || { echo "::error::Verified offsite backup or migration authorization missing."; exit 1; }
+                BACKUP_ID="${BASH_REMATCH[1]}"
+              else
+                digest="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --source-digest '$REQUESTED_SHA'" 2>/dev/null)"
+              fi
               [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
-              # Root-owned single-use approval must match SHA/digest/backup/window.
               ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --preflight '$REQUESTED_SHA' '$digest' '$BACKUP_ID'" 2>/dev/null
               ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --migrate '$REQUESTED_SHA' '$digest' '$BACKUP_ID'" 2>/dev/null ;;
           esac
