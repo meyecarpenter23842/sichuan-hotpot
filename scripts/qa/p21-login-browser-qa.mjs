@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 /**
@@ -12,6 +12,12 @@ const web = "http://127.0.0.1:3000";
 const api = "http://127.0.0.1:3001";
 const evidence = "apps/customer/qa-artifacts";
 mkdirSync(evidence, { recursive: true });
+// Guard the exact CI regression: a stale Metro cache silently produced a
+// web export without EXPO_PUBLIC_API_BASE_URL and made every auth request fail.
+const jsFolder = "apps/customer/dist/_expo/static/js/web";
+assert.ok(readdirSync(jsFolder).some(name => name.endsWith(".js")
+  && readFileSync(jsFolder + "/" + name, "utf8").includes(api)),
+  "Expo QA build did not inline the disposable API base URL");
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 const failures = [];
 try {

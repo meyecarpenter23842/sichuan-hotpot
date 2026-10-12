@@ -77,7 +77,13 @@ jobs:
           PORT=3001 HOST=127.0.0.1 node apps/api/dist/main.js > /tmp/hotpot-ci-p21-api.log 2>&1 &
           api_pid=$!
           trap 'kill "$api_pid" "${web_pid:-0}" 2>/dev/null || true' EXIT
-          EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npm run build --workspace @hotpot/customer
+          # The standard quality step already exported without API config.
+          # Clear Metro's transform cache so EXPO_PUBLIC_API_BASE_URL is embedded.
+          EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npm run build --workspace @hotpot/customer -- --clear
+          grep -Rq "127.0.0.1:3001" apps/customer/dist/_expo/static/js/web/ || {
+            echo "::error::QA web bundle lacks the disposable test API base URL"
+            exit 1
+          }
           python3 -m http.server 3000 --bind 127.0.0.1 --directory apps/customer/dist > /tmp/hotpot-ci-p21-web.log 2>&1 &
           web_pid=$!
           for i in $(seq 1 40); do
