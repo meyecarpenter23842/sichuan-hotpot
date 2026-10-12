@@ -1,0 +1,24 @@
+{
+  "name": "sichuan-hotpot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=22 <26"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "node scripts/check-source.mjs",
+    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json",
+    "test": "npm run build && node --test packages/shared/test/*.test.mjs",
+    "build": "tsc -p packages/shared/tsconfig.json",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

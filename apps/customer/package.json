@@ -1,0 +1,7 @@
+{
+  "name": "@hotpot/customer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Expo Android + iPhone web PWA planned for P2; intentionally not yet deployable"
+}
