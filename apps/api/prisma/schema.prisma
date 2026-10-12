@@ -43,7 +43,7 @@ enum PaymentStatus {
 
 model User {
   id                 String               @id @default(uuid()) @db.Uuid
-  clerkSubject       String               @unique @db.VarChar(255)
+  clerkSubject       String?              @unique @db.VarChar(255) // Legacy DEV-only; do not populate new accounts
   role               Role                 @default(CUSTOMER)
   phoneE164          String?              @db.VarChar(20)
   createdAt          DateTime             @default(now()) @db.Timestamptz(6)
@@ -53,6 +53,9 @@ model User {
   orders             Order[]              @relation("CustomerOrders")
   assignedDeliveries DeliveryAssignment[] @relation("AssignedDriver")
   statusChanges      OrderStatusHistory[] @relation("StatusActor")
+  authIdentities     AuthIdentity[]
+  localCredential    LocalCredential?
+  authSessions       AuthSession[]
 }
 
 model Branch {
@@ -244,4 +247,44 @@ model Payment {
   createdAt  DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime       @updatedAt @db.Timestamptz(6)
   order      Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+}
+
+
+// A Google identity binds the immutable Google sub, not editable email/name.
+enum AuthProvider {
+  GOOGLE
+}
+
+model AuthIdentity {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  provider        AuthProvider
+  providerSubject String       @db.VarChar(255)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(6)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+}
+
+model LocalCredential {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @db.Uuid
+  normalizedUsername String   @unique @db.VarChar(32)
+  passwordHash       String   @db.VarChar(255)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+  user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String    @unique @db.VarChar(64)
+  expiresAt        DateTime  @db.Timestamptz(6)
+  revokedAt        DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
 }

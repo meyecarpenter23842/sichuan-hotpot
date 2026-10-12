@@ -1,4 +1,4 @@
-import { Injectable, type OnModuleDestroy } from "@nestjs/common";
+import { Injectable, ServiceUnavailableException, type OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
 /**
@@ -12,6 +12,11 @@ export class PrismaService implements OnModuleDestroy {
   constructor() {
     const url = process.env.DATABASE_URL;
     this.client = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
+  }
+
+  get database(): PrismaClient {
+    if (!this.client) throw new ServiceUnavailableException("Database unavailable");
+    return this.client;
   }
 
   async isReady(): Promise<boolean> {
