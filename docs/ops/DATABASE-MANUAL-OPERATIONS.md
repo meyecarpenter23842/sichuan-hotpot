@@ -41,10 +41,9 @@ PUBLIC CONNECT is revoked and its owner is returned to NOLOGIN/password NULL.
 Only then is the root-only proof marked offsite/restore verified. A local receipt
 records ID/checksum/time, without customer data or key material.
 
-DPAPI recovery needs the same Windows user/profile; one Windows disk is not a
-complete disaster recovery solution. An independently protected offline recovery
-identity and a second encrypted backup copy are still required for host-loss
-recovery. Do not export recovery secrets through chat or GitHub. No automatic
+DPAPI recovery needs the same Windows user/profile. Loss of that profile needs
+an independently protected recovery identity; preserve it through the owner's
+secure recovery process, never chat or GitHub. No automatic
 retention/deletion is implemented; retained copies/drill DBs need operator review.
 
 ## Reviewable migration source and separate approval

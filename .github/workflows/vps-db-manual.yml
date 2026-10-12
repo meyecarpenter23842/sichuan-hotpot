@@ -98,6 +98,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          git fetch -q origin main
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
           printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/deploy.key"
           printf '%s\n' "$HOST_PIN" > "$RUNNER_TEMP/known_hosts"
           chmod 600 "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"

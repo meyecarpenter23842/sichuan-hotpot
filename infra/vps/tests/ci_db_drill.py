@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -42,7 +43,13 @@ def ci_call(command, data=None, env=None, **kwargs):
         command = [os.environ['CI_NPM_BIN'] if item == '/usr/bin/npm' else
                    os.environ['CI_NODE_BIN'] if item == '/usr/bin/node' else item for item in command]
         env = dict(env, PATH=str(Path(os.environ['CI_NODE_BIN']).parent) + ':' + env['PATH'])
-    return original_call(command, data=data, env=env or admin_env, **kwargs)
+    result = subprocess.run(command, input=data, env=env or admin_env, capture_output=True, timeout=600, **kwargs)
+    if result.returncode:
+        # Fixed error codes only, never command SQL/credentials or complete stderr.
+        codes = sorted(set(re.findall(r'\b(?:P[0-9]{4}|EACCES|ENOENT|MODULE_NOT_FOUND)\b', result.stderr.decode(errors='replace'))))
+        print('ci_command_error_codes=' + ','.join(codes), flush=True)
+        raise db.GateError('ci_command_failed')
+    return result.stdout
 
 
 def ci_pipe(first, second, **kwargs):

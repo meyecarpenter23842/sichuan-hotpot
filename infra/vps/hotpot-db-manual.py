@@ -237,6 +237,11 @@ def migration(sha, digest, backup_id, apply=False):
                  'npm_config_cache': '/var/lib/sichuan-hotpot/build/cache'}
     call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/npm', 'ci',
           '--ignore-scripts', '--no-audit', '--no-fund'], env=build_env, cwd=temporary)
+    # Download/prepare Prisma engines while the builder can still write modules.
+    call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/node',
+          str(temporary / 'node_modules/prisma/build/index.js'), 'generate', '--schema',
+          str(temporary / 'apps/api/prisma/schema.prisma')],
+         env=dict(build_env, DATABASE_URL='postgresql://unused:unused@127.0.0.1:5432/unused'), cwd=temporary)
     call(['chown', '-R', 'root:hotpot-build', str(temporary)])
     call(['chmod', '-R', 'g-w,o-rwx', str(temporary)])
     # mkdtemp's 0700 would otherwise prevent the non-root executor reading source.
