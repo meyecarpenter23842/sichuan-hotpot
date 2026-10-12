@@ -10,14 +10,14 @@
 5. No PostgreSQL schema change during backend build/start. Migration is a completely separate manual release.
 
 ## A. All Vercel Git auto deploys blocked
-Each actual Vercel app project root (customer and admin) must contain:
+The **repository root** and each actual Vercel app project root (customer and admin) must contain:
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": { "deploymentEnabled": false }
 }
 ```
-Committed permanently as `apps/customer/vercel.json` and `apps/admin/vercel.json`. The setting disables automatic Git deployments across all branches; **do not** flip it true to deploy, even temporarily. Prefer creating Vercel projects **without Git repository integration**, then linking by CLI and project IDs only. If already integrated, verify the provider respects the permanent gate; check both production and preview behavior using a harmless CI-only commit (do not intentionally trigger production). Provider-linked configuration is not yet verified for the owner's requested Vercel scope.
+Committed permanently as `vercel.json`, `apps/customer/vercel.json` and `apps/admin/vercel.json`. GitHub PR #1 received a Vercel status check pointing to the owner's `sichuan-hotpot` project, so the root-level gate is essential until the provider's configured root directory is verified. The setting disables automatic Git deployments across all branches; **do not** flip it true to deploy, even temporarily. Prefer creating Vercel projects **without Git repository integration**, then linking by CLI and project IDs only. If already integrated, verify the provider respects the permanent gate; check both production and preview behavior using a harmless CI-only commit (do not intentionally trigger production). Provider-linked configuration is not yet verified for the owner's requested Vercel scope.
 
 Manual frontend procedure (illustrative; exact packages/scripts to finalize in bootstrap):
 1. Approve protected `production-customer-pwa` or `production-admin-pwa` GitHub Environment; record repo, target project and SHA.

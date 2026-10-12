@@ -32,6 +32,7 @@ jobs:
               p = Path(f"apps/{name}/vercel.json")
               config = json.loads(p.read_text(encoding="utf-8"))
               assert config.get("git", {}).get("deploymentEnabled") is False, str(p)
+          assert json.loads(Path("vercel.json").read_text(encoding="utf-8")).get("git", {}).get("deploymentEnabled") is False, "root vercel.json"
           plan = Path("docs/plan/MASTER-PLAN.md").read_text(encoding="utf-8")
           assert all(x in plan for x in ("P0", "P1", "P2", "P3", "P4", "P5", "P6"))
           print("Docs, bundled QA skill and Vercel Git-deploy locks: PASS")

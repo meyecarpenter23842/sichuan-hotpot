@@ -4,7 +4,7 @@ Status: PROPOSED / NOT IMPLEMENTED. This document defines the target architectur
 
 ## 0. Verified starting point (2026-10-12)
 - Source: [sichuan-hotpot](https://github.com/meyecarpenter23842/sichuan-hotpot), main. Eight PNG UI/UX mockups committed in repository root; no application source, tests or workflow at inspection.
-- Vercel destination requested by owner: `https://vercel.com/meyecarpenter23842`. Linked Vercel accounts available for inspection in this conversation did **not** expose that scope or a Hotpot project. Provider controls are **UNVERIFIED**, not reported disabled.
+- Vercel destination requested by owner: `https://vercel.com/meyecarpenter23842`. Linked Vercel accounts available for inspection in this conversation did **not** expose that scope or a Hotpot project. Provider controls are **UNVERIFIED**, not reported disabled. On documentation PR #1 GitHub reported a Vercel status check pointing to `vercel.com/meyecarpenter23842/sichuan-hotpot`; accordingly a repository-root `vercel.json` block is also committed, but real provider disablement still needs a confirmed Vercel project readback.
 - Reference implementation: [binhnxwjfjxm/NPP-Platform](https://github.com/binhnxwjfjxm/NPP-Platform). See its manual Vercel/VPS deploy workflows, production audit, migration and [deployment-control incident](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/docs/operations/vercel-manual-deployment-control-2026-07-27.md). Reuse principles, **not credentials, host names, production project IDs, scripts or legacy issue-comment triggers**.
 - Frontend skill: [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md), imported/adapted from owner-uploaded ZIP with accompanying references.
 
@@ -55,7 +55,7 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 1. Restore/organize UI references under `docs/ui-reference/{customer,admin}` only via dedicated asset PR after verifying binary history and links; no destructive moves during plan PR.
 2. Bootstrap workspaces, shared lint/format/typecheck/test/build commands and CI jobs. Provide reproducible `npm ci`/lockfile setup; Android compile on runner/emulator as budget permits.
 3. Protect main with required CI and reviews (repo owner/admin setting). Add secret scanning, dependabot or comparable checks.
-4. Enforce no-auto-deploy at all surfaces: `git.deploymentEnabled=false` in every Vercel PWA project root, no `push`-based deploy workflow, EAS auto-submit/update disabled, VPS webhook/cron/git-pull timers audited. Verify provider readback.
+4. Enforce no-auto-deploy at all surfaces: `git.deploymentEnabled=false` in repository root **and** every Vercel PWA project root, no `push`-based deploy workflow, EAS auto-submit/update disabled, VPS webhook/cron/git-pull timers audited. Verify provider readback.
 5. Create DEV/STAGING/PROD environment mapping with explicit IDs later; do not put private paths/IPs in public docs.
 **Exit:** workflow passes on current PR HEAD, main protection confirmed, Vercel project configs reviewed, release policy adopted. Production deploy NOT PERFORMED.
 
