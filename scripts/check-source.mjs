@@ -8,6 +8,12 @@ const critical = [
   "packages/ui/package.json", "packages/shared/package.json",
   "packages/shared/src/delivery.ts", "packages/shared/src/orders.ts",
   "packages/shared/src/index.ts",
+  "apps/api/src/main.ts", "apps/api/src/bootstrap.ts",
+  "apps/api/src/app.module.ts",
+  "apps/api/src/http/api-exception.filter.ts",
+  "apps/api/src/http/request-id.middleware.ts",
+  "apps/api/src/health/health.module.ts",
+  "apps/api/src/health/health.controller.ts",
 ];
 for (const name of critical) {
   if (!fs.statSync(path.join(root, name)).isFile()) throw Error("Missing: " + name);

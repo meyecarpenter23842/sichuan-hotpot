@@ -1,6 +1,6 @@
 # Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa
 
-**Status: P0 bootstrap in progress — not production ready.** Shared delivery policy and order status domain logic now have TypeScript implementations and tests. NestJS API and Expo customer/admin apps are placeholders, **not deployed apps**.
+**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with basic health and safe HTTP handling. Readiness deliberately fails closed (503) until database and authentication are integrated. Expo customer/admin apps are placeholders; **nothing is deployed**.
 
 ## Development
 
@@ -14,7 +14,7 @@ npm test
 npm run build
 ```
 
-The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages/shared`, `packages/ui`. P0 checks currently cover shared-domain TypeScript and core deployment guards, **not** Android/Expo builds or NestJS integration; dedicated Expo/NestJS scripts will be added when those apps are bootstrapped.
+The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages/shared`, `packages/ui`. Workspace checks cover shared-domain TypeScript, NestJS API HTTP integration tests and core deployment guards, **not** Prisma connectivity, Clerk authentication or Android/Expo builds.
 
 ## Design and operations
 

@@ -14,12 +14,13 @@
   "scripts": {
     "lint": "node scripts/check-source.mjs && node scripts/check-ui-references.mjs",
     "ui:reference:check": "node scripts/check-ui-references.mjs",
-    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json",
-    "test": "npm run build && node --test packages/shared/test/*.test.mjs scripts/test/*.test.mjs",
-    "build": "tsc -p packages/shared/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p apps/api/tsconfig.json",
+    "test": "npm run build && node --test packages/shared/test/*.test.mjs apps/api/test/*.test.mjs scripts/test/*.test.mjs",
+    "build": "tsc -p packages/shared/tsconfig.json && tsc -p apps/api/tsconfig.json",
     "check": "npm run lint && npm run typecheck && npm test"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@types/node": "^22.16.0"
   }
 }
