@@ -1,16 +1,18 @@
-# Initial database release: backup, restore and independent migration
+# Initial database release: owner issue commands, encrypted backup and migration
 
 This extends PR #19. No application migration or API activation is authorized by
-this document. All workflows are `workflow_dispatch` only, protected main only,
-and share the API release concurrency group. PostgreSQL remains loopback-only.
+this document. The current `vps-db-manual.yml` also accepts exact owner Issue #3
+commands `/backup-hotpot` and `/migrate-hotpot`, alongside legacy manual
+dispatch. No push or merge deploys. All write operations share the API release
+concurrency group. PostgreSQL remains loopback-only.
 
 ## Recovery setup and first backup
 
 The existing `production-api` requires the owner reviewer, main-only branch policy, existing
 trusted SSH pin/key and VPS variables. `HOTPOT_MIGRATIONS_ENABLED=false` is the
 default. This workflow reuses already configured SSH credentials without
-copying/uploading a private key into another Environment. Each DB dispatch needs
-its own approval. Recovery identities/database passwords are never GitHub secrets.
+copying/uploading a private key into another Environment. Issue comments still encounter Environment approval if Required reviewers remains
+enabled in GitHub Settings. This cannot be removed by editing workflow YAML. Recovery identities/database passwords are never GitHub secrets.
 
 Install the reviewed LF helpers on the VPS separately; the workflow verifies the
 installed DB helper digest against its exact main source and refuses drift.
@@ -46,9 +48,10 @@ an independently protected recovery identity; preserve it through the owner's
 secure recovery process, never chat or GitHub. No automatic
 retention/deletion is implemented; retained copies/drill DBs need operator review.
 
-## Reviewable migration source and separate approval
+## Reviewable migration source and single owner-command authorization
 
-1. Dispatch `PREPARE_MIGRATION`, exact current-main SHA and matching confirmation.
+1. Legacy option: dispatch `PREPARE_MIGRATION`, exact current-main SHA and matching confirmation.
+   The owner-only `/migrate-hotpot` command stages exact reviewed main itself (no SHA entry).
    It builds the locked source without production credentials, validates the
    allowlisted archive and freezes a root-only source on VPS. It prints the
    digest for review and **does not run SQL**. Existing staged sources are never
@@ -59,7 +62,7 @@ retention/deletion is implemented; retained copies/drill DBs need operator revie
    changes. The isolated CI drill runs the complete helper against disposable
    PostgreSQL, including encryption, restore, least-privilege Prisma execution,
    drift checks and credential revocation.
-3. After separate operator approval, create root-owned mode-0600
+3. Legacy dispatch approval: after separate operator approval, create root-owned mode-0600
    `/etc/sichuan-hotpot/migration-approval.json` with this non-secret structure:
 
    ```json
@@ -78,7 +81,15 @@ retention/deletion is implemented; retained copies/drill DBs need operator revie
    Replace times with approved UTC Unix seconds; window must be at most one hour.
    No approval file is created by provisioning or by a backup workflow.
 4. Backup must match SHA, be at most two hours old, have checksum/offsite/restore
-   proof and still match the current DB fingerprint. Enable migrations explicitly,
+   proof and still match the current DB fingerprint. Owner-only Issue #3
+   `/migrate-hotpot` binds its approval automatically to the immutable staged
+   digest and latest qualified private proof, creates a 30-minute single-use
+   window, then calls preflight + migration. **It does not generate the offsite
+   Windows proof:** the DPAPI identity is intentionally never given to GitHub.
+   The Windows offsite transfer/restore needs an unattended trusted Windows
+   runner or other separately configured private offsite recovery arrangement
+   before this can be fully unattended. No proof means the command fails safely.
+   Legacy manual path: enable migrations explicitly,
    dispatch `MIGRATE_INITIAL` with SHA/backup ID/confirmation, then approve the
    `production-api` Environment for this separate DB run. Disable migration enablement afterward.
 5. The helper consumes approval/proof **before** execution. A restricted transient
