@@ -211,7 +211,7 @@ def migration(sha, digest, backup_id, apply=False):
     require(re.fullmatch(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}', backup_id), 'invalid_backup_id')
     proof_path = private_file(BACKUPS / (backup_id + '.json'))
     proof = json.loads(proof_path.read_text())
-    approval(proof, sha, digest, backup_id)
+    approved = approval(proof, sha, digest, backup_id)
     offline_empty()
     require(fingerprint('hotpot') == proof['fingerprint'], 'database_changed_since_backup')
     release = release_module()
@@ -246,20 +246,25 @@ def migration(sha, digest, backup_id, apply=False):
     call(['chmod', '-R', 'g-w,o-rwx', str(temporary)])
     # mkdtemp's 0700 would otherwise prevent the non-root executor reading source.
     os.chmod(temporary, 0o750)
+    require(approved['window_start'] <= int(time.time()) < approved['window_end']
+            and 0 <= int(time.time()) - proof['created_at'] <= 7200, 'approval_expired_during_preparation')
+    offline_empty()
+    require(fingerprint('hotpot') == proof['fingerprint'], 'database_changed_during_preparation')
     role = 'hotpot_migrate_' + secrets.token_hex(8)
     password = secrets.token_hex(32)
-    quiet_sql("CREATE ROLE " + role + " LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '" + password + "'; GRANT hotpot_owner TO " + role + "; GRANT CONNECT ON DATABASE hotpot TO " + role + ';')
+    expiry = time.strftime('%Y-%m-%d %H:%M:%S+00', time.gmtime(approved['window_end']))
+    quiet_sql("BEGIN; CREATE ROLE " + role + " LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '" + password + "' VALID UNTIL '" + expiry + "'; GRANT hotpot_owner TO " + role + "; GRANT CONNECT ON DATABASE hotpot TO " + role + '; COMMIT;')
     try:
         env = dict(build_env, DATABASE_URL='postgresql://' + role + ':' + password
                    + '@127.0.0.1:5432/hotpot?schema=public&options=-c%20role%3Dhotpot_owner')
         base = ['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/node',
                 str(temporary / 'node_modules/prisma/build/index.js'), 'migrate']
         schema = str(temporary / 'apps/api/prisma/schema.prisma')
-        call(base + ['deploy', '--schema', schema], env=env)
+        call(base + ['deploy', '--schema', schema], env=env, cwd=temporary)
         quiet_sql('REVOKE INSERT, UPDATE, DELETE ON public._prisma_migrations FROM hotpot_app;', 'hotpot')
-        call(base + ['status', '--schema', schema], env=env)
+        call(base + ['status', '--schema', schema], env=env, cwd=temporary)
         call(base + ['diff', '--from-schema-datasource', schema,
-                     '--to-schema-datamodel', schema, '--exit-code'], env=env)
+                     '--to-schema-datamodel', schema, '--exit-code'], env=env, cwd=temporary)
         require(release.db_schema_ready(release.environment()), 'post_migration_history_failed')
         require(quiet_sql('SELECT count(*) FROM public."User";', 'hotpot')[-1] == '0'
                 and quiet_sql('SELECT count(*) FROM public."Order";', 'hotpot')[-1] == '0',
