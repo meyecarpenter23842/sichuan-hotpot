@@ -14,8 +14,10 @@ class RegisterInput {
   password!: string;
 }
 class LoginInput {
-  @IsString() username!: string;
-  @IsString() password!: string;
+  @IsString() @Length(3, 64)
+  username!: string;
+  @IsString() @MaxLength(128)
+  password!: string;
 }
 class GoogleInput {
   @IsString() @MinLength(40) @MaxLength(12000)

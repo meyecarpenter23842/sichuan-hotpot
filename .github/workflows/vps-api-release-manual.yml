@@ -91,8 +91,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Explicit runtime inputs only. Never archive workspace node_modules,
+          # local environment files, frontend code or arbitrary package files.
           tar -czf "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
-            package.json package-lock.json apps/api packages
+            package.json package-lock.json \
+            apps/api/package.json apps/api/dist \
+            apps/api/prisma/schema.prisma apps/api/prisma/migrations \
+            apps/customer/package.json apps/admin/package.json \
+            packages/shared/package.json packages/shared/dist packages/ui/package.json
           sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
       - name: Deliver artifact to pre-provisioned inbox (no migration)
         shell: bash

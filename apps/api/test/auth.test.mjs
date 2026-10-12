@@ -128,3 +128,54 @@ test("Google verifier rejects malformed tokens and does not trust arbitrary subj
     else process.env.GOOGLE_CLIENT_ID = saved;
   }
 });
+
+test("all five roles enforce global owner and branch-scoped manager access", async () => {
+  const client = supertest(app.getHttpServer());
+  const branch = await db.branch.create({
+    data: { code: "ROLES" + randomUUID().slice(0, 8), name: "Roles CI", latitude: "10.1234567", longitude: "106.7654321" },
+  });
+  const { AuthService } = require("../dist/auth/auth.service.js");
+  const auth = app.get(AuthService);
+  for (const role of ["OWNER", "MANAGER", "KITCHEN", "DRIVER", "CUSTOMER"]) {
+    const name = "role" + randomUUID().replaceAll("-", "").slice(0, 12);
+    // Bypass HTTP registration only for fixture setup, not authorization.
+    const tokens = await auth.register(name, "Roles-test-passphrase-2026!");
+    const bearer = "Bearer " + tokens.accessToken;
+    const principal = await auth.principal(bearer);
+    await db.user.update({ where: { id: principal.id }, data: { role } });
+    await client.get("/auth/admin/" + branch.id).set("Authorization", bearer)
+      .expect(role === "OWNER" ? 200 : 403);
+    await db.branchMember.create({ data: { branchId: branch.id, userId: principal.id, role } });
+    await client.get("/auth/admin/" + branch.id).set("Authorization", bearer)
+      .expect(["OWNER", "MANAGER"].includes(role) ? 200 : 403);
+    await client.get("/auth/admin/" + randomUUID()).set("Authorization", bearer)
+      .expect(role === "OWNER" ? 200 : 403);
+  }
+});
+
+test("login bounds untrusted inputs before hashing and database lookup", async () => {
+  const client = supertest(app.getHttpServer());
+  await client.post("/auth/login").send({ username: "a".repeat(65), password: "wrong" }).expect(400);
+  await client.post("/auth/login").send({ username: "valid", password: "a".repeat(129) }).expect(400);
+});
+
+test("login abuse returns 429 with a redacted error", async () => {
+  // Independent app gives this test its own throttle storage and request budget.
+  const limited = await NestFactory.create(AppModule, { logger: false });
+  configureApp(limited);
+  await limited.init();
+  try {
+    const client = supertest(limited.getHttpServer());
+    const name = "absent" + randomUUID().replaceAll("-", "").slice(0, 12);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await client.post("/auth/login").send({ username: name, password: "wrong" }).expect(401);
+    }
+    const response = await client.post("/auth/login")
+      .send({ username: name, password: "never-echo-this-password" }).expect(429);
+    assert.equal(response.body.error.code, "TOO_MANY_REQUESTS");
+    assert.ok(!JSON.stringify(response.body).includes("never-echo-this-password"));
+    assert.ok(!JSON.stringify(response.body).includes(name));
+  } finally {
+    await limited.close();
+  }
+});
