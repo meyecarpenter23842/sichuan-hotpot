@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify original UI references have not changed
+        run: node scripts/check-ui-references.mjs
       - name: Verify required docs, skill and immutable Vercel Git gate
         shell: bash
         run: |
