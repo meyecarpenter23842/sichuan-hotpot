@@ -5,6 +5,12 @@ Source skill: [professional-frontend-qa](../../.agents/skills/professional-front
 ## Before implementation
 Inspect mockups and real routes/components, user journeys, roles, shared tokens and app stack. Mark expected states and accessible interaction semantics. Do not replace functional layout solely for aesthetics.
 
+## Login / username registration visual acceptance
+- No login mockup exists. Match the eight locked source images, especially customer `01-home.png`, `02-hotpot-detail.png` and admin `01-dashboard.png`. Respect their palette, typography, spacing, buttons, navigation, icons and card treatment; do not invent a new style.
+- Design both customer and admin sign-in, direct Google action, username/password registration/sign-in and recovery states. Password show/hide, clear actions, inline validation and errors must work.
+- Read `.agents/skills/professional-frontend-qa/SKILL.md` and its relevant references **before** coding. Compare screenshot of actual running UI side-by-side with reference mockups. Test 320/360/390/428/768/1280/1440 widths, Android emulator, Safari iPhone PWA, keyboard/safe area, touch, accessible focus, Vietnamese glyphs, error/loading/offline/success.
+- Never mark UI PASS without screenshots and interaction evidence; use PASS/FAIL/NOT TESTED.
+
 ## Per-screen checks
 - Main action discoverable, consistent restrained red/cream tokens, readable Vietnamese accents and long text.
 - Functional inputs, modal/back behavior, no fake button, >=44px touch areas, visible focus.
