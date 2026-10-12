@@ -13,7 +13,7 @@ npm run start -w @hotpot/api
 
 - `GET /health/live`: 200 while the process handles HTTP.
 - `GET /health/ready`: 200 only when the PostgreSQL connection responds;
-  503 otherwise. This verifies DB reachability, **not** Clerk/auth or complete
+  503 otherwise. This verifies DB reachability, **not** Google/username auth or complete
   production readiness.
 - Default bind: `127.0.0.1:3000`, set `PORT` and `HOST` only with an
   operator-approved reverse-proxy/network configuration.
@@ -24,8 +24,8 @@ npm run start -w @hotpot/api
 
 This is **not** a production-ready API. Only the development baseline schema,
 isolated CI migration and DB connectivity check are implemented. No production
-migration, Clerk config, routing, order persistence API, VPS restart or deploy
-is included. Follow-up PRs within #4 add JWT verification/RBAC tests.
+migration, direct Google/username auth, routing, order persistence API, VPS restart or deploy
+is included. Follow-up PRs within #4 add Google identity verification, username/password sessions, DEV-only replacement of the provisional `User.clerkSubject`, and RBAC tests.
 
 ## Development database (P1.2)
 
