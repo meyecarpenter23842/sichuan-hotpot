@@ -145,7 +145,10 @@ test("all five roles enforce global owner and branch-scoped manager access", asy
     await db.user.update({ where: { id: principal.id }, data: { role } });
     await client.get("/auth/admin/" + branch.id).set("Authorization", bearer)
       .expect(role === "OWNER" ? 200 : 403);
-    await db.branchMember.create({ data: { branchId: branch.id, userId: principal.id, role } });
+    // CUSTOMER is not a valid staff membership in the database constraint.
+    if (role !== "CUSTOMER") {
+      await db.branchMember.create({ data: { branchId: branch.id, userId: principal.id, role } });
+    }
     await client.get("/auth/admin/" + branch.id).set("Authorization", bearer)
       .expect(["OWNER", "MANAGER"].includes(role) ? 200 : 403);
     await client.get("/auth/admin/" + randomUUID()).set("Authorization", bearer)
