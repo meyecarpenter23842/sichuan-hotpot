@@ -32,7 +32,7 @@ export class AuthController {
 
   @Post("register")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 12, ttl: 60000 } })
   register(@Body() input: RegisterInput) {
     return this.auth.register(input.username, input.password);
   }
