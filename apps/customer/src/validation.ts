@@ -39,13 +39,13 @@ export function optionSelectionError(groups: readonly {
   readonly options: readonly { readonly id: string; readonly isAvailable: boolean }[];
 }[], chosen: readonly string[]): string | null {
   if (chosen.length > 30 || new Set(chosen).size !== chosen.length) return "Tùy chọn món không hợp lệ.";
+  const allowed = new Set(groups.flatMap(group => group.options.map(opt => opt.id)));
+  if (chosen.some(id => !allowed.has(id))) return "Tùy chọn món không hợp lệ.";
   for (const group of groups) {
     const accepted = group.options.filter(option => chosen.includes(option.id));
     if (accepted.some(option => !option.isAvailable)) return "Tùy chọn đã hết hàng.";
     if (accepted.length < group.minSelect) return "Vui lòng chọn đủ tùy chọn: " + group.name;
     if (accepted.length > group.maxSelect) return "Chọn quá số tùy chọn: " + group.name;
   }
-  const allowed = new Set(groups.flatMap(group => group.options.map(opt => opt.id)));
-  if (chosen.some(id => !allowed.has(id))) return "Tùy chọn món không hợp lệ.";
   return null;
 }
