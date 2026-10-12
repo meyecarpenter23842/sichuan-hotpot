@@ -9,12 +9,21 @@ export interface Variant {
   priceDeltaVnd: number;
   isAvailable: boolean;
 }
+export interface ModifierOption {
+  id: string; name: string; priceDeltaVnd: number; isAvailable: boolean;
+}
+export interface ModifierGroup {
+  id: string; name: string; minSelect: number; maxSelect: number;
+  options: ModifierOption[];
+}
 export interface Product {
   id: string;
   name: string;
   priceVnd: number;
   isAvailable: boolean;
   variants: Variant[];
+  modifierGroups: ModifierGroup[];
+  imageKey: string | null;
 }
 export interface Category {
   id: string;
@@ -29,6 +38,16 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
   accessTokenExpiresInSeconds: number;
+}
+export interface SavedAddress {
+  id: string; label: string; line1: string; latitude: string; longitude: string;
+}
+export interface SavedAddresses { phone: string | null; addresses: SavedAddress[]; }
+
+export function safeProductImageUrl(key: string | null | undefined): string | null {
+  if (!key || !/^products-image\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key)
+    || key.includes("..")) return null;
+  return "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/" + key;
 }
 export interface Principal {
   id: string;
@@ -48,7 +67,7 @@ export function apiBaseUrl(): string {
 
 export async function apiRequest<T>(
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown; accessToken?: string; signal?: AbortSignal } = {},
+  options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; accessToken?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   const url = apiBaseUrl() + path;
   const controller = new AbortController();

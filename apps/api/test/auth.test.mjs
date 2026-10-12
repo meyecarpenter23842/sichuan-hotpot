@@ -182,6 +182,42 @@ test("all five roles enforce global owner and branch-scoped manager access", asy
   }
 });
 
+test("customer saved addresses: validate, persist with phone, isolate users and delete safely", async () => {
+  const client = supertest(app.getHttpServer());
+  const pass = "Address-strong-password-2026!";
+  const a = await client.post("/auth/register").send({
+    username: "a" + randomUUID().replaceAll("-", "").slice(0, 18), password: pass,
+  }).expect(201);
+  const b = await client.post("/auth/register").send({
+    username: "b" + randomUUID().replaceAll("-", "").slice(0, 18), password: pass,
+  }).expect(201);
+  const authA = "Bearer " + a.body.accessToken;
+  const authB = "Bearer " + b.body.accessToken;
+  await client.get("/customer/addresses").expect(401);
+  await client.post("/customer/addresses").set("Authorization", authA).send({
+    label: "Nhà", line1: "12 Nguyen Trai Q1 TP HCM", phone: "0912345678",
+    latitude: "99.0", longitude: "106.7654321",
+  }).expect(400);
+  const one = await client.post("/customer/addresses").set("Authorization", authA).send({
+    label: "Nhà", line1: "12 Nguyen Trai Q1 TP HCM", phone: "0912345678",
+    latitude: "10.1234567", longitude: "106.7654321",
+  }).expect(201);
+  assert.equal(one.body.latitude, "10.1234567");
+  const two = await client.post("/customer/addresses").set("Authorization", authA).send({
+    label: "Công ty", line1: "43 Le Loi Q1 TP HCM", phone: "0912345678",
+    latitude: "10.1000000", longitude: "106.7000000",
+  }).expect(201);
+  const listA = await client.get("/customer/addresses").set("Authorization", authA).expect(200);
+  assert.equal(listA.body.phone, "+84912345678");
+  assert.equal(listA.body.addresses.length, 2);
+  const listB = await client.get("/customer/addresses").set("Authorization", authB).expect(200);
+  assert.equal(listB.body.addresses.length, 0);
+  await client.delete("/customer/addresses/" + one.body.id).set("Authorization", authB).expect(404);
+  await client.delete("/customer/addresses/" + one.body.id).set("Authorization", authA).expect(200);
+  const finalList = await client.get("/customer/addresses").set("Authorization", authA).expect(200);
+  assert.deepEqual(finalList.body.addresses.map(x => x.id), [two.body.id]);
+});
+
 test("login bounds untrusted inputs before hashing and database lookup", async () => {
   const client = supertest(app.getHttpServer());
   await client.post("/auth/login").send({ username: "a".repeat(65), password: "wrong" }).expect(400);

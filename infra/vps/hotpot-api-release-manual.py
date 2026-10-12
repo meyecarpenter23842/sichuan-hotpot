@@ -18,7 +18,8 @@ import pwd
 ROOT = Path("/opt/sichuan-hotpot")
 CONFIG = Path("/etc/sichuan-hotpot")
 SERVICE = "hotpot-api.service"
-MIGRATIONS = {"20261012000000_init", "20261012010000_auth_identity"}
+MIGRATIONS = {"20261012000000_init", "20261012010000_auth_identity",
+              "20261013000000_p2_catalog_modifiers"}
 MANIFESTS = {"package.json", "package-lock.json", "apps/api/package.json",
              "apps/customer/package.json", "apps/admin/package.json",
              "packages/shared/package.json", "packages/ui/package.json"}

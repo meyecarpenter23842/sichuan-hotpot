@@ -23,3 +23,26 @@ test("login references exact owner R2 key and real backend auth flow", () => {
   assert.match(app, /loginHeroFailed/);
   assert.match(app, /Xem thực đơn mà không cần đăng nhập/);
 });
+
+test("P2.2 uses real modifier IDs/option groups without trusting prices", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
+  assert.match(app, /optionSelectionError/);
+  assert.match(app, /selectedModifierIds/);
+  assert.match(app, /selectedModifierPrice/);
+  assert.match(api, /products-image/);
+  assert.match(api, /imageKey/);
+  assert.match(app, /\/customer\/addresses/);
+  assert.doesNotMatch(app, /fakeCheckout|mockOrder|deliveryFeeVnd\s*=\s*0/);
+});
+
+test("P2.2 option selection enforces required, max and unavailable options", async () => {
+  const { optionSelectionError } = await import("../src/validation.ts");
+  const groups = [{ name: "Độ cay", minSelect: 1, maxSelect: 1,
+    options: [{ id: "mild", isAvailable: true }, { id: "hot", isAvailable: true }, { id: "gone", isAvailable: false }] }];
+  assert.match(optionSelectionError(groups, []) ?? "", /Vui lòng chọn/);
+  assert.equal(optionSelectionError(groups, ["mild"]), null);
+  assert.match(optionSelectionError(groups, ["mild", "hot"]) ?? "", /Chọn quá/);
+  assert.match(optionSelectionError(groups, ["gone"]) ?? "", /hết hàng/);
+  assert.match(optionSelectionError(groups, ["unknown"]) ?? "", /không hợp lệ/);
+});

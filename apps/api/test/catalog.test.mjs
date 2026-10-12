@@ -34,6 +34,8 @@ test("catalog query returns categories/products/variants in declared sort order"
   assert.deepEqual(captured.where, { id: "branch-1", isActive: true });
   assert.equal(captured.select.categories.select.products.select.priceVnd, true);
   assert.equal(captured.select.categories.select.products.select.isAvailable, true);
+  assert.equal(captured.select.categories.select.products.select.imageKey, true);
+  assert.equal(captured.select.categories.select.products.select.modifierGroups.select.options.select.priceDeltaVnd, true);
   assert.equal(captured.select.categories.select.products.select.variants.select.priceDeltaVnd, true);
 });
 
