@@ -461,7 +461,7 @@ function CustomerApp() {
         accessibilityRole="button" accessibilityLabel={"Xem món " + product.name}
         onPress={() => openProduct(product)}
       >
-        <IconTile name={product.name} />
+        <ProductArtwork product={product} />
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
           <Text style={styles.price}>{vnd(product.priceVnd)}</Text>
@@ -552,11 +552,11 @@ function CustomerApp() {
         const item = selectedProduct;
         if (!item) return <Notice message="Không tìm thấy món. Vui lòng chọn lại." error />;
         const variant = item.variants.find(v => v.id === selectedVariantId);
-        const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0);
+        const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0) + selectedModifierPrice(item, selectedModifierIds);
         return (
           <View style={styles.section}>
             <Button label="‹ Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
-            <View style={styles.detailHero}><IconTile name={item.name} /></View>
+            <View style={styles.detailHero}><ProductArtwork product={item} large /></View>
             <Text style={styles.detailTitle}>{item.name}</Text>
             <Text style={styles.detailPrice}>{vnd(total)}</Text>
             <Text style={styles.muted}>Giá hiển thị để tham khảo. Máy chủ sẽ xác nhận lại giá khi đặt hàng.</Text>
@@ -579,7 +579,36 @@ function CustomerApp() {
                 ))}
               </View>
             )}
-            <Text style={styles.muted}>Độ cay, đường, đá và topping sẽ xuất hiện khi cửa hàng thiết lập tùy chọn thật trong hệ thống.</Text>
+            {(item.modifierGroups ?? []).map((group: ModifierGroup) => (
+              <View key={group.id} style={styles.group}>
+                <Text style={styles.sectionTitle}>{group.name}</Text>
+                <Text style={styles.muted}>{group.minSelect > 0 ? "Bắt buộc chọn tối thiểu " + group.minSelect : "Tùy chọn"} · Tối đa {group.maxSelect}</Text>
+                {group.options.map(option => {
+                  const selected = selectedModifierIds.includes(option.id);
+                  return <Pressable key={option.id} style={[styles.option, !option.isAvailable && styles.optionUnavailable]}
+                    disabled={!option.isAvailable}
+                    accessibilityRole={group.maxSelect === 1 ? "radio" : "checkbox"}
+                    accessibilityState={{ checked: selected, disabled: !option.isAvailable }}
+                    onPress={() => {
+                      setDetailError("");
+                      setSelectedModifierIds(current => {
+                        if (selected) return current.filter(id => id !== option.id);
+                        const ids = new Set(group.options.map(o => o.id));
+                        if (group.maxSelect === 1) return [...current.filter(id => !ids.has(id)), option.id];
+                        if (current.filter(id => ids.has(id)).length >= group.maxSelect) {
+                          setDetailError("Đã chọn tối đa " + group.maxSelect + " cho " + group.name);
+                          return current;
+                        }
+                        return [...current, option.id];
+                      });
+                    }}>
+                    <Text style={styles.optionText}>{selected ? "◉" : "◯"} {option.name}{option.isAvailable ? "" : " · Hết"}</Text>
+                    <Text style={styles.optionPrice}>{option.priceDeltaVnd ? "+ " + vnd(option.priceDeltaVnd) : "0 ₫"}</Text>
+                  </Pressable>;
+                })}
+              </View>
+            ))}
+            {!!detailError && <Notice message={detailError} error />}
             <View style={styles.quantityLine}>
               <Text style={styles.sectionTitle}>Số lượng</Text>
               <View style={styles.quantityStepper}>
@@ -610,13 +639,20 @@ function CustomerApp() {
                 {cart.map(line => {
                   const product = productsById.get(line.selection.productId);
                   const variant = product?.variants.find(v => v.id === line.selection.variantId);
-                  const unavailable = !product || !product.isAvailable || (variant !== undefined && !variant.isAvailable);
-                  const price = product ? product.priceVnd + (variant?.priceDeltaVnd ?? 0) : 0;
+                  const groups = product?.modifierGroups ?? [];
+                  const options = groups.flatMap(group => group.options)
+                    .filter(option => line.selection.modifierIds.includes(option.id));
+                  const unavailable = !product || !product.isAvailable
+                    || (line.selection.variantId !== null && (!variant || !variant.isAvailable))
+                    || optionSelectionError(groups, line.selection.modifierIds) !== null;
+                  const price = product ? product.priceVnd + (variant?.priceDeltaVnd ?? 0)
+                    + selectedModifierPrice(product, line.selection.modifierIds) : 0;
                   return (
                     <View key={line.key} style={styles.cartLine}>
                       <View style={styles.cartLineDetails}>
                         <Text style={styles.productName}>{product?.name ?? "Món không còn trong thực đơn"}</Text>
                         {variant && <Text style={styles.muted}>{variant.name}</Text>}
+                        {options.length > 0 && <Text style={styles.muted}>{options.map(o => o.name).join(" · ")}</Text>}
                         <Text style={styles.price}>{product ? vnd(price * line.quantity) : "Cần chọn món khác"}</Text>
                         {unavailable && <Text style={styles.warning}>Món hoặc tùy chọn không còn bán</Text>}
                       </View>
@@ -642,14 +678,15 @@ function CustomerApp() {
                   const product = productsById.get(line.selection.productId);
                   if (!product) return sum;
                   const variant = product.variants.find(v => v.id === line.selection.variantId);
-                  return sum + (product.priceVnd + (variant?.priceDeltaVnd ?? 0)) * line.quantity;
+                  return sum + (product.priceVnd + (variant?.priceDeltaVnd ?? 0)
+                     + selectedModifierPrice(product, line.selection.modifierIds)) * line.quantity;
                 }, 0))}</Text>
                 <Text style={styles.muted}>Chưa gồm phí giao theo km thực tế, giảm giá và kiểm tra tình trạng món.</Text>
                 <View style={styles.group}>
                   <Text style={styles.sectionTitle}>Thông tin nhận hàng</Text>
                   <Text style={styles.muted}>{hasStoredAddress ? address.line1 : "Chưa có địa chỉ và vị trí GPS hợp lệ"}</Text>
                   <Button label={hasStoredAddress ? "Sửa địa chỉ giao hàng" : "Thêm địa chỉ giao hàng"}
-                    alternate onPress={() => setScreen("address")} />
+                    alternate onPress={() => { setAddressReturnTo("cart"); setScreen("address"); }} />
                 </View>
                 {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
                 <Notice message="Chưa mở đặt hàng: API báo phí tuyến đường và tạo đơn chống trùng sẽ hoàn thành trong P3. Ứng dụng không gửi đơn hoặc báo thanh toán thành công khi thiếu xác nhận từ máy chủ." />
@@ -666,7 +703,7 @@ function CustomerApp() {
               <>
                 <Text style={styles.muted}>Đã đăng nhập · {principal.role}</Text>
                 <Text style={styles.muted}>Mã tài khoản: {principal.id.slice(0, 8)}…</Text>
-                <Button label="Địa chỉ giao hàng" alternate onPress={() => setScreen("address")} />
+                <Button label="Địa chỉ giao hàng" alternate onPress={() => { setAddressReturnTo("account"); setScreen("address"); }} />
                 <Button label="Đăng xuất" alternate onPress={() => void signOut()} />
               </>
             ) : (
