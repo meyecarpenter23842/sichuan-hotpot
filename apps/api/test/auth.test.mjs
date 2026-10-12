@@ -12,6 +12,7 @@ const { configureApp } = require("../dist/bootstrap.js");
 const { GoogleTokenVerifier } = require("../dist/auth/google-token.verifier.js");
 
 process.env.AUTH_JWT_SECRET = "test-key-not-production-1234567890-abcd-ONLY";
+process.env.CORS_ALLOWED_ORIGINS = "https://customer.example.test,http://localhost:8081";
 let app;
 let db;
 before(async () => {
@@ -24,6 +25,29 @@ before(async () => {
 after(async () => {
   if (app) await app.close();
   if (db) await db.$disconnect();
+});
+
+test("explicit browser CORS allows customer PWA preflight and excludes untrusted origins", async () => {
+  const client = supertest(app.getHttpServer());
+  const accepted = await client.options("/auth/login")
+    .set("Origin", "https://customer.example.test")
+    .set("Access-Control-Request-Method", "POST")
+    .set("Access-Control-Request-Headers", "content-type")
+    .expect(204);
+  assert.equal(accepted.headers["access-control-allow-origin"], "https://customer.example.test");
+  assert.equal(accepted.headers["access-control-allow-credentials"], undefined);
+  assert.match(accepted.headers["access-control-allow-methods"], /POST/);
+
+  const rejected = await client.options("/auth/login")
+    .set("Origin", "https://untrusted.example.test")
+    .set("Access-Control-Request-Method", "POST")
+    .expect(204);
+  assert.equal(rejected.headers["access-control-allow-origin"], undefined);
+  const localhost = await client.options("/auth/google")
+    .set("Origin", "http://localhost:8081")
+    .set("Access-Control-Request-Method", "POST")
+    .expect(204);
+  assert.equal(localhost.headers["access-control-allow-origin"], "http://localhost:8081");
 });
 
 test("guest private endpoint rejects absent and forged JWT", async () => {
