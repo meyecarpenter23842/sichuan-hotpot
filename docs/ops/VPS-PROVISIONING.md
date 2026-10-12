@@ -16,8 +16,9 @@ services are outside this change scope.
   No public database listener/firewall opening was added.
 - Root-owned `/etc/sichuan-hotpot/api.env`, group `hotpot-api`, mode 0640.
   Database URL, unchanged owner Google Client ID and a separate random JWT secret
-  are configured. The existing Google Client Secret requires masked local entry;
-  verify presence only, without printing values.
+  are configured. The existing Google Client Secret was entered through the
+  masked local prompt; presence and the complete backend environment were
+  verified PASS without printing values. OAuth configuration was preserved.
 - Versioned release/staging/incoming directories, non-login runtime/build users,
   hardened `hotpot-api.service`, release helper and HTTPS template installed.
   **API inactive, no current pointer activated, zero application tables.**
@@ -66,8 +67,8 @@ must be verified separately. Production HTTPS/auth health remain NOT TESTED.
 
 ## First-release conditions still required
 
-1. Enter the existing Google Client Secret using `scripts/ops/set-google-secret.ps1`
-   and verify presence. Its masked prompt sends SSH stdin to the root-owned setter;
+1. Google Client Secret presence is verified. For a separately approved update,
+   `scripts/ops/set-google-secret.ps1` sends masked SSH stdin to the root-owned setter;
    values never enter arguments, history, GitHub or source. The setter atomically
    preserves file permissions and does not restart the API. ID-token verification
    itself does not consume this secret.
@@ -83,6 +84,8 @@ must be verified separately. Production HTTPS/auth health remain NOT TESTED.
    apply; never grant the app DDL/superuser rights. Revoke INSERT/UPDATE/DELETE on
    `_prisma_migrations` from `hotpot_app`, leaving SELECT only; the release helper
    refuses writable migration history. Verify history and schema drift.
+   See [database manual operations](DATABASE-MANUAL-OPERATIONS.md) for the
+   independent Actions/Windows backup, restore drill and initial migration gates.
 4. Approve exact current-main release, deliberately enable releases, dispatch
    `DEPLOY_API`, approve Environment, then disable release enablement afterwards.
 5. Verify live/ready, service/PostgreSQL, 401 and authenticated CUSTOMER 403 using
