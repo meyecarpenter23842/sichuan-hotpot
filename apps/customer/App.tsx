@@ -10,7 +10,7 @@ import * as Location from "expo-location";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import {
-  addCartLine, cartItemCount, checkoutCartItems, setCartQuantity,
+  addCartLine, cartItemCount, setCartQuantity,
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
