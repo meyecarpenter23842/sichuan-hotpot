@@ -1,6 +1,6 @@
 # Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa
 
-**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with health and safe HTTP handling. Readiness returns 200 only when its PostgreSQL connection responds, otherwise 503. Direct Google OAuth/OIDC and username/password accounts are planned (no Clerk); neither login flow is implemented yet. Expo customer/admin apps are placeholders; **nothing is deployed**.
+**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with health and safe HTTP handling. Readiness returns 200 only when its PostgreSQL connection responds, otherwise 503. Direct Google ID-token verification, username/password registration and backend sessions are implemented and tested in DEV/CI (no Clerk); customer/admin login UIs and production rollout are **not implemented**. Expo customer/admin apps are placeholders; **nothing is deployed**.
 
 ## Development
 
