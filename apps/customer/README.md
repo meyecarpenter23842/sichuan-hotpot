@@ -32,3 +32,9 @@ Production remains disabled. `vercel.json` must keep `git.deploymentEnabled=fals
 - The API must configure `CORS_ALLOWED_ORIGINS` to the comma-separated **exact HTTPS origins** of the deployed customer/admin PWAs. Local `http://localhost:<port>` is accepted only when explicitly listed. The API does **not** reflect arbitrary origins and does not use wildcard CORS.
 - Example development setting: `CORS_ALLOWED_ORIGINS=http://localhost:8081`. Production origin is not known until the actual PWA deployment is configured; do not invent a domain or auto-deploy.
 - For browser login, verify preflight `OPTIONS /auth/login`, `POST /auth/login`, `GET /auth/me`, refresh/revocation and a rejected unknown Origin. This is an actual cross-origin HTTP requirement, not optional presentation polish.
+
+## P2.2 — customer catalogue, cart and addresses
+- Catalogue returns server-managed modifier groups (including optional spice/sugar/ice/toppings), variant availability, and optional R2 product `imageKey` in `products-image/`. The UI must not invent products or prices.
+- Cart persists IDs and quantities only; client displayed totals are estimates and the backend will validate at checkout in P3.
+- Signed-in CUSTOMER can save up to ten addresses and phone on the backend, list/select/delete their own records. Guests can store only a local draft. Road-based delivery fee is not claimed or charged by P2.2.
+- Additive Prisma migration `20261013000000_p2_catalog_modifiers` is DEV/CI only until an expressly approved production release.
