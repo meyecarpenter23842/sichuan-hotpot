@@ -34,7 +34,14 @@ export class CatalogService {
             products: {
               orderBy: [{ name: "asc" }, { id: "asc" }],
               select: {
-                id: true, name: true, priceVnd: true, isAvailable: true,
+                id: true, name: true, priceVnd: true, isAvailable: true, imageKey: true,
+                modifierGroups: {
+                  orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+                  select: { id: true, name: true, minSelect: true, maxSelect: true,
+                    options: { orderBy: [{ name: "asc" }, { id: "asc" }],
+                      select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
+                  },
+                },
                 variants: {
                   orderBy: [{ name: "asc" }, { id: "asc" }],
                   select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true },

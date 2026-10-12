@@ -8,5 +8,6 @@ import { GoogleTokenVerifier } from "./google-token.verifier";
   imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }])],
   providers: [AuthService, GoogleTokenVerifier],
   controllers: [AuthController],
+  exports: [AuthService],
 })
 export class AuthModule {}
