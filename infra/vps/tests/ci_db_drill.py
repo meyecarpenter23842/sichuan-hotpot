@@ -37,7 +37,12 @@ def adapt(command):
 
 
 def ci_call(command, data=None, env=None, **kwargs):
-    return original_call(adapt(command), data=data, env=env or admin_env, **kwargs)
+    command = adapt(command)
+    if '/usr/bin/npm' in command or '/usr/bin/node' in command:
+        command = [os.environ['CI_NPM_BIN'] if item == '/usr/bin/npm' else
+                   os.environ['CI_NODE_BIN'] if item == '/usr/bin/node' else item for item in command]
+        env = dict(env, PATH=str(Path(os.environ['CI_NODE_BIN']).parent) + ':' + env['PATH'])
+    return original_call(command, data=data, env=env or admin_env, **kwargs)
 
 
 def ci_pipe(first, second, **kwargs):

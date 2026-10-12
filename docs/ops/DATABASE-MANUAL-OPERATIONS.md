@@ -6,9 +6,11 @@ and share the API release concurrency group. PostgreSQL remains loopback-only.
 
 ## Recovery setup and first backup
 
-`production-db` requires the owner reviewer, main-only branch policy, existing
+The existing `production-api` requires the owner reviewer, main-only branch policy, existing
 trusted SSH pin/key and VPS variables. `HOTPOT_MIGRATIONS_ENABLED=false` is the
-default. Recovery identities/database passwords are never GitHub secrets.
+default. This workflow reuses already configured SSH credentials without
+copying/uploading a private key into another Environment. Each DB dispatch needs
+its own approval. Recovery identities/database passwords are never GitHub secrets.
 
 Install the reviewed LF helpers on the VPS separately; the workflow verifies the
 installed DB helper digest against its exact main source and refuses drift.
@@ -79,7 +81,7 @@ retention/deletion is implemented; retained copies/drill DBs need operator revie
 4. Backup must match SHA, be at most two hours old, have checksum/offsite/restore
    proof and still match the current DB fingerprint. Enable migrations explicitly,
    dispatch `MIGRATE_INITIAL` with SHA/backup ID/confirmation, then approve the
-   independent `production-db` Environment. Disable migration enablement afterward.
+   `production-api` Environment for this separate DB run. Disable migration enablement afterward.
 5. The helper consumes approval/proof **before** execution. A restricted transient
    LOGIN member of NOLOGIN `hotpot_owner` runs Prisma as non-root with `role`
    connection options. Its password is generated on VPS and used only in process

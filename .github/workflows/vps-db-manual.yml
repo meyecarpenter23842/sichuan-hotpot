@@ -28,7 +28,9 @@ jobs:
   database:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production-db
+    # Reuse the already configured SSH credential; do not copy private keys.
+    # Each DB dispatch still requires its own Environment approval.
+    environment: production-api
     timeout-minutes: 25
     env:
       OPERATION: ${{ inputs.operation }}
