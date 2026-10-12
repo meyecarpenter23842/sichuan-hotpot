@@ -188,7 +188,8 @@ export class AuthService {
 
   async adminAccess(authorization: string | undefined, branchId: string): Promise<{ status: "ok" }> {
     const user = await this.principal(authorization);
-    if (!["OWNER", "MANAGER"].includes(user.role)) {
+    // OWNER is global; MANAGER and other staff are always branch-scoped.
+    if (user.role !== "OWNER") {
       const membership = await this.prisma.database.branchMember.findUnique({
         where: { branchId_userId: { branchId, userId: user.id } },
         select: { role: true },

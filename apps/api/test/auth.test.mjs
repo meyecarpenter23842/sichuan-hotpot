@@ -67,6 +67,10 @@ test("register username, protect password, login, enforce branch role, revoke/ro
   await client.get("/auth/admin/" + branch.id).set("Authorization", bearer).expect(403);
   await db.branchMember.create({ data: { branchId: branch.id, userId: cred.userId, role: "MANAGER" } });
   await client.get("/auth/admin/" + branch.id).set("Authorization", bearer).expect(200);
+  const unrelatedBranch = await db.branch.create({
+    data: { code: "OTHER" + randomUUID().slice(0, 8), name: "Other branch", latitude: "10.1234567", longitude: "106.7654321" },
+  });
+  await client.get("/auth/admin/" + unrelatedBranch.id).set("Authorization", bearer).expect(403);
 
   const oldRefresh = login.body.refreshToken;
   const rotated = await client.post("/auth/refresh").send({ refreshToken: oldRefresh }).expect(201);
