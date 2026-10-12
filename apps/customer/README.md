@@ -27,3 +27,8 @@ Production remains disabled. `vercel.json` must keep `git.deploymentEnabled=fals
 - Expected hero R2 key: `hot-pot` bucket, `system-image/login-hero.png`; URL `https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png`. If image is missing or request fails, UI shows a branded fallback, not a blank login page.
 - R2 bucket **does not currently contain hero** at inspection time; this code does not claim successful upload. Place the owner's original binary at the exact key, verify content type image/png and HTTP GET before visual QA.
 - No actual Android emulator, Safari PWA, real Google OAuth or pixel-match acceptance is claimed by a compile/build.
+
+## Browser auth preflight (P2.1)
+- The API must configure `CORS_ALLOWED_ORIGINS` to the comma-separated **exact HTTPS origins** of the deployed customer/admin PWAs. Local `http://localhost:<port>` is accepted only when explicitly listed. The API does **not** reflect arbitrary origins and does not use wildcard CORS.
+- Example development setting: `CORS_ALLOWED_ORIGINS=http://localhost:8081`. Production origin is not known until the actual PWA deployment is configured; do not invent a domain or auto-deploy.
+- For browser login, verify preflight `OPTIONS /auth/login`, `POST /auth/login`, `GET /auth/me`, refresh/revocation and a rejected unknown Origin. This is an actual cross-origin HTTP requirement, not optional presentation polish.

@@ -67,7 +67,11 @@ export async function apiRequest<T>(
     });
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      if (response.status === 401) throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+      if (response.status === 401) {
+        if (path === "/auth/login") throw new Error("Tên đăng nhập hoặc mật khẩu không đúng.");
+        if (path === "/auth/google") throw new Error("Google chưa xác thực được tài khoản. Vui lòng thử lại.");
+        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+      }
       if (response.status === 409) throw new Error("Tên đăng nhập đã được sử dụng.");
       if (response.status === 429) throw new Error("Thao tác quá nhanh. Vui lòng thử lại sau.");
       if (response.status === 404) throw new Error("Dữ liệu chưa có hoặc chi nhánh không khả dụng.");
