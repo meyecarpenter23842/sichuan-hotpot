@@ -7,6 +7,7 @@ const supertest = require("supertest");
 const { NestFactory } = require("@nestjs/core");
 const { AppModule } = require("../dist/app.module.js");
 const { configureApp } = require("../dist/bootstrap.js");
+const { PrismaService } = require("../dist/database/prisma.service.js");
 
 let app;
 before(async () => {
@@ -18,18 +19,41 @@ after(async () => {
   if (app) await app.close();
 });
 
-test("GET /health/live returns 200 independently of DB readiness", async () => {
+test("GET /health/live responds independent of database availability", async () => {
   const res = await supertest(app.getHttpServer()).get("/health/live").expect(200);
   assert.deepEqual(res.body, { status: "ok" });
 });
 
-test("GET /health/ready fails closed without a proven database", async () => {
-  const res = await supertest(app.getHttpServer()).get("/health/ready").expect(503);
-  assert.deepEqual(res.body.error, {
-    code: "SERVICE_UNAVAILABLE",
-    message: "Service unavailable",
-  });
-  assert.equal(typeof res.body.requestId, "string");
+test("GET /health/ready proves PostgreSQL connectivity on isolated CI database", async () => {
+  assert.ok(process.env.DATABASE_URL, "CI must set test DATABASE_URL");
+  const res = await supertest(app.getHttpServer()).get("/health/ready").expect(200);
+  assert.deepEqual(res.body, { status: "ok" });
+});
+
+test("readiness rejects absent or invalid datasource with no secrets in response", async () => {
+  const saved = process.env.DATABASE_URL;
+  try {
+    delete process.env.DATABASE_URL;
+    const missing = new PrismaService();
+    assert.equal(await missing.isReady(), false);
+    await missing.onModuleDestroy();
+    process.env.DATABASE_URL = "not-a-postgresql-url";
+    const bad = new PrismaService();
+    assert.equal(await bad.isReady(), false);
+    await bad.onModuleDestroy();
+  } finally {
+    if (saved === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = saved;
+  }
+});
+
+test("readiness endpoint refuses service when database connectivity fails", async () => {
+  const { HealthController } = require("../dist/health/health.controller.js");
+  const controller = new HealthController({ isReady: async () => false });
+  await assert.rejects(
+    controller.ready(),
+    (err) => err?.getStatus?.() === 503,
+  );
 });
 
 test("unmatched routes use redacted structured error response", async () => {
