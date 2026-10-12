@@ -14,3 +14,12 @@ test("customer API adapter does not contain a fabricated success response", () =
   assert.match(code, /EXPO_PUBLIC_API_BASE_URL/);
   assert.doesNotMatch(code, /mockOrder|fakeOrder/);
 });
+
+test("login references exact owner R2 key and real backend auth flow", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /r2\.dev\/system-image\/login-hero\.png/);
+  assert.match(app, /"\/auth\/google"/);
+  assert.match(app, /"\/auth\/me"/);
+  assert.match(app, /loginHeroFailed/);
+  assert.match(app, /Xem thực đơn mà không cần đăng nhập/);
+});

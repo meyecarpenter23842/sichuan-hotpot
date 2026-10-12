@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable,
-  ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
+  ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -33,6 +33,7 @@ const brand = "#AD282A";
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
 const authWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
 const authAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
+const loginHeroUrl = "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png";
 const googleReady = Boolean(
   Platform.OS === "web" ? authWebClientId : authAndroidClientId,
 );
@@ -117,6 +118,8 @@ function CustomerApp() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [loginHeroFailed, setLoginHeroFailed] = useState(false);
+  const [loginReturnTo, setLoginReturnTo] = useState<"cart" | "account">("account");
   const [address, setAddress] = useState<AddressDraft>({
     phone: "", line1: "", latitude: "", longitude: "",
   });
@@ -244,12 +247,14 @@ function CustomerApp() {
     setPrincipal(who);
     setAuthError("");
     setPassword("");
-    setScreen("cart");
-    setNotice("Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng.");
-  }, []);
+    setScreen(loginReturnTo);
+    setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
+  }, [loginReturnTo]);
 
   useEffect(() => {
-    if (!googleResponse || googleResponse.type !== "success") return;
+    if (!googleResponse) return;
+    if (googleResponse.type === "error") { setAuthError("Không thể xác thực với Google. Vui lòng thử lại."); return; }
+    if (googleResponse.type !== "success") return;
     const idToken = googleResponse.params?.id_token;
     if (!idToken) {
       setAuthError("Google chưa trả về mã định danh hợp lệ.");
@@ -566,7 +571,7 @@ function CustomerApp() {
                   <Button label={hasStoredAddress ? "Sửa địa chỉ giao hàng" : "Thêm địa chỉ giao hàng"}
                     alternate onPress={() => setScreen("address")} />
                 </View>
-                {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => setScreen("login")} />}
+                {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
                 <Notice message="Chưa mở đặt hàng: API báo phí tuyến đường và tạo đơn chống trùng sẽ hoàn thành trong P3. Ứng dụng không gửi đơn hoặc báo thanh toán thành công khi thiếu xác nhận từ máy chủ." />
                 <Button label="Đặt hàng (chưa khả dụng)" disabled onPress={() => undefined} />
               </>
@@ -587,7 +592,7 @@ function CustomerApp() {
             ) : (
               <>
                 <Text style={styles.muted}>Xem thực đơn thoải mái. Đăng nhập khi cần mua hàng.</Text>
-                <Button label="Đăng nhập / Tạo tài khoản" onPress={() => setScreen("login")} />
+                <Button label="Đăng nhập / Tạo tài khoản" onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
               </>
             )}
             <View style={styles.group}>
@@ -598,35 +603,78 @@ function CustomerApp() {
         );
       case "login":
         return (
-          <View style={styles.section}>
-            <Button label="‹ Trở về" alternate onPress={() => setScreen("account")} />
-            <Text style={styles.pageTitle}>{authMode === "login" ? "Chào mừng trở lại" : "Tạo tài khoản"}</Text>
-            <Text style={styles.muted}>Đăng nhập an toàn để quản lý đơn hàng của bạn.</Text>
-            <View style={styles.segmentRow}>
-              <Pressable style={[styles.segment, authMode === "login" && styles.segmentActive]}
-                accessibilityRole="button" onPress={() => { setAuthMode("login"); setAuthError(""); }}>
-                <Text style={styles.segmentText}>Đăng nhập</Text>
+          <View style={styles.loginPage}>
+            <View style={styles.loginHeroFrame}>
+              {!loginHeroFailed ? (
+                <Image
+                  source={{ uri: loginHeroUrl }}
+                  resizeMode="cover"
+                  style={styles.loginHeroImage}
+                  accessibilityLabel="Ảnh lẩu Tứ Xuyên dùng cho màn đăng nhập"
+                  onError={() => setLoginHeroFailed(true)}
+                />
+              ) : (
+                <View style={styles.loginHeroFallback}>
+                  <Text style={styles.loginHeroFallbackIcon}>♨</Text>
+                  <Text style={styles.loginHeroFallbackText}>SICHUAN HOTPOT</Text>
+                </View>
+              )}
+              <View style={styles.loginHeroTint}>
+                <Pressable
+                  accessibilityRole="button" accessibilityLabel="Quay lại"
+                  style={styles.loginBack}
+                  onPress={() => setScreen(loginReturnTo)}
+                ><Text style={styles.loginBackText}>‹  Trở lại</Text></Pressable>
+                <View style={styles.loginHeroCopy}>
+                  <Text style={styles.loginEyebrow}>SICHUAN HOTPOT & MILK TEA</Text>
+                  <Text style={styles.loginHeadline}>Hương vị Tứ Xuyên,{"\n"}gắn kết yêu thương</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.loginContent}>
+              <Text style={styles.loginWelcome}>{authMode === "login" ? "Chào mừng trở lại!" : "Tạo tài khoản mới"}</Text>
+              <Text style={styles.loginSupporting}>Đăng nhập để lưu giỏ hàng và theo dõi đơn của bạn.</Text>
+              <View style={styles.segmentRow}>
+                <Pressable style={[styles.segment, authMode === "login" && styles.segmentActive]}
+                  accessibilityRole="button" accessibilityState={{ selected: authMode === "login" }}
+                  disabled={authLoading}
+                  onPress={() => { setAuthMode("login"); setAuthError(""); }}>
+                  <Text style={styles.segmentText}>Đăng nhập</Text>
+                </Pressable>
+                <Pressable style={[styles.segment, authMode === "register" && styles.segmentActive]}
+                  accessibilityRole="button" accessibilityState={{ selected: authMode === "register" }}
+                  disabled={authLoading}
+                  onPress={() => { setAuthMode("register"); setAuthError(""); }}>
+                  <Text style={styles.segmentText}>Đăng ký</Text>
+                </Pressable>
+              </View>
+              <Field label="Tên đăng nhập" value={username} onChangeText={setUsername} placeholder="Tên đăng nhập" />
+              <Field label="Mật khẩu" value={password} onChangeText={setPassword}
+                placeholder={authMode === "register" ? "Tối thiểu 12 ký tự" : "Nhập mật khẩu"}
+                secureTextEntry={!showPassword} />
+              <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                onPress={() => setShowPassword(old => !old)}
+                style={styles.smallAction}>
+                <Text style={styles.linkText}>{showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}</Text>
               </Pressable>
-              <Pressable style={[styles.segment, authMode === "register" && styles.segmentActive]}
-                accessibilityRole="button" onPress={() => { setAuthMode("register"); setAuthError(""); }}>
-                <Text style={styles.segmentText}>Đăng ký</Text>
+              {authMode === "register" && <Text style={styles.muted}>Tên đăng nhập 3–32 ký tự, mật khẩu tối thiểu 12 ký tự.</Text>}
+              {authError ? <Notice message={authError} error /> : null}
+              <Button label={authLoading ? "Đang xác thực..." : authMode === "login" ? "Đăng nhập" : "Tạo tài khoản"}
+                disabled={authLoading} onPress={() => void submitCredentials()} />
+              {authLoading && <ActivityIndicator accessibilityLabel="Đang xác thực" color={brand} />}
+              <View style={styles.loginDivider}>
+                <View style={styles.loginDividerLine} />
+                <Text style={styles.loginDividerText}>hoặc</Text>
+                <View style={styles.loginDividerLine} />
+              </View>
+              <Button label="Tiếp tục với Google" alternate disabled={!googleRequest || !googleReady || authLoading}
+                onPress={() => { setAuthError(""); void promptGoogle().catch(() => setAuthError("Không mở được cửa sổ Google.")); }} />
+              {!googleReady && <Text style={styles.muted}>Google chưa được cấu hình cho nền tảng này. Có thể đăng nhập bằng tài khoản.</Text>}
+              <Text style={styles.loginFootnote}>Chưa có API khôi phục mật khẩu tự động. Liên hệ cửa hàng khi cần hỗ trợ tài khoản.</Text>
+              <Pressable accessibilityRole="button" onPress={() => setScreen("menu")} style={styles.loginGuest}>
+                <Text style={styles.loginGuestText}>Xem thực đơn mà không cần đăng nhập  →</Text>
               </Pressable>
             </View>
-            <Field label="Tên đăng nhập" value={username} onChangeText={setUsername} placeholder="ten_dang_nhap" />
-            <Field label="Mật khẩu" value={password} onChangeText={setPassword}
-              placeholder={authMode === "register" ? "Tối thiểu 12 ký tự" : "Nhập mật khẩu"}
-              secureTextEntry={!showPassword} />
-            <Pressable accessibilityRole="button" onPress={() => setShowPassword(old => !old)}
-              style={styles.smallAction}><Text style={styles.linkText}>{showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}</Text></Pressable>
-            {authMode === "register" && <Text style={styles.muted}>Dùng tên đăng nhập riêng, không cần Gmail để tạo tài khoản.</Text>}
-            {authError ? <Notice message={authError} error /> : null}
-            <Button label={authLoading ? "Đang xác thực..." : authMode === "login" ? "Đăng nhập" : "Đăng ký tài khoản"}
-              disabled={authLoading} onPress={() => void submitCredentials()} />
-            <Text style={[styles.muted, styles.orText]}>hoặc tiếp tục bằng</Text>
-            <Button label="Tiếp tục với Google" alternate disabled={!googleRequest || !googleReady || authLoading}
-              onPress={() => { setAuthError(""); void promptGoogle(); }} />
-            {!googleReady && <Text style={styles.muted}>Chưa cấu hình OAuth Client ID công khai cho thiết bị này.</Text>}
-            <Text style={styles.muted}>Khôi phục mật khẩu chưa có API xác minh; vui lòng liên hệ cửa hàng nếu cần hỗ trợ.</Text>
           </View>
         );
       case "address":
@@ -727,6 +775,27 @@ const styles = StyleSheet.create({
   headerCartText: { fontSize: 13, color: brand, fontWeight: "800" },
   body: { flex: 1 },
   scrollContent: { paddingBottom: 28 },
+  loginPage: { backgroundColor: "#FFF8F0", paddingBottom: 24 },
+  loginHeroFrame: { width: "100%", height: 268, backgroundColor: "#7C2326", overflow: "hidden" },
+  loginHeroImage: { width: "100%", height: "100%" },
+  loginHeroFallback: { width: "100%", height: "100%", backgroundColor: "#822524", alignItems: "center", justifyContent: "center" },
+  loginHeroFallbackIcon: { color: "#F9D29C", fontSize: 64 },
+  loginHeroFallbackText: { fontWeight: "900", color: "#FFF1D9", fontSize: 23, letterSpacing: 2 },
+  loginHeroTint: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(34,12,10,0.32)", justifyContent: "space-between", paddingHorizontal: 22, paddingVertical: 16 },
+  loginBack: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: 10, borderRadius: 22, backgroundColor: "rgba(30,10,10,0.48)" },
+  loginBackText: { color: "#FFF7ED", fontWeight: "700" },
+  loginHeroCopy: { gap: 7, paddingBottom: 12 },
+  loginEyebrow: { color: "#F6CE93", letterSpacing: 2, fontSize: 11, fontWeight: "900" },
+  loginHeadline: { color: "#FFFDF8", fontSize: 26, fontWeight: "900", lineHeight: 34 },
+  loginContent: { paddingHorizontal: 24, paddingTop: 25, gap: 11 },
+  loginWelcome: { color: "#4C2520", fontSize: 26, lineHeight: 34, fontWeight: "900" },
+  loginSupporting: { color: "#856B5A", fontSize: 13, lineHeight: 21, marginBottom: 7 },
+  loginDivider: { flexDirection: "row", gap: 12, alignItems: "center", justifyContent: "center", marginVertical: 8 },
+  loginDividerLine: { flex: 1, height: 1, backgroundColor: "#DFC9B9" },
+  loginDividerText: { color: "#826758", fontSize: 12 },
+  loginFootnote: { color: "#7D6458", fontSize: 12, lineHeight: 19 },
+  loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
+  loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 205, paddingHorizontal: 24, paddingVertical: 24, justifyContent: "center", gap: 7 },
   heroEyebrow: { color: "#FBE3BA", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
