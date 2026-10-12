@@ -61,11 +61,19 @@ jobs:
               doc=yaml.load(content, Loader=yaml.BaseLoader)
               assert isinstance(doc,dict),name
               events=list(doc.get("on",{}))
-              if name == "vps-api-release-manual.yml":
+              if name in ("vps-api-release-manual.yml","vercel-pwa-release-manual.yml"):
                   assert events == ["workflow_dispatch", "issue_comment"], name
                   assert "github.event.issue.number == 3" in content,name
+                  assert "github.event.issue.pull_request == null" in content,name
                   assert "github.actor == 'meyecarpenter23842'" in content,name
-                  assert "github.event.comment.body == '/deploy-hotpot'" in content,name
+                  if name == "vps-api-release-manual.yml":
+                      assert "github.event.comment.body == '/deploy-hotpot'" in content,name
+                  else:
+                      for command in ("/deploy-hotpot-customer", "/deploy-hotpot-admin"):
+                          assert f"github.event.comment.body == '{command}'" in content,name
+                      assert "production-customer-pwa" in content and "production-admin-pwa" in content,name
+                      assert "OWNER_COMMAND: ${{ github.event.comment.body }}" in content,name
+                      assert 'ref: main' in content,name
               else:
                   assert events == ["workflow_dispatch"], name
               assert doc.get("permissions",{}).get("contents")=="read",name
@@ -80,7 +88,7 @@ jobs:
               assert not re.search(r"(?m)^  (push|pull_request|schedule):",content),name
               assert "ssh-keyscan -T" not in content,name
               assert "127.0.0.1" not in content or "audit" in name,name
-              print("PASS",name,"dispatch-only")
+              print("PASS",name,"explicit-owner-or-dispatch-only")
           # DB workflow also accepts only exact owner-issued operational commands.
           db=(root/"vps-db-manual.yml").read_text(encoding="utf-8")
           db_doc=yaml.load(db,Loader=yaml.BaseLoader)
