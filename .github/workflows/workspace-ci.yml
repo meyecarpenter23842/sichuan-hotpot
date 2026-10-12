@@ -92,11 +92,12 @@ jobs:
             sleep 1
           done
           node scripts/qa/p21-login-browser-qa.mjs
+          node scripts/qa/p22-catalog-browser-qa.mjs
       - name: Archive P2.1 browser screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p21-login-browser-screenshots
+          name: customer-browser-qa-screenshots
           path: apps/customer/qa-artifacts/*.png
           if-no-files-found: ignore
           retention-days: 7
