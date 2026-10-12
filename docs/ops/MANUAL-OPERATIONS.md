@@ -3,19 +3,19 @@
 **State:** The original scaffolding baseline below is historical. NestJS/Prisma/auth now exist; an owner-approved task has provisioned runtime, private database, systemd/helper and protected `production-api`. Backend activation, initial production migrations and HTTPS are still blocked. See [VPS provisioning](VPS-PROVISIONING.md) for actual checks and first-release conditions.
 
 ## Source model: NPP-Platform
-Reference [NPP manual VPS audit](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-audit-manual.yml), [backend release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-company-backend-manual.yml), [production migration](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-migration-164-manual.yml), and [Vercel release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vercel-production-manual.yml). Replicate immutable SHA checks and explicit manual operation, **not** NPP's `issue_comment` triggers, implicit `ssh-keyscan` trust, NPP service names, credentials or production resource paths.
+Reference [NPP manual VPS audit](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-audit-manual.yml), [backend release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-company-backend-manual.yml), [production migration](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-migration-164-manual.yml), and [Vercel release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vercel-production-manual.yml). Replicate immutable SHA checks and the NPP owner-only explicit `issue_comment` trigger (Issue #3 here), **not** implicit `ssh-keyscan` trust, NPP service names, credentials or production resource paths.
 
 ## Workflows and current availability
 
 | File | Manual input | GitHub Environment | Current capability |
 |---|---|---|---|
 | `vps-audit-readonly.yml` | `AUDIT` | `vps-readonly` | Can run after dedicated SSH credentials, verified host key and environment are configured |
-| `vercel-pwa-release-manual.yml` | app, exact main SHA, `DEPLOY_PWA` | `production-customer-pwa` or `production-admin-pwa` | Locked: requires bootstrapped PWA and explicit enable |
+| `vercel-pwa-release-manual.yml` | Owner Issue #3: `/deploy-hotpot-customer` or `/deploy-hotpot-admin`; legacy dispatch inputs remain | `production-customer-pwa` or `production-admin-pwa` | Locked until real Expo apps, reviewed Vercel CLI and target configuration exist |
 | `vps-api-release-manual.yml` | exact main SHA, `DEPLOY_API` | `production-api` | Locked: requires NestJS build and reviewed versioned-release VPS helper |
 | `vps-db-backup-manual.yml` | ticket, `BACKUP_DB` | `production-db` | Locked: requires vetted offsite/restore-tested VPS backup helper |
 | `vps-db-migrate-manual.yml` | exact main SHA, backup ID, restore proof, `MIGRATE_DB` | `production-db` | Locked: requires Prisma migrations + vetted migration helper and actual offsite restore evidence |
 
-All five workflows have **only `workflow_dispatch`** and only run on `main`; they do not deploy, migrate, connect or audit on Git push/PR/merge/comments, tags, a clock, or any incident alert. PR CI validates that this remains true. Each release is serialized by `concurrency`; DB backup/migration and API deployment use the same VPS-change lock.
+NPP-style owner Issue #3 commands are also allowed for the API, DB and PWA workflows. They are deliberate manual actions, not automatic deployment on arbitrary comments. All workflows remain protected against Git push/PR/merge, tags, cron and alerts. The CI guard verifies the exact owner, issue number and command allowlist. Each release is serialized by `concurrency`; DB backup/migration and API deployment use the same VPS-change lock.
 
 **Important:** A workflow_dispatch job executes when a human initiates it. `environment` alone does not necessarily create a human reviewer approval gate. GitHub protected Environment reviewers must be enabled if supported; if a repository owner is the only approver and rules disallow self-approval, choose a permitted approval path before using releases. The typed confirmation, verified main SHA, release-enable flag and separate secrets protect from accidental publication, but they are not equivalent to a second person reviewing the change.
 
@@ -46,7 +46,9 @@ Existing Vercel projects:
 
 Both environments already have `VERCEL_ORG_ID` + their respective `VERCEL_PROJECT_ID` variables and `VERCEL_TOKEN` secret entered by owner. Token validity not tested. Never copy token into repository or logs.
 
-After P0/P2 builds exist, introduce a pinned Vercel CLI as workspace devDependency and verify web export paths. Test on a protected **staging** target before authorizing production. Set `HOTPOT_RELEASES_ENABLED=true` only for a deliberately approved release and revert to false after the release. Run workflow manually, choose app and type exact current protected `main` SHA plus `DEPLOY_PWA`. It read-verifies Vercel account/project/root/no Git integration; fails if linked Git is detected. It runs lint/typecheck/test, Expo Web export, `vercel pull`, `vercel build --prod`, then `vercel deploy --prebuilt --prod`. Verify result in Vercel and smoke app; automatic Git deploy remains disabled.
+The operator's only regular command is `/deploy-hotpot-customer` or `/deploy-hotpot-admin`, posted as a standalone comment on [Issue #3](https://github.com/meyecarpenter23842/sichuan-hotpot/issues/3). Only `meyecarpenter23842` may trigger it. The action resolves the current protected `main` SHA, determines the correct GitHub Environment/project and runs the existing gates/build/deploy without asking for SHA or a second typed confirmation. Legacy `workflow_dispatch` stays available.
+
+**One-time setup still required, not a per-deploy task:** build real Expo customer/admin apps (currently placeholder manifests), add a pinned Vercel CLI, verify web export, token/project/root, staging and both Environment variables. Set the Environment `HOTPOT_RELEASES_ENABLED=true` when production is ready. If Required reviewers is enabled for a PWA Environment, GitHub still requires that approval until the owner disables it in Settings; workflow YAML does not override it. No extra deployment happens on Git merge. Existing target validation checks Vercel account/project/root/no Git link; lint/typecheck/test, Expo Web export, Vercel pull/build/deploy run before completion. Keep Vercel Git auto-deploy disabled.
 
 ## Stage C — NestJS Backend: pre-provisioned manual release contract
 
@@ -76,7 +78,7 @@ VPS operator must first install and review **two** separately permissioned helpe
 A text input named backup_id/restore_proof **does not itself prove** a backup is valid; the on-VPS helper must verify independently. Until these helpers exist and are reviewed, workflows **fail safely**. Do not store production `DATABASE_URL` in GitHub Actions when an on-VPS restricted role suffices.
 
 ## Release readiness / forbid automatic changes
-- No auto deploy from Vercel Git, EAS updates, GitHub issue comments, push/merge/tag, VPS cron or startup hook.
+- No auto deploy from Vercel Git, EAS updates, arbitrary GitHub issue comments, push/merge/tag, VPS cron or startup hook. Exact owner-only Issue #3 commands are explicit manual deploy requests.
 - Existing root, customer, admin `vercel.json` have `git.deploymentEnabled=false` permanently.
 - Required PR check `plan-and-vercel-lock` includes new manual workflow syntax/control validation.
 - Never report QA/backup/restore/SSH as PASS until **actually run and verified**.
