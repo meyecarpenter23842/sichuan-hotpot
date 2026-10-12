@@ -1,0 +1,39 @@
+name: Plan and no-auto-deploy guard
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  plan-and-vercel-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify required docs, skill and immutable Vercel Git gate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          required = [
+              "AGENTS.md", "docs/plan/MASTER-PLAN.md",
+              "docs/ops/DEPLOYMENT-RUNBOOK.md", "docs/ops/INCIDENT-READONLY.md",
+              "docs/qa/FRONTEND-QA.md",
+              ".agents/skills/professional-frontend-qa/SKILL.md",
+          ]
+          for path in required:
+              p = Path(path)
+              assert p.is_file() and p.stat().st_size > 200, path
+          for name in ("customer", "admin"):
+              p = Path(f"apps/{name}/vercel.json")
+              config = json.loads(p.read_text(encoding="utf-8"))
+              assert config.get("git", {}).get("deploymentEnabled") is False, str(p)
+          assert json.loads(Path("vercel.json").read_text(encoding="utf-8")).get("git", {}).get("deploymentEnabled") is False, "root vercel.json"
+          plan = Path("docs/plan/MASTER-PLAN.md").read_text(encoding="utf-8")
+          assert all(x in plan for x in ("P0", "P1", "P2", "P3", "P4", "P5", "P6"))
+          print("Docs, bundled QA skill and Vercel Git-deploy locks: PASS")
+          PY

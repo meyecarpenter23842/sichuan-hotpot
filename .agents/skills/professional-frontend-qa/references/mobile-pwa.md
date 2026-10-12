@@ -1,0 +1,11 @@
+# Mobile PWA guidelines
+- Primary navigation maps 3-5 common jobs; important actions reachable without deep menus.
+- Fixed bottom bar must respect safe areas, not cover scroll content; active tab unmistakable.
+- Verify forms with keyboard and viewport shrink; never overlay submit controls.
+- Touch targets large and separated; no hover-only actions.
+- Cart, order, search and confirmation preserve state on back.
+- Show loading, offline, retry and explicit success only after server confirmation.
+- Inspect widths 320/360/390/428 and landscape when feasible.
+- Test long Vietnamese names, addresses and product descriptions.
+- Optimize images and reserve their space; no page layout shifts.
+- Do not imply offline checkout success. Verify PWA manifest/icons/install paths when in scope.
