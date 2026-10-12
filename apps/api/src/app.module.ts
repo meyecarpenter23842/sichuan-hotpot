@@ -1,9 +1,10 @@
 import { Module, RequestMethod } from "@nestjs/common";
 import { HealthModule } from "./health/health.module";
+import { AuthModule } from "./auth/auth.module";
 import { RequestIdMiddleware } from "./http/request-id.middleware";
 import type { MiddlewareConsumer, NestModule } from "@nestjs/common";
 
-@Module({ imports: [HealthModule] })
+@Module({ imports: [HealthModule, AuthModule] })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestIdMiddleware).forRoutes({ path: "{*path}", method: RequestMethod.ALL });
