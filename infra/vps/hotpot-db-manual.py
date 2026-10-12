@@ -226,7 +226,7 @@ def workflow_authorize(sha, digest, run_id):
     require(not (CONFIG / 'migration-approval.json').exists(), 'existing_migration_approval')
     candidates = []
     for path in BACKUPS.glob('*.json'):
-        if not re.fullmatch(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\\.json', path.name):
+        if not re.fullmatch(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\.json', path.name):
             continue
         proof = json.loads(private_file(path).read_text())
         created = proof.get('created_at')
