@@ -40,8 +40,10 @@ test("explicit browser CORS allows customer PWA preflight and excludes untrusted
 
   const rejected = await client.options("/auth/login")
     .set("Origin", "https://untrusted.example.test")
-    .set("Access-Control-Request-Method", "POST")
-    .expect(204);
+    .set("Access-Control-Request-Method", "POST");
+  // An unlisted origin can fall through to Nest's 404 OPTIONS handler,
+  // but must never receive an Access-Control-Allow-Origin header.
+  assert.ok([204, 404].includes(rejected.status));
   assert.equal(rejected.headers["access-control-allow-origin"], undefined);
   const localhost = await client.options("/auth/google")
     .set("Origin", "http://localhost:8081")
