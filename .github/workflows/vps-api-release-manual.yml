@@ -21,7 +21,22 @@ jobs:
     environment: production-api
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    # Isolated disposable CI database for PR-equivalent integration checks;
+    # no production DATABASE_URL is exposed to this job.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hotpot_api_release_check
+          POSTGRES_USER: hotpot_release_check
+          POSTGRES_PASSWORD: test_only_never_production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotpot_release_check -d hotpot_api_release_check"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
+      DATABASE_URL: postgresql://hotpot_release_check:test_only_never_production@127.0.0.1:5432/hotpot_api_release_check?schema=public
       ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
       VPS_HOST: ${{ vars.VPS_HOST }}
       VPS_PORT: ${{ vars.VPS_PORT }}
@@ -56,15 +71,21 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Lint, typecheck, unit tests and compile API
+      - name: Validate Prisma, run full workspace tests and compile API
         shell: bash
         run: |
           set -euo pipefail
-          npm ci
-          npm run lint --workspace apps/api
-          npm run typecheck --workspace apps/api
-          npm test --workspace apps/api -- --runInBand
-          npm run build --workspace apps/api
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run prisma:validate
+          npm run prisma:generate
+          # Never run migrations against production in the API workflow.
+          npm exec -- prisma migrate deploy --schema apps/api/prisma/schema.prisma
+          npm exec -- prisma migrate status --schema apps/api/prisma/schema.prisma
+          npm exec -- prisma migrate diff --from-schema-datasource apps/api/prisma/schema.prisma --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
           test -f apps/api/dist/main.js
       - name: Create source-identified runtime archive and checksum
         shell: bash
