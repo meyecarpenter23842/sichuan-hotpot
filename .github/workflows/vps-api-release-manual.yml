@@ -1,4 +1,4 @@
-name: VPS API release (manual only)
+name: VPS API release (one command, owner only)
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +10,8 @@ on:
         description: "Type DEPLOY_API"
         required: true
         type: string
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
 concurrency:
@@ -17,7 +19,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   api:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 3 &&
+       github.event.issue.pull_request == null &&
+       github.event.comment.body == '/deploy-hotpot' &&
+       github.actor == 'meyecarpenter23842')
     environment: production-api
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -55,12 +63,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$ENABLE_RELEASES" = true || { echo "::error::API release disabled until bootstrap and approved VPS setup."; exit 1; }
-          test "$CONFIRM" = DEPLOY_API
+          # One explicit owner issue command replaces repeated SHA/confirmation inputs.
+          # The VPS helper still enforces real HTTPS, schema readiness and rollback.
+          if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
+            REQUESTED_SHA="$(git rev-parse HEAD)"
+          else
+            test "$ENABLE_RELEASES" = true || { echo "::error::API release disabled until bootstrap."; exit 1; }
+            test "$CONFIRM" = DEPLOY_API
+          fi
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch -q origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          echo "REQUESTED_SHA=$REQUESTED_SHA" >> "$GITHUB_ENV"
           test -f apps/api/package.json && test -f package-lock.json || { echo "::error::NestJS app not bootstrapped."; exit 1; }
           test "$VPS_USER" = ubuntu
           [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
