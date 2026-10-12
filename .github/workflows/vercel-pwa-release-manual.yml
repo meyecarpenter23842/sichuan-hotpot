@@ -1,4 +1,4 @@
-name: Vercel PWA release (manual only)
+name: Vercel PWA release (owner one-command)
 on:
   workflow_dispatch:
     inputs:
@@ -15,16 +15,25 @@ on:
         description: "Type DEPLOY_PWA"
         required: true
         type: string
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
 concurrency:
-  group: hotpot-pwa-${{ inputs.app }}-production
+  group: hotpot-pwa-${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/deploy-hotpot-customer' && 'customer' || 'admin') || inputs.app }}-production
   cancel-in-progress: false
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 3 &&
+       github.event.issue.pull_request == null &&
+       github.actor == 'meyecarpenter23842' &&
+       (github.event.comment.body == '/deploy-hotpot-customer' ||
+        github.event.comment.body == '/deploy-hotpot-admin'))
     environment:
-      name: ${{ inputs.app == 'customer' && 'production-customer-pwa' || 'production-admin-pwa' }}
+      name: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/deploy-hotpot-customer' || github.event_name == 'workflow_dispatch' && inputs.app == 'customer') && 'production-customer-pwa' || 'production-admin-pwa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -32,7 +41,7 @@ jobs:
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
-      TARGET_APP: ${{ inputs.app }}
+      TARGET_APP: ${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/deploy-hotpot-customer' && 'customer' || 'admin') || inputs.app }}
       REQUESTED_SHA: ${{ inputs.sha }}
       CONFIRM: ${{ inputs.confirm }}
     steps:
@@ -43,14 +52,28 @@ jobs:
           persist-credentials: false
       - name: Production release gate and immutable source verification
         shell: bash
+        env:
+          OWNER_COMMAND: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          test "$ENABLE_RELEASES" = "true" || { echo "::error::Release locked. Set HOTPOT_RELEASES_ENABLED only after bootstrap and explicit approval."; exit 1; }
-          test "$CONFIRM" = "DEPLOY_PWA"
+          # The owner-only Issue #3 command is the single release request.
+          # Legacy workflow_dispatch retains its original explicit confirmation.
+          if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
+            case "$OWNER_COMMAND:$TARGET_APP" in
+              /deploy-hotpot-customer:customer|/deploy-hotpot-admin:admin) ;;
+              *) echo "::error::Invalid owner command or target."; exit 1 ;;
+            esac
+            REQUESTED_SHA="$(git rev-parse HEAD)"
+          else
+            test "$CONFIRM" = "DEPLOY_PWA"
+          fi
+          test "$ENABLE_RELEASES" = "true" || { echo "::error::PWA release is locked until the target is configured."; exit 1; }
+          [[ "$TARGET_APP" == customer || "$TARGET_APP" == admin ]]
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch -q origin main
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          echo "REQUESTED_SHA=$REQUESTED_SHA" >> "$GITHUB_ENV"
           test -f "apps/$TARGET_APP/package.json" || { echo "::error::Expo app not bootstrapped."; exit 1; }
           test -f package-lock.json || { echo "::error::Monorepo lockfile missing."; exit 1; }
           python3 - "$TARGET_APP" <<'PY'
