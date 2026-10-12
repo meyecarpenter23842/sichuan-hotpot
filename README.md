@@ -32,3 +32,7 @@ The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages
 ## UI reference
 
 Original eight mockup PNG files are in the repository root. They are concept references, not proof of working application flows, real catalogue prices or actual customer details.
+
+### Locked design references
+
+The eight root PNG mockups are byte-for-byte protected by `npm run ui:reference:check` in both PR CI gates. Changing, removing or renaming any reference fails CI. Any intentional revision must be a dedicated, reviewed asset PR that documents the design decision and explicitly updates the locked Git blob IDs. This protects source images; it does **not** replace visual comparison, mobile/PWA testing or the mandatory frontend QA skill.

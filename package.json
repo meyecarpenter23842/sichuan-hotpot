@@ -12,9 +12,10 @@
     "packages/*"
   ],
   "scripts": {
-    "lint": "node scripts/check-source.mjs",
+    "lint": "node scripts/check-source.mjs && node scripts/check-ui-references.mjs",
+    "ui:reference:check": "node scripts/check-ui-references.mjs",
     "typecheck": "tsc --noEmit -p packages/shared/tsconfig.json",
-    "test": "npm run build && node --test packages/shared/test/*.test.mjs",
+    "test": "npm run build && node --test packages/shared/test/*.test.mjs scripts/test/*.test.mjs",
     "build": "tsc -p packages/shared/tsconfig.json",
     "check": "npm run lint && npm run typecheck && npm test"
   },
