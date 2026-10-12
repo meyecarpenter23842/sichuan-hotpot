@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa",
+  "short_name": "Sichuan",
+  "lang": "vi",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#FFF7EB",
+  "theme_color": "#AD282A",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

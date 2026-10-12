@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Sichuan Hotpot",
+    "slug": "sichuan-hotpot-customer",
+    "scheme": "sichuanhotpot",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFF7EB",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true },
+    "android": {
+      "package": "vn.sichuanhotpot.customer",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "name": "Sichuan Hotpot",
+      "shortName": "Sichuan",
+      "bundler": "metro",
+      "output": "single",
+      "themeColor": "#AD282A",
+      "backgroundColor": "#FFF7EB"
+    },
+    "plugins": [
+      ["expo-location", { "locationWhenInUsePermission": "Cho phép Sichuan Hotpot dùng vị trí để hỗ trợ địa chỉ giao hàng." }],
+      "expo-secure-store"
+    ],
+    "experiments": { "tsconfigPaths": true }
+  }
+}
