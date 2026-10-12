@@ -16,3 +16,8 @@ Customer: `01-home.png`, `02-hotpot-detail.png`, `03-delivery-address.png`, `04-
 Admin: `01-dashboard.png`, `02-kitchen-order-detail.png`, `03-delivery-settings.png`, `04-driver-assignment.png`.
 
 Images depict **illustrative** customer details, prices, ratings, addresses and driver information; do not treat them as production values.
+
+## Manual GitHub Actions operations
+- [Manual SSH VPS audit and release workflows](docs/ops/MANUAL-OPERATIONS.md).
+- The VPS audit uses SSH user `ubuntu` with a dedicated audit key, pinned host key, and bounded aggregate output; it does **not** use sudo, restart, migrate or deploy.
+- API / DB / Vercel production release workflows are **OFF by default** until their protected environment variable `HOTPOT_RELEASES_ENABLED=true` is separately authorized after the required app/VPS bootstrap. A workflow in GitHub is not a deployed service.
