@@ -2,6 +2,25 @@
   "name": "@hotpot/api",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "description": "NestJS backend planned for P1; intentionally not yet deployable"
+  "type": "commonjs",
+  "description": "NestJS HTTP API foundation; not production-ready until Prisma and Clerk gates",
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "helmet": "^8.1.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "supertest": "^7.1.3"
+  }
 }
