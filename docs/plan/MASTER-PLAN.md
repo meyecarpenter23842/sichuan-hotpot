@@ -1,6 +1,6 @@
 # SICHUAN HOTPOT — Master implementation plan
 
-Status: ACTIVE IMPLEMENTATION (P1 API/Prisma done; auth and UI not implemented). Historical baseline follows. This document defines the target architecture, sequence, tasks, dependencies and acceptance gates. It does not authorize production deployments or migrations.
+Status: ACTIVE IMPLEMENTATION (P1 auth/API and P2 initial Expo customer foundation merged; pixel-accurate login UI and real-device QA still pending). The initial 2026-10-12 baseline and original change-request snapshots below are historical, not current test claims. This document defines the target architecture, sequence, tasks, dependencies and acceptance gates. It does not authorize production deployments or migrations.
 
 ## 0. Verified starting point (2026-10-12)
 - Source: [sichuan-hotpot](https://github.com/meyecarpenter23842/sichuan-hotpot), main. Eight PNG UI/UX mockups committed in repository root; no application source, tests or workflow at inspection.
@@ -26,9 +26,9 @@ docs/           architecture, UX, runbooks, ADR, tests, operational checklist
 Start with a package-workspace monorepo (choose lockfile/package manager once during bootstrap). TypeScript strict, Zod/class-validator as suitable, Prisma migrations, ESLint, Prettier, Vitest/Jest appropriate to package, React Native Testing Library, API integration/e2e tests. Keep domain code separate from platform UI.
 
 - Auth (owner decision, 2026-10-12): **no Clerk**. Sign in with Google directly via OAuth 2.0/OpenID Connect (Android Expo and iPhone web PWA) or register with a **unique username and password**. Google alone does not provide username/password accounts. NestJS verifies Google ID tokens and issues secure app sessions; local passwords are Argon2id hashed. User IDs are internal UUIDs, new accounts default to CUSTOMER; all staff/branch roles checked on backend. Account recovery, rate limits, rotation/revocation and identity-linking proof required. See [ADR-0001](../architecture/ADR-0001-google-username-auth.md).
-- Login UI/UX must be polished and closely match design language in the eight locked PNGs (no login mockup exists), with mandatory [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md), references, screenshots and PASS/FAIL/NOT TESTED evidence on Android and Safari iPhone PWA.
+- Login UI/UX: **`LoginScreen.png` is the owner-approved layout reference (match its visual composition faithfully, not a discretionary redesign); `login-hero.png` is the actual login hero artwork.** Follow the established colors/typography of the eight original locked PNGs. Both newly supplied files live in the repository root as unmodified source assets. Apply mandatory [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md), screenshot comparisons and PASS/FAIL/NOT TESTED evidence on Android and Safari iPhone PWA. A static reference image is not a substitute for a functioning interactive login form.
 - Optional Neon: connector can inspect a PG18 project; its current default branch is named `production` and showed no application tables. That is **not confirmed as Hotpot DEV**. Only use a separately confirmed, isolated Neon DEV/QA branch/project after explicit scoping. Actual production PostgreSQL remains on VPS; current CI uses disposable PG16. See [ADR-0002](../architecture/ADR-0002-neon-dev-policy.md).
-- Media: object storage with validated upload, image variants and file limits; never commit high-resolution menu images as runtime catalogue.
+- Media: **Cloudflare R2**, bucket `hot-pot`, public base `https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev` (owner-provided; endpoint/object availability not verified). Bucket-relative keys use `system-image/` for fixed UI media, and `products-image/` for product media uploaded by authorized admin users. Do not add `hot-pot/` to object keys or public URL paths because it is the bucket name. Use validated upload, permitted image MIME types, sensible file-size limits, optimized variants and immutable/versioned caching; no runtime catalogue image committed into source as the product-media store. See the owner asset contract below.
 - Push: Android FCM, Web Push for eligible installed iPhone PWA; user opt-in, retry/outbox and foreground sound in admin. Push not source of truth.
 - Real time: WebSocket event plus polling/reconciliation on reconnect; version/cursor replay or full refetch to avoid missing orders.
 - Maps: real routing API road distance with cached quote TTL and provider failure handling. Human-readable address + lat/lng required and reconciled by user confirmation.
@@ -69,7 +69,7 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 **Exit:** Google and username signup/signin integration tests (401/403, duplicate usernames, tampered Google tokens, password hash and session rotation) pass, authenticated profile works; no production DB touched.
 
 ### P2 — Customer catalogue / cart
-1. Shared UI tokens informed by mockups; login/registration/password recovery screens must be exceptionally polished and derived from the eight original images, then products/categories/search, detail/option selectors, stock and loading/error.
+1. Shared UI tokens informed by mockups; login/registration/password recovery screens must follow **`LoginScreen.png` (exact owner-directed visual reference)** and use **`login-hero.png`** as the hero visual while retaining the eight original design references for cross-screen consistency. Then products/categories/search, detail/option selectors, stock and loading/error.
 2. Persistent cart with modifiers and quantity; no client-side trust in price.
 3. Profile/phone/address forms, device GPS opt-in, manual pin fallback, saved addresses.
 4. Professional Frontend QA matrix and Android emulator / Safari iPhone PWA test plan.
@@ -83,7 +83,7 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 **Exit:** boundary tests at 2.0/2.1/4.3/8.0/8.1 km, address change reprices, provider failure blocks checkout; concurrency test proves single order.
 
 ### P4 — Admin / kitchen / realtime
-1. Role-aware admin app independently packaged; menu CRUD, modifiers, temporary out-of-stock and store hours.
+1. Role-aware admin app independently packaged; menu CRUD, modifiers, temporary out-of-stock and store hours. Admin product image upload must write to R2 bucket `hot-pot`, prefix `products-image/`, through an authorized backend-controlled flow (never expose write credentials to the client).
 2. Order queue, audible new-order alert when foregrounded, FCM/Web Push where supported, stale-order escalation.
 3. Kitchen station, accepted/rejected/reason and status transitions + audit/outbox.
 4. Reconnect/offline read recovery with explicit sync state.
@@ -98,7 +98,7 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 
 ### P6 — Production readiness and controlled release
 1. API security, load/rate/retry testing, vulnerability/dependency scan, incident simulations and privacy checks.
-2. UI acceptance: 320/360/390/428/768/1280/1440, safe area, Vietnamese font, screen reader/focus, Safari install/GPS/push, Android emulator; record PASS/FAIL/NOT TESTED.
+2. UI acceptance: 320/360/390/428/768/1280/1440, safe area, Vietnamese font, screen reader/focus, Safari install/GPS/push, Android emulator; record PASS/FAIL/NOT TESTED. Login additionally needs side-by-side screenshots against `LoginScreen.png` and a confirmed, correctly cropped `login-hero.png` image served from the intended R2 object.
 3. Configure Vercel PWA projects through correct owner account, verify Git auto deploy disabled for ALL branches; prepare manual CLI deployment.
 4. VPS baseline READ-ONLY inventory before changing anything; DB isolation, Postgres backup/restore test, TLS, reverse proxy, process manager, release staging.
 5. Explicit release approval -> manual DB migration if required -> manual backend release -> manual frontend release -> smoke/rollback readiness.
@@ -119,10 +119,33 @@ Each phase is its own issues/PRs (small enough to review). Do not start producti
 - Uploaded mockup prices, names and addresses must be replaced with admin-managed real data.
 - CI added with this documentation PR validates planning artifacts only; it does not mean app builds or production tests passed.
 
+## Owner login visual assets and Cloudflare R2 contract — 2026-10-12
+
+**Evidence / provenance:** owner pushed commit [`61276cde`](https://github.com/meyecarpenter23842/sichuan-hotpot/commit/61276cde5cd90ce1de4f2007b2ca70e9e59d6931) on branch `meyecarpenter23842-patch-1`. This plan PR imports the **same binary blobs** into `main`, without editing or recompressing the images. The eight previously locked PNGs must remain intact. No R2 object upload or live image accessibility has been verified by this documentation change.
+
+| Source file in repository root | Role | Git blob SHA (immutability reference) |
+|---|---|---|
+| [`LoginScreen.png`](../../LoginScreen.png) | **Authoritative login screen layout reference**; match its composition very closely on Android/iPhone, with live UI elements | `ef0a600594dc329fdabb16bb616a0df51bc8ed50` |
+| [`login-hero.png`](../../login-hero.png) | **Actual hero image for login**; do not replace it with the full-screen layout screenshot or an invented stock image | `0724f2440698651e857777b6cae82bbe653ff4ac` |
+
+**Object-storage mapping (bucket-relative; do not repeat bucket name in key):**
+- Cloudflare R2 bucket: `hot-pot`.
+- System images: `system-image/`; **login hero intended key**: `system-image/login-hero.png`.
+- Admin-managed product images: `products-image/`; product identity and a safe unique file ID should be part of each object key, e.g. `products-image/{productId}/{imageId}.webp`. This is a naming pattern to implement, not an assertion that objects exist.
+- Public R2 base: `https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev`. After the hero is *actually uploaded* to that key, its **expected** public URL is `https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png`; verify HTTP 200, image MIME type and actual image before using it as a production asset. Bucket/base/prefix information here comes from the owner's commit, **not a readback from Cloudflare**.
+- `LoginScreen.png` is a **design reference**, not a public runtime asset. Only publish it to `system-image/` if the owner later explicitly wants that reference hosted publicly.
+
+**Implementation and quality gate (not yet completed):**
+1. Rebuild the interactive login UI, do not render `LoginScreen.png` as a background with fake controls. Support direct Google OIDC and username/password, validation, focus/keyboard, loading, success, and recoverable error states. Anonymous menu browsing remains possible.
+2. Publish the approved `login-hero.png` to the R2 system-image prefix through a controlled media workflow, update runtime image URL through a public config/constant; keep R2 write credentials and signed-upload secrets server-side, never inside Expo `EXPO_PUBLIC_*` or git. Only read-only public base URLs are allowed client-side.
+3. Admin product CRUD must permit OWNER/MANAGER upload/change/delete of product imagery to the `products-image/` prefix, with backend role checks, path ownership, MIME/size verification, safe object names, metadata persistence and orphan cleanup. Do not let customer or driver roles upload arbitrary objects. Product media must be admin-maintainable, not hardcoded in the app.
+4. Follow the [professional-frontend-qa](../../.agents/skills/professional-frontend-qa/SKILL.md) [checklist](../../.agents/skills/professional-frontend-qa/references/qa-checklist.md) and [mobile PWA guidance](../../.agents/skills/professional-frontend-qa/references/mobile-pwa.md): compare screenshots with the owner-approved login layout across 320/360/390/428 widths, Android, iPhone Safari installed PWA, safe areas, Vietnamese text, real taps, keyboard, accessibility, hero crop/aspect ratio, slow/offline image loading, and fallback/error. Evidence must explicitly be PASS / FAIL / NOT TESTED.
+5. This plan/asset import is **not** a UI implementation, **not** an R2 upload, **not** a production deployment or DB migration. A green PR CI only proves the checks that actually ran.
+
 ## Owner-authored change request — 2026-10-12
 
 - Replace planned Clerk with **Google sign-in directly** plus **username/password sign-up and sign-in**; no finished auth code exists yet.
-- Login design quality is a hard acceptance criterion; it must inherit the exact visual system from the eight locked images and use the professional-frontend-qa skill and its references.
+- Login design quality is a hard acceptance criterion. **Historical note:** this initial request preceded the owner-supplied `LoginScreen.png` and `login-hero.png`, which now take precedence for login layout and hero respectively; the eight locked PNGs continue to govern cross-screen design consistency. Use the professional-frontend-qa skill and its references.
 - A connected Neon project can help inspect and test a **separate DEV/QA database** only after owner/project/branch verification. No Neon mutation has been authorized and the VPS PostgreSQL production target is unchanged.
 - P1.2 currently still has a DEV-only `User.clerkSubject` column. The next auth PR must migrate that schema safely, then implement the two auth paths and 401/403 RBAC tests.
 - Design and Neon decisions are recorded in [ADR-0001](../architecture/ADR-0001-google-username-auth.md) and [ADR-0002](../architecture/ADR-0002-neon-dev-policy.md). This PR makes **documentation changes only**; no auth feature, UI screen, DB migration, VPS/Neon write or deploy is claimed.
