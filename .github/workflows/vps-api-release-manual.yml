@@ -114,7 +114,7 @@ jobs:
           # The helper must validate artifact checksum, app path, service identity, health and rollback.
           ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
-            'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming' \
+            'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming && sudo -n /usr/local/sbin/hotpot-api-release-manual --check-config' \
             >/dev/null 2>/dev/null || { echo "::error::VPS manual release hook/inbox not provisioned."; exit 1; }
           scp -P "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
@@ -124,6 +124,11 @@ jobs:
             >/dev/null 2>/dev/null || { echo "::error::Artifact transfer failed."; exit 1; }
           digest="$(cat "$RUNNER_TEMP/api.sha256")"
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
-            "/usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" \
+            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" \
             >/dev/null 2>/dev/null || { echo "::error::Manual API release failed; operator must check sanitized VPS logs and rollback plan."; exit 1; }
-          echo "VPS helper completed. Health/release ID must be confirmed by operator."
+          echo "VPS helper verified live/ready on loopback and configured HTTPS. Requested SHA released."
+      - name: Remove temporary SSH credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"

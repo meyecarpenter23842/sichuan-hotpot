@@ -1,5 +1,8 @@
 # Backend release readiness — 2026-10-12
 
+Historical pre-provisioning report. A later owner-approved task found the existing
+shell identity and provisioned the VPS; see [current provisioning state](VPS-PROVISIONING.md).
+
 PRs [#16](https://github.com/meyecarpenter23842/sichuan-hotpot/pull/16) and
 [#17](https://github.com/meyecarpenter23842/sichuan-hotpot/pull/17) are merged.
 This review starts from main `bdd5f14235d08535a211da901a6d878a8432c49d`.

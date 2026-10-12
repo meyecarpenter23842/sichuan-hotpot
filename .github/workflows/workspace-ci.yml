@@ -56,3 +56,7 @@ jobs:
         run: npm test
       - name: Build shared package
         run: npm run build
+      - name: Validate manual release safety and rollback without services
+        run: |
+          python3 -m py_compile infra/vps/*.py
+          python3 -m unittest discover -s infra/vps/tests -v

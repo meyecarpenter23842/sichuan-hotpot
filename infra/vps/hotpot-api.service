@@ -1,0 +1,33 @@
+[Unit]
+Description=Sichuan Hotpot NestJS API
+After=network-online.target postgresql.service
+Wants=network-online.target
+ConditionPathExists=/opt/sichuan-hotpot/current/apps/api/dist/main.js
+
+[Service]
+Type=simple
+User=hotpot-api
+Group=hotpot-api
+WorkingDirectory=/opt/sichuan-hotpot/current
+EnvironmentFile=/etc/sichuan-hotpot/api.env
+Environment=NODE_OPTIONS=--max-old-space-size=256
+ExecStart=/usr/bin/node /opt/sichuan-hotpot/current/apps/api/dist/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

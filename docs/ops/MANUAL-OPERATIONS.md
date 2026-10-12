@@ -1,6 +1,6 @@
 # Sichuan Hotpot — Manual Operations (GitHub Actions)
 
-**State:** Workflow code staged as runbook scaffolding. No VPS connection, deployment, migration or backup was performed when these files were authored. The repository currently has no NestJS/Expo application source, release hooks or backend build artifacts.
+**State:** The original scaffolding baseline below is historical. NestJS/Prisma/auth now exist; an owner-approved task has provisioned runtime, private database, systemd/helper and protected `production-api`. Backend activation, initial production migrations and HTTPS are still blocked. See [VPS provisioning](VPS-PROVISIONING.md) for actual checks and first-release conditions.
 
 ## Source model: NPP-Platform
 Reference [NPP manual VPS audit](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-audit-manual.yml), [backend release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-company-backend-manual.yml), [production migration](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vps-production-migration-164-manual.yml), and [Vercel release](https://github.com/binhnxwjfjxm/NPP-Platform/blob/main/.github/workflows/vercel-production-manual.yml). Replicate immutable SHA checks and explicit manual operation, **not** NPP's `issue_comment` triggers, implicit `ssh-keyscan` trust, NPP service names, credentials or production resource paths.
