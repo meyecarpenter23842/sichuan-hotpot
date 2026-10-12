@@ -86,5 +86,79 @@ class IsolationTests(unittest.TestCase):
                 db.private_file(link)
 
 
+class WorkflowCommandTests(unittest.TestCase):
+    """Single owner comment must never authorize SQL without prior restore proof."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        root = Path(self.dir.name)
+        self.backups = root / 'backups'
+        self.backups.mkdir()
+        self.config = root / 'config'
+        self.config.mkdir()
+        for attr, value in (('BACKUPS', self.backups), ('CONFIG', self.config)):
+            patcher = patch.object(db, attr, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        private = patch.object(db, 'private_file', side_effect=lambda path: Path(path))
+        private.start()
+        self.addCleanup(private.stop)
+        self.sha, self.digest = 'a' * 40, 'b' * 64
+        self.backup_id = '20261012T120000Z-1234abcd'
+        self.clock = patch.object(db.time, 'time', return_value=1000)
+        self.clock.start()
+        self.addCleanup(self.clock.stop)
+
+    def authorize(self):
+        expected = {'apps/api/prisma/migrations/' + name + '/migration.sql'
+                    for name in ('20261012000000_init', '20261012010000_auth_identity')}
+        with (patch.object(db, 'offline_empty'),
+              patch.object(db, 'release_module') as release,
+              patch.object(db, 'frozen_source',
+                           return_value={name: b'-- SQL' for name in expected}),
+              patch.object(db, 'fingerprint', return_value='fingerprint')):
+            release.return_value.MIGRATIONS = ('20261012000000_init', '20261012010000_auth_identity')
+            db.workflow_authorize(self.sha, self.digest, '123456')
+
+    def proof(self, **changes):
+        value = {'sha': self.sha, 'created_at': 900, 'offsite_verified': True,
+                 'restore_verified': True, 'consumed': False, 'fingerprint': 'fingerprint'}
+        value.update(changes)
+        (self.backups / (self.backup_id + '.json')).write_text(json.dumps(value))
+
+    def test_one_command_requires_actual_offsite_restore(self):
+        with self.assertRaises(db.GateError):
+            self.authorize()
+        for change in ({'offsite_verified': False}, {'restore_verified': False},
+                       {'sha': 'c' * 40}, {'created_at': -8000}):
+            (self.backups / (self.backup_id + '.json')).unlink(missing_ok=True)
+            self.proof(**change)
+            with self.subTest(change=change), self.assertRaises(db.GateError):
+                self.authorize()
+        self.assertFalse((self.config / 'migration-approval.json').exists())
+
+    def test_single_owner_command_creates_exact_single_use_approval(self):
+        self.proof()
+        self.authorize()
+        record = json.loads((self.config / 'migration-approval.json').read_text())
+        self.assertEqual(record['sha'], self.sha)
+        self.assertEqual(record['digest'], self.digest)
+        self.assertEqual(record['backup_id'], self.backup_id)
+        self.assertEqual(record['approved_by'], 'github-owner-issue-3')
+        self.assertEqual(record['ticket'], 'github-run-123456')
+        with self.assertRaises(db.GateError):
+            self.authorize()
+
+    def test_invalid_workflow_request_does_not_authorize(self):
+        self.proof()
+        for sha, digest, run_id in (('bad', self.digest, '123'),
+                                    (self.sha, 'bad', '123'),
+                                    (self.sha, self.digest, 'shell; injection')):
+            with self.subTest(run_id=run_id), self.assertRaises(db.GateError):
+                db.workflow_authorize(sha, digest, run_id)
+        self.assertFalse((self.config / 'migration-approval.json').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

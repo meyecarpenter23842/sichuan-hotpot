@@ -207,6 +207,45 @@ def approval(proof, sha, digest, backup_id, now=None):
     return value
 
 
+def workflow_authorize(sha, digest, run_id):
+    """Owner's exact Issue #3 command is the approval; all DB evidence stays private.
+
+    Called only by the pinned GitHub Action holding the existing SSH identity.
+    This does not create a backup or waive independent Windows restore proof.
+    """
+    require(re.fullmatch(r'[0-9a-f]{40}', sha) and
+            re.fullmatch(r'[0-9a-f]{64}', digest) and
+            re.fullmatch(r'[0-9]{1,20}', run_id), 'invalid_workflow_request')
+    now = int(time.time())
+    offline_empty()
+    release = release_module()
+    files = frozen_source(sha, digest, release)
+    require({name for name in files if name.endswith('/migration.sql')} == {
+        'apps/api/prisma/migrations/' + name + '/migration.sql'
+        for name in release.MIGRATIONS}, 'unreviewed_migration_source')
+    require(not (CONFIG / 'migration-approval.json').exists(), 'existing_migration_approval')
+    candidates = []
+    for path in BACKUPS.glob('*.json'):
+        if not re.fullmatch(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}\.json', path.name):
+            continue
+        proof = json.loads(private_file(path).read_text())
+        created = proof.get('created_at')
+        if (proof.get('sha') == sha and proof.get('offsite_verified') is True and
+            proof.get('restore_verified') is True and proof.get('consumed') is False and
+            type(created) is int and 0 <= now - created <= 7200 and
+            proof.get('fingerprint') == fingerprint('hotpot')):
+            candidates.append((created, path.stem))
+    require(bool(candidates), 'recent_verified_offsite_backup_missing')
+    _, backup_id = max(candidates)
+    write_json(CONFIG / 'migration-approval.json', {
+        'sha': sha, 'digest': digest, 'backup_id': backup_id,
+        'confirmation': 'MIGRATE_INITIAL_HOTPOT',
+        'ticket': 'github-run-' + run_id, 'approved_by': 'github-owner-issue-3',
+        'window_start': now, 'window_end': now + 1800,
+    })
+    print('workflow_authorization=PASS;backup_id=' + backup_id)
+
+
 def migration(sha, digest, backup_id, apply=False):
     require(re.fullmatch(r'[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}', backup_id), 'invalid_backup_id')
     proof_path = private_file(BACKUPS / (backup_id + '.json'))
@@ -315,6 +354,9 @@ def main(args):
             settings()
             offline_empty()
             print('backup_configuration=PASS;production_migration_run=no')
+            return
+        if len(args) == 4 and args[0] == '--workflow-authorize':
+            workflow_authorize(args[1], args[2], args[3])
             return
         if len(args) == 3 and args[0] == '--restore':
             restore(args[1], args[2])

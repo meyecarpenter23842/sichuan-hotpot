@@ -60,7 +60,14 @@ jobs:
               content=(root/name).read_text(encoding="utf-8")
               doc=yaml.load(content, Loader=yaml.BaseLoader)
               assert isinstance(doc,dict),name
-              assert list(doc.get("on",{}))==["workflow_dispatch"],name
+              events=list(doc.get("on",{}))
+              if name == "vps-api-release-manual.yml":
+                  assert events == ["workflow_dispatch", "issue_comment"], name
+                  assert "github.event.issue.number == 3" in content,name
+                  assert "github.actor == 'meyecarpenter23842'" in content,name
+                  assert "github.event.comment.body == '/deploy-hotpot'" in content,name
+              else:
+                  assert events == ["workflow_dispatch"], name
               assert doc.get("permissions",{}).get("contents")=="read",name
               assert doc.get("concurrency",{}).get("cancel-in-progress")=="false",name
               jobs=doc.get("jobs",{})
@@ -70,9 +77,20 @@ jobs:
               assert "refs/heads/main" in job.get("if",""),name
               assert "StrictHostKeyChecking=yes" in content or "vercel" in name,name
               assert "HOTPOT_RELEASES_ENABLED" in content or "audit" in name,name
-              assert not re.search(r"(?m)^  (push|pull_request|issue_comment|schedule):",content),name
+              assert not re.search(r"(?m)^  (push|pull_request|schedule):",content),name
               assert "ssh-keyscan -T" not in content,name
               assert "127.0.0.1" not in content or "audit" in name,name
               print("PASS",name,"dispatch-only")
+          # DB workflow also accepts only exact owner-issued operational commands.
+          db=(root/"vps-db-manual.yml").read_text(encoding="utf-8")
+          db_doc=yaml.load(db,Loader=yaml.BaseLoader)
+          assert list(db_doc.get("on",{})) == ["workflow_dispatch", "issue_comment"]
+          assert "github.event.issue.number == 3" in db
+          assert "github.actor == 'meyecarpenter23842'" in db
+          assert "github.event.comment.body == '/backup-hotpot'" in db
+          assert "github.event.comment.body == '/migrate-hotpot'" in db
+          assert "environment: production-api" in db
+          assert "StrictHostKeyChecking=yes" in db
+          assert not re.search(r"(?m)^  (push|pull_request|schedule):",db)
           assert Path("docs/ops/MANUAL-OPERATIONS.md").is_file()
           PY

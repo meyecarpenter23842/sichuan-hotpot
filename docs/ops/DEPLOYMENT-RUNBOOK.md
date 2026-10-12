@@ -1,10 +1,10 @@
-# Manual-only deployment and rollback runbook
+# Owner-command deployment and rollback runbook
 
 **STATUS: RECIPE / NOT EXECUTED.** Written for a future NestJS+Prisma API on VPS and two Expo Web PWAs on Vercel. Verify actual stack, paths, service manager, DNS, build scripts and secrets before turning any snippet into an executable production job.
 
 ## Golden rules
-1. Automated GitHub Actions **CI only** on PR/push. Never deploy on push, PR, merge, tag, issue comment, release publish, Vercel Git hook, EAS automatic update, server-side timer or VPS Git poll.
-2. Only a named authorized human initiates each release. Workflow trigger `workflow_dispatch` only with target/environment/exact 40-character commit SHA and change ticket; production GitHub Environment requires reviewer approval. No hidden bypass or pre-approved automation.
+1. Automated GitHub Actions **CI only** on PR/push. Never deploy on push, PR, merge, tag, arbitrary issue comments, release publish, Vercel Git hook, EAS automatic update, server-side timer or VPS Git poll. Exact authorized owner-only operational comments on Issue #3 are explicit manual commands, as in NPP.
+2. Only the repository owner initiates each operation, using exact /deploy-hotpot, /backup-hotpot or /migrate-hotpot on Issue #3, or the legacy manual workflow_dispatch. Issue commands infer the current protected main SHA automatically. The production-api Environment still requires any GitHub-configured reviewers until the owner changes that setting once; do not claim YAML bypasses it.
 3. Deploy credentials stored solely in protected Environment secrets; PR CI gets no SSH/Vercel/DB credentials. Least-privilege service identities and pinned SSH host key fingerprints. Never echo `.env`, tokens, `DATABASE_URL`, private keys.
 4. Deploy by immutable artifact/source SHA verified against protected main; lock concurrency per target; record before/after release; smoke-check; rollback independently. Merge != deploy.
 5. No PostgreSQL schema change during backend build/start. Migration is a completely separate manual release.
@@ -30,7 +30,7 @@ Manual frontend procedure (illustrative; exact packages/scripts to finalize in b
 Preflight (read-only): SSH with pinned known_hosts; identify actual user, service manager, install root, reverse proxy, TLS cert, runtime port, existing release SHA and health endpoints. Capture sanitized before-state and DB connectivity; never assume process names. Validate health `/health/live`, `/health/ready` on TLS domain.
 
 Backend deploy manual sequence:
-1. Protected environment approval for exact main SHA and target release.
+1. Owner enters `/deploy-hotpot` on Issue #3; the workflow resolves and checks exact main SHA. If GitHub Environment approval remains enabled, GitHub still waits for it. No second application-level confirmation is needed.
 2. CI builds/tests API and creates immutable artifact with digest/SBOM (or reproducible release archive); do not pack `.env`, key files, local mounts or `node_modules` unnecessarily.
 3. Backup current release artifact/config references (not raw secrets), verify free space/ownership and no new schema requirement without separately approved migration.
 4. Securely transfer artifact to a **new versioned release directory** under an allowlisted path; integrity-check digest and dependency provenance. Do not edit other apps on shared VPS.
@@ -40,7 +40,7 @@ Backend deploy manual sequence:
 
 ## C. PostgreSQL/Prisma: manual migration gate
 There is **no automatic database deployment** on CI, API startup, app release or cron. DB hosted in VPS private/loopback network; no Internet-wide port 5432. Required workflow `workflow_dispatch` with migration ID, exact source SHA, backup ID, maintenance window, approval and restricted DB credentials.
-1. Check live schema/migration history in **read-only** mode; inspect SQL diff, backwards compatibility, locks/size, rollback/data transform and estimate outage.
+1. Initial empty-schema migration: owner enters `/migrate-hotpot` on Issue #3. The workflow stages exact current main and uses the command as single-use approval on VPS only if a recent, **already independently verified offsite backup and isolated restore proof** exist. Later migrations require their own reviewed helper; do not reuse the first-release-only command. Check live schema/migration history and compatibility.
 2. Take fresh `pg_dump` or provider-backed consistent snapshot with checksum, encryption, retention and storage separate from same VPS; do not put dump in Actions artifact or GitHub. Verify restore *in isolated non-production database* and record proof.
 3. Confirm approved window, idempotency/migration ordering and free space. Establish a single migration executor; coordinate app compatibility and write traffic. Stop if backup/restore proof missing.
 4. Run `prisma migrate deploy` **only** through manual scoped migration job using protected production credentials, after the explicit owner approval.
