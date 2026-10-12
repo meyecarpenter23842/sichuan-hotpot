@@ -31,12 +31,20 @@ test("GET /health/ready proves PostgreSQL connectivity on isolated CI database",
 });
 
 test("readiness rejects absent or invalid datasource with no secrets in response", async () => {
-  const missing = new PrismaService("");
-  const bad = new PrismaService("not-a-postgresql-url");
-  assert.equal(await missing.isReady(), false);
-  assert.equal(await bad.isReady(), false);
-  await bad.onModuleDestroy();
-  await missing.onModuleDestroy();
+  const saved = process.env.DATABASE_URL;
+  try {
+    delete process.env.DATABASE_URL;
+    const missing = new PrismaService();
+    assert.equal(await missing.isReady(), false);
+    await missing.onModuleDestroy();
+    process.env.DATABASE_URL = "not-a-postgresql-url";
+    const bad = new PrismaService();
+    assert.equal(await bad.isReady(), false);
+    await bad.onModuleDestroy();
+  } finally {
+    if (saved === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = saved;
+  }
 });
 
 test("unmatched routes use redacted structured error response", async () => {

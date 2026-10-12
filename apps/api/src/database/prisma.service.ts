@@ -9,7 +9,8 @@ import { PrismaClient } from "@prisma/client";
 export class PrismaService implements OnModuleDestroy {
   private readonly client: PrismaClient | null;
 
-  constructor(url: string | undefined = process.env.DATABASE_URL) {
+  constructor() {
+    const url = process.env.DATABASE_URL;
     this.client = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
   }
 
