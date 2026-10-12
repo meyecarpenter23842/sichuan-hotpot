@@ -26,7 +26,7 @@ export function allowedCorsOrigins(raw = process.env.CORS_ALLOWED_ORIGINS ?? "")
 export function configureApp(app: INestApplication): void {
   const origins = allowedCorsOrigins();
   app.enableCors({
-    origin: (origin, callback) => callback(null, !!origin && origins.has(origin)),
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => callback(null, !!origin && origins.has(origin)),
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Accept", "Authorization", "Content-Type"],
     credentials: false,
