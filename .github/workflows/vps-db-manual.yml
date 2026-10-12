@@ -1,0 +1,128 @@
+name: VPS database operations (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Backup first; restore via protected Windows recovery script; migrate requires separate approval"
+        type: choice
+        options: [CHECK, BACKUP, PREPARE_MIGRATION, MIGRATE_INITIAL]
+        required: true
+      sha:
+        description: "Exact current main 40-character SHA"
+        type: string
+        required: true
+      backup_id:
+        description: "Verified backup ID (MIGRATE_INITIAL only)"
+        type: string
+        required: false
+      confirm:
+        description: "Type CHECK_DB, BACKUP_DB, PREPARE_MIGRATION or MIGRATE_INITIAL_HOTPOT"
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-production-vps-change
+  cancel-in-progress: false
+jobs:
+  database:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Reuse the already configured SSH credential; do not copy private keys.
+    # Each DB dispatch still requires its own Environment approval.
+    environment: production-api
+    timeout-minutes: 25
+    env:
+      OPERATION: ${{ inputs.operation }}
+      REQUESTED_SHA: ${{ inputs.sha }}
+      BACKUP_ID: ${{ inputs.backup_id }}
+      CONFIRM: ${{ inputs.confirm }}
+      MIGRATIONS_ENABLED: ${{ vars.HOTPOT_MIGRATIONS_ENABLED }}
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact main and separate migration enablement
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          case "$OPERATION" in
+            CHECK) test "$CONFIRM" = CHECK_DB ;;
+            BACKUP) test "$CONFIRM" = BACKUP_DB ;;
+            PREPARE_MIGRATION) test "$CONFIRM" = PREPARE_MIGRATION ;;
+            MIGRATE_INITIAL)
+              test "$CONFIRM" = MIGRATE_INITIAL_HOTPOT
+              test "$MIGRATIONS_ENABLED" = true
+              [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]] ;;
+            *) exit 1 ;;
+          esac
+      - uses: actions/setup-node@v4
+        if: inputs.operation == 'PREPARE_MIGRATION'
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build reviewed immutable migration source (no production DB credential)
+        if: inputs.operation == 'PREPARE_MIGRATION'
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/unused
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run prisma:generate
+          npm run build
+          tar -czf "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
+            package.json package-lock.json apps/api/package.json apps/api/dist \
+            apps/api/prisma/schema.prisma apps/api/prisma/migrations \
+            apps/customer/package.json apps/admin/package.json \
+            packages/shared/package.json packages/shared/dist packages/ui/package.json
+          sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/migration.sha256"
+          echo "Reviewed archive digest: $(cat "$RUNNER_TEMP/migration.sha256")"
+      - name: Invoke installed helper; never upload backup data or recovery keys to GitHub
+        shell: bash
+        env:
+          SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          HOST_PIN: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          git fetch -q origin main
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/deploy.key"
+          printf '%s\n' "$HOST_PIN" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"
+          opts=(-i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          # Refuse installed helper drift; installation is a separate reviewed operation.
+          expected="$(sha256sum infra/vps/hotpot-db-manual.py | awk '{print $1}')"
+          actual="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" 'sha256sum /usr/local/sbin/hotpot-db-manual' 2>/dev/null | awk '{print $1}')"
+          test "$expected" = "$actual"
+          case "$OPERATION" in
+            CHECK) ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" 'sudo -n /usr/local/sbin/hotpot-db-manual --check-config' 2>/dev/null ;;
+            BACKUP) ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --backup '$REQUESTED_SHA'" 2>/dev/null ;;
+            PREPARE_MIGRATION)
+              scp -P "$VPS_PORT" "${opts[@]}" "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" "$VPS_USER@$VPS_HOST:/opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" >/dev/null 2>/dev/null
+              digest="$(cat "$RUNNER_TEMP/migration.sha256")"
+              ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --stage '$REQUESTED_SHA' '$digest'" 2>/dev/null ;;
+            MIGRATE_INITIAL)
+              digest="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --source-digest '$REQUESTED_SHA'" 2>/dev/null)"
+              [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+              # Root-owned single-use approval must match SHA/digest/backup/window.
+              ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --preflight '$REQUESTED_SHA' '$digest' '$BACKUP_ID'" 2>/dev/null
+              ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --migrate '$REQUESTED_SHA' '$digest' '$BACKUP_ID'" 2>/dev/null ;;
+          esac
+      - name: Remove temporary SSH credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"

@@ -60,3 +60,9 @@ jobs:
         run: |
           python3 -m py_compile infra/vps/*.py
           python3 -m unittest discover -s infra/vps/tests -v
+      - name: Exercise encrypted backup, isolated restore and approved migration on disposable CI only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age postgresql-client-16
+          export CI_NODE_BIN="$(command -v node)" CI_NPM_BIN="$(command -v npm)"
+          sudo --preserve-env=DATABASE_URL,GITHUB_ACTIONS,CI_NODE_BIN,CI_NPM_BIN python3 infra/vps/tests/ci_db_drill.py
