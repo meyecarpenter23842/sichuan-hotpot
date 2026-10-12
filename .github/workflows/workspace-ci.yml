@@ -56,6 +56,15 @@ jobs:
         run: npm test
       - name: Build shared package
         run: npm run build
+      - name: Check customer Expo source (P2)
+        run: |
+          npm run lint --workspace @hotpot/customer
+          npm run typecheck --workspace @hotpot/customer
+          npm run test --workspace @hotpot/customer
+      - name: Build customer Expo Web (iPhone PWA)
+        run: |
+          npm run build --workspace @hotpot/customer
+          test -f apps/customer/dist/index.html
       - name: Validate manual release safety and rollback without services
         run: |
           python3 -m py_compile infra/vps/*.py
