@@ -1,6 +1,6 @@
 # Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa
 
-**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with health and safe HTTP handling. Readiness returns 200 only when its PostgreSQL connection responds, otherwise 503. Clerk authentication is not integrated. Expo customer/admin apps are placeholders; **nothing is deployed**.
+**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with health and safe HTTP handling. Readiness returns 200 only when its PostgreSQL connection responds, otherwise 503. Direct Google OAuth/OIDC and username/password accounts are planned (no Clerk); neither login flow is implemented yet. Expo customer/admin apps are placeholders; **nothing is deployed**.
 
 ## Development
 
@@ -14,11 +14,13 @@ npm test
 npm run build
 ```
 
-The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages/shared`, `packages/ui`. Workspace checks cover shared-domain TypeScript, NestJS API HTTP integration tests and core deployment guards, **not** Prisma connectivity, Clerk authentication or Android/Expo builds.
+The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages/shared`, `packages/ui`. Workspace checks cover shared-domain TypeScript, NestJS API HTTP integration tests and core deployment guards, **not** Prisma connectivity, direct Google/username authentication or Android/Expo builds.
 
 ## Design and operations
 
 - [Master implementation plan](docs/plan/MASTER-PLAN.md)
+- [Google and username authentication decision](docs/architecture/ADR-0001-google-username-auth.md)
+- [Neon DEV/QA boundaries](docs/architecture/ADR-0002-neon-dev-policy.md)
 - [Manual deployment recipes: Vercel / VPS API / PostgreSQL](docs/ops/DEPLOYMENT-RUNBOOK.md)
 - [VPS incident investigation — read-only](docs/ops/INCIDENT-READONLY.md)
 - [Manual GitHub Actions operations and prerequisites](docs/ops/MANUAL-OPERATIONS.md)
