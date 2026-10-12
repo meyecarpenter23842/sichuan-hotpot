@@ -76,7 +76,19 @@ try {
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   await page.getByRole("button", { name: "Tạo tài khoản", exact: true }).click();
-  await page.getByText("Đã đăng nhập · CUSTOMER").waitFor({ timeout: 15000 });
+  try {
+    await page.getByText("Đã đăng nhập · CUSTOMER").waitFor({ timeout: 15000 });
+  } catch (error) {
+    // Diagnostic metadata only. Never print passwords, JWTs or response bodies.
+    console.error("Registration HTTP statuses", JSON.stringify(responses));
+    console.error("Visible login errors", JSON.stringify(await page.locator('[role="alert"]').allTextContents()));
+    console.error("UI mode", JSON.stringify({
+      registerTitle: await page.getByText("Tạo tài khoản mới").isVisible(),
+      loggedInTextCount: await page.getByText("Đã đăng nhập · CUSTOMER").count(),
+    }));
+    await page.screenshot({ path: evidence + "/auth-registration-failed.png", fullPage: true });
+    throw error;
+  }
   assert.ok(responses.some(x => x.path === "/auth/register" && x.status === 201));
   assert.ok(responses.some(x => x.path === "/auth/me" && x.status === 200));
   await page.getByRole("button", { name: "Đăng xuất" }).click();
