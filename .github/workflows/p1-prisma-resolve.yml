@@ -1,0 +1,49 @@
+name: P1 temporary Prisma artifact resolution
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - package.json
+      - apps/api/package.json
+      - apps/api/prisma/schema.prisma
+      - .github/workflows/p1-prisma-resolve.yml
+permissions:
+  contents: read
+jobs:
+  resolve:
+    if: github.head_ref == 'feat/p1-prisma-dev-schema'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://127.0.0.1:5432/placeholder
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Resolve exact npm lockfile for Prisma 6
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install and validate Prisma schema
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run prisma:validate
+      - name: Generate initial SQL from schema
+        run: |
+          npm exec -- prisma migrate diff --from-empty --to-schema-datamodel apps/api/prisma/schema.prisma --script > /tmp/init.sql
+          test -s /tmp/init.sql
+      - name: Emit lockfile and baseline SQL in validated chunks
+        shell: bash
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          for (const [key, path] of [['LOCK', 'package-lock.json'], ['SQL', '/tmp/init.sql']]) {
+            const text = fs.readFileSync(path, 'utf8');
+            const parts = Math.ceil(text.length / 3500);
+            console.log('HOT_POT_' + key + '_PARTS=' + parts);
+            for (let i = 0; i < parts; i++) {
+              console.log('HOT_POT_' + key + '_' + i + '=' + JSON.stringify(text.slice(i*3500, (i+1)*3500)));
+            }
+          }
+          JS

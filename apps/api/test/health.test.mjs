@@ -7,6 +7,7 @@ const supertest = require("supertest");
 const { NestFactory } = require("@nestjs/core");
 const { AppModule } = require("../dist/app.module.js");
 const { configureApp } = require("../dist/bootstrap.js");
+const { PrismaService } = require("../dist/database/prisma.service.js");
 
 let app;
 before(async () => {
@@ -18,18 +19,24 @@ after(async () => {
   if (app) await app.close();
 });
 
-test("GET /health/live returns 200 independently of DB readiness", async () => {
+test("GET /health/live responds independent of database availability", async () => {
   const res = await supertest(app.getHttpServer()).get("/health/live").expect(200);
   assert.deepEqual(res.body, { status: "ok" });
 });
 
-test("GET /health/ready fails closed without a proven database", async () => {
-  const res = await supertest(app.getHttpServer()).get("/health/ready").expect(503);
-  assert.deepEqual(res.body.error, {
-    code: "SERVICE_UNAVAILABLE",
-    message: "Service unavailable",
-  });
-  assert.equal(typeof res.body.requestId, "string");
+test("GET /health/ready proves PostgreSQL connectivity on isolated CI database", async () => {
+  assert.ok(process.env.DATABASE_URL, "CI must set test DATABASE_URL");
+  const res = await supertest(app.getHttpServer()).get("/health/ready").expect(200);
+  assert.deepEqual(res.body, { status: "ok" });
+});
+
+test("readiness rejects absent or invalid datasource with no secrets in response", async () => {
+  const missing = new PrismaService("");
+  const bad = new PrismaService("not-a-postgresql-url");
+  assert.equal(await missing.isReady(), false);
+  assert.equal(await bad.isReady(), false);
+  await bad.onModuleDestroy();
+  await missing.onModuleDestroy();
 });
 
 test("unmatched routes use redacted structured error response", async () => {

@@ -8,7 +8,21 @@ permissions:
 jobs:
   workspace-quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hotpot_ci
+          POSTGRES_USER: hotpot_ci
+          POSTGRES_PASSWORD: hotpot_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotpot_ci -d hotpot_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hotpot_ci:hotpot_ci_only@127.0.0.1:5432/hotpot_ci?schema=public
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,6 +33,21 @@ jobs:
           cache: npm
       - name: Install exact workspace lockfile
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate Prisma schema and generate client
+        run: |
+          npm run prisma:validate
+          npm run prisma:generate
+      - name: Apply migrations to disposable CI Postgres
+        run: |
+          prisma_status=0
+          npm exec -- prisma migrate deploy --schema apps/api/prisma/schema.prisma || prisma_status=$?
+          exit "$prisma_status"
+      - name: Assert migrated PostgreSQL matches schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec -- prisma migrate status --schema apps/api/prisma/schema.prisma
+          npm exec -- prisma migrate diff --from-schema-datasource apps/api/prisma/schema.prisma --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code
       - name: Validate source and auto-deploy lock
         run: npm run lint
       - name: TypeScript strict check

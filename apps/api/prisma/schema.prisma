@@ -1,0 +1,247 @@
+// P1.2 baseline: DEV/CI only. No production connection or migration is authorized.
+// Amounts use integer VND. All UTC instants use timestamptz. Customer-sensitive
+// coordinates and address snapshots must be restricted to authorized API roles.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  KITCHEN
+  DRIVER
+  CUSTOMER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERING
+  DELIVERED
+  CANCELED
+  DELIVERY_FAILED
+}
+
+enum PaymentMethod {
+  COD
+  QR
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id                 String               @id @default(uuid()) @db.Uuid
+  clerkSubject       String               @unique @db.VarChar(255)
+  role               Role                 @default(CUSTOMER)
+  phoneE164          String?              @db.VarChar(20)
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(6)
+  branchMemberships  BranchMember[]
+  addresses          Address[]
+  orders             Order[]              @relation("CustomerOrders")
+  assignedDeliveries DeliveryAssignment[] @relation("AssignedDriver")
+  statusChanges      OrderStatusHistory[] @relation("StatusActor")
+}
+
+model Branch {
+  id                String                  @id @default(uuid()) @db.Uuid
+  code              String                  @unique @db.VarChar(50)
+  name              String                  @db.VarChar(200)
+  latitude          Decimal                 @db.Decimal(10, 7)
+  longitude         Decimal                 @db.Decimal(10, 7)
+  isActive          Boolean                 @default(true)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(6)
+  memberships       BranchMember[]
+  categories        CatalogCategory[]
+  deliveryPolicies  DeliveryPolicyVersion[]
+  orders            Order[]
+}
+
+model BranchMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  userId    String   @db.Uuid
+  role      Role
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([branchId, userId])
+  @@index([userId])
+}
+
+model DeliveryPolicyVersion {
+  id                            String   @id @default(uuid()) @db.Uuid
+  branchId                      String   @db.Uuid
+  version                       Int
+  acceptingOrders               Boolean
+  baseMeters                    Int
+  baseFeeVnd                    Int
+  extraStepMeters               Int
+  extraStepFeeVnd               Int
+  maxRoadMeters                 Int
+  minSubtotalVnd                Int
+  freeDeliveryAtSubtotalVnd     Int?
+  createdAt                     DateTime @default(now()) @db.Timestamptz(6)
+  branch                        Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  orders                        Order[]
+
+  @@unique([branchId, version])
+  @@index([branchId, createdAt])
+}
+
+model CatalogCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  branchId  String    @db.Uuid
+  name      String    @db.VarChar(160)
+  sortOrder Int       @default(0)
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  products  Product[]
+
+  @@unique([branchId, name])
+  @@index([branchId, sortOrder])
+}
+
+model Product {
+  id          String         @id @default(uuid()) @db.Uuid
+  categoryId  String         @db.Uuid
+  name        String         @db.VarChar(200)
+  priceVnd    Int
+  isAvailable Boolean        @default(true)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
+  category    CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants    ProductVariant[]
+  orderItems  OrderItem[]
+
+  @@index([categoryId, isAvailable])
+}
+
+model ProductVariant {
+  id            String    @id @default(uuid()) @db.Uuid
+  productId     String    @db.Uuid
+  name          String    @db.VarChar(160)
+  priceDeltaVnd Int       @default(0)
+  isAvailable   Boolean   @default(true)
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, name])
+}
+
+model Address {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  label      String   @db.VarChar(100)
+  line1      String   @db.VarChar(500)
+  latitude   Decimal  @db.Decimal(10, 7)
+  longitude  Decimal  @db.Decimal(10, 7)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model Order {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  branchId                 String                 @db.Uuid
+  customerId               String                 @db.Uuid
+  deliveryPolicyVersionId  String                 @db.Uuid
+  idempotencyKey           String                 @db.VarChar(128)
+  status                   OrderStatus            @default(PENDING)
+  subtotalVnd              Int
+  deliveryFeeVnd           Int
+  totalVnd                 Int
+  roadDistanceMeters       Int
+  addressLineSnapshot      String                 @db.VarChar(500)
+  latitudeSnapshot         Decimal                @db.Decimal(10, 7)
+  longitudeSnapshot        Decimal                @db.Decimal(10, 7)
+  createdAt                DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime               @updatedAt @db.Timestamptz(6)
+  branch                   Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer                 User                   @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
+  deliveryPolicyVersion    DeliveryPolicyVersion  @relation(fields: [deliveryPolicyVersionId], references: [id], onDelete: Restrict)
+  items                    OrderItem[]
+  statusHistory            OrderStatusHistory[]
+  deliveryAssignment       DeliveryAssignment?
+  payment                  Payment?
+
+  @@unique([customerId, idempotencyKey])
+  @@index([branchId, status, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model OrderItem {
+  id            String                      @id @default(uuid()) @db.Uuid
+  orderId       String                      @db.Uuid
+  productId     String?                     @db.Uuid
+  productName   String                      @db.VarChar(200)
+  variantName   String?                     @db.VarChar(160)
+  quantity      Int
+  unitPriceVnd  Int
+  lineTotalVnd  Int
+  order         Order                       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product       Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  modifiers     OrderItemModifierSnapshot[]
+
+  @@index([orderId])
+}
+
+model OrderItemModifierSnapshot {
+  id           String    @id @default(uuid()) @db.Uuid
+  orderItemId  String    @db.Uuid
+  name         String    @db.VarChar(160)
+  priceVnd     Int
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@index([orderItemId])
+}
+
+model OrderStatusHistory {
+  id         String       @id @default(uuid()) @db.Uuid
+  orderId    String       @db.Uuid
+  actorId    String?      @db.Uuid
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  reason     String?      @db.VarChar(500)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6)
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor      User?        @relation("StatusActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+model DeliveryAssignment {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @unique @db.Uuid
+  driverId   String   @db.Uuid
+  assignedAt DateTime @default(now()) @db.Timestamptz(6)
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  driver     User     @relation("AssignedDriver", fields: [driverId], references: [id], onDelete: Restrict)
+
+  @@index([driverId, assignedAt])
+}
+
+model Payment {
+  id         String         @id @default(uuid()) @db.Uuid
+  orderId    String         @unique @db.Uuid
+  method     PaymentMethod
+  status     PaymentStatus  @default(PENDING)
+  amountVnd  Int
+  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime       @updatedAt @db.Timestamptz(6)
+  order      Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+}

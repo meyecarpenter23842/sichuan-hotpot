@@ -1,16 +1,20 @@
 import { Controller, Get, ServiceUnavailableException } from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service";
 
 @Controller("health")
 export class HealthController {
+  constructor(private readonly prisma: PrismaService) {}
+
   @Get("live")
   live(): { status: "ok" } {
     return { status: "ok" };
   }
 
   @Get("ready")
-  ready(): never {
-    // Fail closed until Prisma proves a real DB connection and the P1 auth
-    // dependencies are wired; environment variables alone cannot prove readiness.
-    throw new ServiceUnavailableException("Readiness probe not initialized");
+  async ready(): Promise<{ status: "ok" }> {
+    if (!(await this.prisma.isReady())) {
+      throw new ServiceUnavailableException("Database is not ready");
+    }
+    return { status: "ok" };
   }
 }

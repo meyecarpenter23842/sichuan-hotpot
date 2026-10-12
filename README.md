@@ -1,6 +1,6 @@
 # Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa
 
-**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with basic health and safe HTTP handling. Readiness deliberately fails closed (503) until database and authentication are integrated. Expo customer/admin apps are placeholders; **nothing is deployed**.
+**Status: P1 API foundation in progress — not production ready.** The NestJS API boots with health and safe HTTP handling. Readiness returns 200 only when its PostgreSQL connection responds, otherwise 503. Clerk authentication is not integrated. Expo customer/admin apps are placeholders; **nothing is deployed**.
 
 ## Development
 
