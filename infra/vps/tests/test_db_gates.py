@@ -113,9 +113,11 @@ class WorkflowCommandTests(unittest.TestCase):
     def authorize(self):
         expected = {'apps/api/prisma/migrations/' + name + '/migration.sql'
                     for name in ('20261012000000_init', '20261012010000_auth_identity')}
-        with patch.object(db, 'offline_empty'), patch.object(db, 'release_module') as release, \\
-             patch.object(db, 'frozen_source', return_value={name: b'-- SQL' for name in expected}), \\
-             patch.object(db, 'fingerprint', return_value='fingerprint'):
+        with (patch.object(db, 'offline_empty'),
+              patch.object(db, 'release_module') as release,
+              patch.object(db, 'frozen_source',
+                           return_value={name: b'-- SQL' for name in expected}),
+              patch.object(db, 'fingerprint', return_value='fingerprint')):
             release.return_value.MIGRATIONS = ('20261012000000_init', '20261012010000_auth_identity')
             db.workflow_authorize(self.sha, self.digest, '123456')
 
