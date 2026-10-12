@@ -1,0 +1,7 @@
+{
+  "name": "@hotpot/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NestJS backend planned for P1; intentionally not yet deployable"
+}

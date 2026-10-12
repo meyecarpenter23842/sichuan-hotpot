@@ -1,23 +1,34 @@
 # Sichuan Hotpot — Lẩu Tứ Xuyên & Trà Sữa
 
-**Status:** planning only; 8 UI/UX concept images present, production applications not yet bootstrapped.
+**Status: P0 bootstrap in progress — not production ready.** Shared delivery policy and order status domain logic now have TypeScript implementations and tests. NestJS API and Expo customer/admin apps are placeholders, **not deployed apps**.
+
+## Development
+
+Requirements: Node.js 24, npm 10+. Use `npm ci` from the repository root.
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+The npm workspace layout is `apps/customer`, `apps/admin`, `apps/api`, `packages/shared`, `packages/ui`. P0 checks currently cover shared-domain TypeScript and core deployment guards, **not** Android/Expo builds or NestJS integration; dedicated Expo/NestJS scripts will be added when those apps are bootstrapped.
+
+## Design and operations
 
 - [Master implementation plan](docs/plan/MASTER-PLAN.md)
 - [Manual deployment recipes: Vercel / VPS API / PostgreSQL](docs/ops/DEPLOYMENT-RUNBOOK.md)
 - [VPS incident investigation — read-only](docs/ops/INCIDENT-READONLY.md)
+- [Manual GitHub Actions operations and prerequisites](docs/ops/MANUAL-OPERATIONS.md)
 - [Frontend QA policy](docs/qa/FRONTEND-QA.md)
-- [Agent conventions + skill](AGENTS.md)
+- [Agent working agreement](AGENTS.md)
 
-## Deploy lock
-Automatic deployment is forbidden for **all** environments. `apps/customer/vercel.json` and `apps/admin/vercel.json` permanently set `git.deploymentEnabled=false`. GitHub Actions may run CI automatically, but deploy/migrate/rollback require an explicit manual release procedure. A Vercel account owner must confirm each actual Vercel project's Git integration is disabled/locked after provisioning; repo config alone is not a verification of a provider setting.
+## Release lock
 
-## UI concept images on main
-Customer: `01-home.png`, `02-hotpot-detail.png`, `03-delivery-address.png`, `04-order-tracking.png`.
-Admin: `01-dashboard.png`, `02-kitchen-order-detail.png`, `03-delivery-settings.png`, `04-driver-assignment.png`.
+**No automatic deployment.** `vercel.json`, `apps/customer/vercel.json` and `apps/admin/vercel.json` keep `git.deploymentEnabled=false`. Production workflow actions require manual dispatch and explicit target configuration. No application or database has been deployed through this code.
 
-Images depict **illustrative** customer details, prices, ratings, addresses and driver information; do not treat them as production values.
+## UI reference
 
-## Manual GitHub Actions operations
-- [Manual SSH VPS audit and release workflows](docs/ops/MANUAL-OPERATIONS.md).
-- The VPS audit uses SSH user `ubuntu` with a dedicated audit key, pinned host key, and bounded aggregate output; it does **not** use sudo, restart, migrate or deploy.
-- API / DB / Vercel production release workflows are **OFF by default** until their protected environment variable `HOTPOT_RELEASES_ENABLED=true` is separately authorized after the required app/VPS bootstrap. A workflow in GitHub is not a deployed service.
+Original eight mockup PNG files are in the repository root. They are concept references, not proof of working application flows, real catalogue prices or actual customer details.
