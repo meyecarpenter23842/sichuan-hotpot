@@ -14,17 +14,17 @@ import {
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
-  apiRequest, type AuthTokens, type BranchMenu, type BranchSummary,
-  type Principal, type Product,
+  apiRequest, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
+  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
 } from "./src/api";
-import { addressError, passwordError, phoneError, usernameError, vnd } from "./src/validation";
+import { addressError, optionSelectionError, passwordError, phoneError, usernameError, vnd } from "./src/validation";
 
 WebBrowser.maybeCompleteAuthSession();
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "login" | "address";
 type AuthMode = "login" | "register";
 type AddressDraft = {
-  phone: string; line1: string; latitude: string; longitude: string;
+  label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
 const CART_KEY = "hotpot.cart.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
@@ -95,6 +95,23 @@ function IconTile({ name }: { name: string }) {
   );
 }
 
+
+function ProductArtwork({ product, large = false }: { product: Product; large?: boolean }) {
+  const [broken, setBroken] = useState(false);
+  const uri = safeProductImageUrl(product.imageKey);
+  useEffect(() => setBroken(false), [uri]);
+  if (!uri || broken) return <IconTile name={product.name} />;
+  return <Image source={{ uri }} resizeMode="cover"
+    style={large ? styles.productImageLarge : styles.productImage}
+    accessibilityLabel={"Ảnh món " + product.name} onError={() => setBroken(true)} />;
+}
+
+function selectedModifierPrice(product: Product, ids: readonly string[]): number {
+  return (product.modifierGroups ?? []).flatMap(group => group.options)
+    .filter(option => ids.includes(option.id))
+    .reduce((total, option) => total + option.priceDeltaVnd, 0);
+}
+
 function CustomerApp() {
   const [screen, setScreen] = useState<Screen>("home");
   const [branches, setBranches] = useState<BranchSummary[]>([]);
@@ -107,6 +124,8 @@ function CustomerApp() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
+  const [detailError, setDetailError] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [notice, setNotice] = useState("");
@@ -121,9 +140,12 @@ function CustomerApp() {
   const [loginHeroFailed, setLoginHeroFailed] = useState(false);
   const [loginReturnTo, setLoginReturnTo] = useState<"cart" | "account">("account");
   const [address, setAddress] = useState<AddressDraft>({
-    phone: "", line1: "", latitude: "", longitude: "",
+    label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
   });
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
+  const [addressSaving, setAddressSaving] = useState(false);
   const [addressErrorText, setAddressErrorText] = useState("");
 
   const [googleRequest, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
@@ -192,6 +214,7 @@ function CustomerApp() {
           if (draft && typeof draft === "object" && "line1" in draft) {
             const candidate = draft as Partial<AddressDraft>;
             setAddress({
+              label: typeof candidate.label === "string" ? candidate.label : "Nhà",
               phone: typeof candidate.phone === "string" ? candidate.phone : "",
               line1: typeof candidate.line1 === "string" ? candidate.line1 : "",
               latitude: typeof candidate.latitude === "string" ? candidate.latitude : "",
@@ -299,6 +322,19 @@ function CustomerApp() {
     setNotice("Đã đăng xuất trên thiết bị.");
   }
 
+  useEffect(() => {
+    if (!accessToken) { setSavedAddresses([]); return; }
+    let active = true;
+    apiRequest<SavedAddresses>("/customer/addresses", { accessToken })
+      .then(result => {
+        if (!active) return;
+        setSavedAddresses(result.addresses);
+        setAddress(old => ({ ...old, phone: old.phone || result.phone || "" }));
+      })
+      .catch(() => { if (active) setNotice("Không thể tải địa chỉ đã lưu. Hãy thử lại."); });
+    return () => { active = false; };
+  }, [accessToken]);
+
   async function locateMe() {
     if (addressBusy) return;
     setAddressBusy(true);
@@ -324,32 +360,76 @@ function CustomerApp() {
   }
 
   async function saveAddress() {
+    if (addressSaving) return;
     const error = phoneError(address.phone)
       || addressError(address.line1, address.latitude, address.longitude);
     if (error) { setAddressErrorText(error); return; }
-    try {
-      await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
-      setAddressErrorText("");
-      setScreen("cart");
-      setNotice("Đã lưu bản nháp địa chỉ trên thiết bị, chưa đồng bộ vào tài khoản.");
-    } catch {
-      setAddressErrorText("Không thể lưu địa chỉ. Vui lòng thử lại.");
+    if (!address.label.trim() || address.label.trim().length > 100) {
+      setAddressErrorText("Đặt tên gợi nhớ địa chỉ (tối đa 100 ký tự).");
+      return;
     }
+    setAddressSaving(true);
+    setAddressErrorText("");
+    try {
+      if (principal && accessToken) {
+        const created = await apiRequest<SavedAddress>("/customer/addresses", {
+          method: "POST", accessToken,
+          body: { label: address.label, line1: address.line1,
+            phone: address.phone.replace(/[\s.-]/g, ""),
+            latitude: address.latitude, longitude: address.longitude },
+        });
+        setSavedAddresses(old => [created, ...old]);
+        setNotice("Đã lưu địa chỉ vào tài khoản.");
+      } else {
+        setNotice("Đã lưu bản nháp trên thiết bị. Đăng nhập để lưu nhiều địa chỉ.");
+      }
+      await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
+      setScreen(addressReturnTo);
+    } catch (error) {
+      setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
+    } finally { setAddressSaving(false); }
+  }
+
+  function selectSavedAddress(saved: SavedAddress) {
+    setAddress(old => ({ ...old, label: saved.label, line1: saved.line1,
+      latitude: saved.latitude, longitude: saved.longitude }));
+    setAddressErrorText("");
+    setNotice("Đã chọn địa chỉ " + saved.label + ". Phí giao sẽ được tính lại khi đặt hàng.");
+    setScreen(addressReturnTo);
+  }
+
+  async function deleteSavedAddress(saved: SavedAddress) {
+    if (!accessToken || addressSaving) return;
+    setAddressSaving(true);
+    try {
+      await apiRequest("/customer/addresses/" + encodeURIComponent(saved.id), {
+        method: "DELETE", accessToken,
+      });
+      setSavedAddresses(old => old.filter(x => x.id !== saved.id));
+      setNotice("Đã xóa địa chỉ đã lưu.");
+    } catch (error) {
+      setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
+    } finally { setAddressSaving(false); }
   }
 
   function openProduct(product: Product) {
     setSelectedProduct(product);
     setSelectedVariantId(null);
     setSelectedQuantity(1);
+    setSelectedModifierIds([]);
+    setDetailError("");
     setNotice("");
     setScreen("detail");
   }
 
   function addSelectedProduct() {
     if (!selectedProduct || !selectedProduct.isAvailable) return;
+    const selectionError = optionSelectionError(selectedProduct.modifierGroups ?? [], selectedModifierIds);
+    if (selectionError) { setDetailError(selectionError); return; }
+    setDetailError("");
     try {
       setCart(old => addCartLine(old, {
-        productId: selectedProduct.id, variantId: selectedVariantId, modifierIds: [],
+        productId: selectedProduct.id, variantId: selectedVariantId, modifierIds: selectedModifierIds,
       }, selectedQuantity));
       setScreen("cart");
       setNotice("Đã thêm món vào giỏ hàng.");
