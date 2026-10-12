@@ -59,11 +59,13 @@ jobs:
           persist-credentials: false
       - name: Require exact main and separate migration enablement
         shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
             REQUESTED_SHA="$(git rev-parse HEAD)"
-            case "${{ github.event.comment.body }}" in
+            case "$COMMENT_BODY" in
               /backup-hotpot) OPERATION=BACKUP; CONFIRM=BACKUP_DB ;;
               /migrate-hotpot) OPERATION=MIGRATE_INITIAL; CONFIRM=MIGRATE_INITIAL_HOTPOT ;;
               *) echo "::error::Unsupported command"; exit 1 ;;
@@ -92,12 +94,12 @@ jobs:
             *) exit 1 ;;
           esac
       - uses: actions/setup-node@v4
-        if: inputs.operation == 'PREPARE_MIGRATION' || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot') || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot')
+        if: inputs.operation == 'PREPARE_MIGRATION' || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot')
         with:
           node-version: '24'
           cache: npm
       - name: Build reviewed immutable migration source (no production DB credential)
-        if: inputs.operation == 'PREPARE_MIGRATION'
+        if: inputs.operation == 'PREPARE_MIGRATION' || (github.event_name == 'issue_comment' && github.event.comment.body == '/migrate-hotpot')
         shell: bash
         env:
           DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/unused
@@ -152,8 +154,9 @@ jobs:
                 # GitHub owner command is authorization, but ONLY with a recent
                 # externally verified encrypted backup and isolated restore.
                 receipt="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --workflow-authorize '$REQUESTED_SHA' '$digest' '$GITHUB_RUN_ID'" 2>/dev/null)"
-                [[ "$receipt" =~ ^workflow_authorization=PASS\\;backup_id=([0-9]{8}T[0-9]{6}Z-[0-9a-f]{8})$ ]] || { echo "::error::Verified offsite backup or migration authorization missing."; exit 1; }
-                BACKUP_ID="${BASH_REMATCH[1]}"
+                [[ "$receipt" == workflow_authorization=PASS\\;backup_id=* ]] || { echo "::error::Verified offsite backup or migration authorization missing."; exit 1; }
+                BACKUP_ID="${receipt##*backup_id=}"
+                [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]]
               else
                 digest="$(ssh -p "$VPS_PORT" "${opts[@]}" "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/hotpot-db-manual --source-digest '$REQUESTED_SHA'" 2>/dev/null)"
               fi
