@@ -36,7 +36,7 @@ jobs:
           --health-cmd "pg_isready -U hotpot_release_check -d hotpot_api_release_check"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://hotpot_release_check:test_only_never_production@127.0.0.1:5432/hotpot_api_release_check?schema=public
+      DATABASE_URL: postgresql://hotpot_release_check:test_only_never_production@localhost:5432/hotpot_api_release_check?schema=public
       ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
       VPS_HOST: ${{ vars.VPS_HOST }}
       VPS_PORT: ${{ vars.VPS_PORT }}
