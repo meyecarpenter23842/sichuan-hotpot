@@ -4,10 +4,11 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { Algorithm, hash, verify } from "@node-rs/argon2";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { PrismaService } from "../database/prisma.service";
 import { GoogleTokenVerifier } from "./google-token.verifier";
+import { VerificationMailSender } from "./verification-mail.sender";
 
 export interface AuthTokens {
   accessToken: string;
@@ -18,6 +19,22 @@ const ISSUER = "sichuan-hotpot";
 const AUDIENCE = "sichuan-hotpot-api";
 const REFRESH_MS = 14 * 24 * 60 * 60 * 1000;
 const DUMMY_PASSWORD = "constant-no-existing-account-password-1234";
+const CODE_TTL_MS = 10 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+function emailOf(input: string): string {
+  const email = input.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    throw new BadRequestException("Email không hợp lệ.");
+  }
+  return email;
+}
+function newPasswordOk(password: string): void {
+  // No required special characters, digits, uppercase, or lowercase classes.
+  if (password.length < 6 || password.length > 8) {
+    throw new BadRequestException("Mật khẩu phải có 6–8 ký tự.");
+  }
+}
 
 function usernameOf(input: string): string {
   const name = input.trim().toLowerCase();
@@ -38,6 +55,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly googleTokens: GoogleTokenVerifier,
+    private readonly emailSender: VerificationMailSender,
   ) {}
 
   private get jwtSecret(): string {
@@ -72,29 +90,140 @@ export class AuthService {
     return { accessToken, refreshToken, accessTokenExpiresInSeconds: 900 };
   }
 
-  async register(username: string, password: string): Promise<AuthTokens> {
-    const normalizedUsername = usernameOf(username);
-    this.jwtSecret; // Fail closed before expensive hashing or writing.
-    if (password.length < 12 || password.length > 128) {
-      throw new BadRequestException("Invalid password length");
+  private codeDigest(email: string, purpose: "REGISTER" | "RESET_PASSWORD", code: string): string {
+    return createHmac("sha256", this.jwtSecret).update(purpose + ":" + email + ":" + code).digest("hex");
+  }
+
+  private async verifyCode(email: string, purpose: "REGISTER" | "RESET_PASSWORD", code: string) {
+    const record = await this.prisma.database.emailChallenge.findUnique({
+      where: { email_purpose: { email, purpose } },
+    });
+    if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()
+        || record.attempts >= MAX_CODE_ATTEMPTS) {
+      throw new BadRequestException("Mã không đúng hoặc đã hết hạn.");
     }
-    const passwordHash = await hash(password, this.hashOptions);
-    try {
-      const credential = await this.prisma.database.localCredential.create({
-        data: {
-          normalizedUsername, passwordHash,
-          user: { create: { role: "CUSTOMER" } },
-        },
-        select: { userId: true },
+    const candidate = Buffer.from(this.codeDigest(email, purpose, code), "hex");
+    const expected = Buffer.from(record.codeHash, "hex");
+    if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) {
+      await this.prisma.database.emailChallenge.updateMany({
+        where: { id: record.id, usedAt: null, attempts: { lt: MAX_CODE_ATTEMPTS } },
+        data: { attempts: { increment: 1 } },
       });
-      return await this.createSession(credential.userId);
+      throw new BadRequestException("Mã không đúng hoặc đã hết hạn.");
+    }
+    return record;
+  }
+
+  private async issueCode(email: string, purpose: "REGISTER" | "RESET_PASSWORD",
+                          normalizedUsername?: string, pendingPasswordHash?: string) {
+    this.jwtSecret;
+    const now = new Date();
+    const old = await this.prisma.database.emailChallenge.findUnique({
+      where: { email_purpose: { email, purpose } }, select: { createdAt: true },
+    });
+    if (old && now.getTime() - old.createdAt.getTime() < RESEND_COOLDOWN_MS) {
+      throw new BadRequestException("Đợi 60 giây trước khi gửi lại mã.");
+    }
+    const code = randomInt(0, 1000000).toString().padStart(6, "0");
+    const codeHash = this.codeDigest(email, purpose, code);
+    await this.prisma.database.emailChallenge.upsert({
+      where: { email_purpose: { email, purpose } },
+      update: { codeHash, normalizedUsername, pendingPasswordHash,
+        expiresAt: new Date(now.getTime() + CODE_TTL_MS), createdAt: now,
+        usedAt: null, attempts: 0 },
+      create: { email, purpose, codeHash, normalizedUsername, pendingPasswordHash,
+        expiresAt: new Date(now.getTime() + CODE_TTL_MS) },
+    });
+    try {
+      await this.emailSender.sendCode(email, code, purpose);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError
-        && error.code === "P2002"
-      ) throw new ConflictException("Username unavailable");
+      await this.prisma.database.emailChallenge.updateMany({
+        where: { email, purpose, codeHash }, data: { usedAt: new Date(), pendingPasswordHash: null },
+      });
       throw error;
     }
+    return { status: "sent" as const, expiresInSeconds: 600 };
+  }
+
+  async requestRegistration(username: string, emailInput: string, password: string) {
+    const normalizedUsername = usernameOf(username);
+    const email = emailOf(emailInput);
+    newPasswordOk(password);
+    this.jwtSecret;
+    const occupied = await this.prisma.database.localCredential.findFirst({
+      where: { OR: [{ normalizedUsername }, { verifiedEmail: email }] }, select: { id: true },
+    });
+    if (occupied) throw new ConflictException("Tên đăng nhập hoặc email đã được sử dụng.");
+    const pendingPasswordHash = await hash(password, this.hashOptions);
+    return this.issueCode(email, "REGISTER", normalizedUsername, pendingPasswordHash);
+  }
+
+  async confirmRegistration(emailInput: string, code: string): Promise<AuthTokens> {
+    const email = emailOf(emailInput);
+    const record = await this.verifyCode(email, "REGISTER", code);
+    if (!record.normalizedUsername || !record.pendingPasswordHash) {
+      throw new BadRequestException("Đăng ký không hợp lệ.");
+    }
+    try {
+      const userId = await this.prisma.database.$transaction(async tx => {
+        const accepted = await tx.emailChallenge.updateMany({
+          where: { id: record.id, usedAt: null, attempts: { lt: MAX_CODE_ATTEMPTS },
+            expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date(), pendingPasswordHash: null },
+        });
+        if (accepted.count !== 1) throw new BadRequestException("Mã đã sử dụng.");
+        const credential = await tx.localCredential.create({
+          data: { normalizedUsername: record.normalizedUsername!,
+            verifiedEmail: email, passwordHash: record.pendingPasswordHash!,
+            user: { create: { role: "CUSTOMER" } } },
+          select: { userId: true },
+        });
+        return credential.userId;
+      });
+      return this.createSession(userId);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("Tên đăng nhập hoặc email đã được sử dụng.");
+      }
+      throw error;
+    }
+  }
+
+  async requestPasswordReset(emailInput: string) {
+    const email = emailOf(emailInput);
+    this.jwtSecret;
+    const credential = await this.prisma.database.localCredential.findUnique({
+      where: { verifiedEmail: email }, select: { userId: true },
+    });
+    if (credential) await this.issueCode(email, "RESET_PASSWORD");
+    // Generic to avoid account enumeration.
+    return { status: "sent" as const, expiresInSeconds: 600 };
+  }
+
+  async resetPassword(emailInput: string, code: string, password: string) {
+    const email = emailOf(emailInput);
+    newPasswordOk(password);
+    const record = await this.verifyCode(email, "RESET_PASSWORD", code);
+    const passwordHash = await hash(password, this.hashOptions);
+    await this.prisma.database.$transaction(async tx => {
+      const accepted = await tx.emailChallenge.updateMany({
+        where: { id: record.id, usedAt: null, attempts: { lt: MAX_CODE_ATTEMPTS },
+          expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() },
+      });
+      if (accepted.count !== 1) throw new BadRequestException("Mã đã sử dụng.");
+      const credential = await tx.localCredential.findUnique({
+        where: { verifiedEmail: email }, select: { userId: true },
+      });
+      if (!credential) throw new BadRequestException("Mã không hợp lệ.");
+      await tx.localCredential.update({
+        where: { verifiedEmail: email }, data: { passwordHash },
+      });
+      await tx.authSession.updateMany({
+        where: { userId: credential.userId, revokedAt: null }, data: { revokedAt: new Date() },
+      });
+    });
+    return { status: "ok" as const };
   }
 
   async login(username: string, password: string): Promise<AuthTokens> {
