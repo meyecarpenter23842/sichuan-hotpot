@@ -16,6 +16,10 @@ try {
     await page.goto(web, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
+    const homeHeroImage = page.getByTestId("home-approved-hero").locator("img").first();
+    await homeHeroImage.waitFor();
+    assert.equal(await homeHeroImage.evaluate(img => img.complete && img.naturalWidth > 0), true,
+      "Approved Home hero artwork failed to render at " + width);
     assert.equal(await page.getByRole("textbox", { name: "Tìm món ăn, trà sữa" }).count(), 0,
       "Owner removed home search; it must remain only in menu");
     for (const [label, icon] of [
