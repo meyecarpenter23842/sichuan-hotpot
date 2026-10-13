@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 const file = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 let html = readFileSync(file, "utf8");
 const meta = '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />';
-if (/<meta\\s+name=["']viewport["'][^>]*>/i.test(html)) {
-  html = html.replace(/<meta\\s+name=["']viewport["'][^>]*>/i, meta);
+if (/<meta\s+name=["']viewport["'][^>]*>/i.test(html)) {
+  html = html.replace(/<meta\s+name=["']viewport["'][^>]*>/i, meta);
 } else {
   html = html.replace(/<head[^>]*>/i, match => match + meta);
 }
