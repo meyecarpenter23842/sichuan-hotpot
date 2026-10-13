@@ -5,7 +5,7 @@ export function usernameError(username: string): string | null {
   return null;
 }
 export function emailError(email: string): string | null {
-  if (email.trim().length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())) {
+  if (email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     return "Nhập địa chỉ email hợp lệ.";
   }
   return null;
