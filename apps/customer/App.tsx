@@ -600,7 +600,7 @@ function CustomerApp() {
               style={styles.addressSmallButton} disabled={addressSaving}
               accessibilityState={{ disabled: addressSaving }}
               onPress={() => void deleteSavedAddress(saved)}>
-              <Text style={styles.addressDeleteGlyph}>×</Text>
+              <Text style={styles.addressDeleteGlyph}>Xóa</Text>
             </Pressable>
           </View>
         </View>
@@ -1150,10 +1150,10 @@ function CustomerApp() {
               {([
                 { title: "Thêm Nhà riêng", label: "Nhà", icon: "⌂", note: "" },
                 { title: "Thêm Văn phòng", label: "Công ty", icon: "▣", note: "" },
-                { title: "Thêm", label: "Khác", icon: "+", note: "Lưu địa chỉ thường dùng" },
+                { title: "Thêm", label: "Nhà", icon: "+", note: "Lưu địa chỉ thường dùng" },
               ] as const).map(item => (
-                <Pressable key={item.label} accessibilityRole="button"
-                  accessibilityLabel={"Thêm địa chỉ " + item.label}
+                <Pressable key={item.title} accessibilityRole="button"
+                  accessibilityLabel={item.title === "Thêm" ? "＋ Thêm địa chỉ mới" : "Thêm địa chỉ " + item.label}
                   style={({ pressed }) => [styles.addressQuickRow,
                     pressed && styles.addressRowPressed]}
                   onPress={() => openAddressEditor(addressReturnTo, item.label)}>
@@ -1560,7 +1560,7 @@ const styles = StyleSheet.create({
   addressPinButton: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
   addressPinGlyph: { fontSize: 25, color: palette.red },
   addressSmallButton: { width: 36, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  addressDeleteGlyph: { fontSize: 23, color: "#AAB0B8" },
+  addressDeleteGlyph: { fontSize: 12, fontWeight: "700", color: "#9B5A5E" },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },
