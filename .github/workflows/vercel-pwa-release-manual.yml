@@ -25,20 +25,20 @@ concurrency:
 jobs:
   release:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.number == 3 &&
        github.event.issue.pull_request == null &&
        github.actor == 'meyecarpenter23842' &&
        (github.event.comment.body == '/deploy-hotpot-customer' ||
         github.event.comment.body == '/deploy-hotpot-admin'))
-    environment:
-      name: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/deploy-hotpot-customer' || github.event_name == 'workflow_dispatch' && inputs.app == 'customer') && 'production-customer-pwa' || 'production-admin-pwa' }}
+    # No Environment reviewer: NPP-style single owner command on protected main.
+    # App-specific project identity resolved from repository variables below.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_PROJECT_ID: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/deploy-hotpot-customer' || github.event_name == 'workflow_dispatch' && inputs.app == 'customer') && vars.VERCEL_CUSTOMER_PROJECT_ID || vars.VERCEL_ADMIN_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
       TARGET_APP: ${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/deploy-hotpot-customer' && 'customer' || 'admin') || inputs.app }}
@@ -67,7 +67,9 @@ jobs:
           else
             test "$CONFIRM" = "DEPLOY_PWA"
           fi
-          test "$ENABLE_RELEASES" = "true" || { echo "::error::PWA release is locked until the target is configured."; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            test "$ENABLE_RELEASES" = "true" || { echo "::error::Manual PWA release is disabled."; exit 1; }
+          fi
           [[ "$TARGET_APP" == customer || "$TARGET_APP" == admin ]]
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch -q origin main
