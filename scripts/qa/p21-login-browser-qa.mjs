@@ -85,6 +85,22 @@ try {
   const code = await getCode(email);
   await page.getByRole("textbox", { name: "Mã xác minh (6 số)" }).fill(code);
   await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).click();
+  try {
+    await page.getByRole("tab", { name: "Tài khoản" }).waitFor({ timeout: 10000 });
+  } catch (error) {
+    // Surface only HTTP statuses and generic UI labels; never log passwords, email, OTP or JWT.
+    console.error("Signup API statuses", JSON.stringify(responses));
+    console.error("Signup visible alerts", JSON.stringify(
+      (await page.locator('[role="alert"]').allTextContents()).map(v => v.slice(0, 140)),
+    ));
+    console.error("Signup page controls", JSON.stringify({
+      confirmButton: await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).count(),
+      loginTabs: await page.getByRole("tab").count(),
+      headingCount: await page.getByText("Xác minh email", { exact: true }).count(),
+    }));
+    await page.screenshot({ path: evidence + "/auth-confirm-debug.png", fullPage: true });
+    throw error;
+  }
   await page.getByRole("tab", { name: "Tài khoản" }).click();
   await page.getByText("Đã đăng nhập · CUSTOMER").waitFor({ timeout: 15000 });
   assert.ok(responses.some(x => x.path === "/auth/register/request-code" && x.status === 201));
