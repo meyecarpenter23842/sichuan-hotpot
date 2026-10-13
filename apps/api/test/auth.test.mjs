@@ -10,17 +10,28 @@ const { PrismaClient } = require("@prisma/client");
 const { AppModule } = require("../dist/app.module.js");
 const { configureApp } = require("../dist/bootstrap.js");
 const { GoogleTokenVerifier } = require("../dist/auth/google-token.verifier.js");
+const { VerificationMailSender } = require("../dist/auth/verification-mail.sender.js");
 
 process.env.AUTH_JWT_SECRET = "test-key-not-production-1234567890-abcd-ONLY";
 process.env.CORS_ALLOWED_ORIGINS = "https://customer.example.test,http://localhost:8081";
 let app;
 let db;
+const capturedMail = new Map();
+async function signup(client, username, password, email = "user" + randomUUID().replaceAll("-", "") + "@example.test") {
+  const requested = await client.post("/auth/register/request-code").send({ username, email, password }).expect(201);
+  assert.equal(requested.body.status, "sent");
+  const code = capturedMail.get(email);
+  assert.match(code ?? "", /^[0-9]{6}$/);
+  const result = await client.post("/auth/register/confirm-code").send({ email, code }).expect(201);
+  return { ...result, email, code };
+}
 before(async () => {
   assert.ok(process.env.DATABASE_URL, "CI requires disposable Postgres");
   app = await NestFactory.create(AppModule, { logger: false });
   configureApp(app);
   await app.init();
   db = new PrismaClient();
+  app.get(VerificationMailSender).sendCode = async (to, code) => { capturedMail.set(to, code); };
 });
 after(async () => {
   if (app) await app.close();
@@ -64,10 +75,8 @@ test("guest private endpoint rejects absent and forged JWT", async () => {
 test("register username, protect password, login, enforce branch role, revoke/rotate sessions", async () => {
   const client = supertest(app.getHttpServer());
   const name = "u" + randomUUID().replaceAll("-", "").slice(0, 15);
-  const password = "Secure-test-passphrase-2026!!";
-  const created = await client.post("/auth/register")
-    .send({ username: "  " + name.toUpperCase() + " ", password })
-    .expect(201);
+  const password = "lauxuyen";
+  const created = await signup(client, "  " + name.toUpperCase() + " ", password);
   assert.equal(typeof created.body.accessToken, "string");
   assert.equal(typeof created.body.refreshToken, "string");
   assert.equal(created.body.accessTokenExpiresInSeconds, 900);
@@ -80,7 +89,7 @@ test("register username, protect password, login, enforce branch role, revoke/ro
   assert.ok(cred.passwordHash.startsWith("$argon2id$"));
   assert.ok(!cred.passwordHash.includes(password));
 
-  await client.post("/auth/register").send({ username: name, password }).expect(409);
+  await client.post("/auth/register/request-code").send({ username: name, email: "another" + randomUUID().replaceAll("-", "") + "@example.test", password }).expect(409);
   await client.post("/auth/login").send({ username: name, password: "wrong" }).expect(401);
   const login = await client.post("/auth/login").send({ username: name.toUpperCase(), password }).expect(201);
   const bearer = "Bearer " + login.body.accessToken;
@@ -109,15 +118,18 @@ test("register username, protect password, login, enforce branch role, revoke/ro
 
 test("registration refuses bad inputs and password mismatch", async () => {
   const client = supertest(app.getHttpServer());
-  await client.post("/auth/register").send({ username: "xy", password: "a".repeat(20) }).expect(400);
-  await client.post("/auth/register").send({ username: "good", password: "short" }).expect(400);
-  await client.post("/auth/register").send({ username: "good", password: "a".repeat(20), role: "OWNER" }).expect(400);
+  const email = "someone@example.test";
+  await client.post("/auth/register/request-code").send({ username: "xy", email, password: "lauxuyen" }).expect(400);
+  await client.post("/auth/register/request-code").send({ username: "good", email, password: "short" }).expect(400);
+  await client.post("/auth/register/request-code").send({ username: "good", email, password: "a".repeat(12) }).expect(400);
+  await client.post("/auth/register/request-code").send({ username: "good", email, password: "lauxuyen", role: "OWNER" }).expect(400);
+  await client.post("/auth/register").send({ username: "good", password: "lauxuyen" }).expect(404);
 });
 
 test("concurrent refresh uses single-winner rotation", async () => {
   const client = supertest(app.getHttpServer());
   const name = "r" + randomUUID().replaceAll("-", "").slice(0, 15);
-  const session = await client.post("/auth/register").send({ username: name, password: "strong-Test-2026-Password" }).expect(201);
+  const session = await signup(client, name, "lauxuyen");
   const responses = await Promise.all(
     [0, 1].map(() => client.post("/auth/refresh").send({ refreshToken: session.body.refreshToken })),
   );
@@ -165,8 +177,8 @@ test("all five roles enforce global owner and branch-scoped manager access", asy
   for (const role of ["OWNER", "MANAGER", "KITCHEN", "DRIVER", "CUSTOMER"]) {
     const name = "role" + randomUUID().replaceAll("-", "").slice(0, 12);
     // Bypass HTTP registration only for fixture setup, not authorization.
-    const tokens = await auth.register(name, "Roles-test-passphrase-2026!");
-    const bearer = "Bearer " + tokens.accessToken;
+    const tokens = await signup(client, name, "lauxuyen");
+    const bearer = "Bearer " + tokens.body.accessToken;
     const principal = await auth.principal(bearer);
     await db.user.update({ where: { id: principal.id }, data: { role } });
     await client.get("/auth/admin/" + branch.id).set("Authorization", bearer)
@@ -184,13 +196,9 @@ test("all five roles enforce global owner and branch-scoped manager access", asy
 
 test("customer saved addresses: validate, persist with phone, isolate users and delete safely", async () => {
   const client = supertest(app.getHttpServer());
-  const pass = "Address-strong-password-2026!";
-  const a = await client.post("/auth/register").send({
-    username: "a" + randomUUID().replaceAll("-", "").slice(0, 18), password: pass,
-  }).expect(201);
-  const b = await client.post("/auth/register").send({
-    username: "b" + randomUUID().replaceAll("-", "").slice(0, 18), password: pass,
-  }).expect(201);
+  const pass = "lauxuyen";
+  const a = await signup(client, "a" + randomUUID().replaceAll("-", "").slice(0, 18), pass);
+  const b = await signup(client, "b" + randomUUID().replaceAll("-", "").slice(0, 18), pass);
   const authA = "Bearer " + a.body.accessToken;
   const authB = "Bearer " + b.body.accessToken;
   await client.get("/customer/addresses").expect(401);
@@ -216,6 +224,42 @@ test("customer saved addresses: validate, persist with phone, isolate users and 
   await client.delete("/customer/addresses/" + one.body.id).set("Authorization", authA).expect(200);
   const finalList = await client.get("/customer/addresses").set("Authorization", authA).expect(200);
   assert.deepEqual(finalList.body.addresses.map(x => x.id), [two.body.id]);
+});
+
+test("email registration requires a valid six-digit code and enforces replay/attempt bounds", async () => {
+  const client = supertest(app.getHttpServer());
+  const email = "test" + randomUUID().replaceAll("-", "") + "@example.test";
+  const username = "test" + randomUUID().replaceAll("-", "").slice(0, 17);
+  await client.post("/auth/register/request-code").send({ username, email, password: "123456" }).expect(201);
+  assert.equal(await db.localCredential.count({ where: { verifiedEmail: email } }), 0);
+  await client.post("/auth/register/confirm-code").send({ email, code: "000000" }).then(async res => {
+    // If by rare chance generated code is zero, use a different invalid code.
+    if (capturedMail.get(email) === "000000") return;
+    assert.equal(res.status, 400);
+  });
+  const code = capturedMail.get(email);
+  await client.post("/auth/register/confirm-code").send({ email, code }).expect(201);
+  await client.post("/auth/register/confirm-code").send({ email, code }).expect(400);
+  const cred = await db.localCredential.findUnique({ where: { verifiedEmail: email } });
+  assert.equal(cred?.normalizedUsername, username);
+  await client.post("/auth/register/request-code").send({ username: "other", email, password: "123456" }).expect(409);
+});
+
+test("password recovery hides email existence, revokes sessions, and never allows code replay", async () => {
+  const client = supertest(app.getHttpServer());
+  const email = "recover" + randomUUID().replaceAll("-", "") + "@example.test";
+  const username = "recover" + randomUUID().replaceAll("-", "").slice(0, 17);
+  const initial = await signup(client, username, "moi12345", email);
+  const missing = "absent" + randomUUID().replaceAll("-", "") + "@example.test";
+  const response = await client.post("/auth/password/request-code").send({ email: missing }).expect(201);
+  assert.equal(response.body.status, "sent");
+  await client.post("/auth/password/request-code").send({ email }).expect(201);
+  const code = capturedMail.get(email);
+  await client.post("/auth/password/reset").send({ email, code, password: "newpass1" }).expect(201);
+  await client.post("/auth/password/reset").send({ email, code, password: "another1" }).expect(400);
+  await client.get("/auth/me").set("Authorization", "Bearer " + initial.body.accessToken).expect(401);
+  await client.post("/auth/login").send({ username, password: "moi12345" }).expect(401);
+  await client.post("/auth/login").send({ username, password: "newpass1" }).expect(201);
 });
 
 test("login bounds untrusted inputs before hashing and database lookup", async () => {
