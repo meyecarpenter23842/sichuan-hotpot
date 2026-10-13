@@ -300,6 +300,7 @@ model LocalCredential {
   userId             String   @unique @db.Uuid
   normalizedUsername String   @unique @db.VarChar(32)
   passwordHash       String   @db.VarChar(255)
+  verifiedEmail      String?  @unique @db.VarChar(254)
   createdAt          DateTime @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime @updatedAt @db.Timestamptz(6)
   user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -315,4 +316,26 @@ model AuthSession {
   user             User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, expiresAt])
+}
+
+enum EmailChallengePurpose {
+  REGISTER
+  RESET_PASSWORD
+}
+
+model EmailChallenge {
+  id                  String                @id @default(uuid()) @db.Uuid
+  email               String                @db.VarChar(254)
+  purpose             EmailChallengePurpose
+  codeHash            String                @db.VarChar(64)
+  normalizedUsername  String?               @db.VarChar(32)
+  pendingPasswordHash String?               @db.VarChar(255)
+  expiresAt           DateTime              @db.Timestamptz(6)
+  createdAt           DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime              @updatedAt @db.Timestamptz(6)
+  usedAt              DateTime?             @db.Timestamptz(6)
+  attempts            Int                   @default(0)
+
+  @@unique([email, purpose])
+  @@index([expiresAt])
 }

@@ -4,10 +4,16 @@ export function usernameError(username: string): string | null {
   }
   return null;
 }
+export function emailError(email: string): string | null {
+  if (email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return "Nhập địa chỉ email hợp lệ.";
+  }
+  return null;
+}
 export function passwordError(password: string, register: boolean): string | null {
   if (!password) return "Vui lòng nhập mật khẩu.";
-  if (register && (password.length < 12 || password.length > 128)) {
-    return "Mật khẩu mới phải dài 12–128 ký tự.";
+  if (register && (password.length < 6 || password.length > 8)) {
+    return "Mật khẩu phải dài 6–8 ký tự, không bắt buộc ký tự đặc biệt.";
   }
   return null;
 }

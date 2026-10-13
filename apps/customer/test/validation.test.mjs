@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const raw = readFileSync(new URL("../src/validation.ts", import.meta.url), "utf8");
 test("input validation source preserves Vietnamese requirements and never hardcodes a shipping fee", () => {
-  assert.match(raw, /Mật khẩu mới phải dài 12/);
+  assert.match(raw, /Mật khẩu phải dài 6–8/);
   assert.match(raw, /tọa độ GPS/);
   assert.doesNotMatch(raw, /shipFee|deliveryFeeVnd\s*=/);
 });
@@ -15,13 +15,14 @@ test("customer API adapter does not contain a fabricated success response", () =
   assert.doesNotMatch(code, /mockOrder|fakeOrder/);
 });
 
-test("login references exact owner R2 key and real backend auth flow", () => {
+test("login references exact owner R2 key and backend auth flow", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /r2\.dev\/system-image\/login-hero\.png/);
-  assert.match(app, /"\/auth\/google"/);
+  const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");
+  assert.match(auth, /r2\.dev\/system-image\/login-hero\.png/);
+  assert.match(auth, /"\/auth\/google"/);
   assert.match(app, /"\/auth\/me"/);
-  assert.match(app, /loginHeroFailed/);
-  assert.match(app, /Xem thực đơn mà không cần đăng nhập/);
+  assert.match(auth, /imageFailed/);
+  assert.match(auth, /Xem thực đơn mà không cần đăng nhập/);
 });
 
 test("P2.2 uses real modifier IDs/option groups without trusting prices", () => {
@@ -45,4 +46,19 @@ test("P2.2 option selection enforces required, max and unavailable options", asy
   assert.match(optionSelectionError(groups, ["mild", "hot"]) ?? "", /Chọn quá/);
   assert.match(optionSelectionError(groups, ["gone"]) ?? "", /hết hàng/);
   assert.match(optionSelectionError(groups, ["unknown"]) ?? "", /không hợp lệ/);
+});
+
+test("login-first responsive UI and red-white PWA viewport contract", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");
+  const pwa = readFileSync(new URL("../scripts/lock-pwa-viewport.mjs", import.meta.url), "utf8");
+  assert.match(app, /useState<Screen>\("login"\)/);
+  assert.match(app, /screen === "login"/);
+  assert.match(auth, /loginNoScroll/);
+  assert.match(auth, /Logo Google nhiều màu/);
+  assert.match(auth, /register\/request-code/);
+  assert.match(auth, /password\/reset/);
+  assert.match(pwa, /user-scalable=no/);
+  assert.match(pwa, /maximum-scale=1/);
+  assert.doesNotMatch(app, /#FFF7EB|#FFF9F1|#FFF8F0/);
 });

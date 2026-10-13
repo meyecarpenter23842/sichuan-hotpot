@@ -6,7 +6,7 @@
     "version": "0.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#FFF7EB",
+    "backgroundColor": "#FFFFFF",
     "newArchEnabled": true,
     "ios": { "supportsTablet": true },
     "android": {
@@ -19,7 +19,7 @@
       "bundler": "metro",
       "output": "single",
       "themeColor": "#AD282A",
-      "backgroundColor": "#FFF7EB"
+      "backgroundColor": "#FFFFFF"
     },
     "plugins": [
       ["expo-location", { "locationWhenInUsePermission": "Cho phép Sichuan Hotpot dùng vị trí để hỗ trợ địa chỉ giao hàng." }],

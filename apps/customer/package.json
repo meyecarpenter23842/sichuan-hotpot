@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test test/*.test.mjs",
-    "build": "expo export --platform web --output-dir dist"
+    "build": "expo export --platform web --output-dir dist && node scripts/lock-pwa-viewport.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
