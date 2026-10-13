@@ -33,7 +33,7 @@ jobs:
       VPS_HOST: ${{ vars.VPS_HOST }}
       VPS_PORT: ${{ vars.VPS_PORT }}
       VPS_USER: ${{ vars.VPS_USER }}
-      VPS_KNOWN_HOSTS: ${{ vars.VPS_HOST }}S
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
       VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
     steps:
       - uses: actions/checkout@v4
