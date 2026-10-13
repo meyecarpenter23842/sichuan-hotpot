@@ -81,10 +81,12 @@ function Notice({ message, error = false }: { message: string; error?: boolean }
 }
 
 function IconTile({ name }: { name: string }) {
-  const tea = /trà|tea|sữa/i.test(name);
+  const type: HomeCategoryName = /trà|tea|sữa|drink/i.test(name) ? "milkTea"
+    : /combo|set/i.test(name) ? "combo"
+    : /topping|rau|nấm/i.test(name) ? "topping" : "hotpot";
   return (
-    <View style={[styles.iconTile, tea && styles.iconTileTea]}>
-      <HotpotNavIcon name={tea ? "categories" : "hotpot"} active size={32} />
+    <View style={[styles.iconTile, type === "milkTea" && styles.iconTileTea]}>
+      <HomeCategoryIcon name={type} size={52} />
     </View>
   );
 }
@@ -492,7 +494,7 @@ function CustomerApp() {
                 <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
                   style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
                 <View style={styles.homeBannerShade}>
-                  <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\\n"}& Trà Sữa</Text>
+                  <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
                   <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
                   <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
                 </View>
@@ -970,7 +972,7 @@ const styles = StyleSheet.create({
   homeBannerImage: { position: "absolute", width: "100%", height: "100%" },
   homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 18,
     backgroundColor: "rgba(47, 2, 0, 0.19)", gap: 7 },
-  homeBannerTitle: { fontSize: 24, lineHeight: 30, fontWeight: "900", fontStyle: "italic",
+  homeBannerTitle: { fontSize: typeScale.hero, lineHeight: 30, fontWeight: "900", fontStyle: "italic",
     color: "#FFF0D4", maxWidth: "80%" },
   homeBannerCaption: { color: "#FFF7E9", fontSize: typeScale.small, fontWeight: "700" },
   homeBannerCta: { alignSelf: "flex-start", backgroundColor: "#FFE8BE",
