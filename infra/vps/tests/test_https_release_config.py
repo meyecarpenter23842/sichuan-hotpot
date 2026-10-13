@@ -30,6 +30,12 @@ class HttpsHostTests(unittest.TestCase):
              patch.object(api.Path,"read_text",return_value=source):
             self.assertEqual(api.find_sites(),"api.hotpot.example")
 
+    def test_public_ip_https_host_supported(self):
+        with patch.object(api.glob,"glob",side_effect=[["/etc/nginx/sites-enabled/hotpot"],[]]),\
+             patch.object(api.Path,"is_file",return_value=True),\
+             patch.object(api.Path,"read_text",return_value=self.site("132.145.103.89")):
+            self.assertEqual(api.find_sites(),"132.145.103.89")
+
     def test_skip_http_only_and_unrelated_service(self):
         with patch.object(api.glob, "glob",side_effect=[["/etc/nginx/sites-enabled/http"],[]]),\
              patch.object(api.Path,"is_file",return_value=True),\
@@ -38,7 +44,7 @@ class HttpsHostTests(unittest.TestCase):
                 api.find_sites()
 
     def test_placeholder_and_wildcards_rejected(self):
-        for host in ("API_DOMAIN","api.example.com","*.example.com","127.0.0.1"):
+        for host in ("API_DOMAIN","api.example.com","*.example.com","127.0.0.1","192.168.1.7"):
             with self.subTest(host=host), \
                  patch.object(api.glob,"glob",side_effect=[["/etc/nginx/sites-enabled/hotpot"],[]]),\
                  patch.object(api.Path,"is_file",return_value=True),\
