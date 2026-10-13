@@ -23,6 +23,8 @@ url = urllib.parse.urlsplit(os.environ.get('DATABASE_URL', ''))
 assert url.hostname == '127.0.0.1' and url.username == 'hotpot_ci'
 assert url.path == '/hotpot_ci' and url.password == 'hotpot_ci_only'
 assert os.environ.get('GITHUB_ACTIONS') == 'true' and os.geteuid() == 0
+# Exercise the same restrictive umask used by the installed root helper.
+os.umask(0o077)
 root = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('db', root / 'infra/vps/hotpot-db-manual.py')
 db = importlib.util.module_from_spec(spec)
@@ -71,6 +73,8 @@ with tempfile.TemporaryDirectory(prefix='hotpot-ci-drill-') as directory:
     subprocess.run(['useradd', '--system', '--user-group', '--shell', '/usr/sbin/nologin', 'hotpot-build'], check=True)
     home = Path('/var/lib/sichuan-hotpot/build')
     home.mkdir(parents=True, exist_ok=True)
+    # Match the provisioned VPS parent: root owned, traversable, not listable.
+    os.chmod(home.parent, 0o711)
     builder = pwd.getpwnam('hotpot-build')
     os.chown(home, builder.pw_uid, builder.pw_gid)
     identity = original_call(['/usr/bin/age-keygen'])

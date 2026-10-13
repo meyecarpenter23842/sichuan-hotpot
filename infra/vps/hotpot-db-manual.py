@@ -266,6 +266,9 @@ def migration(sha, digest, backup_id, apply=False):
     proof['consumed'] = True
     proof_path.write_text(json.dumps(proof))
     WORK.mkdir(mode=0o711, exist_ok=True)
+    require(not WORK.is_symlink() and WORK.stat().st_uid == 0, 'unsafe_work_directory')
+    # umask 077 reduces mkdir(0711) to 0700; the builder needs absolute-path traversal.
+    os.chmod(WORK, 0o711)
     temporary = Path(tempfile.mkdtemp(prefix=sha + '-', dir=WORK))
     for name, data in files.items():
         target = temporary / name
@@ -275,6 +278,7 @@ def migration(sha, digest, backup_id, apply=False):
     build_env = {'PATH': '/usr/bin:/bin', 'HOME': '/var/lib/sichuan-hotpot/build',
                  'npm_config_cache': '/var/lib/sichuan-hotpot/build/cache'}
     call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/npm', 'ci',
+          '--workspace=apps/api', '--workspace=packages/shared', '--include-workspace-root',
           '--ignore-scripts', '--no-audit', '--no-fund'], env=build_env, cwd=temporary)
     # Download/prepare Prisma engines while the builder can still write modules.
     call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/node',
@@ -282,7 +286,7 @@ def migration(sha, digest, backup_id, apply=False):
           str(temporary / 'apps/api/prisma/schema.prisma')],
          env=dict(build_env, DATABASE_URL='postgresql://unused:unused@127.0.0.1:5432/unused'), cwd=temporary)
     call(['chown', '-R', 'root:hotpot-build', str(temporary)])
-    call(['chmod', '-R', 'g-w,o-rwx', str(temporary)])
+    call(['chmod', '-R', 'g+rX,g-w,o-rwx', str(temporary)])
     # mkdtemp's 0700 would otherwise prevent the non-root executor reading source.
     os.chmod(temporary, 0o750)
     require(approved['window_start'] <= int(time.time()) < approved['window_end']
@@ -336,6 +340,8 @@ def stage(sha, digest):
     require(hashlib.sha256(data).hexdigest() == digest, 'source_digest_mismatch')
     release_module().archive_files(data)
     WORK.mkdir(mode=0o711, exist_ok=True)
+    require(not WORK.is_symlink() and WORK.stat().st_uid == 0, 'unsafe_work_directory')
+    os.chmod(WORK, 0o711)
     directory = WORK / 'sources'
     directory.mkdir(mode=0o700, exist_ok=True)
     destination = directory / (sha + '.tgz')
