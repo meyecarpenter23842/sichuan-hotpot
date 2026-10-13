@@ -37,11 +37,9 @@ jobs:
        (github.event.comment.body == '/backup-hotpot' ||
         github.event.comment.body == '/migrate-hotpot'))
     runs-on: ubuntu-latest
-    # Reuse the already configured SSH credential; do not copy private keys.
-    # Existing Environment SSH key is reused; owners can remove repeat reviewers
-    # in Settings once, without copying or rotating private keys.
-    # Owner-only operational command; no Environment reviewer on every run.
-    # Repository-scoped credentials required; do not read secrets from PR jobs.
+    # Existing environment-scoped VPS credentials remain here. To avoid a second
+    # manual approval, owner disables Required reviewers ONCE in GitHub Settings.
+    environment: production-api
     timeout-minutes: 25
     env:
       OPERATION: ${{ inputs.operation }}
