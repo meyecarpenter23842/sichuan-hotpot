@@ -36,7 +36,7 @@ try {
     const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     page.on("pageerror", e => failures.push(width + "px: " + e.message));
-    await page.goto(web, { waitUntil: "networkidle", timeout: 30000 });
+    await page.goto(web, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.getByText("Đăng nhập", { exact: true }).first().waitFor();
     assert.equal(await page.getByRole("tab", { name: "Tôi" }).count(), 0, "global tab visible on login");
     assert.equal(await page.getByRole("button", { name: "Tiếp tục với Google" }).isDisabled(), true);
@@ -91,7 +91,7 @@ try {
   const username = "qa" + randomUUID().replaceAll("-", "").slice(0, 16);
   const email = "qa" + randomUUID().replaceAll("-", "") + "@example.test";
   const password = "lauxuyen";
-  await page.goto(web, { waitUntil: "networkidle" });
+  await page.goto(web, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.getByRole("button", { name: "Đăng ký" }).click();
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
   await page.getByRole("textbox", { name: "Email" }).fill(email);

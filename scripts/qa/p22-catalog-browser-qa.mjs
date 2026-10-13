@@ -47,7 +47,8 @@ try {
   page.on("response", r => {
     if (r.url().startsWith(api + "/")) requests.push({ path: new URL(r.url()).pathname, status: r.status() });
   });
-  await page.goto(web, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(web, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).waitFor();
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   // Login-first now routes guests to Home; branch selectors live on the Menu tab.
   await page.getByRole("tab", { name: "Thực đơn" }).click();
@@ -68,7 +69,8 @@ try {
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-390.png", fullPage: true });
   console.log("PASS: real PostgreSQL catalogue, mandatory spice, topping, variant and cart");
 
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).waitFor();
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   await page.getByRole("button", { name: /^Giỏ hàng, / }).click();
   await page.getByText(productName).waitFor();
