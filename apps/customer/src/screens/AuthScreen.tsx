@@ -8,6 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 import { apiRequest, type AuthTokens } from "../api";
 import { emailError, passwordError, usernameError } from "../validation";
 import { palette } from "../theme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -21,6 +22,7 @@ const googleWebId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
 const googleAndroidId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
 const googleConfigured = Platform.OS === "web" ? !!googleWebId : !!googleAndroidId;
 const heroUrl = "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png";
+const REMEMBER_USERNAME = "hotpot.login.username.v1";
 const googleG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABmJLR0QA/wD/AP+gvaeTAAAEp0lEQVRYhe2YW2xUVRSGv7VnzrTSKb3R1jQhpsiDlyrCtIDIpRQUxIiRm4QH9EEgaAKBBxNASRNRE5VQE42XxJiIF+4kJIhgbwoqpaACUdQaFFGgYNvQ23Smc87yoU5tyxw6LW0TE/+ns2f9e60vZ++z954t9FG1MwtGocwWdALIWCADSAc8QCNwXkXPgBy2ncgnOeXfnutLfonHpMWYy4cLlgiyAvS+ePsBDujnOLyaWXH8gIDeMFDtjPz7BdkM3BUnhJu+8GBWZpRV/dAvIA0ErMtpng2i+hxgbhAmqjaFZdll1R/0CajuwQnD7bDuB508QCBdpQrPZ5VVF8caQm/PH+pnBlIiYedTYOIgwACIQIpbsNtQKEhEzXuDCANCSWZZ9Rq3Cd7tDV2Zkb8OeDTO1BHgmKpUCdRiVIBslHHApJ65O2FKq9de72vzAmgF/tC5tFeaPpRl6vQKEgTZIl779cyDJy7GMjQU3pMa8VirFNYAqQCqsiW77Nja3pILQLjUWt26J7ck/JPr0Eb1DcYszvqsqqZXbKDugYKREZtdqHyZXd47TCdQe6n1XfhM6pjWAyPRkMfFqhXYwblZld83x5O4s1cgYMmJE+3x+iV4MDHX67HPAjh1CTTvzcW+ktjTV+MLJUxIPXKkoS8w/ZGxjD2ls5ERIvmJn/GNqevqUcGsGAoYAKNIty1BvA5Jc86T9NDviOWAzynNLKuqGAqYDiDRkbECvrvrSV7yy29Ou3fjUMEAGEGGuwU9OS0nby6tOjrYEIXFDanRZy/guvKoSmO8SYs2NS3sD4waeUQ66jzVASROCI296YvosLgzi+zoD5AoCOyOto2o/OVmrtfEe8ftWDi6P4X6IkWzOoFU9Vc3Y4qEczIJDvGkNnoyVkCBXcFcrqr1WOCj+bcNMkfn6m88PvsoYHeLqsX6xgJKWvKIqPGJ6FuBt5dbg0WjyoXos1em0NBeytfAZIAaO4X1jfn8YSf920NkGsPr3kBZgbgcHVQXuRYUkyzou25xY+RsZymAcKm1SuC1fW23sLklj7C6brDbwuGkJ08t3driljyWija1PIzoPldgmF2xwX8Q/jkPWZ72j4625aS91DxmI9c90Mtiy9c6MbBtwTOjjOzZuWin7eYs+HjBJMV5UYyc1LOhW8XxuVkjYW/wq84KXSOBbfNLBFa7A3XTOUX3C6bKEa01tuOI8WQpOg6YBdwZNXraRjPs0tOInX5tFuVQ+bP+WTGBCisKvc2X0ksRmRYnVNwS289NtSvxBvN68PB4xQb/+9F2t+GpnF4ZCbfrIuD0QAOpp5nWnM2E0vbR5Uj9Z2Jy0vauvmvmy6mley8bnzMdOD7QUOAQSt9NW+bWjqboCwdWSei6QADH5u2ts4yZKvDmQCN5gneQUD8PoDpjtP+dnvFe/9vnb58/B+VlukzS/khsPwn18/A1FgHS5IgzvnL98B/7DARAcbEpuP30EpTl2rGAxnv7gYmMwLo6HV9TEWIPAwhhmFu+zn8oJni8iaMav2Nhru04s4HxwFhghHTcD1l03A9dUJEaX0teu9U4tc0bzL+I02VmGMrdYP7Xf1J/AzZyp/maK4iUAAAAAElFTkSuQmCC";
 
 function Action({ label, onPress, secondary = false, disabled = false, children }: {
@@ -37,15 +39,16 @@ function Action({ label, onPress, secondary = false, disabled = false, children 
 }
 
 function Entry({ label, value, onChange, placeholder, secret = false, digits = false, maxLength,
-  autoComplete }: {
+  autoComplete, compact = false, prefix }: {
   label: string; value: string; onChange: (next: string) => void; placeholder: string;
-  secret?: boolean; digits?: boolean; maxLength?: number;
+  secret?: boolean; digits?: boolean; maxLength?: number; compact?: boolean; prefix?: string;
   autoComplete?: "email" | "username" | "current-password" | "new-password" | "one-time-code";
 }) {
   const [visible, setVisible] = useState(false);
-  return <View style={s.field}>
-    <Text style={s.label}>{label}</Text>
-    <View style={s.inputBox}>
+  return <View style={[s.field, compact && s.compactField]}>
+    {!compact && <Text style={s.label}>{label}</Text>}
+    <View style={[s.inputBox, compact && s.compactInputBox]}>
+      {!!prefix && <Text style={s.prefix}>{prefix}</Text>}
       <TextInput style={s.input} value={value} onChangeText={onChange}
         placeholder={placeholder} placeholderTextColor={palette.placeholder}
         accessibilityLabel={label} autoCorrect={false}
@@ -74,10 +77,17 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [imageFailed, setImageFailed] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [googleRequest, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
     webClientId: googleWebId || "unconfigured.apps.googleusercontent.com",
     androidClientId: googleAndroidId || "unconfigured.apps.googleusercontent.com",
   });
+
+  useEffect(() => {
+    AsyncStorage.getItem(REMEMBER_USERNAME)
+      .then(saved => { if (saved) setUsername(saved); })
+      .catch(() => undefined);
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next); setError(""); setInfo(""); setCode(""); setPassword("");
@@ -115,6 +125,11 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
         const tokens = await apiRequest<AuthTokens>("/auth/login", {
           method: "POST", body: { username: username.trim(), password },
         });
+        if (remember) {
+          await AsyncStorage.setItem(REMEMBER_USERNAME, username.trim()).catch(() => undefined);
+        } else {
+          await AsyncStorage.removeItem(REMEMBER_USERNAME).catch(() => undefined);
+        }
         await onAuthenticated(tokens);
       } else if (mode === "register") {
         await apiRequest("/auth/register/request-code", {
@@ -145,12 +160,47 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   }
 
   const login = mode === "login";
+  const loginPanel = <View style={[s.loginSheet, compact && s.loginSheetCompact]}>
+    <Entry label="Tên đăng nhập" value={username} onChange={setUsername}
+      placeholder="Tên đăng nhập" autoComplete="username" maxLength={32} compact prefix="♙" />
+    <Entry label="Mật khẩu" value={password} onChange={setPassword}
+      placeholder="Mật khẩu" secret maxLength={8} autoComplete="current-password" compact prefix="♧" />
+    <View style={s.loginAux}>
+      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }}
+        style={s.remember} onPress={() => setRemember(old => !old)}>
+        <Text style={s.rememberCheck}>{remember ? "☑" : "□"}</Text>
+        <Text style={s.rememberText}>Ghi nhớ tên đăng nhập</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={() => switchMode("forgot")}>
+        <Text style={s.link}>Quên mật khẩu?</Text>
+      </Pressable>
+    </View>
+    {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+    {!!info && <Text accessibilityRole="alert" style={s.info}>{info}</Text>}
+    <Action label={busy ? "Đang xác thực..." : "Đăng nhập"} disabled={busy}
+      onPress={() => void submit()} />
+    <View style={s.divider}><View style={s.rule} /><Text style={s.dividerText}>hoặc</Text><View style={s.rule} /></View>
+    <Action label="Tiếp tục với Google" secondary disabled={!googleConfigured || !googleRequest || busy}
+      onPress={() => { setError(""); void googlePrompt().catch(() => setError("Không mở được Google.")); }}>
+      <Image source={{ uri: googleG }} style={s.googleLogo} accessibilityLabel="Logo Google nhiều màu" />
+    </Action>
+    <Pressable accessibilityRole="button" accessibilityLabel="Đăng ký" style={s.registerPrompt}
+      onPress={() => switchMode("register")}>
+      <Text style={s.registerText}>Chưa có tài khoản? <Text style={s.link}>Tạo tài khoản</Text></Text>
+    </Pressable>
+    <Text style={s.terms}>Bảo vệ thông tin tài khoản và không chia sẻ mật khẩu</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Xem thực đơn mà không cần đăng nhập"
+      style={s.guest} onPress={onGuest}>
+      <Text style={s.guestText}>Xem thực đơn không cần đăng nhập  →</Text>
+    </Pressable>
+  </View>;
+
   const content = <View style={[s.content, compact && s.compactContent]}>
     <Text style={[s.heading, compact && s.headingCompact]}>
       {mode === "login" ? "Đăng nhập" : mode === "register" ? "Tạo tài khoản"
         : mode === "verify" ? "Xác minh email" : mode === "forgot" ? "Quên mật khẩu" : "Đặt lại mật khẩu"}
     </Text>
-    {login || mode === "register" ? (
+    {mode === "register" ? (
       <View style={s.tabs}>
         <Pressable accessibilityRole="button" accessibilityLabel="Đăng nhập" style={[s.tab, login && s.tabSelected]}
           onPress={() => switchMode("login")}><Text style={[s.tabText, login && s.tabTextSelected]}>Đăng nhập</Text></Pressable>
@@ -159,19 +209,17 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
       </View>
     ) : <Text style={s.hint}>{mode === "verify" ? "Nhập mã 6 số đã gửi đến " + email
       : "Dùng email đã xác minh để lấy lại mật khẩu."}</Text>}
-    {(login || mode === "register") && <Entry label="Tên đăng nhập" value={username} onChange={setUsername}
+    {mode === "register" && <Entry label="Tên đăng nhập" value={username} onChange={setUsername}
       placeholder="Tên đăng nhập" autoComplete="username" maxLength={32} />}
     {(mode === "register" || mode === "forgot") && <Entry label="Email" value={email}
       onChange={setEmail} placeholder="vidu@gmail.com" autoComplete="email" maxLength={254} />}
     {(mode === "verify" || mode === "reset") && <Entry label="Mã xác minh (6 số)" value={code}
       onChange={setCode} placeholder="000000" digits maxLength={6} autoComplete="one-time-code" />}
-    {(mode === "login" || mode === "register" || mode === "reset") && <Entry
+    {(mode === "register" || mode === "reset") && <Entry
       label={mode === "reset" ? "Mật khẩu mới" : "Mật khẩu"}
       value={password} onChange={setPassword}
       placeholder={mode === "login" ? "Nhập mật khẩu" : "6–8 ký tự, không yêu cầu ký tự đặc biệt"}
       secret maxLength={8} autoComplete={login ? "current-password" : "new-password"} />}
-    {login && <Pressable style={s.forgot} accessibilityRole="button" onPress={() => switchMode("forgot")}>
-      <Text style={s.link}>Quên mật khẩu?</Text></Pressable>}
     {mode === "register" && <Text style={s.hint}>Mật khẩu 6–8 ký tự bất kỳ. Bắt buộc xác minh email để hoàn tất đăng ký.</Text>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {!!info && <Text accessibilityRole="alert" style={s.info}>{info}</Text>}
@@ -180,32 +228,30 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
         : mode === "forgot" ? "Gửi mã khôi phục" : "Đổi mật khẩu"}
       disabled={busy} onPress={() => void submit()} />
     {busy && <ActivityIndicator color={palette.red} accessibilityLabel="Đang xử lý" />}
-    {login && <>
-      <View style={s.divider}><View style={s.rule} /><Text style={s.dividerText}>hoặc</Text><View style={s.rule} /></View>
-      <Action label="Tiếp tục với Google" secondary disabled={!googleConfigured || !googleRequest || busy}
-        onPress={() => { setError(""); void googlePrompt().catch(() => setError("Không mở được Google.")); }}>
-        <Image source={{ uri: googleG }} style={s.googleLogo} accessibilityLabel="Logo Google nhiều màu" />
-      </Action>
-      {!googleConfigured && <Text style={s.configHint}>Đăng nhập Google đang chờ cấu hình OAuth.</Text>}
-      <Pressable accessibilityRole="button" accessibilityLabel="Xem thực đơn mà không cần đăng nhập"
-        style={s.guest} onPress={onGuest}><Text style={s.guestText}>Xem thực đơn mà không cần đăng nhập  →</Text></Pressable>
-    </>}
     {!login && <Pressable accessibilityRole="button" style={s.back} onPress={() => switchMode(mode === "reset" ? "forgot" : "login")}>
       <Text style={s.link}>← Quay lại {mode === "reset" ? "quên mật khẩu" : "đăng nhập"}</Text>
     </Pressable>}
   </View>;
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <View style={[s.frame, { maxWidth: 510 }]}>
-      <View style={[s.hero, { height: login ? Math.max(92, Math.min(180, height * (veryShort ? 0.17 : 0.21))) : 116 }]}>
+      <View style={[s.hero, { height: login
+        ? Math.min(340, Math.max(184, height * (compact ? 0.36 : 0.39))) : 125 }]}>
         {imageFailed ? <View style={s.heroFallback}><Text style={s.fallbackSymbol}>♨</Text></View>
           : <Image source={{ uri: heroUrl }} style={s.heroImage} resizeMode="cover"
               accessibilityLabel="Ảnh lẩu Tứ Xuyên" onError={() => setImageFailed(true)} />}
         <View style={s.heroOverlay}>
-          <Text style={s.logoTitle}>SICHUAN HOTPOT</Text>
-          <Text style={s.logoSub}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
+          <View>
+            <Text style={s.logoTitle}>♨  LẨU TỨ XUYÊN</Text>
+            <Text style={s.logoSub}>LẨU & TRÀ SỮA</Text>
+          </View>
+          {login && <View style={s.heroWelcome}>
+            <Text style={[s.welcomeTitle, compact && s.welcomeCompact]}>Chào mừng</Text>
+            <Text style={[s.welcomeTitle, compact && s.welcomeCompact]}>trở lại</Text>
+            <Text style={s.welcomeSub}>Đăng nhập để đặt lẩu và trà sữa yêu thích</Text>
+          </View>}
         </View>
       </View>
-      {login ? <View style={s.loginNoScroll}>{content}</View>
+      {login ? <View style={s.loginNoScroll}>{loginPanel}</View>
         : <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
             contentContainerStyle={s.scrolling}>{content}</ScrollView>}
     </View>
@@ -220,11 +266,32 @@ const s = StyleSheet.create({
   heroFallback: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: palette.red },
   fallbackSymbol: { color: palette.white, fontSize: 62 },
   heroOverlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0,
-    justifyContent: "flex-end", paddingHorizontal: 20, paddingBottom: 13,
-    backgroundColor: "rgba(80,0,0,0.36)" },
-  logoTitle: { fontSize: 21, fontWeight: "900", color: palette.white, letterSpacing: 0.8 },
+    justifyContent: "space-between", paddingHorizontal: 19, paddingTop: 15, paddingBottom: 30,
+    backgroundColor: "rgba(49,0,0,0.20)" },
+  logoTitle: { fontSize: 14, fontWeight: "900", color: palette.white, letterSpacing: 0.8 },
   logoSub: { fontSize: 11, fontWeight: "800", color: palette.white, letterSpacing: 1.3 },
-  loginNoScroll: { flex: 1, justifyContent: "center", minHeight: 0 },
+  heroWelcome: { maxWidth: "65%" },
+  welcomeTitle: { color: palette.white, fontSize: 31, lineHeight: 35, fontWeight: "900", fontStyle: "italic" },
+  welcomeCompact: { fontSize: 27, lineHeight: 29 },
+  welcomeSub: { color: palette.white, fontWeight: "700", fontSize: 11, marginTop: 8, lineHeight: 15 },
+  loginNoScroll: { flex: 1, minHeight: 0, marginTop: -17,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: "hidden", backgroundColor: palette.white },
+  loginSheet: { flex: 1, justifyContent: "space-evenly",
+    paddingHorizontal: 21, paddingTop: 11, paddingBottom: 10, gap: 2 },
+  loginSheetCompact: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 5 },
+  compactField: { gap: 0 },
+  compactInputBox: { backgroundColor: palette.graySurface, borderColor: palette.graySurface,
+    minHeight: 43, borderRadius: 10 },
+  prefix: { color: palette.muted, fontSize: 18, paddingLeft: 11 },
+  loginAux: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    minHeight: 27, flexWrap: "wrap" },
+  remember: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 27 },
+  rememberCheck: { color: palette.red, fontSize: 17 },
+  rememberText: { fontSize: 11, color: palette.muted },
+  registerPrompt: { backgroundColor: palette.graySurface, minHeight: 35,
+    borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  registerText: { color: palette.muted, fontSize: 12 },
+  terms: { color: palette.muted, fontSize: 10, textAlign: "center" },
   scrolling: { flexGrow: 1, justifyContent: "center", paddingBottom: 16 },
   content: { width: "100%", paddingHorizontal: 20, gap: 9 },
   compactContent: { gap: 6, paddingHorizontal: 16 },
