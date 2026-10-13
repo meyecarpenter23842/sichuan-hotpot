@@ -92,7 +92,10 @@ export class OrdersService {
     // Quotes are not trusted: this recalculates pricing, active policy, road route
     // and address ownership for each NEW request.
     const quote = await this.quote.calculate(authorization, input);
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // Serializable isolation can abort overlapping first-time checkouts; retry the
+    // full transaction after checking whether another request already committed.
+    const maxAttempts = 8;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         return await db.$transaction(async tx => {
           const existing = await tx.order.findUnique({
@@ -186,15 +189,20 @@ export class OrdersService {
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === "P2002") {
+          if (error.code === "P2002" || error.code === "P2034") {
+            // Unique-key races and PostgreSQL serialization aborts are expected
+            // when several identical requests arrive at once. A committed winner
+            // is authoritative; do not create a second order or change its price.
             const row = await db.order.findUnique({
               where: { customerId_idempotencyKey: key }, select: existingSelect,
             });
             if (row) return this.replay(row, hash, true);
-            throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
-          }
-          if (error.code === "P2034") {
-            if (attempt < 2) continue;
+            if (attempt < maxAttempts - 1) {
+              // Bounded exponential delay allows the winning transaction to
+              // commit before retrying with a new Serializable snapshot.
+              await new Promise(resolve => setTimeout(resolve, Math.min(240, 15 * 2 ** attempt)));
+              continue;
+            }
             throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
           }
         }
