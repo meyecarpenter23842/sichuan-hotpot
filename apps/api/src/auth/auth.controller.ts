@@ -50,28 +50,28 @@ export class AuthController {
 
   @Post("register/request-code")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   requestRegistration(@Body() input: RequestRegistrationInput) {
     return this.auth.requestRegistration(input.username, input.email, input.password);
   }
 
   @Post("register/confirm-code")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   confirmRegistration(@Body() input: ConfirmCodeInput) {
     return this.auth.confirmRegistration(input.email, input.code);
   }
 
   @Post("password/request-code")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   requestPasswordReset(@Body() input: EmailOnlyInput) {
     return this.auth.requestPasswordReset(input.email);
   }
 
   @Post("password/reset")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   resetPassword(@Body() input: PasswordResetInput) {
     return this.auth.resetPassword(input.email, input.code, input.password);
   }
