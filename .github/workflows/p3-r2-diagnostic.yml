@@ -59,12 +59,28 @@ jobs:
           key="p3/probes/$(basename "$temp").txt"
           trap '/usr/bin/rclone deletefile "$remote/$key" >/dev/null 2>&1 || true; rm -rf -- "$temp"' EXIT
           printf 'Hotpot private backup transport probe\n' > "$temp/probe.txt"
-          if /usr/bin/rclone copyto --immutable "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1; then
+          if /usr/bin/rclone copyto --immutable "$temp/probe.txt" "$remote/$key" >/dev/null 2>"$temp/upload-error"; then
             echo "R2_WRITE_IMMUTABLE=PASS"
-          elif /usr/bin/rclone copyto "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1; then
+          elif /usr/bin/rclone copyto "$temp/probe.txt" "$remote/$key" >/dev/null 2>"$temp/upload-error"; then
             echo "R2_WRITE_IMMUTABLE=BLOCKED;R2_WRITE_PLAIN=PASS"
           else
             echo "R2_WRITE_IMMUTABLE=BLOCKED;R2_WRITE_PLAIN=BLOCKED"
+            # Report ONLY allowlisted error names/status numbers. Never emit rclone
+            # stderr, request headers, endpoints, access keys or raw object paths.
+            python3 - "$temp/upload-error" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+          error = Path(sys.argv[1]).read_text(errors="replace")
+          statuses = re.findall(r'(?:StatusCode|status code|HTTP status)\s*[:=]?\s*([1-5][0-9]{2})', error, re.I)
+          names = ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch",
+                   "InvalidRequest", "NotImplemented", "NoSuchBucket", "Forbidden",
+                   "Unauthorized", "InvalidToken", "InvalidArgument",
+                   "OperationAborted", "PreconditionFailed", "RequestTimeTooSkewed",
+                   "EntityTooSmall", "MalformedXML", "SlowDown")
+          print("R2_UPLOAD_HTTP=" + (statuses[-1] if statuses else "UNKNOWN"))
+          print("R2_UPLOAD_S3_CODE=" + next((n for n in names if re.search(re.escape(n), error, re.I)), "UNKNOWN"))
+          PY
             exit 23
           fi
           /usr/bin/rclone copyto "$remote/$key" "$temp/download.txt" >/dev/null 2>&1 || {
