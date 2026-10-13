@@ -48,6 +48,7 @@ try {
     if (r.url().startsWith(api + "/")) requests.push({ path: new URL(r.url()).pathname, status: r.status() });
   });
   await page.goto(web, { waitUntil: "networkidle", timeout: 30000 });
+  await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   await page.getByRole("button", { name: branchName }).click();
   await page.getByRole("button", { name: "Xem món " + productName }).waitFor();
   await page.getByRole("button", { name: "Xem món " + productName }).click();
@@ -66,16 +67,25 @@ try {
   console.log("PASS: real PostgreSQL catalogue, mandatory spice, topping, variant and cart");
 
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   await page.getByRole("tab", { name: "Giỏ hàng" }).click();
   await page.getByText(productName).waitFor();
   console.log("PASS: cart survives reload with modifier selections");
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).click();
   await page.getByRole("button", { name: "Đăng ký" }).click();
   const username = "p22" + randomUUID().replaceAll("-", "").slice(0, 18);
-  const password = "P22-CI-Test-Passphrase-2026";
+  const email = "p22" + randomUUID().replaceAll("-", "") + "@example.test";
+  const password = "lauxuyen";
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
+  await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
-  await page.getByRole("button", { name: "Tạo tài khoản", exact: true }).click();
+  await page.getByRole("button", { name: "Gửi mã đăng ký" }).click();
+  await page.getByText("Xác minh email", { exact: true }).waitFor();
+  const emailResponse = await fetch("http://127.0.0.1:3333/test/inbox?to=" + encodeURIComponent(email));
+  assert.equal(emailResponse.status, 200);
+  const otp = (await emailResponse.json()).code;
+  await page.getByRole("textbox", { name: "Mã xác minh (6 số)" }).fill(otp);
+  await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).click();
   await page.getByText(productName).waitFor();
   await page.getByRole("button", { name: "Thêm địa chỉ giao hàng" }).click();
   await page.getByRole("textbox", { name: "Số điện thoại" }).fill("0912345678");
