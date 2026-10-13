@@ -107,23 +107,101 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Build selected app (no deploy yet)
+      - name: Install dependencies, test target, and pin deployment CLI to the runner
         shell: bash
         run: |
           set -euo pipefail
-          npm ci
-          test -x node_modules/.bin/vercel || { echo "::error::Pin Vercel CLI in workspace before deployment."; exit 1; }
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund 'vercel@50'
+          test -x node_modules/.bin/vercel
           npm run lint --workspace "apps/$TARGET_APP"
           npm run typecheck --workspace "apps/$TARGET_APP"
-          npm test --workspace "apps/$TARGET_APP" -- --runInBand
-          (cd "apps/$TARGET_APP" && npx expo export --platform web --output-dir dist)
-          test -f "apps/$TARGET_APP/dist/index.html"
-      - name: Manually requested Vercel release
+          npm run test --workspace "apps/$TARGET_APP"
+      - name: Fetch production settings BEFORE compiling Expo
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "apps/$TARGET_APP/.vercel"
+          node -e 'const fs=require("node:fs");fs.writeFileSync(process.argv[1],JSON.stringify({orgId:process.env.VERCEL_ORG_ID,projectId:process.env.VERCEL_PROJECT_ID}))' "apps/$TARGET_APP/.vercel/project.json"
+          (
+            cd "apps/$TARGET_APP"
+            ../../node_modules/.bin/vercel env pull .env.production.local \
+              --environment=production --yes --token "$VERCEL_TOKEN" >/dev/null
+          )
+          if [[ "$TARGET_APP" == customer ]]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          import os
+          path=Path("apps/customer/.env.production.local")
+          items=[line.split("=",1)[1].strip().strip("'\"")
+                 for line in path.read_text().splitlines()
+                 if line.startswith("EXPO_PUBLIC_API_BASE_URL=")]
+          if len(items)!=1:
+              raise SystemExit("Customer production API base URL missing or duplicated in Vercel")
+          url=urlsplit(items[0])
+          if url.scheme!="https" or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ("","/"):
+              raise SystemExit("Customer production API must have a valid HTTPS origin")
+          with open(os.environ["GITHUB_ENV"],"a") as out:
+              out.write("PWA_API_ORIGIN="+url.geturl().rstrip("/")+"\n")
+          print("Vercel production API HTTPS origin loaded: PASS")
+          PY
+          fi
+      - name: Verify public API and customer browser CORS before release
+        if: env.TARGET_APP == 'customer'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
+            -o /dev/null "$PWA_API_ORIGIN/health/ready" || {
+            echo "::error::Production API HTTPS /health/ready unavailable; PWA not published."
+            exit 1
+          }
+          curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
+            -X OPTIONS -D "$RUNNER_TEMP/hotpot-cors.txt" -o /dev/null \
+            -H 'Origin: https://sichuan-hotpot-customer.vercel.app' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            "$PWA_API_ORIGIN/auth/login" || {
+            echo "::error::Production API CORS preflight failed; PWA not published."
+            exit 1
+          }
+          grep -Eiq '^access-control-allow-origin: https://sichuan-hotpot-customer\.vercel\.app\r?$' "$RUNNER_TEMP/hotpot-cors.txt" || {
+            echo "::error::Production API does not allow Customer PWA origin in CORS_ALLOWED_ORIGINS."
+            exit 1
+          }
+          echo "Customer API HTTPS and browser CORS: PASS"
+      - name: Compile and inspect selected production Expo Web app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --workspace "apps/$TARGET_APP"
+          test -s "apps/$TARGET_APP/dist/index.html"
+          if [[ "$TARGET_APP" == customer ]]; then
+            grep -FRq "$PWA_API_ORIGIN" "apps/customer/dist/_expo/static/js/web" || {
+              echo "::error::Expo bundle did not embed the approved production API URL."
+              exit 1
+            }
+          fi
+          echo "Production environment embedded and Expo PWA build: PASS"
+      - name: Package exact tested Expo export for Vercel (no remote rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "apps/$TARGET_APP/.vercel/output/static"
+          cp -a "apps/$TARGET_APP/dist/." "apps/$TARGET_APP/.vercel/output/static/"
+          printf '%s\n' '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' \
+            > "apps/$TARGET_APP/.vercel/output/config.json"
+      - name: Owner-requested production release (single app only)
         shell: bash
         run: |
           set -euo pipefail
           cd "apps/$TARGET_APP"
-          ../../node_modules/.bin/vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
-          ../../node_modules/.bin/vercel build --prod --token "$VERCEL_TOKEN"
           ../../node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
-          echo "Release requested for immutable SHA $REQUESTED_SHA; verify deployment health in Vercel."
+          echo "Target $TARGET_APP released from verified main SHA $REQUESTED_SHA"
+      - name: Remove downloaded production environment values
+        if: always()
+        shell: bash
+        run: |
+          rm -f "apps/${TARGET_APP:-customer}/.env.production.local"
