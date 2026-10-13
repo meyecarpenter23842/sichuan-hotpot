@@ -8,6 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 import { apiRequest, type AuthTokens } from "../api";
 import { emailError, passwordError, usernameError } from "../validation";
 import { palette, typeScale } from "../theme";
+import { actionDepth } from "../components/action-depth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -31,8 +32,9 @@ function Action({ label, onPress, secondary = false, disabled = false, children 
 }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [s.action, secondary && s.secondary, disabled && s.disabled,
-      pressed && !disabled && s.pressed]}>
+    style={({ pressed }) => [s.action, secondary ? actionDepth.secondary : actionDepth.primary,
+      secondary && s.secondary, disabled && s.disabled,
+      pressed && !disabled && [s.pressed, actionDepth.pressed]]}>
     {children}
     <Text style={[s.actionText, secondary && s.secondaryText]}>{label}</Text>
   </Pressable>;

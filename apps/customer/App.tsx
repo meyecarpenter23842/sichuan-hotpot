@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable,
+  ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -8,11 +8,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
 import {
-  addCartLine, cartItemCount, setCartQuantity,
+  addCartLine, setCartQuantity,
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
-  apiRequest, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
+  apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
   type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
@@ -20,12 +20,15 @@ import { addressError, optionSelectionError, phoneError, vnd } from "./src/valid
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CheckoutPanel } from "./src/screens/CheckoutPanel";
 import { OrdersScreen } from "./src/screens/OrdersScreen";
+import { PurchasedProductsScreen } from "./src/screens/PurchasedProductsScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { AddressPinMap } from "./src/components/AddressPinMap";
+import { actionDepth } from "./src/components/action-depth";
+import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 
-type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
+type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
@@ -33,6 +36,37 @@ const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
+const WEB_SESSION_MARKER = "hotpot.auth.pwa.present.v1";
+async function writeRefresh(token: string): Promise<void> {
+  if (Platform.OS === "web") {
+    await startBrowserSession(token);
+    await AsyncStorage.setItem(WEB_SESSION_MARKER, "1").catch(() => undefined);
+  } else await SecureStore.setItemAsync(REFRESH_KEY, token);
+}
+async function clearRefresh(): Promise<void> {
+  if (Platform.OS === "web") {
+    // Never retain the local signed-in marker after a failed/offline logout.
+    await AsyncStorage.multiRemove([REFRESH_KEY, WEB_SESSION_MARKER]).catch(() => undefined);
+    await endBrowserSession();
+  } else {
+    await SecureStore.deleteItemAsync(REFRESH_KEY);
+  }
+}
+async function refreshCredentials(): Promise<AuthTokens | null> {
+  if (Platform.OS === "web") {
+    // This non-secret marker avoids hammering /refresh for anonymous visitors.
+    if (await AsyncStorage.getItem(WEB_SESSION_MARKER).catch(() => null) !== "1") return null;
+    const token = await refreshBrowserSession();
+    return { ...token, refreshToken: "" };
+  }
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+  if (!refreshToken) return null;
+  const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
+    method: "POST", body: { refreshToken },
+  });
+  await writeRefresh(tokens.refreshToken);
+  return tokens;
+}
 const brand = palette.red;
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
 
@@ -48,8 +82,9 @@ function Button({ label, onPress, disabled = false, alternate = false }: {
       accessibilityState={{ disabled }}
       disabled={disabled} onPress={onPress}
       style={({ pressed }) => [
-        styles.button, alternate && styles.buttonOutline,
-        disabled && styles.buttonDisabled, pressed && !disabled && styles.pressed,
+        styles.button, alternate ? actionDepth.secondary : actionDepth.primary,
+        alternate && styles.buttonOutline, disabled && styles.buttonDisabled,
+        pressed && !disabled && [styles.pressed, actionDepth.pressed],
       ]}
     >
       <Text style={[styles.buttonText, alternate && styles.buttonOutlineText]}>{label}</Text>
@@ -155,6 +190,14 @@ function CustomerApp() {
   const [notice, setNotice] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [principal, setPrincipal] = useState<Principal | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authRestoreError, setAuthRestoreError] = useState("");
+  const [authRestoreAttempt, setAuthRestoreAttempt] = useState(0);
+  const [accessExpiresAt, setAccessExpiresAt] = useState(0);
+  const authEpoch = useRef(0);
+  const renewing = useRef(false);
+  const refreshFailures = useRef(0);
+  const [retryAt, setRetryAt] = useState(0);
   const [loginReturnTo, setLoginReturnTo] = useState<"home" | "cart" | "account">("home");
   const [address, setAddress] = useState<AddressDraft>({
     label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
@@ -166,6 +209,8 @@ function CustomerApp() {
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
   const [addressErrorText, setAddressErrorText] = useState("");
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const addressBeforeModal = useRef<AddressDraft | null>(null);
 
   const refreshCatalogue = useCallback(async (requestedBranch?: string) => {
     setCatalogLoading(true);
@@ -261,54 +306,139 @@ function CustomerApp() {
   }, [cart, cartLoaded]);
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    let mounted = true;
+    let active = true;
+    const epoch = authEpoch.current;
     async function restoreSession() {
+      setAuthReady(false);
+      if (Platform.OS === "web") await AsyncStorage.removeItem(REFRESH_KEY).catch(() => undefined);
+      setAuthRestoreError("");
       try {
-        const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
-        if (!refreshToken) return;
-        const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
-          method: "POST", body: { refreshToken },
-        });
-        await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
-        const user = await apiRequest<Principal>("/auth/me", {
+        const tokens = await refreshCredentials();
+        if (!tokens) return;
+        const who = await apiRequest<Principal>("/auth/me", {
           accessToken: tokens.accessToken,
         });
-        if (mounted) { setAccessToken(tokens.accessToken); setPrincipal(user); }
-      } catch {
-        await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
+        if (who.role !== "CUSTOMER") throw new Error("Tài khoản không thuộc ứng dụng khách hàng.");
+        if (active && epoch === authEpoch.current) {
+          setAccessToken(tokens.accessToken);
+          setPrincipal(who);
+          setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+          setScreen("home");
+        }
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 401) {
+          // Missing browser cookie is the ordinary signed-out state.
+          if (Platform.OS === "web") {
+            await AsyncStorage.removeItem(WEB_SESSION_MARKER).catch(() => undefined);
+          } else await clearRefresh().catch(() => undefined);
+        } else if (active) {
+          setAuthRestoreError(error instanceof Error ? error.message : "Không thể khôi phục phiên.");
+        }
+      } finally {
+        if (active && epoch === authEpoch.current) setAuthReady(true);
       }
     }
     void restoreSession();
-    return () => { mounted = false; };
-  }, []);
+    return () => { active = false; };
+  }, [authRestoreAttempt]);
 
   const saveLogin = useCallback(async (tokens: AuthTokens) => {
     const who = await apiRequest<Principal>("/auth/me", { accessToken: tokens.accessToken });
     if (who.role !== "CUSTOMER") throw new Error("Tài khoản này không thuộc ứng dụng khách hàng.");
-    if (Platform.OS !== "web") await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
+    await writeRefresh(tokens.refreshToken);
+    authEpoch.current += 1;
+    refreshFailures.current = 0;
+    setRetryAt(0);
+    setAuthRestoreError("");
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
+    setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
     setScreen(loginReturnTo);
     setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
 
+  const renewSession = useCallback(async () => {
+    if (renewing.current) return;
+    renewing.current = true;
+    const epoch = authEpoch.current;
+    try {
+      const tokens = await refreshCredentials();
+      if (!tokens || epoch !== authEpoch.current) return;
+      refreshFailures.current = 0;
+      setRetryAt(0);
+      setAccessToken(tokens.accessToken);
+      setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+    } catch (error) {
+      if (epoch !== authEpoch.current) return;
+      if (error instanceof ApiRequestError && error.status === 401) {
+        await clearRefresh().catch(() => undefined);
+        setAccessToken("");
+        setPrincipal(null);
+        setAccessExpiresAt(0);
+        setScreen("login");
+        setNotice("Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+      } else {
+        // Retain the credential. Exponential retry prevents a 1-second refresh storm.
+        const delay = Math.min(300_000, 15_000 * 2 ** Math.min(refreshFailures.current, 5));
+        refreshFailures.current += 1;
+        setRetryAt(Date.now() + delay);
+        setNotice("Mạng gián đoạn. Ứng dụng sẽ thử kết nối lại.");
+      }
+    } finally {
+      renewing.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken || !accessExpiresAt) return;
+    const refresh = () => {
+      if (Date.now() + 60_000 >= accessExpiresAt && Date.now() >= retryAt) {
+        void renewSession();
+      }
+    };
+    const scheduleAt = Math.max(retryAt, accessExpiresAt - 60_000);
+    const timeout = setTimeout(() => { void renewSession(); },
+      Math.max(1000, scheduleAt - Date.now()));
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") refresh();
+    });
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refresh);
+    }
+    return () => {
+      clearTimeout(timeout);
+      subscription.remove();
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", refresh);
+      }
+    };
+  }, [accessToken, accessExpiresAt, retryAt, renewSession]);
+
   async function signOut() {
     const token = accessToken;
+    authEpoch.current += 1;
     setPrincipal(null);
     setAccessToken("");
+    setAccessExpiresAt(0);
+    setRetryAt(0);
+    refreshFailures.current = 0;
     setSavedAddresses([]);
     setSelectedAddressId(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
-    // Clear user-sensitive phone/GPS from local storage on logout.
-    await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
-    if (Platform.OS !== "web") await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
-    if (token) await apiRequest("/auth/logout", { method: "POST", accessToken: token }).catch(() => undefined);
+    const cleared = await Promise.allSettled([
+      AsyncStorage.removeItem(ADDRESS_KEY),
+      clearRefresh(),
+      AsyncStorage.removeItem("hotpot.checkout.pending.v1"),
+    ]);
+    let revoked = cleared[1]?.status === "fulfilled";
+    if (token && Platform.OS !== "web") {
+      try { await apiRequest("/auth/logout", { method: "POST", accessToken: token }); }
+      catch { revoked = false; }
+    }
     setLoginReturnTo("home");
     setScreen("login");
-    await AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined);
-    setNotice("Đã đăng xuất trên thiết bị.");
+    setNotice(revoked ? "Đã đăng xuất." : "Đã đăng xuất trên thiết bị. Máy chủ chưa xác nhận thu hồi phiên.");
   }
 
   useEffect(() => {
@@ -331,7 +461,7 @@ function CustomerApp() {
       })
       .catch(() => { if (active) setNotice("Không thể tải địa chỉ đã lưu. Hãy thử lại."); });
     return () => { active = false; };
-  }, [accessToken]);
+  }, [accessToken, selectedAddressId]);
 
   async function locateMe() {
     if (addressBusy) return;
@@ -345,7 +475,6 @@ function CustomerApp() {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setSelectedAddressId(null);
       setAddress(old => ({
         ...old, latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
@@ -389,19 +518,78 @@ function CustomerApp() {
       } else {
         await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
       }
+      setAddressModalOpen(false);
+      addressBeforeModal.current = null;
       setScreen(addressReturnTo);
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
     } finally { setAddressSaving(false); }
   }
 
-  function selectSavedAddress(saved: SavedAddress) {
+  function selectSavedAddress(saved: SavedAddress, returnTo = addressReturnTo) {
     setSelectedAddressId(saved.id);
     setAddress(old => ({ ...old, label: saved.label, line1: saved.line1,
       latitude: saved.latitude, longitude: saved.longitude }));
     setAddressErrorText("");
     setNotice("Đã chọn địa chỉ " + saved.label + ". Phí giao sẽ được tính lại khi đặt hàng.");
-    setScreen(addressReturnTo);
+    setScreen(returnTo);
+  }
+
+  function openAddressEditor(returnTo: "cart" | "account") {
+    if (principal && savedAddresses.length >= 10) {
+      setNotice("Tài khoản đã lưu tối đa 10 địa chỉ. Xóa một địa chỉ cũ trước khi thêm.");
+      return;
+    }
+    addressBeforeModal.current = address;
+    setAddress({ label: "Nhà", phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddressReturnTo(returnTo);
+    setAddressErrorText("");
+    setAddressModalOpen(true);
+  }
+
+  function closeAddressEditor() {
+    if (addressSaving) return;
+    if (addressBeforeModal.current) setAddress(addressBeforeModal.current);
+    addressBeforeModal.current = null;
+    setAddressErrorText("");
+    setAddressModalOpen(false);
+  }
+
+  function showAddressPin(saved: SavedAddress) {
+    const lat = Number(saved.latitude), lon = Number(saved.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      setNotice("Địa chỉ này chưa có tọa độ hợp lệ.");
+      return;
+    }
+    void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat +
+      "&mlon=" + lon + "#map=17/" + lat + "/" + lon)
+      .catch(() => setNotice("Không mở được bản đồ ghim địa chỉ."));
+  }
+
+  function savedAddressCards(returnTo: "cart" | "account") {
+    return savedAddresses.map(saved => (
+      <View key={saved.id} style={[styles.savedAddress,
+        selectedAddressId === saved.id && styles.savedAddressSelected]}>
+        <View style={styles.addressCardCopy}>
+          <Text style={styles.addressCardLabel}>{saved.label}
+            {selectedAddressId === saved.id ? "  · Đang dùng" : ""}</Text>
+          <Text style={styles.addressCardLine}>{saved.line1}</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
+          style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
+          <Text style={styles.addressPinGlyph}>⌖</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
+          style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved, returnTo)}>
+          <Text style={styles.linkText}>Chọn</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+          style={styles.addressSmallButton} disabled={addressSaving}
+          onPress={() => void deleteSavedAddress(saved)}>
+          <Text style={styles.warning}>Xóa</Text>
+        </Pressable>
+      </View>
+    ));
   }
 
   async function deleteSavedAddress(saved: SavedAddress) {
@@ -412,7 +600,14 @@ function CustomerApp() {
         method: "DELETE", accessToken,
       });
       setSavedAddresses(old => old.filter(x => x.id !== saved.id));
-      setSelectedAddressId(old => old === saved.id ? null : old);
+      setSelectedAddressId(old => old === saved.id
+        ? (savedAddresses.find(x => x.id !== saved.id)?.id ?? null) : old);
+      if (selectedAddressId === saved.id) {
+        const replacement = savedAddresses.find(x => x.id !== saved.id);
+        setAddress(old => replacement ? { ...old, label: replacement.label, line1: replacement.line1,
+          latitude: replacement.latitude, longitude: replacement.longitude }
+          : { ...old, line1: "", latitude: "", longitude: "" });
+      }
       setNotice("Đã xóa địa chỉ đã lưu.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
@@ -459,7 +654,6 @@ function CustomerApp() {
   ), [menu, categoryId, search]);
   const hasStoredAddress = !phoneError(address.phone)
     && !addressError(address.line1, address.latitude, address.longitude);
-  const itemCount = cartItemCount(cart);
 
   function showProduct(product: Product) {
     return (
@@ -545,7 +739,7 @@ function CustomerApp() {
       const used = new Set<string>();
       for (const modifier of item.modifiers) {
         const matches = available.filter(v => v.name === modifier.name
-          && v.priceDeltaVnd === modifier.priceVnd && v.isAvailable && !used.has(v.id));
+          && v.isAvailable && !used.has(v.id));
         if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
         modifierIds.push(matches[0]!.id);
         used.add(matches[0]!.id);
@@ -609,8 +803,6 @@ function CustomerApp() {
                     setScreen("menu");
                   }}>
                   <HomeCategoryIcon name={item.icon} size={48} />
-                  {item.icon === "combo" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>Hot</Text></View>}
-                  {item.icon === "offers" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>%</Text></View>}
                   <Text style={styles.quickLabel} numberOfLines={1}>{item.name}</Text>
                 </Pressable>
               ))}
@@ -877,27 +1069,53 @@ function CustomerApp() {
             )}
           </View>
         );
+      case "purchased":
+        return <PurchasedProductsScreen accessToken={accessToken}
+          onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
+          onReorder={reorder} />;
       case "account":
         return (
-          <View style={styles.section}>
-            <Text style={styles.pageTitle}>Tài khoản</Text>
+          <View style={styles.accountPage}>
+            <View style={styles.accountIdentity}>
+              <HotpotNavIcon name="user" active size={38} />
+              <View style={styles.accountIdentityText}>
+                <Text style={styles.pageTitle}>Tôi</Text>
+                <Text style={styles.muted}>{principal ? "Tài khoản khách hàng" : "Chào mừng đến Sichuan Hotpot"}</Text>
+              </View>
+            </View>
             {principal ? (
               <>
-                <Text style={styles.muted}>Đã đăng nhập · {principal.role}</Text>
-                <Text style={styles.muted}>Mã tài khoản: {principal.id.slice(0, 8)}…</Text>
-                <Button label="Địa chỉ giao hàng" alternate onPress={() => { setAddressReturnTo("account"); setScreen("address"); }} />
-                <Button label="Đăng xuất" alternate onPress={() => void signOut()} />
+                <View style={styles.accountGroup}>
+                  <View style={styles.accountGroupHeader}>
+                    <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
+                    <Pressable accessibilityRole="button" style={styles.accountAdd}
+                      onPress={() => openAddressEditor("account")}>
+                      <Text style={styles.linkText}>＋ Thêm địa chỉ</Text>
+                    </Pressable>
+                  </View>
+                  {savedAddresses.length > 0 ? savedAddressCards("account") :
+                    <Text style={styles.muted}>Chưa lưu địa chỉ. Thêm địa chỉ để đặt hàng nhanh hơn.</Text>}
+                </View>
+                <View style={styles.accountGroup}>
+                  <Text style={styles.sectionTitle}>Đơn hàng & mua lại</Text>
+                  <Button label="Sản phẩm đã mua" alternate onPress={() => setScreen("purchased")} />
+                  <Button label="Lịch sử và theo dõi đơn hàng" alternate onPress={() => setScreen("orders")} />
+                </View>
+                <View style={styles.accountLogout}>
+                  <Pressable accessibilityRole="button" style={({ pressed }) => [
+                    styles.logoutButton, pressed && actionDepth.pressed,
+                  ]} onPress={() => void signOut()}>
+                    <Text style={styles.logoutText}>Đăng xuất</Text>
+                  </Pressable>
+                </View>
               </>
             ) : (
-              <>
-                <Text style={styles.muted}>Xem thực đơn thoải mái. Đăng nhập khi cần mua hàng.</Text>
-                <Button label="Đăng nhập / Tạo tài khoản" onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
-              </>
+              <View style={styles.accountGroup}>
+                <Text style={styles.muted}>Đăng nhập để lưu địa chỉ và xem các món đã mua.</Text>
+                <Button label="Đăng nhập / Tạo tài khoản"
+                  onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
+              </View>
             )}
-            <View style={styles.group}>
-              <Text style={styles.sectionTitle}>Đơn hàng của tôi</Text>
-              <Button label="Xem lịch sử đơn hàng" alternate onPress={() => setScreen("orders")} />
-            </View>
           </View>
         );
       case "address":
@@ -906,66 +1124,16 @@ function CustomerApp() {
             <Button label={addressReturnTo === "cart" ? "‹ Trở về giỏ hàng" : "‹ Trở về tài khoản"}
               alternate onPress={() => setScreen(addressReturnTo)} />
             <Text style={styles.pageTitle}>Địa chỉ giao hàng</Text>
-            <Text style={styles.muted}>Xác nhận số nhà, đường và vị trí ghim. Phí giao thực tế sẽ được máy chủ tính khi đặt hàng.</Text>
+            <Text style={styles.muted}>Kiểm tra địa chỉ và ghim trước khi chọn. Phí giao được máy chủ tính theo đường xe chạy.</Text>
             {!!principal && savedAddresses.length > 0 && (
-              <View style={styles.group}>
+              <View style={styles.accountGroup}>
                 <Text style={styles.sectionTitle}>Địa chỉ đã lưu ({savedAddresses.length}/10)</Text>
-                {savedAddresses.map(saved => (
-                  <View key={saved.id} style={styles.savedAddress}>
-                    <View style={styles.cartLineDetails}>
-                      <Text style={styles.productName}>{saved.label}</Text>
-                      <Text style={styles.muted}>{saved.line1}</Text>
-                    </View>
-                    <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
-                      style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved)}>
-                      <Text style={styles.linkText}>Chọn</Text>
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
-                      style={styles.addressSmallButton} disabled={addressSaving}
-                      onPress={() => void deleteSavedAddress(saved)}>
-                      <Text style={styles.warning}>Xóa</Text>
-                    </Pressable>
-                  </View>
-                ))}
+                {savedAddressCards(addressReturnTo)}
               </View>
             )}
-            <Text style={styles.sectionTitle}>{principal ? "Thêm địa chỉ mới" : "Lưu địa chỉ tạm"}</Text>
-            <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
-              onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
-            <Field label="Số điện thoại" value={address.phone}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, phone: text })); }}
-              keyboardType="phone-pad" placeholder="09..." />
-            <Field label="Số nhà, đường, phường/xã" value={address.line1}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, line1: text })); }}
-              placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
-            <AddressPinMap latitude={address.latitude} longitude={address.longitude}
-              onChange={(latitude, longitude) => {
-                setSelectedAddressId(null);
-                setAddress(old => ({ ...old, latitude, longitude }));
-              }} />
-            <Button label={addressBusy ? "Đang lấy GPS..." : "Dùng vị trí GPS hiện tại"} alternate
-              disabled={addressBusy} onPress={() => void locateMe()} />
-            <Text style={styles.muted}>Nếu không cho phép GPS, nhập tọa độ từ ghim bản đồ đã kiểm tra.</Text>
-            <Field label="Vĩ độ (latitude)" value={address.latitude}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, latitude: text })); }}
-              keyboardType="decimal-pad" placeholder="10.0000000" />
-            <Field label="Kinh độ (longitude)" value={address.longitude}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, longitude: text })); }}
-              keyboardType="decimal-pad" placeholder="106.0000000" />
-            {!!address.latitude && !!address.longitude && (
-              <Button label="Kiểm tra ghim trên bản đồ" alternate onPress={() => {
-                const lat = Number(address.latitude), lon = Number(address.longitude);
-                if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
-                  setAddressErrorText("Tọa độ không hợp lệ.");
-                  return;
-                }
-                void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=17/" + lat + "/" + lon);
-              }} />
-            )}
+            <Button label={principal ? "＋ Thêm địa chỉ mới" : "＋ Thêm địa chỉ giao hàng"}
+              onPress={() => openAddressEditor(addressReturnTo)} />
             {!!addressErrorText && <Notice message={addressErrorText} error />}
-            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
-              disabled={addressSaving} onPress={() => void saveAddress()} />
-            {!principal && <Text style={styles.muted}>Đăng nhập để đồng bộ nhiều địa chỉ. Bản nháp chỉ lưu trên thiết bị.</Text>}
           </View>
         );
     }
@@ -975,7 +1143,20 @@ function CustomerApp() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
         <StatusBar barStyle="dark-content" backgroundColor={palette.white} />
-        {screen === "login" ? (
+        {!authReady ? (
+          <View style={styles.sessionLoading}>
+            <ActivityIndicator size="large" color={brand} />
+            <Text style={styles.muted}>Đang khôi phục phiên đăng nhập…</Text>
+          </View>
+        ) : authRestoreError ? (
+          <View style={styles.sessionLoading}>
+            <Notice message={authRestoreError} error />
+            <Button label="Thử khôi phục phiên" onPress={() => setAuthRestoreAttempt(n => n + 1)} />
+            <Button label="Xem thực đơn" alternate onPress={() => {
+              setAuthRestoreError(""); setScreen("home");
+            }} />
+          </View>
+        ) : screen === "login" ? (
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
         ) : (
           <View style={styles.shell}>
@@ -989,10 +1170,16 @@ function CustomerApp() {
                       {address.line1 || "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
-                  <Pressable style={styles.homeCart} onPress={() => setScreen("cart")}
-                    accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                    <View style={styles.homeCartInner}><View style={styles.cartIconSurface}><HotpotNavIcon name="cart" active size={20} /></View><Text style={styles.homeCartText}>{itemCount}</Text></View>
-                  </Pressable>
+                  <View style={styles.homeHeaderActions}>
+                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("orders")}
+                      accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
+                      <HotpotNavIcon name="notifications" active size={27} />
+                    </Pressable>
+                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
+                      accessibilityRole="button" accessibilityLabel="Giỏ hàng">
+                      <HotpotNavIcon name="cart" active size={27} />
+                    </Pressable>
+                  </View>
                 </View>
 
               </View>
@@ -1004,8 +1191,8 @@ function CustomerApp() {
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
-                  accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                  <View style={styles.headerCartInner}><HotpotNavIcon name="cart" active size={20} /><Text style={styles.headerCartText}>{itemCount}</Text></View>
+                  accessibilityRole="button" accessibilityLabel="Giỏ hàng">
+                  <HotpotNavIcon name="cart" active size={25} />
                 </Pressable>
               </View>
             )}
@@ -1035,6 +1222,61 @@ function CustomerApp() {
             </View>
           </View>
         )}
+        <Modal visible={addressModalOpen} transparent animationType="slide"
+          onRequestClose={closeAddressEditor}>
+          <KeyboardAvoidingView style={styles.addressModalBackdrop}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <View style={styles.addressModalSheet}>
+              <View style={styles.addressModalHeader}>
+                <Text style={styles.sectionTitle}>Thêm địa chỉ mới</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng thêm địa chỉ"
+                  onPress={closeAddressEditor} style={styles.addressModalClose}>
+                  <Text style={styles.addressModalCloseText}>✕</Text>
+                </Pressable>
+              </View>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.addressModalBody}>
+                <Text style={styles.muted}>Nhập địa chỉ, chọn GPS hoặc kéo ghim đến đúng vị trí nhận hàng.</Text>
+            <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
+              onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
+            <Field label="Số điện thoại" value={address.phone}
+              onChangeText={text => { setAddress(old => ({ ...old, phone: text })); }}
+              keyboardType="phone-pad" placeholder="09..." />
+            <Field label="Số nhà, đường, phường/xã" value={address.line1}
+              onChangeText={text => { setAddress(old => ({ ...old, line1: text })); }}
+              placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
+            <AddressPinMap latitude={address.latitude} longitude={address.longitude}
+              onChange={(latitude, longitude) => {
+                setAddress(old => ({ ...old, latitude, longitude }));
+              }} />
+            <Button label={addressBusy ? "Đang lấy GPS..." : "Dùng vị trí GPS hiện tại"} alternate
+              disabled={addressBusy} onPress={() => void locateMe()} />
+            <Text style={styles.muted}>Nếu không cho phép GPS, nhập tọa độ từ ghim bản đồ đã kiểm tra.</Text>
+            <Field label="Vĩ độ (latitude)" value={address.latitude}
+              onChangeText={text => { setAddress(old => ({ ...old, latitude: text })); }}
+              keyboardType="decimal-pad" placeholder="10.0000000" />
+            <Field label="Kinh độ (longitude)" value={address.longitude}
+              onChangeText={text => { setAddress(old => ({ ...old, longitude: text })); }}
+              keyboardType="decimal-pad" placeholder="106.0000000" />
+            {!!address.latitude && !!address.longitude && (
+              <Button label="Kiểm tra ghim trên bản đồ" alternate onPress={() => {
+                const lat = Number(address.latitude), lon = Number(address.longitude);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+                  setAddressErrorText("Tọa độ không hợp lệ.");
+                  return;
+                }
+                void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=17/" + lat + "/" + lon);
+              }} />
+            )}
+            {!!addressErrorText && <Notice message={addressErrorText} error />}
+            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
+              disabled={addressSaving} onPress={() => void saveAddress()} />
+
+                <Button label="Hủy" alternate disabled={addressSaving} onPress={closeAddressEditor} />
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -1042,6 +1284,7 @@ function CustomerApp() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
+  sessionLoading: { flex: 1, padding: 24, justifyContent: "center", alignItems: "stretch", gap: 16 },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
   logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
@@ -1049,7 +1292,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, paddingHorizontal: 10 },
   brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
   brandSub: { fontSize: typeScale.caption, color: "#667085" },
-  headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#FFF0F0", justifyContent: "center", alignItems: "center" },
+  headerCart: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1, minHeight: 0, paddingBottom: 58 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
@@ -1075,6 +1318,28 @@ const styles = StyleSheet.create({
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
+  accountPage: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24,
+    gap: 18, flexGrow: 1 },
+  accountIdentity: { flexDirection: "row", alignItems: "center", gap: 14,
+    paddingVertical: 16, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: palette.line },
+  accountIdentityText: { flex: 1, gap: 3 },
+  accountGroup: { padding: 14, borderRadius: 16, backgroundColor: palette.white,
+    borderWidth: 1, borderColor: palette.line, gap: 12 },
+  accountGroupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  accountAdd: { minHeight: 44, justifyContent: "center", paddingHorizontal: 3 },
+  accountLogout: { marginTop: "auto", paddingTop: 28, paddingBottom: 12 },
+  logoutButton: { borderColor: palette.red, borderWidth: 1, backgroundColor: palette.softRed,
+    minHeight: 48, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  logoutText: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
+  addressModalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.45)",
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 12, paddingVertical: 20 },
+  addressModalSheet: { width: "100%", maxWidth: 540, maxHeight: "94%", backgroundColor: palette.white,
+    borderRadius: 20, overflow: "hidden" },
+  addressModalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    borderBottomWidth: 1, borderBottomColor: palette.line, paddingHorizontal: 16, paddingVertical: 10 },
+  addressModalClose: { minHeight: 44, minWidth: 44, justifyContent: "center", alignItems: "center" },
+  addressModalCloseText: { fontSize: 18, color: palette.text },
+  addressModalBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 30, gap: 12 },
   homePage: { flex: 1, backgroundColor: palette.white },
     homeHeader: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 10,
     backgroundColor: "#4A0C0A" },
@@ -1082,8 +1347,9 @@ const styles = StyleSheet.create({
   deliveryLocation: { flex: 1, minHeight: 49, justifyContent: "center" },
   deliveryLocationTitle: { color: palette.white, fontSize: 12, fontWeight: "700" },
   deliveryLocationValue: { color: palette.white, fontSize: 13, fontWeight: "600", marginTop: 4, maxWidth: 280 },
-  homeCart: { minWidth: 49, minHeight: 45, borderRadius: 12,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.33)", paddingHorizontal: 9, justifyContent: "center" },
+  homeCart: { minWidth: 44, minHeight: 44, justifyContent: "center" },
+  homeHeaderActions: { flexDirection: "row", alignItems: "center", gap: 5 },
+  headerIconAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   homeCartText: { color: palette.white, fontSize: typeScale.body, fontWeight: "800" },
   homeCartInner: { flexDirection: "row", alignItems: "center", gap: 4 },
   cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
@@ -1177,7 +1443,14 @@ const styles = StyleSheet.create({
   option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
   optionUnavailable: { opacity: 0.45 },
   optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
-  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#EAD7C8", padding: 10, gap: 4 },
+  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: palette.graySurface,
+    borderRadius: 13, borderWidth: 1, borderColor: palette.line, padding: 10, gap: 3 },
+  savedAddressSelected: { borderColor: palette.red, backgroundColor: palette.softRed },
+  addressCardCopy: { flex: 1, gap: 4, minWidth: 0 },
+  addressCardLabel: { color: palette.text, fontWeight: "800", fontSize: typeScale.body },
+  addressCardLine: { color: palette.muted, fontSize: typeScale.small, lineHeight: 17 },
+  addressPinButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  addressPinGlyph: { fontSize: 27, color: palette.red },
   addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
@@ -1202,7 +1475,7 @@ const styles = StyleSheet.create({
   buttonOutline: { backgroundColor: "transparent", borderWidth: 1, borderColor: brand },
   buttonOutlineText: { color: brand },
   buttonDisabled: { opacity: 0.45 },
-  pressed: { opacity: 0.8 },
+  pressed: { opacity: 0.92 },
   segmentRow: { flexDirection: "row", backgroundColor: "#FFF0F0", borderRadius: 14, padding: 4 },
   segment: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 11 },
   segmentActive: { backgroundColor: "white" },

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { palette, typeScale } from "../theme";
+import { actionDepth } from "../components/action-depth";
 import { vnd } from "../validation";
 
 const statusLabel: Record<string, string> = {
@@ -102,7 +103,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
       {!accessToken ? (
         <>
           <Text style={styles.muted}>Đăng nhập để xem đơn hàng và theo dõi trạng thái.</Text>
-          <Pressable style={styles.button} onPress={onLogin} accessibilityRole="button">
+          <Pressable style={[styles.button, actionDepth.primary]} onPress={onLogin} accessibilityRole="button">
             <Text style={styles.buttonText}>Đăng nhập</Text>
           </Pressable>
         </>
@@ -154,7 +155,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
                   <Text style={styles.muted}>{new Date(event.createdAt).toLocaleString("vi-VN")}</Text>
                 </View>
               ))}
-              <Pressable style={styles.button} accessibilityRole="button"
+              <Pressable style={[styles.button, actionDepth.primary]} accessibilityRole="button"
                 onPress={() => setReorderProblem(onReorder(detail) ?? "")}>
                 <Text style={styles.buttonText}>Đặt lại các món</Text>
               </Pressable>

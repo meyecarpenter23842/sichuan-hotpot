@@ -13,7 +13,8 @@ React Native + Expo for Android and Expo Web PWA for iPhone Safari.
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/google`, `POST /auth/refresh`, `GET /auth/me`.
 - Google sign-in is direct OIDC with public OAuth Client IDs, **not Clerk**.
 - On Android, supply an Android OAuth Client ID for the registered package + SHA-1; web needs the registered Web Client ID and authorized origins.
-- Store tokens only in Expo SecureStore on Android. Web access token is in memory; reload requires reauthentication.
+- Android stores rotating refresh tokens in Expo SecureStore. On iPhone/Safari PWA, access tokens are memory-only, while a same-origin `/api/session/*` proxy stores the refresh credential as a host-only `HttpOnly; Secure; SameSite=Strict` cookie. No web token goes in AsyncStorage/localStorage.
+- PWA persistence requires **both** NestJS `/auth/browser/*` endpoints and the Vercel rewrite in `apps/customer/vercel.json`. Deploy the API first under explicit owner approval, verify the cookie flow, then deploy Customer PWA. A merge alone does not deploy either service.
 - Cart and the unverified local address draft use AsyncStorage. Address GPS needs opt-in; manual coordinates supported.
 - **Do not attempt checkout yet.** P3 still needs routing quote, backend order creation, stock/pricing verification, idempotency and COD/QR. The app says so instead of faking an order.
 - The PostgreSQL catalogue has no image URL field and R2 media are not yet populated, so product images are pending. Do not use UI reference screenshots as catalogue photos.

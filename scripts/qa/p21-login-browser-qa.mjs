@@ -118,10 +118,20 @@ try {
     throw error;
   }
   await page.getByRole("tab", { name: "Tôi" }).click();
-  await page.getByText("Đã đăng nhập · CUSTOMER").waitFor({ timeout: 15000 });
+  await page.getByText("Tài khoản khách hàng", { exact: true }).waitFor({ timeout: 15000 });
+  // New requirement: session survives a full PWA refresh, not just navigation.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Tôi" }).waitFor();
+  await page.getByRole("tab", { name: "Tôi" }).click();
+  await page.getByText("Tài khoản khách hàng", { exact: true }).waitFor();
   assert.ok(responses.some(x => x.path === "/auth/register/request-code" && x.status === 201));
   assert.ok(responses.some(x => x.path === "/auth/register/confirm-code" && x.status === 201));
   await page.getByRole("button", { name: "Đăng xuất" }).click();
+  await page.getByRole("textbox", { name: "Tên đăng nhập" }).waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox", { name: "Tên đăng nhập" }).waitFor();
+  assert.equal(await page.getByRole("tab", { name: "Tôi" }).count(), 0,
+    "explicit sign out remains signed out after reload");
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill("wrong123");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).last().click();
@@ -130,7 +140,7 @@ try {
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).last().click();
   await page.getByRole("tab", { name: "Tôi" }).click();
-  await page.getByText("Đã đăng nhập · CUSTOMER").waitFor();
+  await page.getByText("Tài khoản khách hàng", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Đăng xuất" }).click();
   await page.getByRole("button", { name: "Quên mật khẩu?" }).click();
   await page.getByRole("textbox", { name: "Email" }).fill(email);
@@ -143,7 +153,7 @@ try {
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill("newpass1");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).last().click();
   await page.getByRole("tab", { name: "Tôi" }).click();
-  await page.getByText("Đã đăng nhập · CUSTOMER").waitFor();
+  await page.getByText("Tài khoản khách hàng", { exact: true }).waitFor();
   await page.screenshot({ path: evidence + "/email-verification-password-reset.png", fullPage: true });
   await ctx.close();
   assert.deepEqual(failures, []);

@@ -1,3 +1,10 @@
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export interface BranchSummary {
   id: string;
   code: string;
@@ -132,7 +139,7 @@ export async function apiRequest<T>(
       if (response.status === 401) {
         if (path === "/auth/login") throw new Error("Tên đăng nhập hoặc mật khẩu không đúng.");
         if (path === "/auth/google") throw new Error("Google chưa xác thực được tài khoản. Vui lòng thử lại.");
-        throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+        throw new ApiRequestError("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", 401);
       }
       if (response.status === 409) throw new Error(path.startsWith("/customer/")
         ? "Đơn hoặc báo phí đã thay đổi. Kiểm tra lại đơn hàng trước khi thử lại."

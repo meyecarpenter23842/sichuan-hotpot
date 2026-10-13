@@ -307,6 +307,13 @@ export class AuthService {
     return this.createSession(found.userId);
   }
 
+  async revokeRefresh(refreshToken: string): Promise<void> {
+    await this.prisma.database.authSession.updateMany({
+      where: { refreshTokenHash: hashRefresh(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async logout(authorization?: string): Promise<{ status: "ok" }> {
     const token = authorization?.match(/^Bearer ([^\s]+)$/)?.[1];
     await this.principal(authorization);
