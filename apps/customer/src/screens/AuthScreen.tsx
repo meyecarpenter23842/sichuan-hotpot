@@ -80,6 +80,9 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [googleRequest, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
     webClientId: googleWebId || "unconfigured.apps.googleusercontent.com",
     androidClientId: googleAndroidId || "unconfigured.apps.googleusercontent.com",
+    // Exact, stable web callback for the Google OAuth Web client.
+    // Register <origin>/ under Google Cloud > Authorized redirect URIs.
+    redirectUri: Platform.OS === "web" ? window.location.origin + "/" : undefined,
   });
 
   useEffect(() => {
