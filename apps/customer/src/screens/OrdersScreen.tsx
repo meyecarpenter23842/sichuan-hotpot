@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { palette, typeScale } from "../theme";
 import { vnd } from "../validation";
@@ -28,38 +28,73 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [reorderProblem, setReorderProblem] = useState("");
-  const load = useCallback(async () => {
+  const selectedOrderId = useRef<string | null>(null);
+  const load = useCallback(async (silent = false) => {
     if (!accessToken) return;
-    setBusy(true);
-    setProblem("");
+    if (!silent) { setBusy(true); setProblem(""); }
     try {
       const rows = await apiRequest<CustomerOrderSummary[]>("/customer/orders", { accessToken });
       setOrders(rows);
     } catch (error) {
       setProblem(error instanceof Error ? error.message : "Không tải được đơn hàng.");
-    } finally { setBusy(false); }
+    } finally { if (!silent) setBusy(false); }
   }, [accessToken]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function openOrder(id: string) {
-    setBusy(true);
-    setProblem("");
-    setReorderProblem("");
+  const openOrder = useCallback(async (id: string, silent = false) => {
+    if (!accessToken) return;
+    selectedOrderId.current = id;
+    if (!silent) {
+      setBusy(true);
+      setProblem("");
+      setReorderProblem("");
+    }
     try {
-      const next = await apiRequest<CustomerOrderDetail>("/customer/orders/" + encodeURIComponent(id), { accessToken });
-      setDetail(next);
+      const next = await apiRequest<CustomerOrderDetail>(
+        "/customer/orders/" + encodeURIComponent(id), { accessToken },
+      );
+      if (selectedOrderId.current === id) setDetail(next);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "Không tải được chi tiết đơn.");
-    } finally { setBusy(false); }
-  }
+      if (selectedOrderId.current === id) {
+        setProblem(error instanceof Error ? error.message : "Không tải được chi tiết đơn.");
+      }
+    } finally { if (!silent) setBusy(false); }
+  }, [accessToken]);
 
-  useEffect(() => { if (focusOrderId && accessToken) void openOrder(focusOrderId); },
-    // Focus once for new order; accessToken changes trigger a fresh request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [focusOrderId, accessToken]);
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (focusOrderId && accessToken) void openOrder(focusOrderId);
+  }, [focusOrderId, accessToken, openOrder]);
+
+  const detailId = detail?.id ?? null;
+  useEffect(() => {
+    if (!accessToken) return;
+    const refresh = () => {
+      if (detailId) void openOrder(detailId, true);
+      else void load(true);
+    };
+    const timer = setInterval(() => {
+      if (Platform.OS === "web"
+        ? (typeof document !== "undefined" && document.visibilityState === "visible")
+        : AppState.currentState === "active") refresh();
+    }, 20_000);
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") refresh();
+    });
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisible);
+    }
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisible);
+      }
+    };
+  }, [accessToken, detailId, load, openOrder]);
 
   return (
     <View style={styles.content}>
@@ -73,7 +108,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
         </>
       ) : (
         <>
-          <Pressable style={styles.outline} onPress={() => detail ? (setDetail(null), void load()) : void load()}
+          <Pressable style={styles.outline} onPress={() => detail ? (selectedOrderId.current = null, setDetail(null), void load()) : void load()}
             accessibilityRole="button" disabled={busy}>
             <Text style={styles.outlineText}>{detail ? "‹ Danh sách đơn hàng" : "Làm mới trạng thái đơn"}</Text>
           </Pressable>
