@@ -5,6 +5,7 @@ Owner-only GitHub Issue #3 maintenance: never infer a hostname from untrusted in
 modify application secrets, disable TLS verification, or deploy by itself.
 """
 import glob
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -58,8 +59,17 @@ def find_sites():
                 values = m.group(1).split()
                 require(len(values) == 1, "ambiguous_server_name")
                 name = values[0].lower().rstrip(".")
-                require(re.fullmatch(r"(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", name) is not None
-                        and name != "api.example.com", "untrusted_server_name")
+                dns_name = (re.fullmatch(r"(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", name) is not None
+                            and name != "api.example.com")
+                public_ipv4 = False
+                try:
+                    ip = ipaddress.ip_address(name)
+                    public_ipv4 = (ip.version == 4 and ip.is_global)
+                except ValueError:
+                    pass
+                # Production PWA currently uses a direct public HTTPS IPv4 URL.
+                # Cert validation via curl below is still mandatory for IP hosts.
+                require(dns_name or public_ipv4, "untrusted_server_name")
                 names.add(name)
     require(len(names) == 1, "https_api_nginx_site_not_unique")
     return next(iter(names))
