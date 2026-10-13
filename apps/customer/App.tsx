@@ -102,6 +102,25 @@ function ProductArtwork({ product, large = false }: { product: Product; large?: 
     accessibilityLabel={"Ảnh món " + product.name} onError={() => setBroken(true)} />;
 }
 
+// Use only the photography inside the approved mockup; do not display
+// mockup discounts or prices, which are not production catalogue facts.
+function HomeLifestylePhoto({ kind, width, height }: {
+  kind: "hotpot" | "milkTea"; width: number; height: number;
+}) {
+  const x = kind === "hotpot" ? 315 : 690;
+  const y = 1312;
+  const cropWidth = kind === "hotpot" ? 165 : 180;
+  const scale = width / cropWidth;
+  return (
+    <View style={{ width, height, overflow: "hidden" }}>
+      <Image source={require("../../01-home.png")} resizeMode="stretch"
+        accessibilityLabel={kind === "hotpot" ? "Ảnh lẩu Tứ Xuyên" : "Ảnh trà sữa"}
+        style={{ position: "absolute", width: 941 * scale, height: 1672 * scale,
+          left: -x * scale, top: -y * scale }} />
+    </View>
+  );
+}
+
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
   return (product.modifierGroups ?? []).flatMap(group => group.options)
     .filter(option => ids.includes(option.id))
@@ -584,7 +603,31 @@ function CustomerApp() {
                     setScreen("menu");
                   }}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
               </View>
-              <Text style={styles.homeOfferHint}>Ưu đãi và giá áp dụng sẽ hiển thị khi cửa hàng cập nhật.</Text>
+              <View style={styles.homeOfferGrid}>
+                {([
+                  { kind: "hotpot", title: "Khám phá lẩu", term: "lẩu" },
+                  { kind: "milkTea", title: "Trà sữa thơm ngon", term: "trà" },
+                ] as const).map(promo => {
+                  const tileWidth = (Math.min(viewportWidth, 620) - 40) / 2;
+                  return (
+                    <Pressable key={promo.kind} accessibilityRole="button"
+                      accessibilityLabel={promo.title} style={styles.homeOfferCard}
+                      onPress={() => {
+                        const match = menu?.categories.find(cat =>
+                          cat.name.toLocaleLowerCase("vi").includes(promo.term));
+                        setCategoryId(match?.id ?? "");
+                        setSearch("");
+                        setScreen("menu");
+                      }}>
+                      <HomeLifestylePhoto kind={promo.kind} width={tileWidth} height={112} />
+                      <View style={styles.homeOfferCardShade}>
+                        <Text style={styles.homeOfferCardTitle}>{promo.title}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.homeOfferNote}>Ưu đãi và giá thực tế theo thông tin cửa hàng.</Text>
             </View>
           </View>
         );
@@ -1018,9 +1061,14 @@ const styles = StyleSheet.create({
   featurePlus: { color: palette.white, fontWeight: "800", fontSize: 25, lineHeight: 29 },
   homeEmpty: { marginHorizontal: 15, backgroundColor: palette.graySurface, padding: 16,
     borderRadius: 13, gap: 10, alignItems: "stretch" },
-  homeOffers: { paddingTop: 8, paddingBottom: 16, gap: 3 },
-  homeOfferHint: { color: palette.muted, fontSize: 12, marginHorizontal: 15,
-    padding: 13, backgroundColor: "#F8F8F8", borderRadius: 12 },
+  homeOffers: { paddingTop: 8, paddingBottom: 16, gap: 4 },
+  homeOfferGrid: { flexDirection: "row", gap: 10, marginHorizontal: 15 },
+  homeOfferCard: { flex: 1, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
+  homeOfferCardShade: { position: "absolute", left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(60,0,0,0.64)", paddingHorizontal: 9, paddingVertical: 9 },
+  homeOfferCardTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  homeOfferNote: { color: palette.muted, fontSize: 11, marginHorizontal: 15,
+    paddingTop: 3 },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
   heroEyebrow: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
   heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: typeScale.hero, lineHeight: 28 },
