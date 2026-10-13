@@ -535,13 +535,13 @@ function CustomerApp() {
     setScreen(returnTo);
   }
 
-  function openAddressEditor(returnTo: "cart" | "account") {
+  function openAddressEditor(returnTo: "cart" | "account", label = "Nhà") {
     if (principal && savedAddresses.length >= 10) {
       setNotice("Tài khoản đã lưu tối đa 10 địa chỉ. Xóa một địa chỉ cũ trước khi thêm.");
       return;
     }
     addressBeforeModal.current = address;
-    setAddress({ label: "Nhà", phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddress({ label, phone: address.phone, line1: "", latitude: "", longitude: "" });
     setAddressReturnTo(returnTo);
     setAddressErrorText("");
     setAddressModalOpen(true);
@@ -566,30 +566,46 @@ function CustomerApp() {
       .catch(() => setNotice("Không mở được bản đồ ghim địa chỉ."));
   }
 
-  function savedAddressCards(returnTo: "cart" | "account") {
-    return savedAddresses.map(saved => (
-      <View key={saved.id} style={[styles.savedAddress,
-        selectedAddressId === saved.id && styles.savedAddressSelected]}>
-        <View style={styles.addressCardCopy}>
-          <Text style={styles.addressCardLabel}>{saved.label}
-            {selectedAddressId === saved.id ? "  · Đang dùng" : ""}</Text>
-          <Text style={styles.addressCardLine}>{saved.line1}</Text>
+  function savedAddressCards(returnTo: "cart" | "account", compact = false) {
+    // On the account overview always show the selected destination first.
+    const selected = savedAddresses.find(item => item.id === selectedAddressId);
+    const preview = selected
+      ? [selected, ...savedAddresses.filter(item => item.id !== selected.id)]
+      : savedAddresses;
+    const displayed = compact ? preview.slice(0, 2) : savedAddresses;
+    return displayed.map(saved => {
+      const isSelected = selectedAddressId === saved.id;
+      return (
+        <View key={saved.id} style={[styles.savedAddress,
+          isSelected && styles.savedAddressSelected]}>
+          <View style={styles.addressRowIcon}>
+            <HotpotNavIcon name="home" size={19} active={isSelected} />
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
+            accessibilityState={{ selected: isSelected }}
+            style={({ pressed }) => [styles.addressCardCopy, pressed && styles.addressRowPressed]}
+            onPress={() => selectSavedAddress(saved, returnTo)}>
+            <View style={styles.addressLabelRow}>
+              <Text style={styles.addressCardLabel} numberOfLines={1}>{saved.label}</Text>
+              {isSelected && <Text style={styles.addressCurrentBadge}>Đang dùng</Text>}
+            </View>
+            <Text style={styles.addressCardLine} numberOfLines={2}>{saved.line1}</Text>
+          </Pressable>
+          <View style={styles.addressRowActions}>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
+              style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
+              <Text style={styles.addressPinGlyph}>⌖</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+              style={styles.addressSmallButton} disabled={addressSaving}
+              accessibilityState={{ disabled: addressSaving }}
+              onPress={() => void deleteSavedAddress(saved)}>
+              <Text style={styles.addressDeleteGlyph}>×</Text>
+            </Pressable>
+          </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
-          style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
-          <Text style={styles.addressPinGlyph}>⌖</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
-          style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved, returnTo)}>
-          <Text style={styles.linkText}>Chọn</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
-          style={styles.addressSmallButton} disabled={addressSaving}
-          onPress={() => void deleteSavedAddress(saved)}>
-          <Text style={styles.warning}>Xóa</Text>
-        </Pressable>
-      </View>
-    ));
+      );
+    });
   }
 
   async function deleteSavedAddress(saved: SavedAddress) {
