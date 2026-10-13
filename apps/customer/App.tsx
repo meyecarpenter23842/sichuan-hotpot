@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable,
-  ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image,
+  ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -109,6 +109,11 @@ function selectedModifierPrice(product: Product, ids: readonly string[]): number
 }
 
 function CustomerApp() {
+  const { width: viewportWidth } = useWindowDimensions();
+  // The approved static Home artwork has a 829x321 panel inside 01-home.png.
+  // Match the panel aspect ratio at every viewport; all other UI remains interactive.
+  const heroWidth = Math.min(viewportWidth, 620) - 24;
+  const heroScale = heroWidth / 829;
   const [screen, setScreen] = useState<Screen>("login");
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [branchId, setBranchId] = useState("");
@@ -489,15 +494,17 @@ function CustomerApp() {
         return (
           <View style={styles.homePage}>
             <View style={styles.homeHeroRegion}>
-              <Pressable style={styles.homeBanner} accessibilityRole="button"
-                accessibilityLabel="Khám phá thực đơn lẩu và trà sữa" onPress={() => { setCategoryId(""); setScreen("menu"); }}>
-                <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
-                  style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
-                <View style={styles.homeBannerShade}>
-                  <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
-                  <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
-                  <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
-                </View>
+              <Pressable style={[styles.homeBanner, { height: heroWidth * 321 / 829 }]}
+                accessibilityRole="button" testID="home-approved-hero"
+                accessibilityLabel="Khám phá thực đơn lẩu Tứ Xuyên và trà sữa" onPress={() => {
+                  setCategoryId(""); setScreen("menu");
+                }}>
+                <Image source={require("../../01-home.png")} resizeMode="stretch"
+                  accessibilityLabel="Ảnh banner quảng bá theo mẫu đã duyệt"
+                  style={[styles.homeBannerImage, {
+                    left: -58 * heroScale, top: -232 * heroScale,
+                    width: 941 * heroScale, height: 1672 * heroScale,
+                  }]} />
               </Pressable>
             </View>
             <View style={styles.quickMenu}>
@@ -967,9 +974,9 @@ const styles = StyleSheet.create({
   cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
   headerCartInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   homeHeroRegion: { backgroundColor: "#4A0C0A", paddingBottom: 12 },
-  homeBanner: { height: 174, overflow: "hidden", marginHorizontal: 12,
+  homeBanner: { overflow: "hidden", marginHorizontal: 12,
     borderRadius: 18, backgroundColor: "#6D1710" },
-  homeBannerImage: { position: "absolute", width: "100%", height: "100%" },
+  homeBannerImage: { position: "absolute" },
   homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 18,
     backgroundColor: "rgba(47, 2, 0, 0.19)", gap: 7 },
   homeBannerTitle: { fontSize: typeScale.hero, lineHeight: 30, fontWeight: "900", fontStyle: "italic",
