@@ -91,7 +91,10 @@ def checked_source(sha, digest):
     with os.fdopen(fd, "rb") as f:
         blob = f.read(64 * 1024 * 1024 + 1)
     require(hashlib.sha256(blob).hexdigest() == digest, "source_checksum_mismatch")
-    loader = SourceFileLoader("p3_release", str(private_file(RELEASE_HELPER)))
+    st = RELEASE_HELPER.lstat()
+    require(RELEASE_HELPER.is_file() and not RELEASE_HELPER.is_symlink()
+            and st.st_uid == 0 and st.st_mode & 0o022 == 0, "unsafe_release_helper")
+    loader = SourceFileLoader("p3_release", str(RELEASE_HELPER))
     spec = importlib.util.spec_from_loader("p3_release", loader)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
