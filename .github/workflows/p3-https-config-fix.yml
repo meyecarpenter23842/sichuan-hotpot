@@ -1,0 +1,60 @@
+name: Configure verified API HTTPS release URL (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-p3-owner-release
+  cancel-in-progress: false
+jobs:
+  fix:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/fix-hotpot-https-config' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require latest reviewed main and pinned VPS SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test "$VPS_USER" = "ubuntu"
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          python3 -m unittest discover -s infra/vps/tests -p test_https_release_config.py -v
+      - name: Set HTTPS only after real TLS and backend health verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/ssh.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/ssh.key" >/dev/null 2>&1
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null 2>&1
+          ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/ssh.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+            "$VPS_USER@$VPS_HOST" 'sudo -n /usr/bin/python3 -' \
+            < infra/vps/hotpot-https-release-config.py
+      - name: Remove SSH materials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/ssh.key" "$RUNNER_TEMP/known_hosts"
