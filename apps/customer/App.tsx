@@ -434,7 +434,7 @@ function CustomerApp() {
       })
       .catch(() => { if (active) setNotice("Không thể tải địa chỉ đã lưu. Hãy thử lại."); });
     return () => { active = false; };
-  }, [accessToken]);
+  }, [accessToken, selectedAddressId]);
 
   async function locateMe() {
     if (addressBusy) return;
