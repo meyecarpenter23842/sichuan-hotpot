@@ -1,11 +1,13 @@
 import {
-  Body, Controller, Get, Headers, Param, Post, UseGuards,
+  Body, Controller, ForbiddenException, UnauthorizedException, Get, Headers, Param, Post, Res, UseGuards,
 } from "@nestjs/common";
 import {
   IsString, Length, MaxLength, MinLength, IsEmail, Matches,
 } from "class-validator";
 import { ThrottlerGuard, Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
+import { allowedCorsOrigins } from "../bootstrap";
+import type { Response } from "express";
 
 class RequestRegistrationInput {
   @IsString() @Length(3, 32)
@@ -38,6 +40,10 @@ class LoginInput {
 class GoogleInput {
   @IsString() @MinLength(40) @MaxLength(12000)
   idToken!: string;
+}
+class BrowserSessionStartInput {
+  @IsString() @MinLength(40) @MaxLength(255)
+  refreshToken!: string;
 }
 class RefreshInput {
   @IsString() @MinLength(40) @MaxLength(255)
@@ -95,6 +101,77 @@ export class AuthController {
   @Throttle({ default: { limit: 12, ttl: 60000 } })
   refresh(@Body() input: RefreshInput) {
     return this.auth.refresh(input.refreshToken);
+  }
+
+  private assertBrowserOrigin(origin?: string): void {
+    if (!origin || !allowedCorsOrigins().has(origin)) {
+      throw new ForbiddenException("Untrusted web session origin");
+    }
+  }
+
+  private readonly browserCookieName = process.env.NODE_ENV === "test"
+    ? "hotpot-browser-ci" : "__Host-hotpot-browser";
+  private setBrowserCookie(response: Response, token: string | null): void {
+    const secure = process.env.NODE_ENV === "test" ? "" : "; Secure";
+    response.setHeader("Set-Cookie",
+      this.browserCookieName + "=" + (token || "") +
+      "; HttpOnly; SameSite=Strict; Path=/" + secure +
+      "; Max-Age=" + (token ? 14 * 24 * 60 * 60 : 0));
+  }
+  private readBrowserCookie(header?: string): string | null {
+    const cookie = header?.split(";").map(entry => entry.trim()).find(entry =>
+      entry.startsWith(this.browserCookieName + "="));
+    const value = cookie?.slice(this.browserCookieName.length + 1) ?? "";
+    return /^[a-zA-Z0-9_-]{40,255}$/.test(value) ? value : null;
+  }
+
+  @Post("browser/start")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 12, ttl: 60000 } })
+  startBrowser(
+    @Headers("origin") origin: string | undefined,
+    @Body() input: BrowserSessionStartInput,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    this.assertBrowserOrigin(origin);
+    // Only the browser receives the HTTP-only cookie; response has no refresh token.
+    this.setBrowserCookie(response, input.refreshToken);
+    return { status: "ok" as const };
+  }
+
+  @Post("browser/refresh")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 12, ttl: 60000 } })
+  async refreshBrowser(
+    @Headers("origin") origin: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    this.assertBrowserOrigin(origin);
+    const refreshToken = this.readBrowserCookie(cookie);
+    if (!refreshToken) throw new UnauthorizedException();
+    try {
+      const tokens = await this.auth.refresh(refreshToken);
+      this.setBrowserCookie(response, tokens.refreshToken);
+      return { accessToken: tokens.accessToken,
+        accessTokenExpiresInSeconds: tokens.accessTokenExpiresInSeconds };
+    } catch (error) {
+      this.setBrowserCookie(response, null);
+      throw error;
+    }
+  }
+
+  @Post("browser/logout")
+  async logoutBrowser(
+    @Headers("origin") origin: string | undefined,
+    @Headers("cookie") cookie: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    this.assertBrowserOrigin(origin);
+    const refreshToken = this.readBrowserCookie(cookie);
+    if (refreshToken) await this.auth.revokeRefresh(refreshToken);
+    this.setBrowserCookie(response, null);
+    return { status: "ok" as const };
   }
 
   @Post("logout")
