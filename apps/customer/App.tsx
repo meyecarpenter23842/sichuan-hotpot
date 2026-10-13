@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable,
+  ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -12,7 +12,7 @@ import {
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
-  apiRequest, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
+  apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
   type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
@@ -33,6 +33,17 @@ const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
+async function readRefresh(): Promise<string | null> {
+  return Platform.OS === "web" ? AsyncStorage.getItem(REFRESH_KEY) : SecureStore.getItemAsync(REFRESH_KEY);
+}
+async function writeRefresh(token: string): Promise<void> {
+  if (Platform.OS === "web") await AsyncStorage.setItem(REFRESH_KEY, token);
+  else await SecureStore.setItemAsync(REFRESH_KEY, token);
+}
+async function clearRefresh(): Promise<void> {
+  if (Platform.OS === "web") await AsyncStorage.removeItem(REFRESH_KEY);
+  else await SecureStore.deleteItemAsync(REFRESH_KEY);
+}
 const brand = palette.red;
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
 
@@ -155,6 +166,12 @@ function CustomerApp() {
   const [notice, setNotice] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [principal, setPrincipal] = useState<Principal | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authRestoreError, setAuthRestoreError] = useState("");
+  const [authRestoreAttempt, setAuthRestoreAttempt] = useState(0);
+  const [accessExpiresAt, setAccessExpiresAt] = useState(0);
+  const authEpoch = useRef(0);
+  const renewing = useRef(false);
   const [loginReturnTo, setLoginReturnTo] = useState<"home" | "cart" | "account">("home");
   const [address, setAddress] = useState<AddressDraft>({
     label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
@@ -261,54 +278,135 @@ function CustomerApp() {
   }, [cart, cartLoaded]);
 
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    let mounted = true;
+    let active = true;
+    const epoch = authEpoch.current;
     async function restoreSession() {
+      setAuthReady(false);
+      setAuthRestoreError("");
       try {
-        const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+        const refreshToken = await readRefresh();
         if (!refreshToken) return;
         const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
           method: "POST", body: { refreshToken },
         });
-        await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
-        const user = await apiRequest<Principal>("/auth/me", {
+        // Refresh tokens are rotated; commit the replacement before rendering the account.
+        await writeRefresh(tokens.refreshToken);
+        const who = await apiRequest<Principal>("/auth/me", {
           accessToken: tokens.accessToken,
         });
-        if (mounted) { setAccessToken(tokens.accessToken); setPrincipal(user); }
-      } catch {
-        await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
+        if (who.role !== "CUSTOMER") throw new Error("Tài khoản không thuộc ứng dụng khách hàng.");
+        if (active && epoch === authEpoch.current) {
+          setAccessToken(tokens.accessToken);
+          setPrincipal(who);
+          setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+          setScreen("home");
+        }
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 401) {
+          await clearRefresh().catch(() => undefined);
+        } else if (active) {
+          setAuthRestoreError(error instanceof Error ? error.message : "Không thể khôi phục phiên.");
+        }
+      } finally {
+        if (active && epoch === authEpoch.current) setAuthReady(true);
       }
     }
     void restoreSession();
-    return () => { mounted = false; };
-  }, []);
+    return () => { active = false; };
+  }, [authRestoreAttempt]);
 
   const saveLogin = useCallback(async (tokens: AuthTokens) => {
     const who = await apiRequest<Principal>("/auth/me", { accessToken: tokens.accessToken });
     if (who.role !== "CUSTOMER") throw new Error("Tài khoản này không thuộc ứng dụng khách hàng.");
-    if (Platform.OS !== "web") await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
+    await writeRefresh(tokens.refreshToken);
+    authEpoch.current += 1;
+    setAuthRestoreError("");
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
+    setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
     setScreen(loginReturnTo);
     setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
 
+  const renewSession = useCallback(async () => {
+    if (renewing.current) return;
+    renewing.current = true;
+    const epoch = authEpoch.current;
+    try {
+      const refreshToken = await readRefresh();
+      if (!refreshToken || epoch !== authEpoch.current) return;
+      const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
+        method: "POST", body: { refreshToken },
+      });
+      if (epoch !== authEpoch.current) return;
+      await writeRefresh(tokens.refreshToken);
+      if (epoch !== authEpoch.current) return;
+      setAccessToken(tokens.accessToken);
+      setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+    } catch (error) {
+      if (epoch !== authEpoch.current) return;
+      if (error instanceof ApiRequestError && error.status === 401) {
+        await clearRefresh().catch(() => undefined);
+        setAccessToken("");
+        setPrincipal(null);
+        setAccessExpiresAt(0);
+        setScreen("login");
+        setNotice("Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+      } else {
+        // A lost connection must not erase a potentially valid session.
+        setAccessExpiresAt(Date.now() + 30_000);
+        setNotice("Mạng gián đoạn. Ứng dụng sẽ thử kết nối lại.");
+      }
+    } finally {
+      renewing.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken || !accessExpiresAt) return;
+    const refresh = () => {
+      if (Date.now() + 60_000 >= accessExpiresAt) void renewSession();
+    };
+    const timeout = setTimeout(() => { void renewSession(); },
+      Math.max(1000, accessExpiresAt - Date.now() - 60_000));
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") refresh();
+    });
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refresh);
+    }
+    return () => {
+      clearTimeout(timeout);
+      subscription.remove();
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", refresh);
+      }
+    };
+  }, [accessToken, accessExpiresAt, renewSession]);
+
   async function signOut() {
     const token = accessToken;
+    authEpoch.current += 1;
     setPrincipal(null);
     setAccessToken("");
+    setAccessExpiresAt(0);
     setSavedAddresses([]);
     setSelectedAddressId(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
-    // Clear user-sensitive phone/GPS from local storage on logout.
-    await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
-    if (Platform.OS !== "web") await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
-    if (token) await apiRequest("/auth/logout", { method: "POST", accessToken: token }).catch(() => undefined);
+    await Promise.all([
+      AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined),
+      clearRefresh().catch(() => undefined),
+      AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined),
+    ]);
+    let revoked = true;
+    if (token) {
+      try { await apiRequest("/auth/logout", { method: "POST", accessToken: token }); }
+      catch { revoked = false; }
+    }
     setLoginReturnTo("home");
     setScreen("login");
-    await AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined);
-    setNotice("Đã đăng xuất trên thiết bị.");
+    setNotice(revoked ? "Đã đăng xuất." : "Đã đăng xuất trên thiết bị. Máy chủ chưa xác nhận thu hồi phiên.");
   }
 
   useEffect(() => {
@@ -975,7 +1073,20 @@ function CustomerApp() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
         <StatusBar barStyle="dark-content" backgroundColor={palette.white} />
-        {screen === "login" ? (
+        {!authReady ? (
+          <View style={styles.sessionLoading}>
+            <ActivityIndicator size="large" color={brand} />
+            <Text style={styles.muted}>Đang khôi phục phiên đăng nhập…</Text>
+          </View>
+        ) : authRestoreError ? (
+          <View style={styles.sessionLoading}>
+            <Notice message={authRestoreError} error />
+            <Button label="Thử khôi phục phiên" onPress={() => setAuthRestoreAttempt(n => n + 1)} />
+            <Button label="Xem thực đơn" alternate onPress={() => {
+              setAuthRestoreError(""); setScreen("home");
+            }} />
+          </View>
+        ) : screen === "login" ? (
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
         ) : (
           <View style={styles.shell}>
@@ -1042,6 +1153,7 @@ function CustomerApp() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
+  sessionLoading: { flex: 1, padding: 24, justifyContent: "center", alignItems: "stretch", gap: 16 },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
   logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
