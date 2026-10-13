@@ -1,0 +1,81 @@
+name: P3 private R2 backup diagnostic (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-p3-owner-release
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/diagnose-hotpot-r2' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Sanitize private R2 upload/download and pg_dump probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/release.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/release.key" >/dev/null 2>&1
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null 2>&1
+          ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/release.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+            "$VPS_USER@$VPS_HOST" 'sudo -n bash -s' <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          export RCLONE_CONFIG=/etc/sichuan-hotpot/p3-rclone.conf
+          remote=hotpot-r2:hotpot-db-backups-private
+          test -r /etc/sichuan-hotpot/p3-rclone.conf || { echo "R2_CONFIG=BLOCKED"; exit 20; }
+          test -r /etc/sichuan-hotpot/p3-recovery.key || { echo "RECOVERY_KEY=BLOCKED"; exit 21; }
+          echo "R2_CONFIG=PASS"
+          /usr/bin/rclone lsf "$remote" --max-depth 1 >/dev/null 2>&1 || { echo "R2_LIST=BLOCKED"; exit 22; }
+          echo "R2_LIST=PASS"
+          temp="$(mktemp -d /run/hotpot-r2-diagnostic.XXXXXXXX)"
+          key="p3/probes/$(basename "$temp").txt"
+          trap '/usr/bin/rclone deletefile "$remote/$key" >/dev/null 2>&1 || true; rm -rf -- "$temp"' EXIT
+          printf 'Hotpot private backup transport probe\n' > "$temp/probe.txt"
+          /usr/bin/rclone copyto --immutable "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1 || {
+            echo "R2_WRITE=BLOCKED"; exit 23;
+          }
+          echo "R2_WRITE=PASS"
+          /usr/bin/rclone copyto "$remote/$key" "$temp/download.txt" >/dev/null 2>&1 || {
+            echo "R2_READBACK=BLOCKED"; exit 24;
+          }
+          cmp -s "$temp/probe.txt" "$temp/download.txt" || {
+            echo "R2_CHECKSUM=BLOCKED"; exit 25;
+          }
+          echo "R2_READBACK=PASS"
+          /usr/sbin/runuser -u postgres -- /usr/bin/pg_dump -Fc -d hotpot >/dev/null 2>/dev/null || {
+            echo "PG_DUMP=BLOCKED"; exit 26;
+          }
+          echo "PG_DUMP=PASS"
+          REMOTE
+      - name: Remove ephemeral secrets
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
