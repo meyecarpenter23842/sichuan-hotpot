@@ -273,7 +273,10 @@ model Payment {
   orderId    String         @unique @db.Uuid
   method     PaymentMethod
   status     PaymentStatus  @default(PENDING)
-  amountVnd  Int
+  amountVnd     Int
+  qrBankBin     String?        @db.VarChar(6)
+  qrAccountNo   String?        @db.VarChar(19)
+  qrAccountName String?        @db.VarChar(80)
   createdAt  DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime       @updatedAt @db.Timestamptz(6)
   order      Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)

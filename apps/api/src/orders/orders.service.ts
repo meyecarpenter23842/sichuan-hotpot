@@ -10,6 +10,7 @@ import { PrismaService } from "../database/prisma.service";
 import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
 import { DeliveryQuoteService } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
+import { configuredQr, qrInstructions } from "../payments/vietqr";
 
 export interface CheckoutRequest {
   branchId: string;
@@ -20,7 +21,8 @@ export interface CheckoutRequest {
 }
 const existingSelect = {
   id: true, requestHash: true, status: true, totalVnd: true,
-  payment: { select: { method: true, status: true } },
+  payment: { select: { method: true, status: true,
+    qrBankBin: true, qrAccountNo: true, qrAccountName: true } },
 } as const satisfies Prisma.OrderSelect;
 
 @Injectable()
@@ -30,6 +32,8 @@ export class OrdersService {
     private readonly auth: AuthService,
     private readonly quote: DeliveryQuoteService,
   ) {}
+
+  paymentMethods() { return { codAvailable: true, qrAvailable: configuredQr() !== null }; }
 
   private async customerId(authorization: string | undefined): Promise<string> {
     const user = await this.auth.principal(authorization);
@@ -58,14 +62,15 @@ export class OrdersService {
 
   private replay(row: {
     id: string; requestHash: string | null; status: string; totalVnd: number;
-    payment: { method: string; status: string } | null;
+    payment: { method: string; status: string;
+      qrBankBin: string | null; qrAccountNo: string | null; qrAccountName: string | null } | null;
   }, hash: string, replayed: boolean) {
     if (row.requestHash !== hash) throw new ConflictException("IDEMPOTENCY_KEY_REUSED");
     if (!row.payment) throw new ConflictException("INCOMPLETE_ORDER");
     return {
       orderId: row.id, status: row.status, totalVnd: row.totalVnd,
       paymentMethod: row.payment.method, paymentStatus: row.payment.status,
-      replayed,
+      replayed, qr: qrInstructions(row.id, row.totalVnd, row.payment),
     };
   }
 
@@ -79,6 +84,10 @@ export class OrdersService {
       where: { customerId_idempotencyKey: key }, select: existingSelect,
     });
     if (previous) return this.replay(previous, hash, true);
+    const qrBeneficiary = input.paymentMethod === "QR" ? configuredQr() : null;
+    if (input.paymentMethod === "QR" && !qrBeneficiary) {
+      throw new UnprocessableEntityException("QR_NOT_CONFIGURED");
+    }
 
     // Quotes are not trusted: this recalculates pricing, active policy, road route
     // and address ownership for each NEW request.
@@ -166,6 +175,9 @@ export class OrdersService {
               // QR is MANUAL verification: never auto-confirm because client shows a QR/screenshot.
               payment: { create: {
                 method: input.paymentMethod, status: "PENDING", amountVnd: currentFee.totalVnd,
+                qrBankBin: qrBeneficiary?.bankBin ?? null,
+                qrAccountNo: qrBeneficiary?.accountNo ?? null,
+                qrAccountName: qrBeneficiary?.accountName ?? null,
               } },
             },
             select: existingSelect,
@@ -213,7 +225,8 @@ export class OrdersService {
         id: true, branchId: true, status: true, createdAt: true,
         subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
         roadDistanceMeters: true, addressLineSnapshot: true,
-        payment: { select: { method: true, status: true, amountVnd: true } },
+        payment: { select: { method: true, status: true, amountVnd: true,
+          qrBankBin: true, qrAccountNo: true, qrAccountName: true } },
         items: { select: {
           productId: true, productName: true, variantName: true, quantity: true,
           unitPriceVnd: true, lineTotalVnd: true,
@@ -224,6 +237,14 @@ export class OrdersService {
       },
     });
     if (!order) throw new NotFoundException("ORDER_NOT_FOUND");
-    return order;
+    const qr = order.payment
+      ? qrInstructions(order.id, order.payment.amountVnd, order.payment) : null;
+    return {
+      ...order,
+      payment: order.payment ? {
+        method: order.payment.method, status: order.payment.status,
+        amountVnd: order.payment.amountVnd, qr,
+      } : null,
+    };
   }
 }

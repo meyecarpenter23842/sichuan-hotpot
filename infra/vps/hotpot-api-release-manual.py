@@ -21,7 +21,8 @@ SERVICE = "hotpot-api.service"
 MIGRATIONS = {"20261012000000_init", "20261012010000_auth_identity",
               "20261013000000_p2_catalog_modifiers",
               "20261013010000_auth_email_verification",
-              "20261013020000_p3_checkout_snapshots"}
+              "20261013020000_p3_checkout_snapshots",
+              "20261013030000_p3_qr_payee_snapshot"}
 MANIFESTS = {"package.json", "package-lock.json", "apps/api/package.json",
              "apps/customer/package.json", "apps/admin/package.json",
              "packages/shared/package.json", "packages/ui/package.json"}

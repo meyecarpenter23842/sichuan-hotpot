@@ -55,9 +55,15 @@ export interface DeliveryQuote {
   extraSteps: number; totalVnd: number; freeDeliveryApplied: boolean;
   quoteExpiresAt: string;
 }
+export interface QrPaymentInstructions {
+  bankBin: string; accountNo: string; accountName: string;
+  transferReference: string; amountVnd: number; imageUrl: string;
+}
+export interface PaymentMethods { codAvailable: boolean; qrAvailable: boolean; }
 export interface CheckoutReceipt {
   orderId: string; status: string; totalVnd: number;
   paymentMethod: "COD" | "QR"; paymentStatus: string; replayed: boolean;
+  qr: QrPaymentInstructions | null;
 }
 export interface CustomerOrderSummary {
   id: string; branchId: string; status: string; createdAt: string;
@@ -66,6 +72,8 @@ export interface CustomerOrderSummary {
 }
 export interface CustomerOrderDetail extends CustomerOrderSummary {
   roadDistanceMeters: number; addressLineSnapshot: string;
+  payment: { method: "COD" | "QR"; status: string; amountVnd: number;
+    qr: QrPaymentInstructions | null } | null;
   items: {
     productId: string | null; productName: string; variantName: string | null;
     quantity: number; unitPriceVnd: number; lineTotalVnd: number;

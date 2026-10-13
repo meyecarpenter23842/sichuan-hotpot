@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { checkoutCartItems, type CartLine } from "../../../../packages/shared/src/cart";
 import {
-  apiRequest, type CheckoutReceipt, type DeliveryQuote,
+  apiRequest, type CheckoutReceipt, type DeliveryQuote, type PaymentMethods,
 } from "../api";
 import { palette, typeScale } from "../theme";
 import { vnd } from "../validation";
@@ -23,6 +23,7 @@ type Props = {
 
 export function CheckoutPanel({ accessToken, userId, branchId, addressId, cart, onPlaced }: Props) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+  const [qrAvailable, setQrAvailable] = useState(false);
   const [quote, setQuote] = useState<DeliveryQuote | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -33,6 +34,16 @@ export function CheckoutPanel({ accessToken, userId, branchId, addressId, cart, 
   const fingerprint = useMemo(() => JSON.stringify({
     userId, branchId, addressId, paymentMethod, items,
   }), [userId, branchId, addressId, paymentMethod, items]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PaymentMethods>("/customer/orders/payment-methods", { accessToken })
+      .then(methods => { if (active) setQrAvailable(methods.qrAvailable); })
+      .catch(() => { if (active) setQrAvailable(false); });
+    return () => { active = false; };
+  }, [accessToken]);
+  useEffect(() => { if (!qrAvailable && paymentMethod === "QR") setPaymentMethod("COD"); },
+    [qrAvailable, paymentMethod]);
 
   // A cart/address change invalidates even a not-yet-expired server quote.
   useEffect(() => { setQuote(null); setProblem(""); }, [fingerprint]);
@@ -57,7 +68,8 @@ export function CheckoutPanel({ accessToken, userId, branchId, addressId, cart, 
   }
 
   async function placeOrder() {
-    if (lock.current || !addressId || !branchId || !items || !quote) return;
+    if (lock.current || !addressId || !branchId || !items || !quote
+        || (paymentMethod === "QR" && !qrAvailable)) return;
     if (quote.addressId !== addressId || quote.branchId !== branchId
         || Date.parse(quote.quoteExpiresAt) <= Date.now()) {
       setQuote(null);
@@ -118,13 +130,15 @@ export function CheckoutPanel({ accessToken, userId, branchId, addressId, cart, 
             accessibilityState={{ checked: paymentMethod === method }}
             accessibilityLabel={method === "COD" ? "Thanh toán tiền mặt khi nhận" : "Chuyển khoản QR chờ xác nhận"}
             style={[styles.method, paymentMethod === method && styles.selected]}
-            disabled={busy} onPress={() => setPaymentMethod(method)}>
+            disabled={busy || (method === "QR" && !qrAvailable)}
+            onPress={() => setPaymentMethod(method)}>
             <Text style={[styles.methodText, paymentMethod === method && styles.active]}>
               {method === "COD" ? "COD · Tiền mặt" : "QR · Chuyển khoản"}
             </Text>
           </Pressable>
         ))}
       </View>
+      {!qrAvailable && <Text style={styles.subtle}>QR chưa được cửa hàng cấu hình. Anh/chị vẫn có thể thanh toán COD.</Text>}
       {paymentMethod === "QR" && (
         <Text style={styles.subtle}>Chuyển khoản cần mã QR/tài khoản của cửa hàng. Đơn ở trạng thái chờ xác nhận, không tự đánh dấu đã thanh toán.</Text>
       )}
