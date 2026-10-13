@@ -15,6 +15,9 @@ test("PWA and Android use real draggable pins with manual coordinate fallback", 
   assert.match(address, /Vĩ độ \(latitude\)/);
   assert.match(address, /Kinh độ \(longitude\)/);
 });
-test("manual GPS/pin changes invalidate persisted delivery address selection", () => {
-  assert.match(address, /setSelectedAddressId\(null\);\s*setAddress/);
+test("draft address modal preserves existing selection on cancel, selects only after save", () => {
+  assert.match(address, /addressBeforeModal\.current = address/);
+  assert.match(address, /if \(addressBeforeModal\.current\) setAddress\(addressBeforeModal\.current\)/);
+  assert.match(address, /setSelectedAddressId\(created\.id\)/);
+  assert.match(address, /setAddressModalOpen\(false\)/);
 });
