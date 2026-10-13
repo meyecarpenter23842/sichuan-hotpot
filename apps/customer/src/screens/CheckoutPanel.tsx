@@ -7,6 +7,7 @@ import {
   apiRequest, type CheckoutReceipt, type DeliveryQuote, type PaymentMethods,
 } from "../api";
 import { palette, typeScale } from "../theme";
+import { actionDepth } from "../components/action-depth";
 import { vnd } from "../validation";
 
 const PENDING_KEY = "hotpot.checkout.pending.v1";
@@ -155,7 +156,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, addressId, cart, 
           <View style={styles.row}><Text style={styles.totalLabel}>Tổng thanh toán</Text><Text style={styles.total}>{vnd(quote.totalVnd)}</Text></View>
           <Text style={styles.subtle}>Báo phí có hạn. Máy chủ sẽ tính và kiểm tra lại khi tạo đơn.</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }}
-            style={[styles.action, busy && styles.disabled]} disabled={busy}
+            style={[styles.action, actionDepth.primary, busy && styles.disabled]} disabled={busy}
             onPress={() => void placeOrder()}>
             <Text style={styles.actionText}>{busy ? "Đang gửi đơn..." : "Xác nhận đặt đơn " + paymentMethod}</Text>
           </Pressable>
