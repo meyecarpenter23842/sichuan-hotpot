@@ -84,7 +84,7 @@ jobs:
           trap 'kill "$api_pid" "${web_pid:-0}" "${mail_pid:-0}" 2>/dev/null || true' EXIT
           # The standard quality step already exported without API config.
           # Clear Metro's transform cache so EXPO_PUBLIC_API_BASE_URL is embedded.
-          EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npm run build --workspace @hotpot/customer -- --clear
+          ( cd apps/customer && EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npx expo export --platform web --output-dir dist --clear && node scripts/lock-pwa-viewport.mjs )
           grep -Rq "127.0.0.1:3001" apps/customer/dist/_expo/static/js/web/ || {
             echo "::error::QA web bundle lacks the disposable test API base URL"
             exit 1
