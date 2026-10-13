@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
+  ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Image, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -185,6 +185,8 @@ function CustomerApp() {
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
   const [addressErrorText, setAddressErrorText] = useState("");
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const addressBeforeModal = useRef<AddressDraft | null>(null);
 
   const refreshCatalogue = useCallback(async (requestedBranch?: string) => {
     setCatalogLoading(true);
@@ -489,19 +491,78 @@ function CustomerApp() {
       } else {
         await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
       }
+      setAddressModalOpen(false);
+      addressBeforeModal.current = null;
       setScreen(addressReturnTo);
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
     } finally { setAddressSaving(false); }
   }
 
-  function selectSavedAddress(saved: SavedAddress) {
+  function selectSavedAddress(saved: SavedAddress, returnTo = addressReturnTo) {
     setSelectedAddressId(saved.id);
     setAddress(old => ({ ...old, label: saved.label, line1: saved.line1,
       latitude: saved.latitude, longitude: saved.longitude }));
     setAddressErrorText("");
     setNotice("Đã chọn địa chỉ " + saved.label + ". Phí giao sẽ được tính lại khi đặt hàng.");
-    setScreen(addressReturnTo);
+    setScreen(returnTo);
+  }
+
+  function openAddressEditor(returnTo: "cart" | "account") {
+    if (principal && savedAddresses.length >= 10) {
+      setNotice("Tài khoản đã lưu tối đa 10 địa chỉ. Xóa một địa chỉ cũ trước khi thêm.");
+      return;
+    }
+    addressBeforeModal.current = address;
+    setAddress({ label: "Nhà", phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddressReturnTo(returnTo);
+    setAddressErrorText("");
+    setAddressModalOpen(true);
+  }
+
+  function closeAddressEditor() {
+    if (addressSaving) return;
+    if (addressBeforeModal.current) setAddress(addressBeforeModal.current);
+    addressBeforeModal.current = null;
+    setAddressErrorText("");
+    setAddressModalOpen(false);
+  }
+
+  function showAddressPin(saved: SavedAddress) {
+    const lat = Number(saved.latitude), lon = Number(saved.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      setNotice("Địa chỉ này chưa có tọa độ hợp lệ.");
+      return;
+    }
+    void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat +
+      "&mlon=" + lon + "#map=17/" + lat + "/" + lon)
+      .catch(() => setNotice("Không mở được bản đồ ghim địa chỉ."));
+  }
+
+  function savedAddressCards(returnTo: "cart" | "account") {
+    return savedAddresses.map(saved => (
+      <View key={saved.id} style={[styles.savedAddress,
+        selectedAddressId === saved.id && styles.savedAddressSelected]}>
+        <View style={styles.addressCardCopy}>
+          <Text style={styles.addressCardLabel}>{saved.label}
+            {selectedAddressId === saved.id ? "  · Đang dùng" : ""}</Text>
+          <Text style={styles.addressCardLine}>{saved.line1}</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
+          style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
+          <Text style={styles.addressPinGlyph}>⌖</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
+          style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved, returnTo)}>
+          <Text style={styles.linkText}>Chọn</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+          style={styles.addressSmallButton} disabled={addressSaving}
+          onPress={() => void deleteSavedAddress(saved)}>
+          <Text style={styles.warning}>Xóa</Text>
+        </Pressable>
+      </View>
+    ));
   }
 
   async function deleteSavedAddress(saved: SavedAddress) {
@@ -512,7 +573,14 @@ function CustomerApp() {
         method: "DELETE", accessToken,
       });
       setSavedAddresses(old => old.filter(x => x.id !== saved.id));
-      setSelectedAddressId(old => old === saved.id ? null : old);
+      setSelectedAddressId(old => old === saved.id
+        ? (savedAddresses.find(x => x.id !== saved.id)?.id ?? null) : old);
+      if (selectedAddressId === saved.id) {
+        const replacement = savedAddresses.find(x => x.id !== saved.id);
+        setAddress(old => replacement ? { ...old, label: replacement.label, line1: replacement.line1,
+          latitude: replacement.latitude, longitude: replacement.longitude }
+          : { ...old, line1: "", latitude: "", longitude: "" });
+      }
       setNotice("Đã xóa địa chỉ đã lưu.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
@@ -977,25 +1045,47 @@ function CustomerApp() {
         );
       case "account":
         return (
-          <View style={styles.section}>
-            <Text style={styles.pageTitle}>Tài khoản</Text>
+          <View style={styles.accountPage}>
+            <View style={styles.accountIdentity}>
+              <HotpotNavIcon name="user" active size={38} />
+              <View style={styles.accountIdentityText}>
+                <Text style={styles.pageTitle}>Tôi</Text>
+                <Text style={styles.muted}>{principal ? "Tài khoản khách hàng" : "Chào mừng đến Sichuan Hotpot"}</Text>
+              </View>
+            </View>
             {principal ? (
               <>
-                <Text style={styles.muted}>Đã đăng nhập · {principal.role}</Text>
-                <Text style={styles.muted}>Mã tài khoản: {principal.id.slice(0, 8)}…</Text>
-                <Button label="Địa chỉ giao hàng" alternate onPress={() => { setAddressReturnTo("account"); setScreen("address"); }} />
-                <Button label="Đăng xuất" alternate onPress={() => void signOut()} />
+                <View style={styles.accountGroup}>
+                  <View style={styles.accountGroupHeader}>
+                    <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
+                    <Pressable accessibilityRole="button" style={styles.accountAdd}
+                      onPress={() => openAddressEditor("account")}>
+                      <Text style={styles.linkText}>＋ Thêm địa chỉ</Text>
+                    </Pressable>
+                  </View>
+                  {savedAddresses.length > 0 ? savedAddressCards("account") :
+                    <Text style={styles.muted}>Chưa lưu địa chỉ. Thêm địa chỉ để đặt hàng nhanh hơn.</Text>}
+                </View>
+                <View style={styles.accountGroup}>
+                  <Text style={styles.sectionTitle}>Đơn hàng & mua lại</Text>
+                  <Button label="Sản phẩm đã mua" alternate onPress={() => setScreen("purchased")} />
+                  <Button label="Lịch sử và theo dõi đơn hàng" alternate onPress={() => setScreen("orders")} />
+                </View>
+                <View style={styles.accountLogout}>
+                  <Pressable accessibilityRole="button" style={({ pressed }) => [
+                    styles.logoutButton, pressed && actionDepth.pressed,
+                  ]} onPress={() => void signOut()}>
+                    <Text style={styles.logoutText}>Đăng xuất</Text>
+                  </Pressable>
+                </View>
               </>
             ) : (
-              <>
-                <Text style={styles.muted}>Xem thực đơn thoải mái. Đăng nhập khi cần mua hàng.</Text>
-                <Button label="Đăng nhập / Tạo tài khoản" onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
-              </>
+              <View style={styles.accountGroup}>
+                <Text style={styles.muted}>Đăng nhập để lưu địa chỉ và xem các món đã mua.</Text>
+                <Button label="Đăng nhập / Tạo tài khoản"
+                  onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
+              </View>
             )}
-            <View style={styles.group}>
-              <Text style={styles.sectionTitle}>Đơn hàng của tôi</Text>
-              <Button label="Xem lịch sử đơn hàng" alternate onPress={() => setScreen("orders")} />
-            </View>
           </View>
         );
       case "address":
@@ -1004,66 +1094,16 @@ function CustomerApp() {
             <Button label={addressReturnTo === "cart" ? "‹ Trở về giỏ hàng" : "‹ Trở về tài khoản"}
               alternate onPress={() => setScreen(addressReturnTo)} />
             <Text style={styles.pageTitle}>Địa chỉ giao hàng</Text>
-            <Text style={styles.muted}>Xác nhận số nhà, đường và vị trí ghim. Phí giao thực tế sẽ được máy chủ tính khi đặt hàng.</Text>
+            <Text style={styles.muted}>Kiểm tra địa chỉ và ghim trước khi chọn. Phí giao được máy chủ tính theo đường xe chạy.</Text>
             {!!principal && savedAddresses.length > 0 && (
-              <View style={styles.group}>
+              <View style={styles.accountGroup}>
                 <Text style={styles.sectionTitle}>Địa chỉ đã lưu ({savedAddresses.length}/10)</Text>
-                {savedAddresses.map(saved => (
-                  <View key={saved.id} style={styles.savedAddress}>
-                    <View style={styles.cartLineDetails}>
-                      <Text style={styles.productName}>{saved.label}</Text>
-                      <Text style={styles.muted}>{saved.line1}</Text>
-                    </View>
-                    <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
-                      style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved)}>
-                      <Text style={styles.linkText}>Chọn</Text>
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
-                      style={styles.addressSmallButton} disabled={addressSaving}
-                      onPress={() => void deleteSavedAddress(saved)}>
-                      <Text style={styles.warning}>Xóa</Text>
-                    </Pressable>
-                  </View>
-                ))}
+                {savedAddressCards(addressReturnTo)}
               </View>
             )}
-            <Text style={styles.sectionTitle}>{principal ? "Thêm địa chỉ mới" : "Lưu địa chỉ tạm"}</Text>
-            <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
-              onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
-            <Field label="Số điện thoại" value={address.phone}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, phone: text })); }}
-              keyboardType="phone-pad" placeholder="09..." />
-            <Field label="Số nhà, đường, phường/xã" value={address.line1}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, line1: text })); }}
-              placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
-            <AddressPinMap latitude={address.latitude} longitude={address.longitude}
-              onChange={(latitude, longitude) => {
-                setSelectedAddressId(null);
-                setAddress(old => ({ ...old, latitude, longitude }));
-              }} />
-            <Button label={addressBusy ? "Đang lấy GPS..." : "Dùng vị trí GPS hiện tại"} alternate
-              disabled={addressBusy} onPress={() => void locateMe()} />
-            <Text style={styles.muted}>Nếu không cho phép GPS, nhập tọa độ từ ghim bản đồ đã kiểm tra.</Text>
-            <Field label="Vĩ độ (latitude)" value={address.latitude}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, latitude: text })); }}
-              keyboardType="decimal-pad" placeholder="10.0000000" />
-            <Field label="Kinh độ (longitude)" value={address.longitude}
-              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, longitude: text })); }}
-              keyboardType="decimal-pad" placeholder="106.0000000" />
-            {!!address.latitude && !!address.longitude && (
-              <Button label="Kiểm tra ghim trên bản đồ" alternate onPress={() => {
-                const lat = Number(address.latitude), lon = Number(address.longitude);
-                if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
-                  setAddressErrorText("Tọa độ không hợp lệ.");
-                  return;
-                }
-                void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=17/" + lat + "/" + lon);
-              }} />
-            )}
+            <Button label={principal ? "＋ Thêm địa chỉ mới" : "＋ Thêm địa chỉ giao hàng"}
+              onPress={() => openAddressEditor(addressReturnTo)} />
             {!!addressErrorText && <Notice message={addressErrorText} error />}
-            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
-              disabled={addressSaving} onPress={() => void saveAddress()} />
-            {!principal && <Text style={styles.muted}>Đăng nhập để đồng bộ nhiều địa chỉ. Bản nháp chỉ lưu trên thiết bị.</Text>}
           </View>
         );
     }
@@ -1152,6 +1192,61 @@ function CustomerApp() {
             </View>
           </View>
         )}
+        <Modal visible={addressModalOpen} transparent animationType="slide"
+          onRequestClose={closeAddressEditor}>
+          <KeyboardAvoidingView style={styles.addressModalBackdrop}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <View style={styles.addressModalSheet}>
+              <View style={styles.addressModalHeader}>
+                <Text style={styles.sectionTitle}>Thêm địa chỉ mới</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng thêm địa chỉ"
+                  onPress={closeAddressEditor} style={styles.addressModalClose}>
+                  <Text style={styles.addressModalCloseText}>✕</Text>
+                </Pressable>
+              </View>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.addressModalBody}>
+                <Text style={styles.muted}>Nhập địa chỉ, chọn GPS hoặc kéo ghim đến đúng vị trí nhận hàng.</Text>
+            <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
+              onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
+            <Field label="Số điện thoại" value={address.phone}
+              onChangeText={text => { setAddress(old => ({ ...old, phone: text })); }}
+              keyboardType="phone-pad" placeholder="09..." />
+            <Field label="Số nhà, đường, phường/xã" value={address.line1}
+              onChangeText={text => { setAddress(old => ({ ...old, line1: text })); }}
+              placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
+            <AddressPinMap latitude={address.latitude} longitude={address.longitude}
+              onChange={(latitude, longitude) => {
+                setAddress(old => ({ ...old, latitude, longitude }));
+              }} />
+            <Button label={addressBusy ? "Đang lấy GPS..." : "Dùng vị trí GPS hiện tại"} alternate
+              disabled={addressBusy} onPress={() => void locateMe()} />
+            <Text style={styles.muted}>Nếu không cho phép GPS, nhập tọa độ từ ghim bản đồ đã kiểm tra.</Text>
+            <Field label="Vĩ độ (latitude)" value={address.latitude}
+              onChangeText={text => { setAddress(old => ({ ...old, latitude: text })); }}
+              keyboardType="decimal-pad" placeholder="10.0000000" />
+            <Field label="Kinh độ (longitude)" value={address.longitude}
+              onChangeText={text => { setAddress(old => ({ ...old, longitude: text })); }}
+              keyboardType="decimal-pad" placeholder="106.0000000" />
+            {!!address.latitude && !!address.longitude && (
+              <Button label="Kiểm tra ghim trên bản đồ" alternate onPress={() => {
+                const lat = Number(address.latitude), lon = Number(address.longitude);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+                  setAddressErrorText("Tọa độ không hợp lệ.");
+                  return;
+                }
+                void Linking.openURL("https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=17/" + lat + "/" + lon);
+              }} />
+            )}
+            {!!addressErrorText && <Notice message={addressErrorText} error />}
+            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
+              disabled={addressSaving} onPress={() => void saveAddress()} />
+
+                <Button label="Hủy" alternate disabled={addressSaving} onPress={closeAddressEditor} />
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -1193,6 +1288,28 @@ const styles = StyleSheet.create({
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
+  accountPage: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24,
+    gap: 18, flexGrow: 1 },
+  accountIdentity: { flexDirection: "row", alignItems: "center", gap: 14,
+    paddingVertical: 16, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: palette.line },
+  accountIdentityText: { flex: 1, gap: 3 },
+  accountGroup: { padding: 14, borderRadius: 16, backgroundColor: palette.white,
+    borderWidth: 1, borderColor: palette.line, gap: 12 },
+  accountGroupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  accountAdd: { minHeight: 44, justifyContent: "center", paddingHorizontal: 3 },
+  accountLogout: { marginTop: "auto", paddingTop: 28, paddingBottom: 12 },
+  logoutButton: { borderColor: palette.red, borderWidth: 1, backgroundColor: palette.softRed,
+    minHeight: 48, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  logoutText: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
+  addressModalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.45)",
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 12, paddingVertical: 20 },
+  addressModalSheet: { width: "100%", maxWidth: 540, maxHeight: "94%", backgroundColor: palette.white,
+    borderRadius: 20, overflow: "hidden" },
+  addressModalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    borderBottomWidth: 1, borderBottomColor: palette.line, paddingHorizontal: 16, paddingVertical: 10 },
+  addressModalClose: { minHeight: 44, minWidth: 44, justifyContent: "center", alignItems: "center" },
+  addressModalCloseText: { fontSize: 18, color: palette.text },
+  addressModalBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 30, gap: 12 },
   homePage: { flex: 1, backgroundColor: palette.white },
     homeHeader: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 10,
     backgroundColor: "#4A0C0A" },
@@ -1296,7 +1413,14 @@ const styles = StyleSheet.create({
   option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
   optionUnavailable: { opacity: 0.45 },
   optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
-  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#EAD7C8", padding: 10, gap: 4 },
+  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: palette.graySurface,
+    borderRadius: 13, borderWidth: 1, borderColor: palette.line, padding: 10, gap: 3 },
+  savedAddressSelected: { borderColor: palette.red, backgroundColor: palette.softRed },
+  addressCardCopy: { flex: 1, gap: 4, minWidth: 0 },
+  addressCardLabel: { color: palette.text, fontWeight: "800", fontSize: typeScale.body },
+  addressCardLine: { color: palette.muted, fontSize: typeScale.small, lineHeight: 17 },
+  addressPinButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  addressPinGlyph: { fontSize: 27, color: palette.red },
   addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
