@@ -6,7 +6,7 @@ export class VerificationMailSender {
   async sendCode(to: string, code: string, purpose: "REGISTER" | "RESET_PASSWORD"): Promise<void> {
     const key = process.env.RESEND_API_KEY;
     const from = process.env.HOTPOT_MAIL_FROM;
-    if (!key || !from || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(from)) {
+    if (!key || !from || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) {
       throw new ServiceUnavailableException("Dịch vụ gửi email chưa được cấu hình.");
     }
     const endpoint = process.env.NODE_ENV === "test" && process.env.RESEND_TEST_API_URL
