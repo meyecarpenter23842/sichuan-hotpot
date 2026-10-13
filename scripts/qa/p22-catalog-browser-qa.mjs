@@ -72,7 +72,7 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).waitFor();
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
-  await page.getByRole("button", { name: /^Giỏ hàng, / }).click();
+  await page.getByRole("button", { name: "Giỏ hàng", exact: true }).click();
   await page.getByText(productName).waitFor();
   console.log("PASS: cart survives reload with modifier selections");
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).click();
@@ -92,6 +92,8 @@ try {
   await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).click();
   await page.getByText(productName).waitFor();
   await page.getByRole("button", { name: "Thêm địa chỉ giao hàng" }).click();
+  await page.getByRole("button", { name: "＋ Thêm địa chỉ mới" }).click();
+  await page.getByRole("button", { name: "Đóng thêm địa chỉ" }).waitFor();
   await page.getByRole("textbox", { name: "Số điện thoại" }).fill("0912345678");
   await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("12 Nguyễn Trãi, Quận 1, TP HCM");
   await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).fill("10.1234567");
@@ -100,17 +102,25 @@ try {
   await page.getByText("12 Nguyễn Trãi, Quận 1, TP HCM").waitFor();
   assert.ok(requests.some(x => x.path === "/customer/addresses" && x.status === 201));
   await page.getByRole("tab", { name: "Tôi" }).click();
-  await page.getByRole("button", { name: "Địa chỉ giao hàng" }).click();
-  await page.getByText("Địa chỉ đã lưu (1/10)").waitFor();
+  await page.getByRole("button", { name: "Xem ghim Nhà" }).waitFor();
   await page.getByRole("button", { name: "Dùng địa chỉ Nhà" }).click();
-  await page.getByRole("button", { name: "Địa chỉ giao hàng" }).click();
+
+  // A draft can be canceled without silently changing the current address.
+  await page.getByRole("button", { name: "＋ Thêm địa chỉ" }).click();
+  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("Bản nháp hủy");
+  await page.getByRole("button", { name: "Hủy", exact: true }).click();
+  await page.getByRole("button", { name: "Xem ghim Nhà" }).waitFor();
+  assert.equal(await page.getByText("Bản nháp hủy").count(), 0);
+
+  await page.getByRole("button", { name: "＋ Thêm địa chỉ" }).click();
   await page.getByRole("textbox", { name: "Tên gợi nhớ (Nhà, Công ty...)" }).fill("Công ty");
   await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("43 Lê Lợi, Quận 1, TP HCM");
+  await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).fill("10.2234567");
+  await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).fill("106.8654321");
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();
-  await page.getByRole("button", { name: "Địa chỉ giao hàng" }).click();
-  await page.getByText("Địa chỉ đã lưu (2/10)").waitFor();
+  await page.getByRole("button", { name: "Xem ghim Công ty" }).waitFor();
   await page.getByRole("button", { name: "Xóa địa chỉ Nhà" }).click();
-  await page.getByText("Địa chỉ đã lưu (1/10)").waitFor();
+  await page.getByRole("button", { name: "Xem ghim Nhà" }).waitFor({ state: "detached" });
   assert.ok(requests.some(x => x.path.startsWith("/customer/addresses/") && x.status === 200));
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-address-390.png", fullPage: true });
   assert.deepEqual(errors, []);
