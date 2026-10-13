@@ -7,7 +7,9 @@ const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
 const purchased = readFileSync(new URL("../src/screens/PurchasedProductsScreen.tsx", import.meta.url), "utf8");
 
 test("PWA and Android both persist rotating refresh sessions", () => {
-  assert.match(app, /Platform\.OS === "web" \? AsyncStorage\.getItem\(REFRESH_KEY\)/);
+  assert.doesNotMatch(app, /Platform\.OS === "web" \? AsyncStorage\.getItem\(REFRESH_KEY\)/);
+  assert.match(app, /refreshBrowserSession/);
+  assert.match(app, /startBrowserSession/);
   assert.match(app, /writeRefresh\(tokens\.refreshToken\)/);
   assert.match(app, /setAuthReady\(true\)/);
   assert.match(app, /authRestoreError/);
