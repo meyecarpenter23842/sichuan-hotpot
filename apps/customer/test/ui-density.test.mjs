@@ -37,6 +37,6 @@ test("mobile controls remain touchable and Safari inputs avoid focus zoom", () =
   assert.match(styleBlock(app, "input"), /fontSize: 16\b/);
   assert.match(styleBlock(auth, "input"), /fontSize: 16\b/);
   assert.match(styleBlock(auth, "action"), /minHeight: 46\b/);
-  assert.match(app, /testID="home-banner-title"/);
+  assert.match(app, /testID="home-approved-hero"/);
   assert.match(app, /testID="home-section-title"/);
 });
