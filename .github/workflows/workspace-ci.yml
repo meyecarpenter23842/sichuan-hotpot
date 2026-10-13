@@ -89,7 +89,7 @@ jobs:
             echo "::error::QA web bundle lacks the disposable test API base URL"
             exit 1
           }
-          python3 -m http.server 3000 --bind 127.0.0.1 --directory apps/customer/dist > /tmp/hotpot-ci-p21-web.log 2>&1 &
+          node scripts/qa/pwa-cookie-proxy.mjs > /tmp/hotpot-ci-p21-web.log 2>&1 &
           web_pid=$!
           for i in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:3001/health/live >/dev/null &&
