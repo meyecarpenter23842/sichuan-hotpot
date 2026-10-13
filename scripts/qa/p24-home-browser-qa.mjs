@@ -22,7 +22,7 @@ try {
       ["Lẩu", "hotpot"], ["Trà sữa", "milkTea"], ["Combo", "combo"],
       ["Topping", "topping"], ["Ưu đãi", "offers"],
     ]) {
-      const button = page.getByRole("button", { name: "Xem danh mục " + label });
+      const button = page.getByRole("button", { name: "Xem danh mục " + label, exact: true });
       await button.waitFor();
       const rect = await button.boundingBox();
       assert.ok(rect && rect.x >= -1 && rect.x + rect.width <= width + 1,
