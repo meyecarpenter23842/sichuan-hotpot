@@ -24,6 +24,7 @@ import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { AddressPinMap } from "./src/components/AddressPinMap";
+import { actionDepth } from "./src/components/action-depth";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
@@ -59,8 +60,9 @@ function Button({ label, onPress, disabled = false, alternate = false }: {
       accessibilityState={{ disabled }}
       disabled={disabled} onPress={onPress}
       style={({ pressed }) => [
-        styles.button, alternate && styles.buttonOutline,
-        disabled && styles.buttonDisabled, pressed && !disabled && styles.pressed,
+        styles.button, alternate ? actionDepth.secondary : actionDepth.primary,
+        alternate && styles.buttonOutline, disabled && styles.buttonDisabled,
+        pressed && !disabled && [styles.pressed, actionDepth.pressed],
       ]}
     >
       <Text style={[styles.buttonText, alternate && styles.buttonOutlineText]}>{label}</Text>
@@ -707,8 +709,6 @@ function CustomerApp() {
                     setScreen("menu");
                   }}>
                   <HomeCategoryIcon name={item.icon} size={48} />
-                  {item.icon === "combo" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>Hot</Text></View>}
-                  {item.icon === "offers" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>%</Text></View>}
                   <Text style={styles.quickLabel} numberOfLines={1}>{item.name}</Text>
                 </Pressable>
               ))}
@@ -1100,10 +1100,16 @@ function CustomerApp() {
                       {address.line1 || "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
-                  <Pressable style={styles.homeCart} onPress={() => setScreen("cart")}
-                    accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                    <View style={styles.homeCartInner}><View style={styles.cartIconSurface}><HotpotNavIcon name="cart" active size={20} /></View><Text style={styles.homeCartText}>{itemCount}</Text></View>
-                  </Pressable>
+                  <View style={styles.homeHeaderActions}>
+                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("orders")}
+                      accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
+                      <HotpotNavIcon name="notifications" active size={27} />
+                    </Pressable>
+                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
+                      accessibilityRole="button" accessibilityLabel="Giỏ hàng">
+                      <HotpotNavIcon name="cart" active size={27} />
+                    </Pressable>
+                  </View>
                 </View>
 
               </View>
@@ -1115,8 +1121,8 @@ function CustomerApp() {
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
-                  accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                  <View style={styles.headerCartInner}><HotpotNavIcon name="cart" active size={20} /><Text style={styles.headerCartText}>{itemCount}</Text></View>
+                  accessibilityRole="button" accessibilityLabel="Giỏ hàng">
+                  <HotpotNavIcon name="cart" active size={25} />
                 </Pressable>
               </View>
             )}
@@ -1161,7 +1167,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, paddingHorizontal: 10 },
   brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
   brandSub: { fontSize: typeScale.caption, color: "#667085" },
-  headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#FFF0F0", justifyContent: "center", alignItems: "center" },
+  headerCart: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1, minHeight: 0, paddingBottom: 58 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
@@ -1194,8 +1200,9 @@ const styles = StyleSheet.create({
   deliveryLocation: { flex: 1, minHeight: 49, justifyContent: "center" },
   deliveryLocationTitle: { color: palette.white, fontSize: 12, fontWeight: "700" },
   deliveryLocationValue: { color: palette.white, fontSize: 13, fontWeight: "600", marginTop: 4, maxWidth: 280 },
-  homeCart: { minWidth: 49, minHeight: 45, borderRadius: 12,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.33)", paddingHorizontal: 9, justifyContent: "center" },
+  homeCart: { minWidth: 44, minHeight: 44, justifyContent: "center" },
+  homeHeaderActions: { flexDirection: "row", alignItems: "center", gap: 5 },
+  headerIconAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   homeCartText: { color: palette.white, fontSize: typeScale.body, fontWeight: "800" },
   homeCartInner: { flexDirection: "row", alignItems: "center", gap: 4 },
   cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
@@ -1314,7 +1321,7 @@ const styles = StyleSheet.create({
   buttonOutline: { backgroundColor: "transparent", borderWidth: 1, borderColor: brand },
   buttonOutlineText: { color: brand },
   buttonDisabled: { opacity: 0.45 },
-  pressed: { opacity: 0.8 },
+  pressed: { opacity: 0.92 },
   segmentRow: { flexDirection: "row", backgroundColor: "#FFF0F0", borderRadius: 14, padding: 4 },
   segment: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 11 },
   segmentActive: { backgroundColor: "white" },
