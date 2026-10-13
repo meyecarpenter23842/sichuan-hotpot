@@ -26,6 +26,7 @@ import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { actionDepth } from "./src/components/action-depth";
+import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
@@ -35,16 +36,30 @@ const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
-async function readRefresh(): Promise<string | null> {
-  return Platform.OS === "web" ? AsyncStorage.getItem(REFRESH_KEY) : SecureStore.getItemAsync(REFRESH_KEY);
-}
 async function writeRefresh(token: string): Promise<void> {
-  if (Platform.OS === "web") await AsyncStorage.setItem(REFRESH_KEY, token);
+  if (Platform.OS === "web") await startBrowserSession(token);
   else await SecureStore.setItemAsync(REFRESH_KEY, token);
 }
 async function clearRefresh(): Promise<void> {
-  if (Platform.OS === "web") await AsyncStorage.removeItem(REFRESH_KEY);
-  else await SecureStore.deleteItemAsync(REFRESH_KEY);
+  if (Platform.OS === "web") {
+    await endBrowserSession();
+    await AsyncStorage.removeItem(REFRESH_KEY).catch(() => undefined);
+  } else {
+    await SecureStore.deleteItemAsync(REFRESH_KEY);
+  }
+}
+async function refreshCredentials(): Promise<AuthTokens | null> {
+  if (Platform.OS === "web") {
+    const token = await refreshBrowserSession();
+    return { ...token, refreshToken: "" };
+  }
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+  if (!refreshToken) return null;
+  const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
+    method: "POST", body: { refreshToken },
+  });
+  await writeRefresh(tokens.refreshToken);
+  return tokens;
 }
 const brand = palette.red;
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
@@ -175,6 +190,8 @@ function CustomerApp() {
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
   const authEpoch = useRef(0);
   const renewing = useRef(false);
+  const refreshFailures = useRef(0);
+  const [retryAt, setRetryAt] = useState(0);
   const [loginReturnTo, setLoginReturnTo] = useState<"home" | "cart" | "account">("home");
   const [address, setAddress] = useState<AddressDraft>({
     label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
@@ -287,15 +304,11 @@ function CustomerApp() {
     const epoch = authEpoch.current;
     async function restoreSession() {
       setAuthReady(false);
+      if (Platform.OS === "web") await AsyncStorage.removeItem(REFRESH_KEY).catch(() => undefined);
       setAuthRestoreError("");
       try {
-        const refreshToken = await readRefresh();
-        if (!refreshToken) return;
-        const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
-          method: "POST", body: { refreshToken },
-        });
-        // Refresh tokens are rotated; commit the replacement before rendering the account.
-        await writeRefresh(tokens.refreshToken);
+        const tokens = await refreshCredentials();
+        if (!tokens) return;
         const who = await apiRequest<Principal>("/auth/me", {
           accessToken: tokens.accessToken,
         });
@@ -308,7 +321,8 @@ function CustomerApp() {
         }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 401) {
-          await clearRefresh().catch(() => undefined);
+          // Missing browser cookie is the ordinary signed-out state.
+          if (Platform.OS !== "web") await clearRefresh().catch(() => undefined);
         } else if (active) {
           setAuthRestoreError(error instanceof Error ? error.message : "Không thể khôi phục phiên.");
         }
@@ -325,6 +339,8 @@ function CustomerApp() {
     if (who.role !== "CUSTOMER") throw new Error("Tài khoản này không thuộc ứng dụng khách hàng.");
     await writeRefresh(tokens.refreshToken);
     authEpoch.current += 1;
+    refreshFailures.current = 0;
+    setRetryAt(0);
     setAuthRestoreError("");
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
@@ -338,14 +354,10 @@ function CustomerApp() {
     renewing.current = true;
     const epoch = authEpoch.current;
     try {
-      const refreshToken = await readRefresh();
-      if (!refreshToken || epoch !== authEpoch.current) return;
-      const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
-        method: "POST", body: { refreshToken },
-      });
-      if (epoch !== authEpoch.current) return;
-      await writeRefresh(tokens.refreshToken);
-      if (epoch !== authEpoch.current) return;
+      const tokens = await refreshCredentials();
+      if (!tokens || epoch !== authEpoch.current) return;
+      refreshFailures.current = 0;
+      setRetryAt(0);
       setAccessToken(tokens.accessToken);
       setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
     } catch (error) {
@@ -358,8 +370,10 @@ function CustomerApp() {
         setScreen("login");
         setNotice("Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
       } else {
-        // A lost connection must not erase a potentially valid session.
-        setAccessExpiresAt(Date.now() + 30_000);
+        // Retain the credential. Exponential retry prevents a 1-second refresh storm.
+        const delay = Math.min(300_000, 15_000 * 2 ** Math.min(refreshFailures.current, 5));
+        refreshFailures.current += 1;
+        setRetryAt(Date.now() + delay);
         setNotice("Mạng gián đoạn. Ứng dụng sẽ thử kết nối lại.");
       }
     } finally {
@@ -370,10 +384,13 @@ function CustomerApp() {
   useEffect(() => {
     if (!accessToken || !accessExpiresAt) return;
     const refresh = () => {
-      if (Date.now() + 60_000 >= accessExpiresAt) void renewSession();
+      if (Date.now() + 60_000 >= accessExpiresAt && Date.now() >= retryAt) {
+        void renewSession();
+      }
     };
+    const scheduleAt = Math.max(retryAt, accessExpiresAt - 60_000);
     const timeout = setTimeout(() => { void renewSession(); },
-      Math.max(1000, accessExpiresAt - Date.now() - 60_000));
+      Math.max(1000, scheduleAt - Date.now()));
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active") refresh();
     });
@@ -387,7 +404,7 @@ function CustomerApp() {
         document.removeEventListener("visibilitychange", refresh);
       }
     };
-  }, [accessToken, accessExpiresAt, renewSession]);
+  }, [accessToken, accessExpiresAt, retryAt, renewSession]);
 
   async function signOut() {
     const token = accessToken;
@@ -395,6 +412,8 @@ function CustomerApp() {
     setPrincipal(null);
     setAccessToken("");
     setAccessExpiresAt(0);
+    setRetryAt(0);
+    refreshFailures.current = 0;
     setSavedAddresses([]);
     setSelectedAddressId(null);
     setFocusOrderId(null);
@@ -405,7 +424,7 @@ function CustomerApp() {
       AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined),
     ]);
     let revoked = true;
-    if (token) {
+    if (token && Platform.OS !== "web") {
       try { await apiRequest("/auth/logout", { method: "POST", accessToken: token }); }
       catch { revoked = false; }
     }
