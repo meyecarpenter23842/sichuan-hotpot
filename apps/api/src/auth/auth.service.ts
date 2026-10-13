@@ -128,10 +128,13 @@ export class AuthService {
     const codeHash = this.codeDigest(email, purpose, code);
     await this.prisma.database.emailChallenge.upsert({
       where: { email_purpose: { email, purpose } },
-      update: { codeHash, normalizedUsername, pendingPasswordHash,
+      update: { codeHash, normalizedUsername: normalizedUsername ?? null,
+        pendingPasswordHash: pendingPasswordHash ?? null,
         expiresAt: new Date(now.getTime() + CODE_TTL_MS), createdAt: now,
         usedAt: null, attempts: 0 },
-      create: { email, purpose, codeHash, normalizedUsername, pendingPasswordHash,
+      create: { email, purpose, codeHash,
+        normalizedUsername: normalizedUsername ?? null,
+        pendingPasswordHash: pendingPasswordHash ?? null,
         expiresAt: new Date(now.getTime() + CODE_TTL_MS) },
     });
     try {
