@@ -38,7 +38,7 @@ try {
     page.on("pageerror", e => failures.push(width + "px: " + e.message));
     await page.goto(web, { waitUntil: "networkidle", timeout: 30000 });
     await page.getByText("Đăng nhập", { exact: true }).first().waitFor();
-    assert.equal(await page.getByRole("tab", { name: "Tài khoản" }).count(), 0, "global tab visible on login");
+    assert.equal(await page.getByRole("tab", { name: "Tôi" }).count(), 0, "global tab visible on login");
     assert.equal(await page.getByRole("button", { name: "Tiếp tục với Google" }).isDisabled(), true);
     assert.ok(await page.getByRole("img", { name: "Logo Google nhiều màu" }).count());
     await page.waitForFunction(() => Array.from(document.images).some(
@@ -86,7 +86,7 @@ try {
   await page.getByRole("textbox", { name: "Mã xác minh (6 số)" }).fill(code);
   await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).click();
   try {
-    await page.getByRole("tab", { name: "Tài khoản" }).waitFor({ timeout: 10000 });
+    await page.getByRole("tab", { name: "Tôi" }).waitFor({ timeout: 10000 });
   } catch (error) {
     // Surface only HTTP statuses and generic UI labels; never log passwords, email, OTP or JWT.
     console.error("Signup API statuses", JSON.stringify(responses));
@@ -101,7 +101,7 @@ try {
     await page.screenshot({ path: evidence + "/auth-confirm-debug.png", fullPage: true });
     throw error;
   }
-  await page.getByRole("tab", { name: "Tài khoản" }).click();
+  await page.getByRole("tab", { name: "Tôi" }).click();
   await page.getByText("Đã đăng nhập · CUSTOMER").waitFor({ timeout: 15000 });
   assert.ok(responses.some(x => x.path === "/auth/register/request-code" && x.status === 201));
   assert.ok(responses.some(x => x.path === "/auth/register/confirm-code" && x.status === 201));
@@ -113,7 +113,7 @@ try {
   assert.ok(responses.some(x => x.path === "/auth/login" && x.status === 401));
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).last().click();
-  await page.getByRole("tab", { name: "Tài khoản" }).click();
+  await page.getByRole("tab", { name: "Tôi" }).click();
   await page.getByText("Đã đăng nhập · CUSTOMER").waitFor();
   await page.getByRole("button", { name: "Đăng xuất" }).click();
   await page.getByRole("button", { name: "Quên mật khẩu?" }).click();
@@ -126,7 +126,7 @@ try {
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill("newpass1");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).last().click();
-  await page.getByRole("tab", { name: "Tài khoản" }).click();
+  await page.getByRole("tab", { name: "Tôi" }).click();
   await page.getByText("Đã đăng nhập · CUSTOMER").waitFor();
   await page.screenshot({ path: evidence + "/email-verification-password-reset.png", fullPage: true });
   await ctx.close();

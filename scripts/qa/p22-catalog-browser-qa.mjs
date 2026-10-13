@@ -68,7 +68,7 @@ try {
 
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
-  await page.getByRole("tab", { name: "Giỏ hàng" }).click();
+  await page.getByRole("button", { name: /^Giỏ hàng, / }).click();
   await page.getByText(productName).waitFor();
   console.log("PASS: cart survives reload with modifier selections");
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).click();
@@ -95,7 +95,7 @@ try {
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();
   await page.getByText("12 Nguyễn Trãi, Quận 1, TP HCM").waitFor();
   assert.ok(requests.some(x => x.path === "/customer/addresses" && x.status === 201));
-  await page.getByRole("tab", { name: "Tài khoản" }).click();
+  await page.getByRole("tab", { name: "Tôi" }).click();
   await page.getByRole("button", { name: "Địa chỉ giao hàng" }).click();
   await page.getByText("Địa chỉ đã lưu (1/10)").waitFor();
   await page.getByRole("button", { name: "Dùng địa chỉ Nhà" }).click();
