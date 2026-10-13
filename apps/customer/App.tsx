@@ -40,7 +40,7 @@ const WEB_SESSION_MARKER = "hotpot.auth.pwa.present.v1";
 async function writeRefresh(token: string): Promise<void> {
   if (Platform.OS === "web") {
     await startBrowserSession(token);
-    await AsyncStorage.setItem(WEB_SESSION_MARKER, "1");
+    await AsyncStorage.setItem(WEB_SESSION_MARKER, "1").catch(() => undefined);
   } else await SecureStore.setItemAsync(REFRESH_KEY, token);
 }
 async function clearRefresh(): Promise<void> {
@@ -55,7 +55,7 @@ async function clearRefresh(): Promise<void> {
 async function refreshCredentials(): Promise<AuthTokens | null> {
   if (Platform.OS === "web") {
     // This non-secret marker avoids hammering /refresh for anonymous visitors.
-    if (await AsyncStorage.getItem(WEB_SESSION_MARKER) !== "1") return null;
+    if (await AsyncStorage.getItem(WEB_SESSION_MARKER).catch(() => null) !== "1") return null;
     const token = await refreshBrowserSession();
     return { ...token, refreshToken: "" };
   }
