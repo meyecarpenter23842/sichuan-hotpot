@@ -18,7 +18,8 @@ import {
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { palette, typeScale } from "./src/theme";
-import { HotpotNavIcon, type HotpotNavIconName } from "./src/components/HotpotNavIcon";
+import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
+import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
@@ -474,61 +475,79 @@ function CustomerApp() {
     switch (screen) {
 
       case "home": {
-        const available = products.filter(item => item.isAvailable).slice(0, 4);
-        const quick: readonly { name: string; icon: HotpotNavIconName }[] = [
-          { name: "Lẩu", icon: "hotpot" },
-          { name: "Trà sữa", icon: "categories" },
-          { name: "Combo", icon: "favorites" },
-          { name: "Topping", icon: "chili" },
+        // Use live catalogue data; product photography, prices and stock come from API.
+        const available = products.filter(item => item.isAvailable).slice(0, 8);
+        const quick: readonly { name: string; icon: HomeCategoryName; terms: readonly string[] }[] = [
+          { name: "Lẩu", icon: "hotpot", terms: ["lẩu", "hotpot"] },
+          { name: "Trà sữa", icon: "milkTea", terms: ["trà", "sữa", "drink"] },
+          { name: "Combo", icon: "combo", terms: ["combo", "set"] },
+          { name: "Topping", icon: "topping", terms: ["topping", "thêm", "nấm"] },
+          { name: "Ưu đãi", icon: "offers", terms: ["ưu đãi", "khuyến mãi", "giảm giá"] },
         ];
         return (
           <View style={styles.homePage}>
-            <Pressable style={styles.homeBanner} accessibilityRole="button"
-              accessibilityLabel="Khám phá thực đơn lẩu và trà sữa" onPress={() => setScreen("menu")}>
-              <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
-                style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
-              <View style={styles.homeBannerShade}>
-                <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
-                <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
-                <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
-              </View>
-            </Pressable>
+            <View style={styles.homeHeroRegion}>
+              <Pressable style={styles.homeBanner} accessibilityRole="button"
+                accessibilityLabel="Khám phá thực đơn lẩu và trà sữa" onPress={() => { setCategoryId(""); setScreen("menu"); }}>
+                <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
+                  style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
+                <View style={styles.homeBannerShade}>
+                  <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\\n"}& Trà Sữa</Text>
+                  <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
+                  <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
+                </View>
+              </Pressable>
+            </View>
             <View style={styles.quickMenu}>
-              {quick.map(item => (
+              {quick.map((item, index) => (
                 <Pressable key={item.name} accessibilityRole="button"
                   accessibilityLabel={"Xem danh mục " + item.name}
-                  style={styles.quickItem} onPress={() => {
+                  style={[styles.quickItem, index === 0 ? styles.quickItemHotpot : styles.quickItemNeutral]}
+                  onPress={() => {
                     const match = menu?.categories.find(cat =>
-                      cat.name.toLocaleLowerCase("vi").includes(item.name.toLocaleLowerCase("vi")));
+                      item.terms.some(term => cat.name.toLocaleLowerCase("vi").includes(term)));
+                    setSearch("");
                     setCategoryId(match?.id ?? "");
                     setScreen("menu");
                   }}>
-                  <View style={styles.quickCircle}><HotpotNavIcon name={item.icon} active size={29} /></View>
-                  <Text style={styles.quickLabel}>{item.name}</Text>
+                  <HomeCategoryIcon name={item.icon} size={48} />
+                  {item.icon === "combo" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>Hot</Text></View>}
+                  {item.icon === "offers" && <View style={styles.quickCornerBadge}><Text style={styles.quickCornerBadgeText}>%</Text></View>}
+                  <Text style={styles.quickLabel} numberOfLines={1}>{item.name}</Text>
                 </Pressable>
               ))}
             </View>
             <View style={styles.homeSection}>
               <View style={styles.homeSectionHead}>
-                <Text testID="home-section-title" style={styles.sectionTitle}>Gợi ý hôm nay</Text>
-                <Pressable accessibilityRole="button" onPress={() => setScreen("menu")}
+                <View style={styles.homeSectionTitleRow}>
+                  <HomeCategoryIcon name="offers" size={26} />
+                  <Text testID="home-section-title" style={styles.homeSectionTitle}>Món nổi bật</Text>
+                </View>
+                <Pressable accessibilityRole="button" onPress={() => { setCategoryId(""); setScreen("menu"); }}
                   style={styles.homeSeeAll}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
               </View>
               {available.length > 0 ? (
-                <View style={styles.featureGrid}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.featureGrid}
+                  style={styles.featureCarousel} testID="home-feature-carousel">
                   {available.map(item => (
-                    <Pressable key={item.id} accessibilityRole="button"
-                      accessibilityLabel={"Xem món " + item.name} style={styles.featureCard}
-                      onPress={() => openProduct(item)}>
-                      <View style={styles.featureImage}><ProductArtwork product={item} large /></View>
-                      <Text style={styles.featureTitle} numberOfLines={2}>{item.name}</Text>
+                    <View key={item.id} style={styles.featureCard}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={"Xem món " + item.name}
+                        onPress={() => openProduct(item)}>
+                        <View style={styles.featureImage}><ProductArtwork product={item} large /></View>
+                        <Text style={styles.featureTitle} numberOfLines={2}>{item.name}</Text>
+                      </Pressable>
                       <View style={styles.featureFooter}>
-                        <Text style={styles.featurePrice}>{vnd(item.priceVnd)}</Text>
-                        <Text style={styles.featurePlus}>＋</Text>
+                        <Text style={styles.featurePrice} numberOfLines={1}>{vnd(item.priceVnd)}</Text>
+                        <Pressable style={styles.featureAddButton} accessibilityRole="button"
+                          accessibilityLabel={"Chọn tùy chọn " + item.name}
+                          onPress={() => openProduct(item)}>
+                          <Text style={styles.featurePlus}>+</Text>
+                        </Pressable>
                       </View>
-                    </Pressable>
+                    </View>
                   ))}
-                </View>
+                </ScrollView>
               ) : (
                 <View style={styles.homeEmpty}>
                   <Text style={styles.emptyTitle}>Thực đơn đang cập nhật</Text>
@@ -540,6 +559,23 @@ function CustomerApp() {
                   {!catalogError && <Button label="Xem thực đơn" alternate onPress={() => setScreen("menu")} />}
                 </View>
               )}
+            </View>
+            <View style={styles.homeOffers}>
+              <View style={styles.homeSectionHead}>
+                <View style={styles.homeSectionTitleRow}>
+                  <HomeCategoryIcon name="combo" size={26} />
+                  <Text style={styles.homeSectionTitle}>Ưu đãi hôm nay</Text>
+                </View>
+                <Pressable accessibilityRole="button" accessibilityLabel="Xem danh mục ưu đãi"
+                  style={styles.homeSeeAll}
+                  onPress={() => {
+                    const offer = menu?.categories.find(cat =>
+                      /ưu đãi|khuyến mãi|giảm giá/i.test(cat.name));
+                    setCategoryId(offer?.id ?? "");
+                    setScreen("menu");
+                  }}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
+              </View>
+              <Text style={styles.homeOfferHint}>Ưu đãi và giá áp dụng sẽ hiển thị khi cửa hàng cập nhật.</Text>
             </View>
           </View>
         );
@@ -916,57 +952,66 @@ const styles = StyleSheet.create({
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
   homePage: { flex: 1, backgroundColor: palette.white },
-  homeHeader: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 11, gap: 9,
-    backgroundColor: brand },
+    homeHeader: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 10,
+    backgroundColor: "#4A0C0A" },
   homeHeaderLine: { flexDirection: "row", alignItems: "center", gap: 12 },
   deliveryLocation: { flex: 1, minHeight: 49, justifyContent: "center" },
-  deliveryLocationTitle: { color: palette.white, fontSize: 12, fontWeight: "800" },
-  deliveryLocationValue: { color: palette.white, fontSize: 12, marginTop: 4, maxWidth: 250 },
-  homeCart: { borderColor: "rgba(255,255,255,0.45)", borderWidth: 1, minHeight: 43,
-    borderRadius: 11, paddingHorizontal: 13, justifyContent: "center" },
+  deliveryLocationTitle: { color: palette.white, fontSize: 12, fontWeight: "700" },
+  deliveryLocationValue: { color: palette.white, fontSize: 13, fontWeight: "600", marginTop: 4, maxWidth: 280 },
+  homeCart: { minWidth: 49, minHeight: 45, borderRadius: 12,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.33)", paddingHorizontal: 9, justifyContent: "center" },
   homeCartText: { color: palette.white, fontSize: typeScale.body, fontWeight: "800" },
-  homeCartInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  homeCartInner: { flexDirection: "row", alignItems: "center", gap: 4 },
   cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
   headerCartInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  homeSearch: { minHeight: 44, borderRadius: 11, backgroundColor: palette.white,
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 7 },
-  homeSearchIcon: { fontSize: 19, color: palette.muted },
-  homeSearchInput: { color: palette.text, flex: 1, fontSize: 16, minHeight: 43 },
-  homeBanner: { height: 180, overflow: "hidden", margin: 13, marginBottom: 7,
-    borderRadius: 14, backgroundColor: brand },
+  homeHeroRegion: { backgroundColor: "#4A0C0A", paddingBottom: 12 },
+  homeBanner: { height: 174, overflow: "hidden", marginHorizontal: 12,
+    borderRadius: 18, backgroundColor: "#6D1710" },
   homeBannerImage: { position: "absolute", width: "100%", height: "100%" },
-  homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 19,
-    backgroundColor: "rgba(69, 0, 0, 0.37)", gap: 8 },
-  homeBannerTitle: { fontSize: typeScale.hero, lineHeight: 28, fontWeight: "900", fontStyle: "italic",
-    color: palette.white, maxWidth: 200 },
-  homeBannerCaption: { color: palette.white, fontSize: typeScale.small, fontWeight: "700" },
-  homeBannerCta: { alignSelf: "flex-start", backgroundColor: palette.white,
-    borderRadius: 20, minHeight: 30, paddingHorizontal: 14, justifyContent: "center" },
-  homeBannerCtaText: { color: brand, fontSize: typeScale.small, fontWeight: "800" },
-  quickMenu: { flexDirection: "row", justifyContent: "space-around",
-    paddingHorizontal: 11, paddingVertical: 10 },
-  quickItem: { alignItems: "center", justifyContent: "center", minHeight: 68, minWidth: 69, gap: 6 },
-  quickCircle: { backgroundColor: palette.softRed, height: 43, width: 43, borderRadius: 14,
-    justifyContent: "center", alignItems: "center" },
-  quickGlyph: { fontSize: 20 },
-  quickLabel: { color: palette.text, fontSize: typeScale.caption, fontWeight: "700" },
-  homeSection: { paddingHorizontal: 15, paddingBottom: 19, gap: 10 },
-  homeSectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 18,
+    backgroundColor: "rgba(47, 2, 0, 0.19)", gap: 7 },
+  homeBannerTitle: { fontSize: 24, lineHeight: 30, fontWeight: "900", fontStyle: "italic",
+    color: "#FFF0D4", maxWidth: "80%" },
+  homeBannerCaption: { color: "#FFF7E9", fontSize: typeScale.small, fontWeight: "700" },
+  homeBannerCta: { alignSelf: "flex-start", backgroundColor: "#FFE8BE",
+    borderRadius: 22, minHeight: 33, paddingHorizontal: 15, justifyContent: "center" },
+  homeBannerCtaText: { color: "#9E201B", fontSize: typeScale.small, fontWeight: "900" },
+  quickMenu: { flexDirection: "row", justifyContent: "space-between",
+    paddingHorizontal: 10, paddingTop: 13, paddingBottom: 15, columnGap: 5 },
+  quickItem: { position: "relative", flex: 1, minWidth: 0, minHeight: 89, borderRadius: 18,
+    alignItems: "center", justifyContent: "center", paddingVertical: 7, gap: 6 },
+  quickItemHotpot: { backgroundColor: "#FBE2E1" },
+  quickItemNeutral: { backgroundColor: "#F7F6F5" },
+  quickCornerBadge: { position: "absolute", top: 0, right: 0,
+    backgroundColor: "#C91421", borderRadius: 12, paddingHorizontal: 5, minHeight: 18,
+    justifyContent: "center" },
+  quickCornerBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800" },
+  quickLabel: { color: "#1F2126", fontSize: 12, fontWeight: "700" },
+  homeSection: { paddingTop: 3, paddingBottom: 12, gap: 10 },
+  homeSectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 15 },
+  homeSectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 1 },
+  homeSectionTitle: { color: "#202020", fontSize: 18, fontWeight: "900" },
   homeSeeAll: { minHeight: 44, justifyContent: "center" },
-  featureGrid: { flexDirection: "row", flexWrap: "wrap", columnGap: "3%", rowGap: 10 },
-  featureCard: { width: "48.5%", borderWidth: 1, borderColor: palette.line,
-    borderRadius: 13, paddingBottom: 10, overflow: "hidden", backgroundColor: palette.white },
-  featureImage: { height: 120, width: "100%", alignItems: "center", justifyContent: "center",
-    backgroundColor: palette.softRed },
-  featureTitle: { color: palette.text, fontWeight: "800", fontSize: typeScale.body, minHeight: 37,
-    marginHorizontal: 10, marginTop: 9 },
-  featureFooter: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 9,
-    alignItems: "center" },
-  featurePrice: { color: brand, fontWeight: "900", fontSize: typeScale.body, flexShrink: 1 },
-  featurePlus: { color: palette.white, fontWeight: "900", backgroundColor: brand,
-    borderRadius: 15, width: 29, height: 29, textAlign: "center", textAlignVertical: "center", fontSize: 16 },
-  homeEmpty: { backgroundColor: palette.graySurface, padding: 18,
+  featureCarousel: { flexGrow: 0 },
+  featureGrid: { flexDirection: "row", gap: 10, paddingHorizontal: 15, paddingBottom: 4 },
+  featureCard: { width: 140, borderRadius: 12, paddingBottom: 9, overflow: "hidden",
+    backgroundColor: palette.white, borderWidth: 1, borderColor: "#F3F0EE" },
+  featureImage: { height: 118, width: "100%", alignItems: "center", justifyContent: "center",
+    backgroundColor: "#FAEAEA" },
+  featureTitle: { color: "#1F2024", fontWeight: "700", fontSize: 13, minHeight: 39,
+    marginHorizontal: 8, marginTop: 8, lineHeight: 18 },
+  featureFooter: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 8,
+    alignItems: "center", gap: 4, marginTop: 3 },
+  featurePrice: { color: "#C8111F", fontWeight: "900", fontSize: 14, flexShrink: 1 },
+  featureAddButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center",
+    justifyContent: "center", backgroundColor: "#D51123" },
+  featurePlus: { color: palette.white, fontWeight: "800", fontSize: 25, lineHeight: 29 },
+  homeEmpty: { marginHorizontal: 15, backgroundColor: palette.graySurface, padding: 16,
     borderRadius: 13, gap: 10, alignItems: "stretch" },
+  homeOffers: { paddingTop: 8, paddingBottom: 16, gap: 3 },
+  homeOfferHint: { color: palette.muted, fontSize: 12, marginHorizontal: 15,
+    padding: 13, backgroundColor: "#F8F8F8", borderRadius: 12 },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
   heroEyebrow: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
   heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: typeScale.hero, lineHeight: 28 },
