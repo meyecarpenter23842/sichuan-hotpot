@@ -36,20 +36,25 @@ const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
+const WEB_SESSION_MARKER = "hotpot.auth.pwa.present.v1";
 async function writeRefresh(token: string): Promise<void> {
-  if (Platform.OS === "web") await startBrowserSession(token);
-  else await SecureStore.setItemAsync(REFRESH_KEY, token);
+  if (Platform.OS === "web") {
+    await startBrowserSession(token);
+    await AsyncStorage.setItem(WEB_SESSION_MARKER, "1");
+  } else await SecureStore.setItemAsync(REFRESH_KEY, token);
 }
 async function clearRefresh(): Promise<void> {
   if (Platform.OS === "web") {
     await endBrowserSession();
-    await AsyncStorage.removeItem(REFRESH_KEY).catch(() => undefined);
+    await AsyncStorage.multiRemove([REFRESH_KEY, WEB_SESSION_MARKER]).catch(() => undefined);
   } else {
     await SecureStore.deleteItemAsync(REFRESH_KEY);
   }
 }
 async function refreshCredentials(): Promise<AuthTokens | null> {
   if (Platform.OS === "web") {
+    // This non-secret marker avoids hammering /refresh for anonymous visitors.
+    if (await AsyncStorage.getItem(WEB_SESSION_MARKER) !== "1") return null;
     const token = await refreshBrowserSession();
     return { ...token, refreshToken: "" };
   }
@@ -322,7 +327,9 @@ function CustomerApp() {
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 401) {
           // Missing browser cookie is the ordinary signed-out state.
-          if (Platform.OS !== "web") await clearRefresh().catch(() => undefined);
+          if (Platform.OS === "web") {
+            await AsyncStorage.removeItem(WEB_SESSION_MARKER).catch(() => undefined);
+          } else await clearRefresh().catch(() => undefined);
         } else if (active) {
           setAuthRestoreError(error instanceof Error ? error.message : "Không thể khôi phục phiên.");
         }
