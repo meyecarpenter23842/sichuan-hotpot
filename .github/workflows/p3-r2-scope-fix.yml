@@ -1,0 +1,132 @@
+name: Fix private R2 scoped-bucket rclone config (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-p3-owner-release
+  cancel-in-progress: false
+jobs:
+  repair:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/fix-hotpot-r2-scope' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Validate owner command and exact latest main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+      - name: Apply verified bucket-scoped rclone option without changing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/release.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/release.key" >/dev/null 2>&1
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null 2>&1
+          ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/release.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+            "$VPS_USER@$VPS_HOST" 'sudo -n python3 -' <<'REMOTE_PY'
+          import configparser
+          import hashlib
+          import os
+          from pathlib import Path
+          import secrets
+          import stat
+          import subprocess
+          import tempfile
+
+          config_path = Path("/etc/sichuan-hotpot/p3-rclone.conf")
+          remote = "hotpot-r2:hotpot-db-backups-private"
+          endpoint = "https://bae4e0be81d8f56be5b75402ccd3bb9b.r2.cloudflarestorage.com"
+
+          def require(condition, reason):
+              if not condition:
+                  raise RuntimeError(reason)
+
+          def run(command, *, env):
+              return subprocess.run(
+                  command, env=env, stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL, timeout=90, check=False,
+              ).returncode == 0
+
+          os.umask(0o077)
+          st = config_path.lstat()
+          require(stat.S_ISREG(st.st_mode) and st.st_uid == 0
+                  and st.st_mode & 0o077 == 0, "R2_CONFIG_PERMISSIONS")
+          config = configparser.RawConfigParser()
+          config.read(config_path)
+          require(config.has_section("hotpot-r2"), "R2_REMOTE_MISSING")
+          section = config["hotpot-r2"]
+          require(section.get("type") == "s3"
+                  and section.get("provider") == "Cloudflare"
+                  and section.get("endpoint") == endpoint
+                  and bool(section.get("access_key_id"))
+                  and bool(section.get("secret_access_key")),
+                  "R2_REMOTE_MISMATCH")
+          section["no_check_bucket"] = "true"
+          fd, staged_name = tempfile.mkstemp(prefix=".r2-scoped-", dir=str(config_path.parent))
+          os.fchmod(fd, 0o600)
+          os.fchown(fd, 0, 0)
+          try:
+              with os.fdopen(fd, "w") as staged:
+                  config.write(staged)
+                  staged.flush()
+                  os.fsync(staged.fileno())
+              env = {"PATH": "/usr/bin:/bin", "HOME": "/root", "RCLONE_CONFIG": staged_name}
+              with tempfile.TemporaryDirectory(prefix="hotpot-r2-probe-", dir="/run") as td:
+                  sample = Path(td) / "probe.txt"
+                  downloaded = Path(td) / "readback.txt"
+                  sample.write_text("R2 scoped-bucket write/readback probe\n")
+                  dest = remote + "/p3/probes/" + secrets.token_hex(18) + ".txt"
+                  uploaded = False
+                  try:
+                      require(run(["/usr/bin/rclone", "lsf", remote, "--max-depth", "1"],
+                                  env=env), "R2_LIST_BLOCKED")
+                      uploaded = run(["/usr/bin/rclone", "copyto", "--immutable", str(sample), dest],
+                                     env=env)
+                      require(uploaded, "R2_WRITE_AFTER_SCOPED_FIX_BLOCKED")
+                      require(run(["/usr/bin/rclone", "copyto", dest, str(downloaded)],
+                                  env=env), "R2_READBACK_BLOCKED")
+                      require(hashlib.sha256(sample.read_bytes()).digest()
+                              == hashlib.sha256(downloaded.read_bytes()).digest(),
+                              "R2_READBACK_CHECKSUM_FAILED")
+                      require(run(["/usr/bin/rclone", "deletefile", dest], env=env),
+                              "R2_PROBE_CLEANUP_FAILED")
+                  finally:
+                      if uploaded:
+                          run(["/usr/bin/rclone", "deletefile", dest], env=env)
+              os.replace(staged_name, config_path)
+              print("R2_NO_CHECK_BUCKET=PASS")
+              print("R2_WRITE_READBACK=PASS")
+              print("R2_CONFIG_UPDATED=PASS")
+          finally:
+              Path(staged_name).unlink(missing_ok=True)
+          REMOTE_PY
+      - name: Remove ephemeral SSH credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
