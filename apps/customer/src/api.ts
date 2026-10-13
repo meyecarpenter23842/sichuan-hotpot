@@ -91,10 +91,16 @@ export async function apiRequest<T>(
         if (path === "/auth/google") throw new Error("Google chưa xác thực được tài khoản. Vui lòng thử lại.");
         throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
       }
-      if (response.status === 409) throw new Error("Tên đăng nhập đã được sử dụng.");
+      if (response.status === 409) throw new Error("Tên đăng nhập hoặc email đã được sử dụng.");
       if (response.status === 429) throw new Error("Thao tác quá nhanh. Vui lòng thử lại sau.");
-      if (response.status === 404) throw new Error("Dữ liệu chưa có hoặc chi nhánh không khả dụng.");
+      if (response.status === 404) throw new Error(path.startsWith("/auth/")
+        ? "Chức năng xác thực chưa được cập nhật trên máy chủ."
+        : "Dữ liệu chưa có hoặc chi nhánh không khả dụng.");
+      if (response.status === 503 && path.startsWith("/auth/"))
+        throw new Error("Email xác minh hoặc dịch vụ đăng nhập chưa được cấu hình trên máy chủ.");
       if (response.status >= 500) throw new Error("Máy chủ đang gặp sự cố. Vui lòng thử lại.");
+      if (response.status === 400 && (path.endsWith("confirm-code") || path.endsWith("/reset")))
+        throw new Error("Mã xác minh không đúng, hết hạn hoặc mật khẩu chưa hợp lệ.");
       throw new Error("Yêu cầu chưa hợp lệ. Vui lòng kiểm tra thông tin.");
     }
     return data as T;
