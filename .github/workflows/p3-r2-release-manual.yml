@@ -135,10 +135,26 @@ jobs:
             "sudo -n /usr/local/sbin/hotpot-p3-operations --release '$REQUESTED_SHA' '$digest'" || {
               echo "::error::P3 backup/restore/migration failed; API not deployed."; exit 1;
             }
-          ssh ${opts[@]} "$target" \
-            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" >/dev/null 2>/dev/null || {
-              echo "::error::Migration completed but API release failed. Inspect VPS."; exit 1;
+          # Never print raw remote output: report fixed gate names only.
+          api_config="$(ssh -T "${opts[@]}" "$target" \
+            'sudo -n /usr/local/sbin/hotpot-api-release-manual --check-config' 2>&1)" || {
+              for item in backend_environment migration_ready https_configured; do
+                grep -Fqx "$item=PASS" <<< "$api_config" || echo "::error::API config gate $item not PASS"
+              done
+              echo "::error::API pre-deploy check failed; service unchanged."
+              exit 1
             }
+          echo "API config and migration readiness: PASS"
+          api_result="$(ssh -T "${opts[@]}" "$target" \
+            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" 2>&1)" || {
+              release_code="$(printf '%s\n' "$api_result" | sed -n 's/^release_error=\([a-z_][a-z_]*\)$/\1/p' | tail -n 1)"
+              if [[ -z "$release_code" ]]; then release_code="unknown"; fi
+              echo "::error::API release blocked: $release_code"
+              exit 1
+            }
+          grep -Fqx "health_live=PASS;health_ready=PASS" <<< "$api_result" || {
+            echo "::error::API helper did not confirm both health endpoints."; exit 1;
+          }
           echo "P3 encrypted private R2 backup, isolated restore, migration and API release: PASS"
       - name: Remove ephemeral SSH credentials
         if: always()
