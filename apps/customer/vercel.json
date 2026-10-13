@@ -2,11 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": false
-  },
-  "rewrites": [
-    {
-      "source": "/api/session/:action",
-      "destination": "https://132.145.103.89/auth/browser/:action"
-    }
-  ]
+  }
 }
