@@ -10,7 +10,7 @@ if (/<meta\s+name=["']viewport["'][^>]*>/i.test(html)) {
 }
 // Prevent iOS Safari gesture-zoom and double-tap zoom on the installed PWA.
 // This does not suppress system-level screen magnification accessibility.
-const guard = '<style>html,body,#root{width:100%;max-width:100%;overflow-x:hidden;touch-action:manipulation;-webkit-text-size-adjust:100%}</style><script>document.addEventListener("gesturestart",function(e){e.preventDefault()},{passive:false});document.addEventListener("gesturechange",function(e){e.preventDefault()},{passive:false});</script>';
+const guard = '<style>html,body,#root{margin:0;width:100%;max-width:100%;height:100%;overflow:hidden;touch-action:manipulation;-webkit-text-size-adjust:100%}#root{height:100dvh;min-height:0}</style><script>document.addEventListener("gesturestart",function(e){e.preventDefault()},{passive:false});document.addEventListener("gesturechange",function(e){e.preventDefault()},{passive:false});</script>';
 html = html.replace(/<\/head>/i, guard + "</head>");
 if (!html.includes("user-scalable=no") || !html.includes("gesturestart")) throw new Error("PWA zoom guard missing");
 writeFileSync(file, html);
