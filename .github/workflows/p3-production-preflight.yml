@@ -5,7 +5,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: hotpot-production-vps-change
+  group: hotpot-p3-readonly-preflight
   cancel-in-progress: false
 jobs:
   inspect:
