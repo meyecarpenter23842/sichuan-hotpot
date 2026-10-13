@@ -8,12 +8,22 @@ export interface BrowserAccessSession {
 async function sessionPost<T>(path: "start" | "refresh" | "logout", body?: unknown): Promise<T> {
   // Vercel same-origin /api/session rewrite keeps the rotating refresh secret in
   // a Secure, HttpOnly, host-only cookie (never localStorage/AsyncStorage).
-  const response = await fetch("/api/session/" + path, {
-    method: "POST", credentials: "same-origin",
-    headers: { Accept: "application/json",
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let response: Response;
+  try {
+    response = await fetch("/api/session/" + path, {
+      method: "POST", credentials: "same-origin",
+      signal: controller.signal,
+      headers: { Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new Error("Không kết nối được phiên đăng nhập. Vui lòng kiểm tra mạng.");
+  } finally {
+    clearTimeout(timeout);
+  }
   if (response.status === 401) {
     throw new ApiRequestError("Phiên đăng nhập không còn hợp lệ.", 401);
   }
