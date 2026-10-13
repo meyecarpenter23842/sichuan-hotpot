@@ -1101,7 +1101,7 @@ function CustomerApp() {
             </View>
             {principal ? (
               <>
-                <View style={styles.accountGroup}>
+                <View style={styles.accountAddressSection}>
                   <View style={styles.accountGroupHeader}>
                     <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
                     <Pressable accessibilityRole="button" style={styles.accountAdd}
@@ -1109,8 +1109,14 @@ function CustomerApp() {
                       <Text style={styles.linkText}>＋ Thêm địa chỉ</Text>
                     </Pressable>
                   </View>
-                  {savedAddresses.length > 0 ? savedAddressCards("account") :
-                    <Text style={styles.muted}>Chưa lưu địa chỉ. Thêm địa chỉ để đặt hàng nhanh hơn.</Text>}
+                  {savedAddresses.length > 0 ? savedAddressCards("account", true) :
+                    <Text style={styles.addressEmptyText}>Chưa có địa chỉ. Thêm vị trí nhận hàng để đặt món nhanh hơn.</Text>}
+                  <Pressable style={styles.addressAllLink} accessibilityRole="button"
+                    accessibilityLabel="Xem tất cả địa chỉ đã lưu"
+                    onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
+                    <Text style={styles.addressAllLinkText}>Quản lý địa chỉ{savedAddresses.length > 0 ? " (" + savedAddresses.length + ")" : ""}</Text>
+                    <Text style={styles.addressAllLinkArrow}>›</Text>
+                  </Pressable>
                 </View>
                 <View style={styles.accountGroup}>
                   <Text style={styles.sectionTitle}>Đơn hàng & mua lại</Text>
@@ -1136,19 +1142,50 @@ function CustomerApp() {
         );
       case "address":
         return (
-          <View style={styles.section}>
-            <Button label={addressReturnTo === "cart" ? "‹ Trở về giỏ hàng" : "‹ Trở về tài khoản"}
-              alternate onPress={() => setScreen(addressReturnTo)} />
-            <Text style={styles.pageTitle}>Địa chỉ giao hàng</Text>
-            <Text style={styles.muted}>Kiểm tra địa chỉ và ghim trước khi chọn. Phí giao được máy chủ tính theo đường xe chạy.</Text>
-            {!!principal && savedAddresses.length > 0 && (
-              <View style={styles.accountGroup}>
-                <Text style={styles.sectionTitle}>Địa chỉ đã lưu ({savedAddresses.length}/10)</Text>
-                {savedAddressCards(addressReturnTo)}
+          <View style={styles.addressPage} testID="saved-address-page">
+            <Text style={styles.addressPageHint}>
+              Chọn địa chỉ nhận hàng đã lưu hoặc thêm vị trí mới.
+            </Text>
+            <View style={styles.addressQuickActions}>
+              {([
+                { title: "Thêm Nhà riêng", label: "Nhà", icon: "⌂", note: "" },
+                { title: "Thêm Văn phòng", label: "Công ty", icon: "▣", note: "" },
+                { title: "Thêm", label: "Khác", icon: "+", note: "Lưu địa chỉ thường dùng" },
+              ] as const).map(item => (
+                <Pressable key={item.label} accessibilityRole="button"
+                  accessibilityLabel={"Thêm địa chỉ " + item.label}
+                  style={({ pressed }) => [styles.addressQuickRow,
+                    pressed && styles.addressRowPressed]}
+                  onPress={() => openAddressEditor(addressReturnTo, item.label)}>
+                  <View style={styles.addressQuickIconCircle}>
+                    <Text style={styles.addressQuickIcon}>{item.icon}</Text>
+                  </View>
+                  <View style={styles.addressQuickCopy}>
+                    <Text style={styles.addressQuickTitle}>{item.title}</Text>
+                    {!!item.note && <Text style={styles.addressQuickNote}>{item.note}</Text>}
+                  </View>
+                  <Text style={styles.addressQuickChevron}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.addressListSection}>
+              <View style={styles.addressListHeader}>
+                <Text style={styles.addressListHeading}>Địa chỉ đã lưu</Text>
+                <Text style={styles.addressListCount}>{principal ? savedAddresses.length + "/10" : "Chưa đăng nhập"}</Text>
               </View>
-            )}
-            <Button label={principal ? "＋ Thêm địa chỉ mới" : "＋ Thêm địa chỉ giao hàng"}
-              onPress={() => openAddressEditor(addressReturnTo)} />
+              {principal && savedAddresses.length > 0 ? savedAddressCards(addressReturnTo) : (
+                <View style={styles.addressEmptyState}>
+                  <Text style={styles.addressEmptyText}>
+                    {principal
+                      ? "Chưa có địa chỉ đã lưu. Thêm Nhà riêng, Văn phòng hoặc địa chỉ khác ở phía trên."
+                      : "Đăng nhập để lưu nhiều địa chỉ. Bạn vẫn có thể thêm bản nháp trên thiết bị."}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.addressDeliveryFootnote}>
+              Phí giao được tính theo tuyến đường thực tế sau khi chọn địa chỉ.
+            </Text>
             {!!addressErrorText && <Notice message={addressErrorText} error />}
           </View>
         );
@@ -1176,7 +1213,15 @@ function CustomerApp() {
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
         ) : (
           <View style={styles.shell}>
-            {screen === "home" ? (
+            {screen === "address" ? (
+              <View style={styles.addressPageHeader}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Quay lại từ địa chỉ đã lưu"
+                  style={styles.addressBackButton} onPress={() => setScreen(addressReturnTo)}>
+                  <Text style={styles.addressBackArrow}>←</Text>
+                </Pressable>
+                <Text style={styles.addressPageTitle}>Địa điểm đã lưu</Text>
+              </View>
+            ) : screen === "home" ? (
               <View style={styles.homeHeader}>
                 <View style={styles.homeHeaderLine}>
                   <Pressable style={styles.deliveryLocation} accessibilityRole="button"
@@ -1212,7 +1257,7 @@ function CustomerApp() {
                 </Pressable>
               </View>
             )}
-            <KeyboardAvoidingView style={styles.body}
+            <KeyboardAvoidingView style={[styles.body, screen === "address" && styles.addressBody]}
               behavior={Platform.OS === "ios" ? "padding" : undefined}>
               <ScrollView keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.scrollContent}
@@ -1221,7 +1266,7 @@ function CustomerApp() {
                 {mainContent()}
               </ScrollView>
             </KeyboardAvoidingView>
-            <View style={styles.bottomNavigation}>
+            {screen !== "address" && <View style={styles.bottomNavigation}>
               {([
                 ["home", "Trang chủ", "home"],
                 ["menu", "Thực đơn", "menu"],
@@ -1235,7 +1280,7 @@ function CustomerApp() {
                   <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
                 </Pressable>
               ))}
-            </View>
+            </View>}
           </View>
         )}
         <Modal visible={addressModalOpen} transparent animationType="slide"
@@ -1244,7 +1289,7 @@ function CustomerApp() {
             behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={styles.addressModalSheet}>
               <View style={styles.addressModalHeader}>
-                <Text style={styles.sectionTitle}>Thêm địa chỉ mới</Text>
+                <Text style={styles.sectionTitle}>Thêm địa chỉ {address.label}</Text>
                 <Pressable accessibilityRole="button" accessibilityLabel="Đóng thêm địa chỉ"
                   onPress={closeAddressEditor} style={styles.addressModalClose}>
                   <Text style={styles.addressModalCloseText}>✕</Text>
