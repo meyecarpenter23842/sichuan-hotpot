@@ -8,7 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
 import {
-  addCartLine, cartItemCount, setCartQuantity,
+  addCartLine, setCartQuantity,
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
@@ -20,13 +20,14 @@ import { addressError, optionSelectionError, phoneError, vnd } from "./src/valid
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CheckoutPanel } from "./src/screens/CheckoutPanel";
 import { OrdersScreen } from "./src/screens/OrdersScreen";
+import { PurchasedProductsScreen } from "./src/screens/PurchasedProductsScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { actionDepth } from "./src/components/action-depth";
 
-type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
+type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
@@ -447,7 +448,6 @@ function CustomerApp() {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setSelectedAddressId(null);
       setAddress(old => ({
         ...old, latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
@@ -627,7 +627,6 @@ function CustomerApp() {
   ), [menu, categoryId, search]);
   const hasStoredAddress = !phoneError(address.phone)
     && !addressError(address.line1, address.latitude, address.longitude);
-  const itemCount = cartItemCount(cart);
 
   function showProduct(product: Product) {
     return (
@@ -713,7 +712,7 @@ function CustomerApp() {
       const used = new Set<string>();
       for (const modifier of item.modifiers) {
         const matches = available.filter(v => v.name === modifier.name
-          && v.priceDeltaVnd === modifier.priceVnd && v.isAvailable && !used.has(v.id));
+          && v.isAvailable && !used.has(v.id));
         if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
         modifierIds.push(matches[0]!.id);
         used.add(matches[0]!.id);
@@ -1043,6 +1042,10 @@ function CustomerApp() {
             )}
           </View>
         );
+      case "purchased":
+        return <PurchasedProductsScreen accessToken={accessToken}
+          onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
+          onReorder={reorder} />;
       case "account":
         return (
           <View style={styles.accountPage}>
