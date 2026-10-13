@@ -2,16 +2,32 @@ import {
   Body, Controller, Get, Headers, Param, Post, UseGuards,
 } from "@nestjs/common";
 import {
-  IsString, Length, MaxLength, MinLength,
+  IsString, Length, MaxLength, MinLength, IsEmail, Matches,
 } from "class-validator";
 import { ThrottlerGuard, Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
 
-class RegisterInput {
+class RequestRegistrationInput {
   @IsString() @Length(3, 32)
   username!: string;
-  @IsString() @MinLength(12) @MaxLength(128)
+  @IsEmail() @MaxLength(254)
+  email!: string;
+  @IsString() @MinLength(6) @MaxLength(8)
   password!: string;
+}
+class ConfirmCodeInput {
+  @IsEmail() @MaxLength(254)
+  email!: string;
+  @IsString() @Matches(/^[0-9]{6}$/)
+  code!: string;
+}
+class PasswordResetInput extends ConfirmCodeInput {
+  @IsString() @MinLength(6) @MaxLength(8)
+  password!: string;
+}
+class EmailOnlyInput {
+  @IsEmail() @MaxLength(254)
+  email!: string;
 }
 class LoginInput {
   @IsString() @Length(3, 64)
@@ -32,11 +48,32 @@ class RefreshInput {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  @Post("register")
+  @Post("register/request-code")
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 12, ttl: 60000 } })
-  register(@Body() input: RegisterInput) {
-    return this.auth.register(input.username, input.password);
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  requestRegistration(@Body() input: RequestRegistrationInput) {
+    return this.auth.requestRegistration(input.username, input.email, input.password);
+  }
+
+  @Post("register/confirm-code")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  confirmRegistration(@Body() input: ConfirmCodeInput) {
+    return this.auth.confirmRegistration(input.email, input.code);
+  }
+
+  @Post("password/request-code")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  requestPasswordReset(@Body() input: EmailOnlyInput) {
+    return this.auth.requestPasswordReset(input.email);
+  }
+
+  @Post("password/reset")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  resetPassword(@Body() input: PasswordResetInput) {
+    return this.auth.resetPassword(input.email, input.code, input.password);
   }
 
   @Post("login")
