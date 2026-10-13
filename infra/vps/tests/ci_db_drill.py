@@ -47,6 +47,12 @@ def ci_call(command, data=None, env=None, **kwargs):
         env = dict(env, PATH=str(Path(os.environ['CI_NODE_BIN']).parent) + ':' + env['PATH'])
     result = subprocess.run(command, input=data, env=env or admin_env, capture_output=True, timeout=600, **kwargs)
     if result.returncode:
+        # Disposable CI-only drift diagnostics: print structural summary markers,
+        # never SQL values, passwords, URLs or complete command output.
+        if 'diff' in command and '--exit-code' in command:
+            summary = [line.strip() for line in result.stdout.decode(errors='replace').splitlines()
+                       if line.lstrip().startswith(('[+]', '[-]', '[*]', '[!]'))]
+            print('ci_schema_diff_summary=' + '|'.join(summary)[:1500], flush=True)
         # Fixed error codes only, never command SQL/credentials or complete stderr.
         codes = sorted(set(re.findall(r'\b(?:P[0-9]{4}|EACCES|ENOENT|MODULE_NOT_FOUND)\b', result.stderr.decode(errors='replace'))))
         print('ci_command_error_codes=' + ','.join(codes), flush=True)
