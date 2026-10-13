@@ -1,0 +1,116 @@
+name: P3 live production preflight (read-only owner command)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-production-vps-change
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/inspect-hotpot-p3' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Require owner command, pinned SSH and current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
+          echo "::add-mask::$VPS_HOST"
+          test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+          echo "Preflight uses current protected main SHA: $(git rev-parse HEAD)"
+      - name: Inspect running API and migration history (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/release.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/release.key" >/dev/null 2>&1
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null 2>&1
+          ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/release.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 \
+            "$VPS_USER@$VPS_HOST" 'bash -s' \
+            > "$RUNNER_TEMP/inspect.out" 2> "$RUNNER_TEMP/inspect.err" <<'REMOTE'
+          set -euo pipefail
+          status="$(systemctl is-active hotpot-api.service 2>/dev/null || true)"
+          case "$status" in active|inactive|failed|activating|deactivating) ;; *) status=unknown ;; esac
+          echo "api_service=$status"
+          if test -L /opt/sichuan-hotpot/current; then
+            release="$(basename "$(readlink -f /opt/sichuan-hotpot/current)")"
+            if [[ "$release" =~ ^[0-9a-f]{40}$ ]]; then echo "release_sha=$release"
+            else echo "release_sha=unknown"; fi
+          else
+            echo "release_sha=none"
+          fi
+          query() { sudo -n -u postgres /usr/bin/psql -d hotpot -AtX -v ON_ERROR_STOP=1 -c "$1"; }
+          has_table="$(query "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='_prisma_migrations';")"
+          [[ "$has_table" == 0 || "$has_table" == 1 ]]
+          echo "migration_table=$has_table"
+          for name in 20261013020000_p3_checkout_snapshots 20261013030000_p3_qr_payee_snapshot; do
+            if [[ "$has_table" == 1 ]]; then
+              count="$(query "SELECT count(*) FROM public._prisma_migrations WHERE migration_name='$name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL;")"
+            else
+              count=0
+            fi
+            [[ "$count" == 0 || "$count" == 1 ]]
+            echo "$name=$count"
+          done
+          for pair in Order:requestHash Order:phoneSnapshot Payment:qrBankBin Payment:qrAccountNo Payment:qrAccountName; do
+            table="$(printf '%s' "$pair" | cut -d: -f1)"
+            column="$(printf '%s' "$pair" | cut -d: -f2)"
+            count="$(query "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='$table' AND column_name='$column';")"
+            [[ "$count" == 0 || "$count" == 1 ]]
+            echo "column_$table"_"$column=$count"
+          done
+          REMOTE
+          python3 - "$RUNNER_TEMP/inspect.out" <<'PY'
+          import re, sys
+          patterns={
+            'api_service':r'(active|inactive|failed|activating|deactivating|unknown)',
+            'release_sha':r'([0-9a-f]{40}|unknown|none)',
+            'migration_table':r'[01]',
+            '20261013020000_p3_checkout_snapshots':r'[01]',
+            '20261013030000_p3_qr_payee_snapshot':r'[01]',
+            'column_Order_requestHash':r'[01]',
+            'column_Order_phoneSnapshot':r'[01]',
+            'column_Payment_qrBankBin':r'[01]',
+            'column_Payment_qrAccountNo':r'[01]',
+            'column_Payment_qrAccountName':r'[01]',
+          }
+          values={}
+          for line in open(sys.argv[1], encoding='utf8').read().splitlines():
+              name, sep, value=line.partition('=')
+              if not sep or name in values or name not in patterns or not re.fullmatch(patterns[name],value):
+                  raise SystemExit('Unrecognized remote output; all values withheld.')
+              values[name]=value
+          if set(values)!=set(patterns):
+              raise SystemExit('Missing remote fields; all values withheld.')
+          for name in patterns: print(name+'='+values[name])
+          PY
+      - name: Remove ephemeral SSH materials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts" "$RUNNER_TEMP/inspect.out" "$RUNNER_TEMP/inspect.err"
