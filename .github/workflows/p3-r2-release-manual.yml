@@ -1,0 +1,131 @@
+name: VPS P3 private R2 backup, migrate and API release (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-p3-owner-release
+  cancel-in-progress: false
+jobs:
+  production:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/release-hotpot-p3' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hotpot_p3_ci
+          POSTGRES_USER: hotpot_ci
+          POSTGRES_PASSWORD: ci_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U hotpot_ci -d hotpot_p3_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hotpot_ci:ci_only@localhost:5432/hotpot_p3_ci?schema=public
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ vars.VPS_HOST }}S
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard current exact main and protected owner release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "REQUESTED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
+          echo "::add-mask::$VPS_HOST"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Validate exact main SHA using disposable CI database
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run prisma:validate
+          npm run prisma:generate
+          npm exec -- prisma migrate deploy --schema apps/api/prisma/schema.prisma
+          npm exec -- prisma migrate diff --from-schema-datasource apps/api/prisma/schema.prisma --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+          python3 -m py_compile infra/vps/hotpot-p3-operations.py
+          python3 -m unittest discover -s infra/vps/tests -v
+      - name: Build reviewed release source and digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
+            package.json package-lock.json \
+            apps/api/package.json apps/api/dist \
+            apps/api/prisma/schema.prisma apps/api/prisma/migrations \
+            apps/customer/package.json apps/admin/package.json \
+            packages/shared/package.json packages/shared/dist packages/ui/package.json
+          sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/archive.sha256"
+      - name: Validate VPS helpers, offsite restore, migration and API release
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/release.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/release.key" >/dev/null 2>&1
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null 2>&1
+          opts=(-p "$VPS_PORT" -i "$RUNNER_TEMP/release.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          target="$VPS_USER@$VPS_HOST"
+          expected_p3="$(sha256sum infra/vps/hotpot-p3-operations.py | cut -d' ' -f1)"
+          expected_api="$(sha256sum infra/vps/hotpot-api-release-manual.py | cut -d' ' -f1)"
+          installed="$(ssh ${opts[@]} "$target" 'sudo -n sha256sum /usr/local/sbin/hotpot-p3-operations /usr/local/sbin/hotpot-api-release-manual' 2>/dev/null)" || {
+            echo "::error::Install the reviewed P3 and API helpers once on VPS first."; exit 1;
+          }
+          grep -Fqx "$expected_p3  /usr/local/sbin/hotpot-p3-operations" <<< "$installed" || {
+            echo "::error::VPS P3 helper checksum differs from protected main."; exit 1;
+          }
+          grep -Fqx "$expected_api  /usr/local/sbin/hotpot-api-release-manual" <<< "$installed" || {
+            echo "::error::VPS API helper differs from protected main; update BEFORE migration."; exit 1;
+          }
+          scp -P "$VPS_PORT" -i "$RUNNER_TEMP/release.key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" \
+            "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
+            "$target:/opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" >/dev/null 2>/dev/null
+          digest="$(cat "$RUNNER_TEMP/archive.sha256")"
+          ssh ${opts[@]} "$target" \
+            "sudo -n /usr/local/sbin/hotpot-p3-operations --check '$REQUESTED_SHA' '$digest'" || {
+              echo "::error::P3 preflight failed; no production mutation executed."; exit 1;
+            }
+          ssh ${opts[@]} "$target" \
+            "sudo -n /usr/local/sbin/hotpot-p3-operations --release '$REQUESTED_SHA' '$digest'" || {
+              echo "::error::P3 backup/restore/migration failed; API not deployed."; exit 1;
+            }
+          ssh ${opts[@]} "$target" \
+            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" >/dev/null 2>/dev/null || {
+              echo "::error::Migration completed but API release failed. Inspect VPS."; exit 1;
+            }
+          echo "P3 encrypted private R2 backup, isolated restore, migration and API release: PASS"
+      - name: Remove ephemeral SSH credentials
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/release.key" "$RUNNER_TEMP/known_hosts"
