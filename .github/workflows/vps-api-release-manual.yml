@@ -20,13 +20,14 @@ concurrency:
 jobs:
   api:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.number == 3 &&
        github.event.issue.pull_request == null &&
        github.event.comment.body == '/deploy-hotpot' &&
        github.actor == 'meyecarpenter23842')
-    environment: production-api
+    # NPP one-command model: production secrets/vars are repo-scoped, not
+    # Environment-scoped; owner actor + protected main + immutable SHA gate release.
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # Isolated disposable CI database for PR-equivalent integration checks;

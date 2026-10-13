@@ -29,7 +29,7 @@ concurrency:
 jobs:
   database:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842') ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.number == 3 &&
        github.event.issue.pull_request == null &&
@@ -40,7 +40,8 @@ jobs:
     # Reuse the already configured SSH credential; do not copy private keys.
     # Existing Environment SSH key is reused; owners can remove repeat reviewers
     # in Settings once, without copying or rotating private keys.
-    environment: production-api
+    # Owner-only operational command; no Environment reviewer on every run.
+    # Repository-scoped credentials required; do not read secrets from PR jobs.
     timeout-minutes: 25
     env:
       OPERATION: ${{ inputs.operation }}

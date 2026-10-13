@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   backup:
-    if: github.ref == 'refs/heads/main'
-    environment: production-db
+    if: github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842'
+    # Repo-scoped secrets; owner-only manual trigger, no reviewer.
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
