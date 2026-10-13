@@ -23,7 +23,7 @@ async function signup(client, username, password, email = "user" + randomUUID().
   const code = capturedMail.get(email);
   assert.match(code ?? "", /^[0-9]{6}$/);
   const result = await client.post("/auth/register/confirm-code").send({ email, code }).expect(201);
-  return { ...result, email, code };
+  return { body: result.body, status: result.status, email, code };
 }
 before(async () => {
   assert.ok(process.env.DATABASE_URL, "CI requires disposable Postgres");
