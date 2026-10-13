@@ -161,6 +161,7 @@ function CustomerApp() {
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
   const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
@@ -298,6 +299,7 @@ function CustomerApp() {
     setAccessToken("");
     setSavedAddresses([]);
     setSelectedAddressId(null);
+    setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
     // Clear user-sensitive phone/GPS from local storage on logout.
     await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
@@ -519,6 +521,7 @@ function CustomerApp() {
 
   function orderPlaced(receipt: CheckoutReceipt) {
     setCart([]);
+    setFocusOrderId(receipt.orderId);
     setNotice("Đã nhận đơn #" + receipt.orderId.slice(0, 8) + ". " +
       (receipt.paymentMethod === "COD"
         ? "Thanh toán tiền mặt khi giao."
@@ -722,7 +725,7 @@ function CustomerApp() {
           </>
         );
       case "orders":
-        return <OrdersScreen accessToken={accessToken}
+        return <OrdersScreen accessToken={accessToken} focusOrderId={focusOrderId}
           onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
           onReorder={reorder} />;
       case "detail": {
@@ -1024,7 +1027,7 @@ function CustomerApp() {
               ] as const).map(([target, label, icon]) => (
                 <Pressable key={target} style={styles.navItem}
                   accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
-                  accessibilityLabel={label} onPress={() => { setNotice(""); setScreen(target); }}>
+                  accessibilityLabel={label} onPress={() => { setNotice(""); if (target === "orders") setFocusOrderId(null); setScreen(target); }}>
                   <HotpotNavIcon name={icon} active={screen === target} size={23} />
                   <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
                 </Pressable>

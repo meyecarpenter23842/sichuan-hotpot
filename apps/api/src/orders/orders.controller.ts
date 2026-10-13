@@ -47,6 +47,10 @@ export class OrdersController {
     return this.orders.list(authorization);
   }
 
+  @Get("payment-methods")
+  @Header("Cache-Control", "no-store")
+  paymentMethods() { return this.orders.paymentMethods(); }
+
   @Get(":orderId")
   @Header("Cache-Control", "no-store")
   detail(

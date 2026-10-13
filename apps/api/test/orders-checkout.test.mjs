@@ -14,6 +14,9 @@ const { RoadRoutingService } = require("../dist/delivery/road-routing.service.js
 const secret = "checkout-ci-only-secret-1234567890-abcdefgh";
 process.env.AUTH_JWT_SECRET = secret;
 process.env.CORS_ALLOWED_ORIGINS = "http://localhost:8081";
+process.env.VIETQR_BANK_BIN = "970415";
+process.env.VIETQR_ACCOUNT_NO = "123456789012";
+process.env.VIETQR_ACCOUNT_NAME = "Lau Tu Xuyen QA";
 let app, db, client, token, branchId, addressId, productId, userId;
 const key = randomUUID();
 before(async () => {
@@ -101,9 +104,31 @@ test("replay returns stable order, reuse of key with changed payload is 409", as
   await request({ ...orderBody(), items: [{ productId, variantId: null, modifierIds: [], quantity: 3 }] }).expect(409);
 });
 test("QR order stores payment PENDING and never claims money received", async () => {
-  const result = await request({ ...orderBody(randomUUID()), paymentMethod: "QR" }).expect(201);
+  const qrKey = randomUUID();
+  const result = await request({ ...orderBody(qrKey), paymentMethod: "QR" }).expect(201);
   assert.equal(result.body.paymentMethod, "QR");
   assert.equal(result.body.paymentStatus, "PENDING");
+  assert.equal(result.body.qr?.accountNo, "123456789012");
+  assert.equal(result.body.qr?.amountVnd, 115000);
+  const saved = await db.payment.findUnique({
+    where: { orderId: result.body.orderId },
+    select: { qrBankBin: true, qrAccountNo: true, qrAccountName: true },
+  });
+  assert.equal(saved.qrAccountNo, "123456789012");
+  assert.equal(saved.qrBankBin, "970415");
+  const detail = await client.get("/customer/orders/" + result.body.orderId)
+    .set("Authorization", "Bearer " + token).expect(200);
+  assert.equal(detail.body.payment.qr.transferReference, result.body.qr.transferReference);
+  const old = process.env.VIETQR_ACCOUNT_NO;
+  process.env.VIETQR_ACCOUNT_NO = "9999999999";
+  try {
+    const replay = await request({ ...orderBody(qrKey), paymentMethod: "QR" }).expect(201);
+    assert.equal(replay.body.qr?.accountNo, "123456789012");
+    assert.equal(replay.body.orderId, result.body.orderId);
+    const again = await client.get("/customer/orders/" + result.body.orderId)
+      .set("Authorization", "Bearer " + token).expect(200);
+    assert.equal(again.body.payment.qr.accountNo, "123456789012");
+  } finally { process.env.VIETQR_ACCOUNT_NO = old; }
 });
 test("customer history/detail is scoped and includes immutable monetary snapshot", async () => {
   const list = await client.get("/customer/orders")
@@ -133,4 +158,16 @@ test("routing failure creates no order", async () => {
   } finally {
     route.drivingMeters = original;
   }
+});
+
+test("QR is refused when payee not configured, and COD remains available", async () => {
+  const saved = process.env.VIETQR_BANK_BIN;
+  delete process.env.VIETQR_BANK_BIN;
+  try {
+    const methods = await client.get("/customer/orders/payment-methods").expect(200);
+    assert.equal(methods.body.qrAvailable, false);
+    await request({ ...orderBody(randomUUID()), paymentMethod: "QR" }).expect(422);
+    const cod = await request(orderBody(randomUUID())).expect(201);
+    assert.equal(cod.body.paymentMethod, "COD");
+  } finally { process.env.VIETQR_BANK_BIN = saved; }
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { palette, typeScale } from "../theme";
 import { vnd } from "../validation";
@@ -19,9 +19,10 @@ type Props = {
   accessToken: string;
   onLogin: () => void;
   onReorder: (order: CustomerOrderDetail) => string | null;
+  focusOrderId?: string | null;
 };
 
-export function OrdersScreen({ accessToken, onLogin, onReorder }: Props) {
+export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: Props) {
   const [orders, setOrders] = useState<CustomerOrderSummary[]>([]);
   const [detail, setDetail] = useState<CustomerOrderDetail | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,6 +55,11 @@ export function OrdersScreen({ accessToken, onLogin, onReorder }: Props) {
       setProblem(error instanceof Error ? error.message : "Không tải được chi tiết đơn.");
     } finally { setBusy(false); }
   }
+
+  useEffect(() => { if (focusOrderId && accessToken) void openOrder(focusOrderId); },
+    // Focus once for new order; accessToken changes trigger a fresh request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focusOrderId, accessToken]);
 
   return (
     <View style={styles.content}>
@@ -92,6 +98,20 @@ export function OrdersScreen({ accessToken, onLogin, onReorder }: Props) {
               <View style={styles.line}><Text style={styles.muted}>Phí giao</Text><Text style={styles.text}>{vnd(detail.deliveryFeeVnd)}</Text></View>
               <View style={styles.line}><Text style={styles.headingSmall}>Tổng tiền</Text><Text style={styles.price}>{vnd(detail.totalVnd)}</Text></View>
               <Text style={styles.muted}>Thanh toán: {detail.payment?.method ?? "Chưa có"} · {detail.payment?.status === "CONFIRMED" ? "Đã xác nhận" : "Chờ đối soát"}</Text>
+              {detail.payment?.qr && detail.payment.status === "PENDING" && (
+                <View style={styles.qrPanel}>
+                  <Text style={styles.headingSmall}>Quét mã VietQR chuyển khoản</Text>
+                  <Image source={{ uri: detail.payment.qr.imageUrl }}
+                    style={styles.qrImage} resizeMode="contain"
+                    accessibilityLabel="Mã QR chuyển khoản theo số tiền đơn hàng" />
+                  <Text style={styles.text}>Ngân hàng BIN: {detail.payment.qr.bankBin}</Text>
+                  <Text style={styles.text}>Số tài khoản: {detail.payment.qr.accountNo}</Text>
+                  <Text style={styles.text}>Chủ tài khoản: {detail.payment.qr.accountName}</Text>
+                  <Text style={styles.text}>Số tiền: {vnd(detail.payment.qr.amountVnd)}</Text>
+                  <Text style={styles.text}>Nội dung: {detail.payment.qr.transferReference}</Text>
+                  <Text style={styles.muted}>Vui lòng kiểm tra kỹ tài khoản nhận trước khi chuyển. Đơn chỉ được xác nhận đã thanh toán sau khi cửa hàng đối soát.</Text>
+                </View>
+              )}
               <Text style={styles.headingSmall}>Tiến trình đơn</Text>
               {detail.statusHistory.map((event, index) => (
                 <View key={index} style={styles.timeline}>
@@ -142,6 +162,8 @@ const styles = StyleSheet.create({
   price: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
   muted: { color: palette.muted, fontSize: typeScale.small, lineHeight: 18 },
   warning: { color: palette.red, fontSize: typeScale.body, lineHeight: 19 },
+  qrPanel: { borderRadius: 10, backgroundColor: palette.graySurface, padding: 12, gap: 8 },
+  qrImage: { width: "100%", height: 305 },
   timeline: { borderLeftWidth: 2, borderLeftColor: palette.line, paddingLeft: 10, gap: 3 },
   button: { minHeight: 46, borderRadius: 9, backgroundColor: palette.red, justifyContent: "center", alignItems: "center", padding: 10 },
   buttonText: { color: palette.white, fontSize: typeScale.action, fontWeight: "800" },
