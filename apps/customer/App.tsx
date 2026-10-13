@@ -17,7 +17,8 @@ import {
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
 import { AuthScreen } from "./src/screens/AuthScreen";
-import { palette } from "./src/theme";
+import { palette, typeScale } from "./src/theme";
+import { HotpotNavIcon, type HotpotNavIconName } from "./src/components/HotpotNavIcon";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
@@ -82,7 +83,7 @@ function IconTile({ name }: { name: string }) {
   const tea = /trà|tea|sữa/i.test(name);
   return (
     <View style={[styles.iconTile, tea && styles.iconTileTea]}>
-      <Text style={styles.iconGlyph}>{tea ? "🧋" : "🍲"}</Text>
+      <HotpotNavIcon name={tea ? "categories" : "hotpot"} active size={32} />
     </View>
   );
 }
@@ -474,11 +475,11 @@ function CustomerApp() {
 
       case "home": {
         const available = products.filter(item => item.isAvailable).slice(0, 4);
-        const quick: readonly { name: string; glyph: string }[] = [
-          { name: "Lẩu", glyph: "🍲" },
-          { name: "Trà sữa", glyph: "🧋" },
-          { name: "Combo", glyph: "🎁" },
-          { name: "Topping", glyph: "🥬" },
+        const quick: readonly { name: string; icon: HotpotNavIconName }[] = [
+          { name: "Lẩu", icon: "hotpot" },
+          { name: "Trà sữa", icon: "categories" },
+          { name: "Combo", icon: "favorites" },
+          { name: "Topping", icon: "chili" },
         ];
         return (
           <View style={styles.homePage}>
@@ -487,7 +488,7 @@ function CustomerApp() {
               <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
                 style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
               <View style={styles.homeBannerShade}>
-                <Text style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
+                <Text testID="home-banner-title" style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
                 <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
                 <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
               </View>
@@ -502,14 +503,14 @@ function CustomerApp() {
                     setCategoryId(match?.id ?? "");
                     setScreen("menu");
                   }}>
-                  <View style={styles.quickCircle}><Text style={styles.quickGlyph}>{item.glyph}</Text></View>
+                  <View style={styles.quickCircle}><HotpotNavIcon name={item.icon} active size={29} /></View>
                   <Text style={styles.quickLabel}>{item.name}</Text>
                 </Pressable>
               ))}
             </View>
             <View style={styles.homeSection}>
               <View style={styles.homeSectionHead}>
-                <Text style={styles.sectionTitle}>Gợi ý hôm nay</Text>
+                <Text testID="home-section-title" style={styles.sectionTitle}>Gợi ý hôm nay</Text>
                 <Pressable accessibilityRole="button" onPress={() => setScreen("menu")}
                   style={styles.homeSeeAll}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
               </View>
@@ -823,18 +824,18 @@ function CustomerApp() {
                 <View style={styles.homeHeaderLine}>
                   <Pressable style={styles.deliveryLocation} accessibilityRole="button"
                     onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
-                    <Text style={styles.deliveryLocationTitle}>⌖  Giao đến  ⌄</Text>
+                    <Text style={styles.deliveryLocationTitle}>Giao đến  ⌄</Text>
                     <Text style={styles.deliveryLocationValue} numberOfLines={1}>
                       {address.line1 || "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
                   <Pressable style={styles.homeCart} onPress={() => setScreen("cart")}
                     accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                    <Text style={styles.homeCartText}>▣  {itemCount}</Text>
+                    <View style={styles.homeCartInner}><View style={styles.cartIconSurface}><HotpotNavIcon name="cart" active size={20} /></View><Text style={styles.homeCartText}>{itemCount}</Text></View>
                   </Pressable>
                 </View>
                 <View style={styles.homeSearch}>
-                  <Text style={styles.homeSearchIcon}>⌕</Text>
+                  <HotpotNavIcon name="search" size={22} />
                   <TextInput style={styles.homeSearchInput} value={search}
                     onChangeText={text => { setSearch(text); if (text) setScreen("menu"); }}
                     onFocus={() => setScreen("menu")}
@@ -844,14 +845,14 @@ function CustomerApp() {
               </View>
             ) : (
               <View style={styles.header}>
-                <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
+                <View style={styles.logoBadge}><HotpotNavIcon name="hotpot" active size={29} /></View>
                 <View style={styles.headerText}>
                   <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
                   accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                  <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
+                  <View style={styles.headerCartInner}><HotpotNavIcon name="cart" active size={20} /><Text style={styles.headerCartText}>{itemCount}</Text></View>
                 </Pressable>
               </View>
             )}
@@ -866,15 +867,15 @@ function CustomerApp() {
             </KeyboardAvoidingView>
             <View style={styles.bottomNavigation}>
               {([
-                ["home", "Trang chủ", "⌂"],
-                ["menu", "Thực đơn", "☷"],
-                ["orders", "Đơn hàng", "▣"],
-                ["account", "Tôi", "♙"],
-              ] as const).map(([target, label, glyph]) => (
+                ["home", "Trang chủ", "home"],
+                ["menu", "Thực đơn", "menu"],
+                ["orders", "Đơn hàng", "orders"],
+                ["account", "Tôi", "user"],
+              ] as const).map(([target, label, icon]) => (
                 <Pressable key={target} style={styles.navItem}
                   accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
                   accessibilityLabel={label} onPress={() => { setNotice(""); setScreen(target); }}>
-                  <Text style={[styles.navGlyph, screen === target && styles.navActive]}>{glyph}</Text>
+                  <HotpotNavIcon name={icon} active={screen === target} size={23} />
                   <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
                 </Pressable>
               ))}
@@ -890,13 +891,13 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
-  logoBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: brand, alignItems: "center", justifyContent: "center" },
-  logoGlyph: { color: "#FFFFFF", fontSize: 26, fontWeight: "800" },
+  logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
-  brandName: { fontSize: 15, fontWeight: "900", color: brand, letterSpacing: 0.4 },
-  brandSub: { fontSize: 12, color: "#667085" },
+  brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
+  brandSub: { fontSize: typeScale.caption, color: "#667085" },
   headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#FFF0F0", justifyContent: "center", alignItems: "center" },
-  headerCartText: { fontSize: 13, color: brand, fontWeight: "800" },
+  headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
   loginPage: { backgroundColor: "#FFFFFF", paddingBottom: 24 },
@@ -910,9 +911,9 @@ const styles = StyleSheet.create({
   loginBackText: { color: "#FFF7ED", fontWeight: "700" },
   loginHeroCopy: { gap: 7, paddingBottom: 12 },
   loginEyebrow: { color: "#FFFFFF", letterSpacing: 2, fontSize: 11, fontWeight: "900" },
-  loginHeadline: { color: "#FFFDF8", fontSize: 26, fontWeight: "900", lineHeight: 34 },
+  loginHeadline: { color: "#FFFDF8", fontSize: typeScale.hero, fontWeight: "900", lineHeight: 28 },
   loginContent: { paddingHorizontal: 24, paddingTop: 25, gap: 11 },
-  loginWelcome: { color: "#20252B", fontSize: 26, lineHeight: 34, fontWeight: "900" },
+  loginWelcome: { color: "#20252B", fontSize: typeScale.page, lineHeight: 26, fontWeight: "900" },
   loginSupporting: { color: "#667085", fontSize: 13, lineHeight: 21, marginBottom: 7 },
   loginDivider: { flexDirection: "row", gap: 12, alignItems: "center", justifyContent: "center", marginVertical: 8 },
   loginDividerLine: { flex: 1, height: 1, backgroundColor: "#D0D5DD" },
@@ -920,9 +921,9 @@ const styles = StyleSheet.create({
   loginFootnote: { color: "#667085", fontSize: 12, lineHeight: 19 },
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
-  section: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
+  section: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
   homePage: { flex: 1, backgroundColor: palette.white },
-  homeHeader: { paddingHorizontal: 16, paddingTop: 13, paddingBottom: 15, gap: 13,
+  homeHeader: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 11, gap: 9,
     backgroundColor: brand },
   homeHeaderLine: { flexDirection: "row", alignItems: "center", gap: 12 },
   deliveryLocation: { flex: 1, minHeight: 49, justifyContent: "center" },
@@ -930,55 +931,58 @@ const styles = StyleSheet.create({
   deliveryLocationValue: { color: palette.white, fontSize: 12, marginTop: 4, maxWidth: 250 },
   homeCart: { borderColor: "rgba(255,255,255,0.45)", borderWidth: 1, minHeight: 43,
     borderRadius: 11, paddingHorizontal: 13, justifyContent: "center" },
-  homeCartText: { color: palette.white, fontSize: 17, fontWeight: "800" },
+  homeCartText: { color: palette.white, fontSize: typeScale.body, fontWeight: "800" },
+  homeCartInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
+  headerCartInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   homeSearch: { minHeight: 44, borderRadius: 11, backgroundColor: palette.white,
     flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 7 },
-  homeSearchIcon: { fontSize: 26, color: palette.muted },
+  homeSearchIcon: { fontSize: 19, color: palette.muted },
   homeSearchInput: { color: palette.text, flex: 1, fontSize: 16, minHeight: 43 },
-  homeBanner: { height: 192, overflow: "hidden", margin: 13, marginBottom: 7,
+  homeBanner: { height: 180, overflow: "hidden", margin: 13, marginBottom: 7,
     borderRadius: 14, backgroundColor: brand },
   homeBannerImage: { position: "absolute", width: "100%", height: "100%" },
   homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 19,
     backgroundColor: "rgba(69, 0, 0, 0.37)", gap: 8 },
-  homeBannerTitle: { fontSize: 24, lineHeight: 29, fontWeight: "900", fontStyle: "italic",
+  homeBannerTitle: { fontSize: typeScale.hero, lineHeight: 28, fontWeight: "900", fontStyle: "italic",
     color: palette.white, maxWidth: 200 },
-  homeBannerCaption: { color: palette.white, fontSize: 12, fontWeight: "700" },
+  homeBannerCaption: { color: palette.white, fontSize: typeScale.small, fontWeight: "700" },
   homeBannerCta: { alignSelf: "flex-start", backgroundColor: palette.white,
     borderRadius: 20, minHeight: 30, paddingHorizontal: 14, justifyContent: "center" },
-  homeBannerCtaText: { color: brand, fontSize: 12, fontWeight: "800" },
+  homeBannerCtaText: { color: brand, fontSize: typeScale.small, fontWeight: "800" },
   quickMenu: { flexDirection: "row", justifyContent: "space-around",
-    paddingHorizontal: 11, paddingVertical: 13 },
-  quickItem: { alignItems: "center", justifyContent: "center", minHeight: 75, minWidth: 69, gap: 6 },
-  quickCircle: { backgroundColor: palette.softRed, height: 47, width: 47, borderRadius: 16,
+    paddingHorizontal: 11, paddingVertical: 10 },
+  quickItem: { alignItems: "center", justifyContent: "center", minHeight: 68, minWidth: 69, gap: 6 },
+  quickCircle: { backgroundColor: palette.softRed, height: 43, width: 43, borderRadius: 14,
     justifyContent: "center", alignItems: "center" },
-  quickGlyph: { fontSize: 25 },
-  quickLabel: { color: palette.text, fontSize: 12, fontWeight: "700" },
-  homeSection: { paddingHorizontal: 15, paddingBottom: 19, gap: 14 },
+  quickGlyph: { fontSize: 20 },
+  quickLabel: { color: palette.text, fontSize: typeScale.caption, fontWeight: "700" },
+  homeSection: { paddingHorizontal: 15, paddingBottom: 19, gap: 10 },
   homeSectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   homeSeeAll: { minHeight: 44, justifyContent: "center" },
   featureGrid: { flexDirection: "row", flexWrap: "wrap", columnGap: "3%", rowGap: 10 },
   featureCard: { width: "48.5%", borderWidth: 1, borderColor: palette.line,
     borderRadius: 13, paddingBottom: 10, overflow: "hidden", backgroundColor: palette.white },
-  featureImage: { height: 145, width: "100%", alignItems: "center", justifyContent: "center",
+  featureImage: { height: 120, width: "100%", alignItems: "center", justifyContent: "center",
     backgroundColor: palette.softRed },
-  featureTitle: { color: palette.text, fontWeight: "800", fontSize: 13, minHeight: 42,
+  featureTitle: { color: palette.text, fontWeight: "800", fontSize: typeScale.body, minHeight: 37,
     marginHorizontal: 10, marginTop: 9 },
   featureFooter: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 9,
     alignItems: "center" },
-  featurePrice: { color: brand, fontWeight: "900", fontSize: 14, flexShrink: 1 },
+  featurePrice: { color: brand, fontWeight: "900", fontSize: typeScale.body, flexShrink: 1 },
   featurePlus: { color: palette.white, fontWeight: "900", backgroundColor: brand,
-    borderRadius: 15, width: 29, height: 29, textAlign: "center", textAlignVertical: "center", fontSize: 20 },
+    borderRadius: 15, width: 29, height: 29, textAlign: "center", textAlignVertical: "center", fontSize: 16 },
   homeEmpty: { backgroundColor: palette.graySurface, padding: 18,
     borderRadius: 13, gap: 10, alignItems: "stretch" },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
   heroEyebrow: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
-  heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: 30, lineHeight: 36 },
+  heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: typeScale.hero, lineHeight: 28 },
   heroSubtitle: { color: "#FFFFFF", fontSize: 13, lineHeight: 20 },
   heroAction: { marginTop: 8, backgroundColor: "#FFFFFF", minHeight: 44, alignSelf: "flex-start", borderRadius: 10, paddingHorizontal: 16, justifyContent: "center" },
   heroActionText: { color: "#B3262D", fontWeight: "800", fontSize: 13 },
-  pageTitle: { fontSize: 27, fontWeight: "900", color: "#20252B", marginTop: 4 },
-  sectionTitle: { color: "#20252B", fontSize: 18, fontWeight: "800" },
-  categoryTitle: { color: "#20252B", fontSize: 17, fontWeight: "800", marginBottom: 7 },
+  pageTitle: { fontSize: typeScale.page, fontWeight: "800", color: "#20252B", marginTop: 4 },
+  sectionTitle: { color: "#20252B", fontSize: typeScale.section, fontWeight: "800" },
+  categoryTitle: { color: "#20252B", fontSize: 15, fontWeight: "800", marginBottom: 7 },
   categoryBlock: { gap: 8, paddingTop: 8 },
   pills: { flexGrow: 0 },
   pill: { paddingHorizontal: 16, minHeight: 44, borderRadius: 24, backgroundColor: "#F2F4F7", justifyContent: "center", marginRight: 8 },
@@ -988,46 +992,46 @@ const styles = StyleSheet.create({
   branchPill: { borderRadius: 12, borderWidth: 1, borderColor: "#DCC2B2", paddingHorizontal: 12, paddingVertical: 11, marginRight: 8, minHeight: 44 },
   branchActive: { borderColor: brand, backgroundColor: "#FFF0F0" },
   branchText: { color: "#344054", fontSize: 13, fontWeight: "700" },
-  productCard: { backgroundColor: "white", minHeight: 108, borderRadius: 16, padding: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E4E7EC" },
-  productImage: { height: 86, width: 86, borderRadius: 12, backgroundColor: "#FFF0F0" },
+  productCard: { backgroundColor: "white", minHeight: 98, borderRadius: 16, padding: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E4E7EC" },
+  productImage: { height: 76, width: 76, borderRadius: 12, backgroundColor: "#FFF0F0" },
   productImageLarge: { width: "100%", height: "100%", borderRadius: 16, backgroundColor: "#FFF0F0" },
-  iconTile: { backgroundColor: "#FFF0F0", height: 86, width: 86, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  iconTile: { backgroundColor: "#FFF0F0", height: 76, width: 76, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   iconTileTea: { backgroundColor: "#FFF0F0" },
-  iconGlyph: { fontSize: 43 },
-  productInfo: { flex: 1, paddingHorizontal: 12, gap: 4 },
-  productName: { color: "#20252B", fontSize: 15, fontWeight: "800", lineHeight: 21 },
-  price: { color: brand, fontSize: 16, fontWeight: "900" },
+  iconGlyph: { fontSize: 30 },
+  productInfo: { flex: 1, paddingHorizontal: 12, gap: 3 },
+  productName: { color: "#20252B", fontSize: typeScale.action, fontWeight: "800", lineHeight: 19 },
+  price: { color: brand, fontSize: typeScale.action, fontWeight: "900" },
   availability: { color: "#667085", fontSize: 12 },
-  forward: { color: brand, fontSize: 31 },
-  detailHero: { height: 165, backgroundColor: "#FFF0F0", borderRadius: 16, justifyContent: "center", alignItems: "center" },
-  detailTitle: { fontSize: 27, fontWeight: "900", color: "#20252B" },
-  detailPrice: { color: brand, fontSize: 24, fontWeight: "900" },
-  group: { marginTop: 8, gap: 12, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
+  forward: { color: brand, fontSize: 23 },
+  detailHero: { height: 154, backgroundColor: "#FFF0F0", borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  detailTitle: { fontSize: typeScale.page, fontWeight: "800", color: "#20252B" },
+  detailPrice: { color: brand, fontSize: 19, fontWeight: "900" },
+  group: { marginTop: 8, gap: 9, paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
   option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
   optionUnavailable: { opacity: 0.45 },
   optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
   savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#EAD7C8", padding: 10, gap: 4 },
   addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
-  optionText: { color: "#20252B", fontSize: 15, fontWeight: "700" },
+  optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },
   step: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  stepText: { fontSize: 21, color: brand, fontWeight: "800" },
+  stepText: { fontSize: 18, color: brand, fontWeight: "800" },
   qtyText: { textAlign: "center", minWidth: 24, fontWeight: "800", color: "#20252B" },
   cartLine: { backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: "#E4E7EC", padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
   cartLineDetails: { flex: 1, gap: 6 },
-  empty: { gap: 14, alignItems: "stretch", paddingVertical: 30 },
-  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#20252B" },
+  empty: { gap: 14, alignItems: "stretch", paddingVertical: 20 },
+  emptyTitle: { fontSize: typeScale.section, fontWeight: "800", color: "#20252B" },
   muted: { color: "#667085", fontSize: 13, lineHeight: 21 },
   warning: { color: brand, fontSize: 13, fontWeight: "700" },
   notice: { margin: 14, padding: 13, borderRadius: 12, backgroundColor: "#F2F4F7" },
   noticeError: { backgroundColor: "#FEE4E2" },
   noticeText: { color: "#344054", fontSize: 13, lineHeight: 19 },
   field: { gap: 7, paddingTop: 3 },
-  fieldLabel: { color: "#344054", fontSize: 14, fontWeight: "800" },
-  input: { backgroundColor: "white", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 10, minHeight: 48, paddingHorizontal: 14, fontSize: 16, color: "#20252B" },
-  button: { backgroundColor: brand, borderRadius: 14, minHeight: 50, justifyContent: "center", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, marginVertical: 2 },
-  buttonText: { color: "white", fontSize: 15, textAlign: "center", fontWeight: "800" },
+  fieldLabel: { color: "#344054", fontSize: typeScale.body, fontWeight: "800" },
+  input: { backgroundColor: "white", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 10, minHeight: 44, paddingHorizontal: 14, fontSize: 16, color: "#20252B" },
+  button: { backgroundColor: brand, borderRadius: 14, minHeight: 46, justifyContent: "center", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, marginVertical: 2 },
+  buttonText: { color: "white", fontSize: typeScale.action, textAlign: "center", fontWeight: "800" },
   buttonOutline: { backgroundColor: "transparent", borderWidth: 1, borderColor: brand },
   buttonOutlineText: { color: brand },
   buttonDisabled: { opacity: 0.45 },
@@ -1035,14 +1039,14 @@ const styles = StyleSheet.create({
   segmentRow: { flexDirection: "row", backgroundColor: "#FFF0F0", borderRadius: 14, padding: 4 },
   segment: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 11 },
   segmentActive: { backgroundColor: "white" },
-  segmentText: { color: brand, fontSize: 14, fontWeight: "800" },
+  segmentText: { color: brand, fontSize: typeScale.body, fontWeight: "800" },
   smallAction: { alignSelf: "flex-end", paddingVertical: 9, minHeight: 44, justifyContent: "center" },
   linkText: { color: brand, fontSize: 13, fontWeight: "700" },
   orText: { textAlign: "center", paddingVertical: 8 },
-  bottomNavigation: { borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 65 },
-  navItem: { flex: 1, minHeight: 64, alignItems: "center", justifyContent: "center", gap: 2 },
-  navGlyph: { fontSize: 24, color: "#98A2B3" },
-  navLabel: { color: "#98A2B3", fontSize: 11, fontWeight: "800" },
+  bottomNavigation: { borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 58 },
+  navItem: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 2 },
+  navGlyph: { fontSize: 20, color: "#98A2B3" },
+  navLabel: { color: "#98A2B3", fontSize: typeScale.caption, fontWeight: "800" },
   navActive: { color: brand },
   loader: { marginTop: 30 },
 });
