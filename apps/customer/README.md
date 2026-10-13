@@ -38,3 +38,12 @@ Production remains disabled. `vercel.json` must keep `git.deploymentEnabled=fals
 - Cart persists IDs and quantities only; client displayed totals are estimates and the backend will validate at checkout in P3.
 - Signed-in CUSTOMER can save up to ten addresses and phone on the backend, list/select/delete their own records. Guests can store only a local draft. Road-based delivery fee is not claimed or charged by P2.2.
 - Additive Prisma migration `20261013000000_p2_catalog_modifiers` is DEV/CI only until an expressly approved production release.
+
+## Login-first redesign and verified email registration (P2.1 remediation)
+- First opening always presents a stand-alone Login with no bottom navigation, no global header and no vertical scrollbar in default portrait view. Guests can explicitly open the public menu; successful authentication redirects to Home. App shell colors are red/white.
+- Google G uses local four-color brand asset, while OAuth remains disabled until real client IDs are configured (no fake Google login).
+- **New registration** requires username, verified email, and a **6–8-character password without mandatory symbol/number/case**. Endpoint requests a 6-digit email code; account is created only when the code is confirmed. Reset flow emails a different code and revokes existing sessions after reset.
+- Resend transactional email **must** be configured with an *approved Hotpot-owned verified sender* using `RESEND_API_KEY` and `HOTPOT_MAIL_FROM` in backend runtime. Neon is not an email sender. Never commit real keys. If missing, API explicitly reports a provider configuration error.
+- **Existing long-password local accounts:** no forced database password rewrite was made, but current UI is capped at 8 characters. Recovery for old accounts without verified email must be planned before production rollout.
+- PWA export runs `scripts/lock-pwa-viewport.mjs` to limit browser pinch/double-tap zoom; native OS-level accessibility magnification is not blocked. iOS physical Safari QA still required.
+- `20261013010000_auth_email_verification` adds only columns and a challenge table; **no production migration** is performed by this PR. Requires backed-up, rehearsed rollback/recovery plan.
