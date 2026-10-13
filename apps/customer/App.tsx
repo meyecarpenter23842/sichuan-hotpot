@@ -834,14 +834,7 @@ function CustomerApp() {
                     <View style={styles.homeCartInner}><View style={styles.cartIconSurface}><HotpotNavIcon name="cart" active size={20} /></View><Text style={styles.homeCartText}>{itemCount}</Text></View>
                   </Pressable>
                 </View>
-                <View style={styles.homeSearch}>
-                  <HotpotNavIcon name="search" size={22} />
-                  <TextInput style={styles.homeSearchInput} value={search}
-                    onChangeText={text => { setSearch(text); if (text) setScreen("menu"); }}
-                    onFocus={() => setScreen("menu")}
-                    placeholder="Tìm lẩu, trà sữa, topping..." placeholderTextColor={palette.placeholder}
-                    accessibilityLabel="Tìm món ăn, trà sữa" autoCorrect={false} />
-                </View>
+
               </View>
             ) : (
               <View style={styles.header}>
@@ -889,7 +882,7 @@ function CustomerApp() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
-  shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white },
+  shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
   logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
@@ -898,7 +891,7 @@ const styles = StyleSheet.create({
   brandSub: { fontSize: typeScale.caption, color: "#667085" },
   headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#FFF0F0", justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
-  body: { flex: 1 },
+  body: { flex: 1, minHeight: 0, paddingBottom: 58 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
   loginPage: { backgroundColor: "#FFFFFF", paddingBottom: 24 },
   loginHeroFrame: { width: "100%", height: 160, backgroundColor: palette.red, overflow: "hidden" },
@@ -1043,7 +1036,7 @@ const styles = StyleSheet.create({
   smallAction: { alignSelf: "flex-end", paddingVertical: 9, minHeight: 44, justifyContent: "center" },
   linkText: { color: brand, fontSize: 13, fontWeight: "700" },
   orText: { textAlign: "center", paddingVertical: 8 },
-  bottomNavigation: { borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 58 },
+  bottomNavigation: { position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 5, borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 58 },
   navItem: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 2 },
   navGlyph: { fontSize: 20, color: "#98A2B3" },
   navLabel: { color: "#98A2B3", fontSize: typeScale.caption, fontWeight: "800" },
