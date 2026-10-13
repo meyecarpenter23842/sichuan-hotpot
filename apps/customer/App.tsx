@@ -18,6 +18,7 @@ import {
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { palette, typeScale } from "./src/theme";
+import { HotpotNavIcon, type HotpotNavIconName } from "./src/components/HotpotNavIcon";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
@@ -82,7 +83,7 @@ function IconTile({ name }: { name: string }) {
   const tea = /trà|tea|sữa/i.test(name);
   return (
     <View style={[styles.iconTile, tea && styles.iconTileTea]}>
-      <Text style={styles.iconGlyph}>{tea ? "🧋" : "🍲"}</Text>
+      <HotpotNavIcon name={tea ? "categories" : "hotpot"} active size={32} />
     </View>
   );
 }
@@ -474,11 +475,11 @@ function CustomerApp() {
 
       case "home": {
         const available = products.filter(item => item.isAvailable).slice(0, 4);
-        const quick: readonly { name: string; glyph: string }[] = [
-          { name: "Lẩu", glyph: "🍲" },
-          { name: "Trà sữa", glyph: "🧋" },
-          { name: "Combo", glyph: "🎁" },
-          { name: "Topping", glyph: "🥬" },
+        const quick: readonly { name: string; icon: HotpotNavIconName }[] = [
+          { name: "Lẩu", icon: "hotpot" },
+          { name: "Trà sữa", icon: "categories" },
+          { name: "Combo", icon: "favorites" },
+          { name: "Topping", icon: "chili" },
         ];
         return (
           <View style={styles.homePage}>
@@ -502,7 +503,7 @@ function CustomerApp() {
                     setCategoryId(match?.id ?? "");
                     setScreen("menu");
                   }}>
-                  <View style={styles.quickCircle}><Text style={styles.quickGlyph}>{item.glyph}</Text></View>
+                  <View style={styles.quickCircle}><HotpotNavIcon name={item.icon} active size={29} /></View>
                   <Text style={styles.quickLabel}>{item.name}</Text>
                 </Pressable>
               ))}
@@ -823,18 +824,18 @@ function CustomerApp() {
                 <View style={styles.homeHeaderLine}>
                   <Pressable style={styles.deliveryLocation} accessibilityRole="button"
                     onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
-                    <Text style={styles.deliveryLocationTitle}>⌖  Giao đến  ⌄</Text>
+                    <Text style={styles.deliveryLocationTitle}>Giao đến  ⌄</Text>
                     <Text style={styles.deliveryLocationValue} numberOfLines={1}>
                       {address.line1 || "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
                   <Pressable style={styles.homeCart} onPress={() => setScreen("cart")}
                     accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                    <Text style={styles.homeCartText}>▣  {itemCount}</Text>
+                    <View style={styles.homeCartInner}><View style={styles.cartIconSurface}><HotpotNavIcon name="cart" active size={20} /></View><Text style={styles.homeCartText}>{itemCount}</Text></View>
                   </Pressable>
                 </View>
                 <View style={styles.homeSearch}>
-                  <Text style={styles.homeSearchIcon}>⌕</Text>
+                  <HotpotNavIcon name="search" size={22} />
                   <TextInput style={styles.homeSearchInput} value={search}
                     onChangeText={text => { setSearch(text); if (text) setScreen("menu"); }}
                     onFocus={() => setScreen("menu")}
@@ -844,14 +845,14 @@ function CustomerApp() {
               </View>
             ) : (
               <View style={styles.header}>
-                <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
+                <View style={styles.logoBadge}><HotpotNavIcon name="hotpot" active size={29} /></View>
                 <View style={styles.headerText}>
                   <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
                   accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                  <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
+                  <View style={styles.headerCartInner}><HotpotNavIcon name="cart" active size={20} /><Text style={styles.headerCartText}>{itemCount}</Text></View>
                 </Pressable>
               </View>
             )}
@@ -866,15 +867,15 @@ function CustomerApp() {
             </KeyboardAvoidingView>
             <View style={styles.bottomNavigation}>
               {([
-                ["home", "Trang chủ", "⌂"],
-                ["menu", "Thực đơn", "☷"],
-                ["orders", "Đơn hàng", "▣"],
-                ["account", "Tôi", "♙"],
-              ] as const).map(([target, label, glyph]) => (
+                ["home", "Trang chủ", "home"],
+                ["menu", "Thực đơn", "menu"],
+                ["orders", "Đơn hàng", "orders"],
+                ["account", "Tôi", "user"],
+              ] as const).map(([target, label, icon]) => (
                 <Pressable key={target} style={styles.navItem}
                   accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
                   accessibilityLabel={label} onPress={() => { setNotice(""); setScreen(target); }}>
-                  <Text style={[styles.navGlyph, screen === target && styles.navActive]}>{glyph}</Text>
+                  <HotpotNavIcon name={icon} active={screen === target} size={23} />
                   <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
                 </Pressable>
               ))}
@@ -890,7 +891,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
-  logoBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: brand, alignItems: "center", justifyContent: "center" },
+  logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
   brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
@@ -931,6 +932,9 @@ const styles = StyleSheet.create({
   homeCart: { borderColor: "rgba(255,255,255,0.45)", borderWidth: 1, minHeight: 43,
     borderRadius: 11, paddingHorizontal: 13, justifyContent: "center" },
   homeCartText: { color: palette.white, fontSize: typeScale.body, fontWeight: "800" },
+  homeCartInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
+  headerCartInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   homeSearch: { minHeight: 44, borderRadius: 11, backgroundColor: palette.white,
     flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 7 },
   homeSearchIcon: { fontSize: 19, color: palette.muted },
