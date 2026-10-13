@@ -91,6 +91,15 @@ export interface Principal {
 const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ?? "";
 const localApi = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/;
 const validApi = /^https:\/\/[a-z\d.-]+(?::\d+)?(?:\/.*)?$/i;
+const customerBusinessErrors: Readonly<Record<string, string>> = {
+  STORE_CLOSED: "Cửa hàng đang tạm ngừng nhận đơn.",
+  BELOW_MINIMUM: "Đơn hàng chưa đạt giá trị tối thiểu để giao.",
+  OUT_OF_RANGE: "Địa chỉ ngoài phạm vi giao theo tuyến đường xe chạy.",
+  INVALID_POLICY: "Cấu hình phí giao chưa hợp lệ. Cửa hàng cần kiểm tra lại.",
+  INVALID_SUBTOTAL: "Giá trị giỏ hàng không hợp lệ, vui lòng kiểm tra món.",
+  ROUTE_UNAVAILABLE: "Không tìm được tuyến đường giao hợp lệ. Hãy chọn lại ghim.",
+  QR_NOT_CONFIGURED: "Cửa hàng chưa cấu hình thanh toán QR. Vui lòng dùng COD.",
+};
 
 export function apiBaseUrl(): string {
   if (!configured || (!validApi.test(configured) && !localApi.test(configured))) {
@@ -137,8 +146,16 @@ export async function apiRequest<T>(
       if (response.status === 503 && path.startsWith("/customer/"))
         throw new Error("Chưa thể tính tuyến đường thực tế. Không nhận đơn khi chưa có phí giao hợp lệ.");
       if (response.status >= 500) throw new Error("Máy chủ đang gặp sự cố. Vui lòng thử lại.");
-      if (response.status === 422 && path.startsWith("/customer/"))
+      if (response.status === 422 && path.startsWith("/customer/")) {
+        const errorPayload = data && typeof data === "object" && "error" in data
+          ? (data as { error?: unknown }).error : null;
+        const businessCode = errorPayload && typeof errorPayload === "object"
+          && "code" in errorPayload ? (errorPayload as { code?: unknown }).code : null;
+        if (typeof businessCode === "string" && customerBusinessErrors[businessCode]) {
+          throw new Error(customerBusinessErrors[businessCode]);
+        }
         throw new Error("Món, giá trị đơn hoặc khoảng cách giao không hợp lệ. Kiểm tra lại trước khi đặt.");
+      }
       if (response.status === 400 && (path.endsWith("confirm-code") || path.endsWith("/reset")))
         throw new Error("Mã xác minh không đúng, hết hạn hoặc mật khẩu chưa hợp lệ.");
       throw new Error("Yêu cầu chưa hợp lệ. Vui lòng kiểm tra thông tin.");
