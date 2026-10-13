@@ -168,9 +168,10 @@ def prepare(sha, digest, files):
     def build_run(command):
         run(["/usr/sbin/runuser", "-u", "hotpot-build", "--"] + command,
             cwd=temporary, env=child_env, timeout=600)
-    build_run(["npm", "ci", "--include=dev", "--ignore-scripts", "--no-audit", "--no-fund"])
+    backend_workspaces = ["--workspace=apps/api", "--workspace=packages/shared", "--include-workspace-root"]
+    build_run(["npm", "ci"] + backend_workspaces + ["--include=dev", "--ignore-scripts", "--no-audit", "--no-fund"])
     build_run(["node", "node_modules/prisma/build/index.js", "generate", "--schema", "apps/api/prisma/schema.prisma"])
-    build_run(["npm", "prune", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"])
+    build_run(["npm", "prune"] + backend_workspaces + ["--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"])
     build_run(["node", "-e", "require('@nestjs/core');require('@prisma/client');require('@node-rs/argon2');require('./apps/api/dist/app.module.js')"])
     (temporary / "release.json").write_text(json.dumps({"sha": sha, "digest": digest}))
     run(["chown", "-R", "root:hotpot-api", str(temporary)])

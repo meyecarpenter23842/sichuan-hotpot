@@ -278,6 +278,7 @@ def migration(sha, digest, backup_id, apply=False):
     build_env = {'PATH': '/usr/bin:/bin', 'HOME': '/var/lib/sichuan-hotpot/build',
                  'npm_config_cache': '/var/lib/sichuan-hotpot/build/cache'}
     call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/npm', 'ci',
+          '--workspace=apps/api', '--workspace=packages/shared', '--include-workspace-root',
           '--ignore-scripts', '--no-audit', '--no-fund'], env=build_env, cwd=temporary)
     # Download/prepare Prisma engines while the builder can still write modules.
     call(['/usr/sbin/runuser', '-u', 'hotpot-build', '--', '/usr/bin/node',
