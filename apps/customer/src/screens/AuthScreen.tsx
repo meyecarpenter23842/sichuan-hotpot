@@ -7,7 +7,7 @@ import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import { apiRequest, type AuthTokens } from "../api";
 import { emailError, passwordError, usernameError } from "../validation";
-import { palette } from "../theme";
+import { palette, typeScale } from "../theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -234,7 +234,7 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   return <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <View style={[s.frame, { maxWidth: 510 }]}>
       <View style={[s.hero, { height: login
-        ? Math.min(340, Math.max(184, height * (compact ? 0.36 : 0.39))) : 125 }]}>
+        ? Math.min(290, Math.max(176, height * (compact ? 0.31 : 0.33))) : 125 }]}>
         {imageFailed ? (
           <View style={s.heroFallback}>
             <Text style={s.fallbackSymbol}>♨</Text>
@@ -267,12 +267,12 @@ const s = StyleSheet.create({
   fallbackSymbol: { color: palette.white, fontSize: 62 },
   fallbackBrand: { color: palette.white, fontSize: 16, fontWeight: "900" },
   heroWelcome: { position: "absolute", bottom: 30, left: 19, maxWidth: "65%" },
-  welcomeTitle: { color: palette.white, fontSize: 31, lineHeight: 35, fontWeight: "900", fontStyle: "italic" },
-  welcomeSub: { color: palette.white, fontWeight: "700", fontSize: 11, marginTop: 8, lineHeight: 15 },
+  welcomeTitle: { color: palette.white, fontSize: typeScale.loginHero, lineHeight: 28, fontWeight: "900", fontStyle: "italic" },
+  welcomeSub: { color: palette.white, fontWeight: "700", fontSize: typeScale.caption, marginTop: 8, lineHeight: 15 },
   loginNoScroll: { flex: 1, minHeight: 0, marginTop: -17,
     borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: "hidden", backgroundColor: palette.white },
   loginSheet: { flex: 1, justifyContent: "space-evenly",
-    paddingHorizontal: 21, paddingTop: 11, paddingBottom: 10, gap: 2 },
+    paddingHorizontal: 21, paddingTop: 7, paddingBottom: 7, gap: 2 },
   loginSheetCompact: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 5 },
   compactField: { gap: 0 },
   compactInputBox: { backgroundColor: palette.graySurface, borderColor: palette.graySurface,
@@ -285,13 +285,13 @@ const s = StyleSheet.create({
   rememberText: { fontSize: 11, color: palette.muted },
   registerPrompt: { backgroundColor: palette.graySurface, minHeight: 35,
     borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  registerText: { color: palette.muted, fontSize: 12 },
+  registerText: { color: palette.muted, fontSize: typeScale.small },
   terms: { color: palette.muted, fontSize: 10, textAlign: "center" },
   scrolling: { flexGrow: 1, justifyContent: "center", paddingBottom: 16 },
   content: { width: "100%", paddingHorizontal: 20, gap: 9 },
   compactContent: { gap: 6, paddingHorizontal: 16 },
-  heading: { color: palette.text, fontWeight: "900", fontSize: 25, textAlign: "center", marginBottom: 1 },
-  headingCompact: { fontSize: 22 },
+  heading: { color: palette.text, fontWeight: "900", fontSize: typeScale.page, textAlign: "center", marginBottom: 1 },
+  headingCompact: { fontSize: 19 },
   tabs: { flexDirection: "row", borderRadius: 10, backgroundColor: palette.softRed, padding: 3 },
   tab: { flex: 1, minHeight: 37, justifyContent: "center", alignItems: "center", borderRadius: 8 },
   tabSelected: { backgroundColor: palette.red },
@@ -307,7 +307,7 @@ const s = StyleSheet.create({
   eyeText: { color: palette.red, fontWeight: "700", fontSize: 12 },
   action: { backgroundColor: palette.red, borderRadius: 11, minHeight: 46,
     justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 10, paddingHorizontal: 13 },
-  actionText: { color: palette.white, fontWeight: "800", fontSize: 15 },
+  actionText: { color: palette.white, fontWeight: "800", fontSize: typeScale.action },
   secondary: { backgroundColor: palette.white, borderWidth: 1, borderColor: palette.line },
   secondaryText: { color: palette.text },
   disabled: { opacity: 0.5 },
@@ -315,11 +315,11 @@ const s = StyleSheet.create({
   googleLogo: { width: 24, height: 24 },
   divider: { flexDirection: "row", alignItems: "center", gap: 10 },
   rule: { flex: 1, height: 1, backgroundColor: palette.line },
-  dividerText: { color: palette.muted, fontSize: 12 },
+  dividerText: { color: palette.muted, fontSize: typeScale.small },
   forgot: { alignSelf: "flex-end", minHeight: 26, justifyContent: "center" },
-  link: { color: palette.red, fontSize: 13, fontWeight: "700" },
+  link: { color: palette.red, fontSize: typeScale.body, fontWeight: "700" },
   guest: { minHeight: 39, alignSelf: "center", justifyContent: "center" },
-  guestText: { color: palette.red, fontWeight: "800", fontSize: 13, textAlign: "center" },
+  guestText: { color: palette.red, fontWeight: "800", fontSize: typeScale.body, textAlign: "center" },
   configHint: { color: palette.muted, fontSize: 11, textAlign: "center" },
   back: { minHeight: 44, alignSelf: "center", justifyContent: "center" },
   hint: { fontSize: 12, lineHeight: 18, color: palette.muted, textAlign: "center" },
