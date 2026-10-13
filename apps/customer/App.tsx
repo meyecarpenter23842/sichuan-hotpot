@@ -113,7 +113,7 @@ function HomeLifestylePhoto({ kind, width, height }: {
   const scale = width / cropWidth;
   return (
     <View style={{ width, height, overflow: "hidden" }}>
-      <Image source={require("../../01-home.png")} resizeMode="stretch"
+      <Image source={require("./assets/home-reference.png")} resizeMode="stretch"
         accessibilityLabel={kind === "hotpot" ? "Ảnh lẩu Tứ Xuyên" : "Ảnh trà sữa"}
         style={{ position: "absolute", width: 941 * scale, height: 1672 * scale,
           left: -x * scale, top: -y * scale }} />
@@ -518,7 +518,7 @@ function CustomerApp() {
                 accessibilityLabel="Khám phá thực đơn lẩu Tứ Xuyên và trà sữa" onPress={() => {
                   setCategoryId(""); setScreen("menu");
                 }}>
-                <Image source={require("../../01-home.png")} resizeMode="stretch"
+                <Image source={require("./assets/home-reference.png")} resizeMode="stretch"
                   accessibilityLabel="Ảnh banner quảng bá theo mẫu đã duyệt"
                   style={[styles.homeBannerImage, {
                     left: -58 * heroScale, top: -232 * heroScale,
