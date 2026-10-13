@@ -59,10 +59,14 @@ jobs:
           key="p3/probes/$(basename "$temp").txt"
           trap '/usr/bin/rclone deletefile "$remote/$key" >/dev/null 2>&1 || true; rm -rf -- "$temp"' EXIT
           printf 'Hotpot private backup transport probe\n' > "$temp/probe.txt"
-          /usr/bin/rclone copyto --immutable "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1 || {
-            echo "R2_WRITE=BLOCKED"; exit 23;
-          }
-          echo "R2_WRITE=PASS"
+          if /usr/bin/rclone copyto --immutable "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1; then
+            echo "R2_WRITE_IMMUTABLE=PASS"
+          elif /usr/bin/rclone copyto "$temp/probe.txt" "$remote/$key" >/dev/null 2>&1; then
+            echo "R2_WRITE_IMMUTABLE=BLOCKED;R2_WRITE_PLAIN=PASS"
+          else
+            echo "R2_WRITE_IMMUTABLE=BLOCKED;R2_WRITE_PLAIN=BLOCKED"
+            exit 23
+          fi
           /usr/bin/rclone copyto "$remote/$key" "$temp/download.txt" >/dev/null 2>&1 || {
             echo "R2_READBACK=BLOCKED"; exit 24;
           }
