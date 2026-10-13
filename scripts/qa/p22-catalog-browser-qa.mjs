@@ -49,6 +49,8 @@ try {
   });
   await page.goto(web, { waitUntil: "networkidle", timeout: 30000 });
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
+  // Login-first now routes guests to Home; branch selectors live on the Menu tab.
+  await page.getByRole("tab", { name: "Thực đơn" }).click();
   await page.getByRole("button", { name: branchName }).click();
   await page.getByRole("button", { name: "Xem món " + productName }).waitFor();
   await page.getByRole("button", { name: "Xem món " + productName }).click();
