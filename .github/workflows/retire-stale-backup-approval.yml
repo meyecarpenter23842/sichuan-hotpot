@@ -1,0 +1,41 @@
+name: Cancel one stale pre-review Hotpot backup run (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel-stale-wait:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.actor == 'meyecarpenter23842' &&
+      github.event.comment.body == '/unblock-hotpot-waiting'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify the exact obsolete run is waiting and cannot have changed production
+        shell: bash
+        run: |
+          set -euo pipefail
+          id=38326184173
+          status="$(gh api "repos/$GH_REPO/actions/runs/$id" --jq '.status')"
+          source_sha="$(gh api "repos/$GH_REPO/actions/runs/$id" --jq '.head_sha')"
+          run_name="$(gh api "repos/$GH_REPO/actions/runs/$id" --jq '.name')"
+          if [[ "$status" == completed ]]; then
+            echo "Old release run already completed; no action needed."
+            exit 0
+          fi
+          test "$status" = waiting || { echo "::error::Old run is no longer waiting; refusing cancellation."; exit 1; }
+          test "$source_sha" = 8fa817e394755624005bbee748f67c8ce30f3b03
+          test "$run_name" = "VPS database operations (one command, owner only)"
+          # Only the exact run blocked before execution by an Environment reviewer
+          # may be cancelled. Never cancel a started migration/backup.
+          jobs="$(gh api "repos/$GH_REPO/actions/runs/$id/jobs" --jq '[.jobs[].status] | join(",")')"
+          test "$jobs" = waiting || { echo "::error::Job is no longer waiting; refusing cancellation."; exit 1; }
+          gh api --method POST "repos/$GH_REPO/actions/runs/$id/cancel" >/dev/null
+          echo "Cancelled old, non-executed approval-wait backup run $id."
