@@ -219,7 +219,7 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
       label={mode === "reset" ? "Mật khẩu mới" : "Mật khẩu"}
       value={password} onChange={setPassword}
       placeholder={mode === "login" ? "Nhập mật khẩu" : "6–8 ký tự, không yêu cầu ký tự đặc biệt"}
-      secret maxLength={8} autoComplete={login ? "current-password" : "new-password"} />}
+      secret maxLength={8} autoComplete="new-password" />}
     {mode === "register" && <Text style={s.hint}>Mật khẩu 6–8 ký tự bất kỳ. Bắt buộc xác minh email để hoàn tất đăng ký.</Text>}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {!!info && <Text accessibilityRole="alert" style={s.info}>{info}</Text>}
