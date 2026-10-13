@@ -45,8 +45,9 @@ async function writeRefresh(token: string): Promise<void> {
 }
 async function clearRefresh(): Promise<void> {
   if (Platform.OS === "web") {
-    await endBrowserSession();
+    // Never retain the local signed-in marker after a failed/offline logout.
     await AsyncStorage.multiRemove([REFRESH_KEY, WEB_SESSION_MARKER]).catch(() => undefined);
+    await endBrowserSession();
   } else {
     await SecureStore.deleteItemAsync(REFRESH_KEY);
   }
@@ -425,12 +426,12 @@ function CustomerApp() {
     setSelectedAddressId(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
-    await Promise.all([
-      AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined),
-      clearRefresh().catch(() => undefined),
-      AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined),
+    const cleared = await Promise.allSettled([
+      AsyncStorage.removeItem(ADDRESS_KEY),
+      clearRefresh(),
+      AsyncStorage.removeItem("hotpot.checkout.pending.v1"),
     ]);
-    let revoked = true;
+    let revoked = cleared[1]?.status === "fulfilled";
     if (token && Platform.OS !== "web") {
       try { await apiRequest("/auth/logout", { method: "POST", accessToken: token }); }
       catch { revoked = false; }
