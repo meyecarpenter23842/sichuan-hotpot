@@ -192,6 +192,8 @@ model Order {
   customerId               String                 @db.Uuid
   deliveryPolicyVersionId  String                 @db.Uuid
   idempotencyKey           String                 @db.VarChar(128)
+  requestHash              String?                @db.VarChar(64)
+  phoneSnapshot            String?                @db.VarChar(20)
   status                   OrderStatus            @default(PENDING)
   subtotalVnd              Int
   deliveryFeeVnd           Int

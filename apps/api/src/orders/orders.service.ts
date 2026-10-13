@@ -1,0 +1,229 @@
+import {
+  BadRequestException, ConflictException, ForbiddenException, Injectable,
+  NotFoundException, UnprocessableEntityException,
+} from "@nestjs/common";
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import { quoteDelivery, DeliveryQuoteError } from "@hotpot/shared";
+import { AuthService } from "../auth/auth.service";
+import { PrismaService } from "../database/prisma.service";
+import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
+import { DeliveryQuoteService } from "../delivery/delivery-quote.service";
+import { priceCart, productSelect } from "../delivery/pricing";
+
+export interface CheckoutRequest {
+  branchId: string;
+  addressId: string;
+  idempotencyKey: string;
+  paymentMethod: "COD" | "QR";
+  items: DeliveryCartItem[];
+}
+const existingSelect = {
+  id: true, requestHash: true, status: true, totalVnd: true,
+  payment: { select: { method: true, status: true } },
+} as const satisfies Prisma.OrderSelect;
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auth: AuthService,
+    private readonly quote: DeliveryQuoteService,
+  ) {}
+
+  private async customerId(authorization: string | undefined): Promise<string> {
+    const user = await this.auth.principal(authorization);
+    if (user.role !== "CUSTOMER") throw new ForbiddenException("CUSTOMER_REQUIRED");
+    return user.id;
+  }
+
+  private requestHash(input: CheckoutRequest): string {
+    if (!["COD", "QR"].includes(input.paymentMethod)
+      || !Array.isArray(input.items) || input.items.length < 1 || input.items.length > 100) {
+      throw new BadRequestException("INVALID_CHECKOUT");
+    }
+    const normalized = input.items.map(item => ({
+      productId: item.productId,
+      variantId: item.variantId,
+      modifierIds: [...item.modifierIds].sort(),
+      quantity: item.quantity,
+    }));
+    normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    const fingerprint = JSON.stringify({
+      branchId: input.branchId, addressId: input.addressId,
+      method: input.paymentMethod, items: normalized,
+    });
+    return createHash("sha256").update(fingerprint).digest("hex");
+  }
+
+  private replay(row: {
+    id: string; requestHash: string | null; status: string; totalVnd: number;
+    payment: { method: string; status: string } | null;
+  }, hash: string, replayed: boolean) {
+    if (row.requestHash !== hash) throw new ConflictException("IDEMPOTENCY_KEY_REUSED");
+    if (!row.payment) throw new ConflictException("INCOMPLETE_ORDER");
+    return {
+      orderId: row.id, status: row.status, totalVnd: row.totalVnd,
+      paymentMethod: row.payment.method, paymentStatus: row.payment.status,
+      replayed,
+    };
+  }
+
+  async checkout(authorization: string | undefined, input: CheckoutRequest) {
+    const customerId = await this.customerId(authorization);
+    const hash = this.requestHash(input);
+    const key = { customerId, idempotencyKey: input.idempotencyKey };
+    const db = this.prisma.database;
+    // Fast retry: don't reroute/reprice after a successful checkout.
+    const previous = await db.order.findUnique({
+      where: { customerId_idempotencyKey: key }, select: existingSelect,
+    });
+    if (previous) return this.replay(previous, hash, true);
+
+    // Quotes are not trusted: this recalculates pricing, active policy, road route
+    // and address ownership for each NEW request.
+    const quote = await this.quote.calculate(authorization, input);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await db.$transaction(async tx => {
+          const existing = await tx.order.findUnique({
+            where: { customerId_idempotencyKey: key }, select: existingSelect,
+          });
+          if (existing) return this.replay(existing, hash, true);
+          const [branch, address, user, policy, products] = await Promise.all([
+            tx.branch.findFirst({
+              where: { id: input.branchId, isActive: true },
+              select: { id: true, latitude: true, longitude: true },
+            }),
+            tx.address.findFirst({
+              where: { id: input.addressId, userId: customerId },
+              select: { id: true, line1: true, latitude: true, longitude: true },
+            }),
+            tx.user.findUnique({
+              where: { id: customerId }, select: { phoneE164: true },
+            }),
+            tx.deliveryPolicyVersion.findFirst({
+              where: { branchId: input.branchId }, orderBy: { version: "desc" },
+            }),
+            tx.product.findMany({
+              where: {
+                id: { in: [...new Set(input.items.map(item => item.productId))] },
+                category: { is: { branchId: input.branchId } },
+              },
+              select: productSelect,
+            }),
+          ]);
+          if (!branch || !address || !policy) throw new ConflictException("QUOTE_STALE_RETRY");
+          if (!user?.phoneE164 || !/^\+84[35789]\d{8}$/.test(user.phoneE164)) {
+            throw new UnprocessableEntityException("PHONE_REQUIRED");
+          }
+          const priced = priceCart(input.items, products);
+          if (policy.id !== quote.policyVersionId
+            || priced.subtotalVnd !== quote.subtotalVnd
+            || Date.parse(quote.quoteExpiresAt) <= Date.now()) {
+            throw new ConflictException("QUOTE_STALE_RETRY");
+          }
+          let currentFee;
+          try {
+            currentFee = quoteDelivery(priced.subtotalVnd, quote.routeDistanceMeters, {
+              versionId: policy.id, acceptingOrders: policy.acceptingOrders,
+              baseMeters: policy.baseMeters, baseFeeVnd: policy.baseFeeVnd,
+              extraStepMeters: policy.extraStepMeters, extraStepFeeVnd: policy.extraStepFeeVnd,
+              maxRoadMeters: policy.maxRoadMeters, minSubtotalVnd: policy.minSubtotalVnd,
+              freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
+            });
+          } catch (error) {
+            if (error instanceof DeliveryQuoteError) throw new ConflictException("QUOTE_STALE_RETRY");
+            throw error;
+          }
+          if (currentFee.feeVnd !== quote.feeVnd
+            || currentFee.totalVnd !== quote.totalVnd) {
+            throw new ConflictException("QUOTE_STALE_RETRY");
+          }
+          // In-memory estimates are not reusable for another destination.
+          // Saved Address coordinates cannot be edited, but deletion is rechecked above.
+          const saved = await tx.order.create({
+            data: {
+              branchId: input.branchId, customerId,
+              deliveryPolicyVersionId: policy.id,
+              idempotencyKey: input.idempotencyKey, requestHash: hash,
+              phoneSnapshot: user.phoneE164, status: "PENDING",
+              subtotalVnd: priced.subtotalVnd, deliveryFeeVnd: currentFee.feeVnd,
+              totalVnd: currentFee.totalVnd, roadDistanceMeters: quote.routeDistanceMeters,
+              addressLineSnapshot: address.line1,
+              latitudeSnapshot: address.latitude, longitudeSnapshot: address.longitude,
+              items: {
+                create: priced.lines.map(line => ({
+                  productId: line.productId, productName: line.productName,
+                  variantName: line.variantName, quantity: line.quantity,
+                  unitPriceVnd: line.unitPriceVnd, lineTotalVnd: line.lineTotalVnd,
+                  modifiers: { create: line.modifiers.map(modifier => ({
+                    name: modifier.name, priceVnd: modifier.priceVnd,
+                  })) },
+                })),
+              },
+              statusHistory: { create: { toStatus: "PENDING", actorId: customerId } },
+              // QR is MANUAL verification: never auto-confirm because client shows a QR/screenshot.
+              payment: { create: {
+                method: input.paymentMethod, status: "PENDING", amountVnd: currentFee.totalVnd,
+              } },
+            },
+            select: existingSelect,
+          });
+          return this.replay(saved, hash, false);
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === "P2002") {
+            const row = await db.order.findUnique({
+              where: { customerId_idempotencyKey: key }, select: existingSelect,
+            });
+            if (row) return this.replay(row, hash, true);
+            throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
+          }
+          if (error.code === "P2034") {
+            if (attempt < 2) continue;
+            throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
+          }
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
+  }
+
+  async list(authorization: string | undefined) {
+    const customerId = await this.customerId(authorization);
+    return this.prisma.database.order.findMany({
+      where: { customerId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+      select: {
+        id: true, branchId: true, status: true, createdAt: true,
+        subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
+        payment: { select: { method: true, status: true } },
+      },
+    });
+  }
+
+  async detail(authorization: string | undefined, orderId: string) {
+    const customerId = await this.customerId(authorization);
+    const order = await this.prisma.database.order.findFirst({
+      where: { id: orderId, customerId },
+      select: {
+        id: true, branchId: true, status: true, createdAt: true,
+        subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
+        roadDistanceMeters: true, addressLineSnapshot: true,
+        payment: { select: { method: true, status: true, amountVnd: true } },
+        items: { select: {
+          productId: true, productName: true, variantName: true, quantity: true,
+          unitPriceVnd: true, lineTotalVnd: true,
+          modifiers: { select: { name: true, priceVnd: true } },
+        } },
+        statusHistory: { orderBy: { createdAt: "asc" },
+          select: { fromStatus: true, toStatus: true, createdAt: true, reason: true } },
+      },
+    });
+    if (!order) throw new NotFoundException("ORDER_NOT_FOUND");
+    return order;
+  }
+}
