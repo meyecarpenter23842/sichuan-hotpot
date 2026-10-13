@@ -67,7 +67,6 @@ function Entry({ label, value, onChange, placeholder, secret = false, digits = f
 export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const { height, width } = useWindowDimensions();
   const compact = height < 750 || width <= 350;
-  const veryShort = height < 625;
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -236,20 +235,21 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
     <View style={[s.frame, { maxWidth: 510 }]}>
       <View style={[s.hero, { height: login
         ? Math.min(340, Math.max(184, height * (compact ? 0.36 : 0.39))) : 125 }]}>
-        {imageFailed ? <View style={s.heroFallback}><Text style={s.fallbackSymbol}>♨</Text></View>
-          : <Image source={{ uri: heroUrl }} style={s.heroImage} resizeMode="cover"
-              accessibilityLabel="Ảnh lẩu Tứ Xuyên" onError={() => setImageFailed(true)} />}
-        <View style={s.heroOverlay}>
-          <View>
-            <Text style={s.logoTitle}>♨  LẨU TỨ XUYÊN</Text>
-            <Text style={s.logoSub}>LẨU & TRÀ SỮA</Text>
+        {imageFailed ? (
+          <View style={s.heroFallback}>
+            <Text style={s.fallbackSymbol}>♨</Text>
+            <Text style={s.fallbackBrand}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
           </View>
-          {login && <View style={s.heroWelcome}>
-            <Text style={[s.welcomeTitle, compact && s.welcomeCompact]}>Chào mừng</Text>
-            <Text style={[s.welcomeTitle, compact && s.welcomeCompact]}>trở lại</Text>
+        ) : <Image source={{ uri: heroUrl }} style={s.heroImage} resizeMode="cover"
+            accessibilityLabel="Ảnh lẩu Tứ Xuyên" onError={() => setImageFailed(true)} />}
+        {/* The approved hero artwork includes its own brand lettering; do not duplicate it. */}
+        {login && !compact && (
+          <View style={s.heroWelcome}>
+            <Text style={s.welcomeTitle}>Chào mừng</Text>
+            <Text style={s.welcomeTitle}>trở lại</Text>
             <Text style={s.welcomeSub}>Đăng nhập để đặt lẩu và trà sữa yêu thích</Text>
-          </View>}
-        </View>
+          </View>
+        )}
       </View>
       {login ? <View style={s.loginNoScroll}>{loginPanel}</View>
         : <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
@@ -265,14 +265,9 @@ const s = StyleSheet.create({
   heroImage: { width: "100%", height: "100%" },
   heroFallback: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: palette.red },
   fallbackSymbol: { color: palette.white, fontSize: 62 },
-  heroOverlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0,
-    justifyContent: "space-between", paddingHorizontal: 19, paddingTop: 15, paddingBottom: 30,
-    backgroundColor: "rgba(49,0,0,0.20)" },
-  logoTitle: { fontSize: 14, fontWeight: "900", color: palette.white, letterSpacing: 0.8 },
-  logoSub: { fontSize: 11, fontWeight: "800", color: palette.white, letterSpacing: 1.3 },
-  heroWelcome: { maxWidth: "65%" },
+  fallbackBrand: { color: palette.white, fontSize: 16, fontWeight: "900" },
+  heroWelcome: { position: "absolute", bottom: 30, left: 19, maxWidth: "65%" },
   welcomeTitle: { color: palette.white, fontSize: 31, lineHeight: 35, fontWeight: "900", fontStyle: "italic" },
-  welcomeCompact: { fontSize: 27, lineHeight: 29 },
   welcomeSub: { color: palette.white, fontWeight: "700", fontSize: 11, marginTop: 8, lineHeight: 15 },
   loginNoScroll: { flex: 1, minHeight: 0, marginTop: -17,
     borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: "hidden", backgroundColor: palette.white },

@@ -55,6 +55,22 @@ try {
     assert.ok(metrics.docWidth <= width + 1, "horizontal overflow " + JSON.stringify(metrics));
     assert.ok(metrics.docHeight <= height + 1, "login page scrolls at " + width + "x" + height + ": " + JSON.stringify(metrics));
     assert.equal(metrics.hero, 1448);
+    // Compact screens must not overlay another headline over the hero's lettering.
+    assert.equal(await page.getByText("Chào mừng", { exact: true }).count(),
+      height < 750 || width <= 350 ? 0 : 1, "hero text collision risk at " + width + "x" + height);
+    for (const control of [
+      page.getByRole("textbox", { name: "Tên đăng nhập" }),
+      page.getByRole("textbox", { name: "Mật khẩu" }),
+      page.getByRole("button", { name: "Đăng nhập", exact: true }).last(),
+      page.getByRole("button", { name: "Tiếp tục với Google" }),
+      page.getByRole("button", { name: "Đăng ký" }),
+      page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }),
+    ]) {
+      const rect = await control.boundingBox();
+      assert.ok(rect && rect.x >= -1 && rect.y >= -1
+        && rect.x + rect.width <= width + 1 && rect.y + rect.height <= height + 1,
+        "clipped login control at " + width + "x" + height + ": " + JSON.stringify(rect));
+    }
     await page.screenshot({ path: evidence + "/login-red-white-" + width + "x" + height + ".png", fullPage: true });
     await page.getByRole("button", { name: "Đăng ký" }).click();
     await page.getByText("Tạo tài khoản", { exact: true }).first().waitFor();
