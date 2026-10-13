@@ -197,8 +197,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "apps/$TARGET_APP"
-          ../../node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+          # The Vercel project Root Directory already points at apps/$TARGET_APP.
+          # Run CLI from monorepo root: running inside apps/$TARGET_APP doubles
+          # the path and fails as apps/customer/apps/customer.
+          test -f "apps/$TARGET_APP/.vercel/output/config.json"
+          test -f "apps/$TARGET_APP/.vercel/project.json"
+          mkdir -p .vercel
+          cp "apps/$TARGET_APP/.vercel/project.json" .vercel/project.json
+          cp -a "apps/$TARGET_APP/.vercel/output" .vercel/output
+          ./node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
           echo "Target $TARGET_APP released from verified main SHA $REQUESTED_SHA"
       - name: Remove downloaded production environment values
         if: always()
