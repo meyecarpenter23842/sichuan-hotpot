@@ -1,0 +1,10 @@
+node_modules/
+**/node_modules/
+**/dist/
+**/.expo/
+apps/customer/qa-artifacts/
+apps/customer/assets/app-icon.png
+apps/customer/assets/adaptive-icon.png
+apps/customer/public/icon-192.png
+apps/customer/public/icon-512.png
+apps/customer/public/apple-touch-icon.png
