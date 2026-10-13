@@ -115,7 +115,7 @@ try {
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-address-390.png", fullPage: true });
   assert.deepEqual(errors, []);
   console.log("PASS: login-on-checkout, account scoped multiple saved addresses, select and delete");
-  console.log("PASS: zero browser page errors; P3 order remains disabled");
+  console.log("PASS: zero browser page errors; checkout requires a server delivery quote");
   await ctx.close();
 } finally {
   await browser.close();
