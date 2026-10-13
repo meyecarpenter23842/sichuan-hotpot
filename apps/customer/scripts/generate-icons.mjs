@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { Buffer } from "node:buffer";
 import { resolve, dirname } from "node:path";
 import pngjs from "pngjs";
 
