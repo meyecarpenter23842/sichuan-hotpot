@@ -73,6 +73,8 @@ with tempfile.TemporaryDirectory(prefix='hotpot-ci-drill-') as directory:
     subprocess.run(['useradd', '--system', '--user-group', '--shell', '/usr/sbin/nologin', 'hotpot-build'], check=True)
     home = Path('/var/lib/sichuan-hotpot/build')
     home.mkdir(parents=True, exist_ok=True)
+    # Match the provisioned VPS parent: root owned, traversable, not listable.
+    os.chmod(home.parent, 0o711)
     builder = pwd.getpwnam('hotpot-build')
     os.chown(home, builder.pw_uid, builder.pw_gid)
     identity = original_call(['/usr/bin/age-keygen'])
