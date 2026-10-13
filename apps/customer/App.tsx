@@ -19,7 +19,7 @@ import { addressError, optionSelectionError, phoneError, vnd } from "./src/valid
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { palette } from "./src/theme";
 
-type Screen = "home" | "menu" | "detail" | "cart" | "account" | "login" | "address";
+type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
@@ -471,23 +471,83 @@ function CustomerApp() {
 
   function mainContent() {
     switch (screen) {
-      case "home":
+
+      case "home": {
+        const available = products.filter(item => item.isAvailable).slice(0, 4);
+        const quick: readonly { name: string; glyph: string }[] = [
+          { name: "Lẩu", glyph: "🍲" },
+          { name: "Trà sữa", glyph: "🧋" },
+          { name: "Combo", glyph: "🎁" },
+          { name: "Topping", glyph: "🥬" },
+        ];
+        return (
+          <View style={styles.homePage}>
+            <Pressable style={styles.homeBanner} accessibilityRole="button"
+              accessibilityLabel="Khám phá thực đơn lẩu và trà sữa" onPress={() => setScreen("menu")}>
+              <Image source={{ uri: "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png" }}
+                style={styles.homeBannerImage} resizeMode="cover" accessibilityLabel="Ảnh lẩu Tứ Xuyên và trà sữa" />
+              <View style={styles.homeBannerShade}>
+                <Text style={styles.homeBannerTitle}>Lẩu Tứ Xuyên{"\n"}& Trà Sữa</Text>
+                <Text style={styles.homeBannerCaption}>Vị cay nồng · Vị ngọt ngào</Text>
+                <View style={styles.homeBannerCta}><Text style={styles.homeBannerCtaText}>ĐẶT NGAY  ›</Text></View>
+              </View>
+            </Pressable>
+            <View style={styles.quickMenu}>
+              {quick.map(item => (
+                <Pressable key={item.name} accessibilityRole="button"
+                  accessibilityLabel={"Xem danh mục " + item.name}
+                  style={styles.quickItem} onPress={() => {
+                    const match = menu?.categories.find(cat =>
+                      cat.name.toLocaleLowerCase("vi").includes(item.name.toLocaleLowerCase("vi")));
+                    setCategoryId(match?.id ?? "");
+                    setScreen("menu");
+                  }}>
+                  <View style={styles.quickCircle}><Text style={styles.quickGlyph}>{item.glyph}</Text></View>
+                  <Text style={styles.quickLabel}>{item.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.homeSection}>
+              <View style={styles.homeSectionHead}>
+                <Text style={styles.sectionTitle}>Gợi ý hôm nay</Text>
+                <Pressable accessibilityRole="button" onPress={() => setScreen("menu")}
+                  style={styles.homeSeeAll}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
+              </View>
+              {available.length > 0 ? (
+                <View style={styles.featureGrid}>
+                  {available.map(item => (
+                    <Pressable key={item.id} accessibilityRole="button"
+                      accessibilityLabel={"Xem món " + item.name} style={styles.featureCard}
+                      onPress={() => openProduct(item)}>
+                      <View style={styles.featureImage}><ProductArtwork product={item} large /></View>
+                      <Text style={styles.featureTitle} numberOfLines={2}>{item.name}</Text>
+                      <View style={styles.featureFooter}>
+                        <Text style={styles.featurePrice}>{vnd(item.priceVnd)}</Text>
+                        <Text style={styles.featurePlus}>＋</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.homeEmpty}>
+                  <Text style={styles.emptyTitle}>Thực đơn đang cập nhật</Text>
+                  <Text style={styles.muted}>
+                    {catalogError ? "Chưa kết nối API thực đơn. Kiểm tra kết nối rồi thử lại." :
+                      catalogLoading ? "Đang tải thực đơn từ cửa hàng..." : "Chưa có món được mở bán."}
+                  </Text>
+                  {!!catalogError && <Button label="Thử kết nối lại" alternate onPress={() => void refreshCatalogue()} />}
+                  {!catalogError && <Button label="Xem thực đơn" alternate onPress={() => setScreen("menu")} />}
+                </View>
+              )}
+            </View>
+          </View>
+        );
+      }
       case "menu":
         return (
           <>
-            {screen === "home" && (
-              <View style={styles.hero}>
-                <Text style={styles.heroEyebrow}>SICHUAN HOTPOT & MILK TEA</Text>
-                <Text style={styles.heroTitle}>Lẩu Tứ Xuyên{String.fromCharCode(10)}đậm vị, nóng hổi</Text>
-                <Text style={styles.heroSubtitle}>Thưởng thức lẩu cay và trà sữa ngay tại nhà</Text>
-                <Pressable
-                  style={styles.heroAction} accessibilityRole="button"
-                  onPress={() => setScreen("menu")}
-                ><Text style={styles.heroActionText}>Khám phá thực đơn  →</Text></Pressable>
-              </View>
-            )}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Giao hàng từ</Text>
+              <Text style={styles.pageTitle}>Thực đơn</Text>
               {branches.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {branches.map(branch => (
@@ -498,13 +558,22 @@ function CustomerApp() {
                     </Pressable>
                   ))}
                 </ScrollView>
-              ) : <Text style={styles.muted}>Chưa có chi nhánh đang bán.</Text>}
+              ) : <Text style={styles.muted}>Chi nhánh đang được cập nhật.</Text>}
               <Field label="Tìm món ăn, trà sữa" value={search} onChangeText={setSearch}
                 placeholder="Nhập tên món bạn muốn tìm..." />
             </View>
             {cataloguePanel()}
           </>
         );
+      case "orders":
+        return <View style={styles.section}>
+          <Text style={styles.pageTitle}>Đơn hàng của tôi</Text>
+          <View style={styles.homeEmpty}>
+            <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
+            <Text style={styles.muted}>Lịch sử và theo dõi đơn sẽ hiển thị khi tính năng đặt hàng hoạt động ở P3.</Text>
+            <Button label="Xem thực đơn" onPress={() => setScreen("menu")} />
+          </View>
+        </View>;
       case "detail": {
         const item = selectedProduct;
         if (!item) return <Notice message="Không tìm thấy món. Vui lòng chọn lại." error />;
@@ -749,17 +818,43 @@ function CustomerApp() {
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
         ) : (
           <View style={styles.shell}>
-            <View style={styles.header}>
-              <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
-              <View style={styles.headerText}>
-                <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
-                <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
+            {screen === "home" ? (
+              <View style={styles.homeHeader}>
+                <View style={styles.homeHeaderLine}>
+                  <Pressable style={styles.deliveryLocation} accessibilityRole="button"
+                    onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
+                    <Text style={styles.deliveryLocationTitle}>⌖  Giao đến  ⌄</Text>
+                    <Text style={styles.deliveryLocationValue} numberOfLines={1}>
+                      {address.line1 || "Chọn địa chỉ giao hàng"}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.homeCart} onPress={() => setScreen("cart")}
+                    accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
+                    <Text style={styles.homeCartText}>▣  {itemCount}</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.homeSearch}>
+                  <Text style={styles.homeSearchIcon}>⌕</Text>
+                  <TextInput style={styles.homeSearchInput} value={search}
+                    onChangeText={text => { setSearch(text); if (text) setScreen("menu"); }}
+                    onFocus={() => setScreen("menu")}
+                    placeholder="Tìm lẩu, trà sữa, topping..." placeholderTextColor={palette.placeholder}
+                    accessibilityLabel="Tìm món ăn, trà sữa" autoCorrect={false} />
+                </View>
               </View>
-              <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
-                accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-                <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
-              </Pressable>
-            </View>
+            ) : (
+              <View style={styles.header}>
+                <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
+                <View style={styles.headerText}>
+                  <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
+                  <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
+                </View>
+                <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
+                  accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
+                  <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
+                </Pressable>
+              </View>
+            )}
             <KeyboardAvoidingView style={styles.body}
               behavior={Platform.OS === "ios" ? "padding" : undefined}>
               <ScrollView keyboardShouldPersistTaps="handled"
@@ -773,8 +868,8 @@ function CustomerApp() {
               {([
                 ["home", "Trang chủ", "⌂"],
                 ["menu", "Thực đơn", "☷"],
-                ["cart", "Giỏ hàng", "▣"],
-                ["account", "Tài khoản", "♙"],
+                ["orders", "Đơn hàng", "▣"],
+                ["account", "Tôi", "♙"],
               ] as const).map(([target, label, glyph]) => (
                 <Pressable key={target} style={styles.navItem}
                   accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
@@ -826,6 +921,55 @@ const styles = StyleSheet.create({
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
+  homePage: { flex: 1, backgroundColor: palette.white },
+  homeHeader: { paddingHorizontal: 16, paddingTop: 13, paddingBottom: 15, gap: 13,
+    backgroundColor: brand },
+  homeHeaderLine: { flexDirection: "row", alignItems: "center", gap: 12 },
+  deliveryLocation: { flex: 1, minHeight: 49, justifyContent: "center" },
+  deliveryLocationTitle: { color: palette.white, fontSize: 12, fontWeight: "800" },
+  deliveryLocationValue: { color: palette.white, fontSize: 12, marginTop: 4, maxWidth: 250 },
+  homeCart: { borderColor: "rgba(255,255,255,0.45)", borderWidth: 1, minHeight: 43,
+    borderRadius: 11, paddingHorizontal: 13, justifyContent: "center" },
+  homeCartText: { color: palette.white, fontSize: 17, fontWeight: "800" },
+  homeSearch: { minHeight: 44, borderRadius: 11, backgroundColor: palette.white,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 11, gap: 7 },
+  homeSearchIcon: { fontSize: 26, color: palette.muted },
+  homeSearchInput: { color: palette.text, flex: 1, fontSize: 16, minHeight: 43 },
+  homeBanner: { height: 192, overflow: "hidden", margin: 13, marginBottom: 7,
+    borderRadius: 14, backgroundColor: brand },
+  homeBannerImage: { position: "absolute", width: "100%", height: "100%" },
+  homeBannerShade: { flex: 1, justifyContent: "center", paddingHorizontal: 19,
+    backgroundColor: "rgba(69, 0, 0, 0.37)", gap: 8 },
+  homeBannerTitle: { fontSize: 24, lineHeight: 29, fontWeight: "900", fontStyle: "italic",
+    color: palette.white, maxWidth: 200 },
+  homeBannerCaption: { color: palette.white, fontSize: 12, fontWeight: "700" },
+  homeBannerCta: { alignSelf: "flex-start", backgroundColor: palette.white,
+    borderRadius: 20, minHeight: 30, paddingHorizontal: 14, justifyContent: "center" },
+  homeBannerCtaText: { color: brand, fontSize: 12, fontWeight: "800" },
+  quickMenu: { flexDirection: "row", justifyContent: "space-around",
+    paddingHorizontal: 11, paddingVertical: 13 },
+  quickItem: { alignItems: "center", justifyContent: "center", minHeight: 75, minWidth: 69, gap: 6 },
+  quickCircle: { backgroundColor: palette.softRed, height: 47, width: 47, borderRadius: 16,
+    justifyContent: "center", alignItems: "center" },
+  quickGlyph: { fontSize: 25 },
+  quickLabel: { color: palette.text, fontSize: 12, fontWeight: "700" },
+  homeSection: { paddingHorizontal: 15, paddingBottom: 19, gap: 14 },
+  homeSectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  homeSeeAll: { minHeight: 44, justifyContent: "center" },
+  featureGrid: { flexDirection: "row", flexWrap: "wrap", columnGap: "3%", rowGap: 10 },
+  featureCard: { width: "48.5%", borderWidth: 1, borderColor: palette.line,
+    borderRadius: 13, paddingBottom: 10, overflow: "hidden", backgroundColor: palette.white },
+  featureImage: { height: 145, width: "100%", alignItems: "center", justifyContent: "center",
+    backgroundColor: palette.softRed },
+  featureTitle: { color: palette.text, fontWeight: "800", fontSize: 13, minHeight: 42,
+    marginHorizontal: 10, marginTop: 9 },
+  featureFooter: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 9,
+    alignItems: "center" },
+  featurePrice: { color: brand, fontWeight: "900", fontSize: 14, flexShrink: 1 },
+  featurePlus: { color: palette.white, fontWeight: "900", backgroundColor: brand,
+    borderRadius: 15, width: 29, height: 29, textAlign: "center", textAlignVertical: "center", fontSize: 20 },
+  homeEmpty: { backgroundColor: palette.graySurface, padding: 18,
+    borderRadius: 13, gap: 10, alignItems: "stretch" },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
   heroEyebrow: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
   heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: 30, lineHeight: 36 },
