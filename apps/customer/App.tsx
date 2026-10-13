@@ -14,9 +14,12 @@ import {
 import {
   apiRequest, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
   type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
+  type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
 import { AuthScreen } from "./src/screens/AuthScreen";
+import { CheckoutPanel } from "./src/screens/CheckoutPanel";
+import { OrdersScreen } from "./src/screens/OrdersScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
@@ -156,6 +159,7 @@ function CustomerApp() {
     label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
   });
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
@@ -292,6 +296,7 @@ function CustomerApp() {
     setPrincipal(null);
     setAccessToken("");
     setSavedAddresses([]);
+    setSelectedAddressId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
     // Clear user-sensitive phone/GPS from local storage on logout.
     await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
@@ -299,16 +304,19 @@ function CustomerApp() {
     if (token) await apiRequest("/auth/logout", { method: "POST", accessToken: token }).catch(() => undefined);
     setLoginReturnTo("home");
     setScreen("login");
+    await AsyncStorage.removeItem("hotpot.checkout.pending.v1").catch(() => undefined);
     setNotice("Đã đăng xuất trên thiết bị.");
   }
 
   useEffect(() => {
-    if (!accessToken) { setSavedAddresses([]); return; }
+    if (!accessToken) { setSavedAddresses([]); setSelectedAddressId(null); return; }
     let active = true;
     apiRequest<SavedAddresses>("/customer/addresses", { accessToken })
       .then(result => {
         if (!active) return;
         setSavedAddresses(result.addresses);
+        setSelectedAddressId(old => result.addresses.some(a => a.id === old)
+          ? old : (result.addresses[0]?.id ?? null));
         setAddress(old => ({ ...old, phone: old.phone || result.phone || "" }));
       })
       .catch(() => { if (active) setNotice("Không thể tải địa chỉ đã lưu. Hãy thử lại."); });
@@ -359,6 +367,7 @@ function CustomerApp() {
             latitude: address.latitude, longitude: address.longitude },
         });
         setSavedAddresses(old => [created, ...old]);
+        setSelectedAddressId(created.id);
         setNotice("Đã lưu địa chỉ vào tài khoản.");
       } else {
         setNotice("Đã lưu bản nháp trên thiết bị. Đăng nhập để lưu nhiều địa chỉ.");
@@ -376,6 +385,7 @@ function CustomerApp() {
   }
 
   function selectSavedAddress(saved: SavedAddress) {
+    setSelectedAddressId(saved.id);
     setAddress(old => ({ ...old, label: saved.label, line1: saved.line1,
       latitude: saved.latitude, longitude: saved.longitude }));
     setAddressErrorText("");
@@ -391,6 +401,7 @@ function CustomerApp() {
         method: "DELETE", accessToken,
       });
       setSavedAddresses(old => old.filter(x => x.id !== saved.id));
+      setSelectedAddressId(old => old === saved.id ? null : old);
       setNotice("Đã xóa địa chỉ đã lưu.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
@@ -495,6 +506,53 @@ function CustomerApp() {
         ))}
       </View>
     );
+  }
+
+  function orderPlaced(receipt: CheckoutReceipt) {
+    setCart([]);
+    setNotice("Đã nhận đơn #" + receipt.orderId.slice(0, 8) + ". " +
+      (receipt.paymentMethod === "COD"
+        ? "Thanh toán tiền mặt khi giao."
+        : "Thanh toán QR đang chờ xác nhận của cửa hàng."));
+    setScreen("orders");
+  }
+
+  function reorder(order: CustomerOrderDetail): string | null {
+    if (order.branchId !== branchId) return "Chọn đúng chi nhánh đã đặt trước khi đặt lại.";
+    let updated = [...cart];
+    for (const item of order.items) {
+      const product = item.productId ? productsById.get(item.productId) : null;
+      if (!product || !product.isAvailable) return "Có món đã ngừng bán, vui lòng chọn món mới.";
+      const variants = item.variantName === null ? [] : product.variants.filter(v =>
+        v.name === item.variantName && v.isAvailable);
+      if (item.variantName !== null && variants.length !== 1) {
+        return "Khẩu phần của đơn cũ đã thay đổi, vui lòng chọn lại trên thực đơn.";
+      }
+      const modifierIds: string[] = [];
+      const available = product.modifierGroups.flatMap(group => group.options);
+      const used = new Set<string>();
+      for (const modifier of item.modifiers) {
+        const matches = available.filter(v => v.name === modifier.name
+          && v.priceDeltaVnd === modifier.priceVnd && v.isAvailable && !used.has(v.id));
+        if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
+        modifierIds.push(matches[0]!.id);
+        used.add(matches[0]!.id);
+      }
+      if (optionSelectionError(product.modifierGroups, modifierIds)) {
+        return "Tùy chọn đơn cũ không còn hợp lệ, vui lòng chọn lại.";
+      }
+      try {
+        updated = addCartLine(updated, {
+          productId: product.id, variantId: variants[0]?.id ?? null, modifierIds,
+        }, item.quantity);
+      } catch {
+        return "Giỏ hàng đã đầy hoặc số lượng vượt giới hạn.";
+      }
+    }
+    setCart(updated);
+    setNotice("Đã đưa món đang bán vào giỏ. Giá và phí giao sẽ được máy chủ tính lại.");
+    setScreen("cart");
+    return null;
   }
 
   function mainContent() {
@@ -655,14 +713,9 @@ function CustomerApp() {
           </>
         );
       case "orders":
-        return <View style={styles.section}>
-          <Text style={styles.pageTitle}>Đơn hàng của tôi</Text>
-          <View style={styles.homeEmpty}>
-            <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
-            <Text style={styles.muted}>Lịch sử và theo dõi đơn sẽ hiển thị khi tính năng đặt hàng hoạt động ở P3.</Text>
-            <Button label="Xem thực đơn" onPress={() => setScreen("menu")} />
-          </View>
-        </View>;
+        return <OrdersScreen accessToken={accessToken}
+          onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
+          onReorder={reorder} />;
       case "detail": {
         const item = selectedProduct;
         if (!item) return <Notice message="Không tìm thấy món. Vui lòng chọn lại." error />;
@@ -799,13 +852,15 @@ function CustomerApp() {
                 <Text style={styles.muted}>Chưa gồm phí giao theo km thực tế, giảm giá và kiểm tra tình trạng món.</Text>
                 <View style={styles.group}>
                   <Text style={styles.sectionTitle}>Thông tin nhận hàng</Text>
-                  <Text style={styles.muted}>{hasStoredAddress ? address.line1 : "Chưa có địa chỉ và vị trí GPS hợp lệ"}</Text>
+                  <Text style={styles.muted}>{selectedAddressId
+                    ? savedAddresses.find(item => item.id === selectedAddressId)?.line1 ?? "Chọn địa chỉ đã lưu"
+                    : "Chưa chọn địa chỉ đã lưu trong tài khoản"}</Text>
                   <Button label={hasStoredAddress ? "Sửa địa chỉ giao hàng" : "Thêm địa chỉ giao hàng"}
                     alternate onPress={() => { setAddressReturnTo("cart"); setScreen("address"); }} />
                 </View>
                 {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
-                <Notice message="Chưa mở đặt hàng: API báo phí tuyến đường và tạo đơn chống trùng sẽ hoàn thành trong P3. Ứng dụng không gửi đơn hoặc báo thanh toán thành công khi thiếu xác nhận từ máy chủ." />
-                <Button label="Đặt hàng (chưa khả dụng)" disabled onPress={() => undefined} />
+                {!!principal && <CheckoutPanel accessToken={accessToken} userId={principal.id}
+                  branchId={branchId} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
               </>
             )}
           </View>
@@ -829,7 +884,7 @@ function CustomerApp() {
             )}
             <View style={styles.group}>
               <Text style={styles.sectionTitle}>Đơn hàng của tôi</Text>
-              <Text style={styles.muted}>Lịch sử và theo dõi đơn sẽ khả dụng khi backend hỗ trợ tạo đơn thực tế.</Text>
+              <Button label="Xem lịch sử đơn hàng" alternate onPress={() => setScreen("orders")} />
             </View>
           </View>
         );
