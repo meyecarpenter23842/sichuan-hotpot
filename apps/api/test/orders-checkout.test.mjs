@@ -104,7 +104,8 @@ test("replay returns stable order, reuse of key with changed payload is 409", as
   await request({ ...orderBody(), items: [{ productId, variantId: null, modifierIds: [], quantity: 3 }] }).expect(409);
 });
 test("QR order stores payment PENDING and never claims money received", async () => {
-  const result = await request({ ...orderBody(randomUUID()), paymentMethod: "QR" }).expect(201);
+  const qrKey = randomUUID();
+  const result = await request({ ...orderBody(qrKey), paymentMethod: "QR" }).expect(201);
   assert.equal(result.body.paymentMethod, "QR");
   assert.equal(result.body.paymentStatus, "PENDING");
   assert.equal(result.body.qr?.accountNo, "123456789012");
@@ -121,9 +122,9 @@ test("QR order stores payment PENDING and never claims money received", async ()
   const old = process.env.VIETQR_ACCOUNT_NO;
   process.env.VIETQR_ACCOUNT_NO = "9999999999";
   try {
-    const replay = await request({ ...orderBody(result.body.idempotencyKey), paymentMethod: "QR" });
-    // The key used for this QR request is tested separately below.
-    assert.ok([201, 409].includes(replay.status));
+    const replay = await request({ ...orderBody(qrKey), paymentMethod: "QR" }).expect(201);
+    assert.equal(replay.body.qr?.accountNo, "123456789012");
+    assert.equal(replay.body.orderId, result.body.orderId);
     const again = await client.get("/customer/orders/" + result.body.orderId)
       .set("Authorization", "Bearer " + token).expect(200);
     assert.equal(again.body.payment.qr.accountNo, "123456789012");
