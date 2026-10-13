@@ -15,7 +15,14 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(web, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
+    // P22 seeded this exact product into disposable CI PostgreSQL. Select its
+    // branch so homepage screenshots exercise the real carousel, not only empty state.
+    await page.getByRole("tab", { name: "Thực đơn" }).click();
+    await page.getByRole("button", { name: /^P22 QA / }).first().click();
+    await page.getByRole("button", { name: "Xem món Lẩu QA vị Tứ Xuyên" }).waitFor();
+    await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
+    await page.getByTestId("home-feature-carousel").waitFor();
     const homeHeroImage = page.getByTestId("home-approved-hero").locator("img").first();
     await homeHeroImage.waitFor();
     assert.equal(await homeHeroImage.evaluate(img => img.complete && img.naturalWidth > 0), true,
@@ -47,6 +54,9 @@ try {
       true, "horizontal overflow at " + width);
     assert.deepEqual(errors, [], "browser errors at " + width);
     await page.screenshot({ path: directory + "/p24-home-" + width + "x" + height + ".png" });
+    await page.getByRole("button", { name: "Chọn tùy chọn Lẩu QA vị Tứ Xuyên" }).click();
+    await page.getByText("Khẩu phần / kích cỡ").waitFor();
+    await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("button", { name: "Xem danh mục Trà sữa" }).click();
     await page.getByRole("tab", { name: "Thực đơn" }).waitFor();
     await page.getByRole("textbox", { name: "Tìm món ăn, trà sữa" }).waitFor();
