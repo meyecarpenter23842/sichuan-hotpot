@@ -15,13 +15,14 @@ test("customer API adapter does not contain a fabricated success response", () =
   assert.doesNotMatch(code, /mockOrder|fakeOrder/);
 });
 
-test("login references exact owner R2 key and real backend auth flow", () => {
+test("login references exact owner R2 key and backend auth flow", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /r2\.dev\/system-image\/login-hero\.png/);
-  assert.match(app, /"\/auth\/google"/);
+  const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");
+  assert.match(auth, /r2\.dev\/system-image\/login-hero\.png/);
+  assert.match(auth, /"\/auth\/google"/);
   assert.match(app, /"\/auth\/me"/);
-  assert.match(app, /loginHeroFailed/);
-  assert.match(app, /Xem thực đơn mà không cần đăng nhập/);
+  assert.match(auth, /imageFailed/);
+  assert.match(auth, /Xem thực đơn mà không cần đăng nhập/);
 });
 
 test("P2.2 uses real modifier IDs/option groups without trusting prices", () => {
