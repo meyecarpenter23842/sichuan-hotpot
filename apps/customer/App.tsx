@@ -23,6 +23,7 @@ import { OrdersScreen } from "./src/screens/OrdersScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
+import { AddressPinMap } from "./src/components/AddressPinMap";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address";
 type AddressDraft = {
@@ -317,7 +318,14 @@ function CustomerApp() {
         setSavedAddresses(result.addresses);
         setSelectedAddressId(old => result.addresses.some(a => a.id === old)
           ? old : (result.addresses[0]?.id ?? null));
-        setAddress(old => ({ ...old, phone: old.phone || result.phone || "" }));
+        setAddress(old => {
+          const saved = result.addresses.find(a => a.id === selectedAddressId) ?? result.addresses[0];
+          return saved
+            ? { ...old, label: saved.label, line1: saved.line1,
+                latitude: saved.latitude, longitude: saved.longitude,
+                phone: old.phone || result.phone || "" }
+            : { ...old, phone: old.phone || result.phone || "" };
+        });
       })
       .catch(() => { if (active) setNotice("Không thể tải địa chỉ đã lưu. Hãy thử lại."); });
     return () => { active = false; };
@@ -335,6 +343,7 @@ function CustomerApp() {
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
+      setSelectedAddressId(null);
       setAddress(old => ({
         ...old, latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
@@ -921,19 +930,24 @@ function CustomerApp() {
             <Field label="Tên gợi nhớ (Nhà, Công ty...)" value={address.label}
               onChangeText={text => setAddress(old => ({ ...old, label: text }))} placeholder="Nhà" />
             <Field label="Số điện thoại" value={address.phone}
-              onChangeText={text => setAddress(old => ({ ...old, phone: text }))}
+              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, phone: text })); }}
               keyboardType="phone-pad" placeholder="09..." />
             <Field label="Số nhà, đường, phường/xã" value={address.line1}
-              onChangeText={text => setAddress(old => ({ ...old, line1: text }))}
+              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, line1: text })); }}
               placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
+            <AddressPinMap latitude={address.latitude} longitude={address.longitude}
+              onChange={(latitude, longitude) => {
+                setSelectedAddressId(null);
+                setAddress(old => ({ ...old, latitude, longitude }));
+              }} />
             <Button label={addressBusy ? "Đang lấy GPS..." : "Dùng vị trí GPS hiện tại"} alternate
               disabled={addressBusy} onPress={() => void locateMe()} />
             <Text style={styles.muted}>Nếu không cho phép GPS, nhập tọa độ từ ghim bản đồ đã kiểm tra.</Text>
             <Field label="Vĩ độ (latitude)" value={address.latitude}
-              onChangeText={text => setAddress(old => ({ ...old, latitude: text }))}
+              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, latitude: text })); }}
               keyboardType="decimal-pad" placeholder="10.0000000" />
             <Field label="Kinh độ (longitude)" value={address.longitude}
-              onChangeText={text => setAddress(old => ({ ...old, longitude: text }))}
+              onChangeText={text => { setSelectedAddressId(null); setAddress(old => ({ ...old, longitude: text })); }}
               keyboardType="decimal-pad" placeholder="106.0000000" />
             {!!address.latitude && !!address.longitude && (
               <Button label="Kiểm tra ghim trên bản đồ" alternate onPress={() => {
