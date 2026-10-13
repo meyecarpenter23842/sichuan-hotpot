@@ -23,6 +23,8 @@ url = urllib.parse.urlsplit(os.environ.get('DATABASE_URL', ''))
 assert url.hostname == '127.0.0.1' and url.username == 'hotpot_ci'
 assert url.path == '/hotpot_ci' and url.password == 'hotpot_ci_only'
 assert os.environ.get('GITHUB_ACTIONS') == 'true' and os.geteuid() == 0
+# Exercise the same restrictive umask used by the installed root helper.
+os.umask(0o077)
 root = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('db', root / 'infra/vps/hotpot-db-manual.py')
 db = importlib.util.module_from_spec(spec)
