@@ -5,7 +5,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: hotpot-p3-owner-release
+  group: hotpot-https-config-owner-only
   cancel-in-progress: false
 jobs:
   fix:
