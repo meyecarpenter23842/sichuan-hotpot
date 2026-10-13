@@ -172,6 +172,22 @@ jobs:
             exit 1
           }
           echo "Customer API HTTPS and browser CORS: PASS"
+      - name: Verify deployed backend supports secure browser session endpoints
+        if: env.TARGET_APP == 'customer'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No credentials or cookies. A protected refresh route returns 401,
+          # whereas an unupgraded API returns 404 and blocks the PWA release.
+          status="$(curl --silent --show-error --connect-timeout 8 --max-time 15 \
+            -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Origin: https://sichuan-hotpot-customer.vercel.app' \
+            "$PWA_API_ORIGIN/auth/browser/refresh")"
+          test "$status" = 401 || {
+            echo "::error::Secure browser session endpoint unavailable (expected 401); deploy backend first."
+            exit 1
+          }
+          echo "HTTPS secure-session backend preflight: PASS"
       - name: Compile and inspect selected production Expo Web app
         shell: bash
         run: |
@@ -191,8 +207,9 @@ jobs:
           set -euo pipefail
           mkdir -p "apps/$TARGET_APP/.vercel/output/static"
           cp -a "apps/$TARGET_APP/dist/." "apps/$TARGET_APP/.vercel/output/static/"
-          printf '%s\n' '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' \
-            > "apps/$TARGET_APP/.vercel/output/config.json"
+          node --test scripts/qa/create-pwa-output-config.test.mjs
+          node scripts/qa/create-pwa-output-config.mjs "$TARGET_APP"
+          test -s "apps/$TARGET_APP/.vercel/output/config.json"
       - name: Owner-requested production release (single app only)
         shell: bash
         run: |
