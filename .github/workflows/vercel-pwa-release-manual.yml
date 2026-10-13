@@ -167,45 +167,7 @@ jobs:
             echo "::error::Production API CORS preflight failed; PWA not published."
             exit 1
           }
-          tr -d '\r' < "$RUNNER_TEMP/hotpot-cors.txt" | grep -Eiq '^access-control-allow-origin: https://sichuan-hotpot-customer\.vercel\.app
-            echo "::error::Production API does not allow Customer PWA origin in CORS_ALLOWED_ORIGINS."
-            exit 1
-          }
-          echo "Customer API HTTPS and browser CORS: PASS"
-      - name: Compile and inspect selected production Expo Web app
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm run build --workspace "apps/$TARGET_APP"
-          test -s "apps/$TARGET_APP/dist/index.html"
-          if [[ "$TARGET_APP" == customer ]]; then
-            grep -FRq "$PWA_API_ORIGIN" "apps/customer/dist/_expo/static/js/web" || {
-              echo "::error::Expo bundle did not embed the approved production API URL."
-              exit 1
-            }
-          fi
-          echo "Production environment embedded and Expo PWA build: PASS"
-      - name: Package exact tested Expo export for Vercel (no remote rebuild)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "apps/$TARGET_APP/.vercel/output/static"
-          cp -a "apps/$TARGET_APP/dist/." "apps/$TARGET_APP/.vercel/output/static/"
-          printf '%s\n' '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' \
-            > "apps/$TARGET_APP/.vercel/output/config.json"
-      - name: Owner-requested production release (single app only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "apps/$TARGET_APP"
-          ../../node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
-          echo "Target $TARGET_APP released from verified main SHA $REQUESTED_SHA"
-      - name: Remove downloaded production environment values
-        if: always()
-        shell: bash
-        run: |
-          rm -f "apps/${TARGET_APP:-customer}/.env.production.local"
- || {
+          tr -d '\r' < "$RUNNER_TEMP/hotpot-cors.txt" | grep -Eiq '^access-control-allow-origin: https://sichuan-hotpot-customer\.vercel\.app$' || {
             echo "::error::Production API does not allow Customer PWA origin in CORS_ALLOWED_ORIGINS."
             exit 1
           }
