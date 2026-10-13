@@ -26,8 +26,9 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.comment.body == '/deploy-hotpot' &&
        github.actor == 'meyecarpenter23842')
-    # NPP one-command model: production secrets/vars are repo-scoped, not
-    # Environment-scoped; owner actor + protected main + immutable SHA gate release.
+    # Reuse existing environment-scoped production credentials and variables.
+    # Turn off Required reviewers ONCE, never move SSH secrets into source.
+    environment: production-api
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # Isolated disposable CI database for PR-equivalent integration checks;
