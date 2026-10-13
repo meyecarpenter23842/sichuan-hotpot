@@ -23,7 +23,7 @@ if [[ ! -e "$cfg" ]]; then
   printf '\n'
   [[ "$access" =~ ^[A-Za-z0-9]{16,128}$ ]] || { echo "Invalid access key."; exit 1; }
   [[ "$secret" =~ ^[A-Za-z0-9+/=_-]{24,256}$ ]] || { echo "Invalid secret key."; exit 1; }
-  printf '[hotpot-r2]\ntype = s3\nprovider = Cloudflare\naccess_key_id = %s\nsecret_access_key = %s\nendpoint = https://bae4e0be81d8f56be5b75402ccd3bb9b.r2.cloudflarestorage.com\n' "$access" "$secret" > "$cfg"
+  printf '[hotpot-r2]\ntype = s3\nprovider = Cloudflare\naccess_key_id = %s\nsecret_access_key = %s\nendpoint = https://bae4e0be81d8f56be5b75402ccd3bb9b.r2.cloudflarestorage.com\nno_check_bucket = true\n' "$access" "$secret" > "$cfg"
   unset secret access
   chmod 600 "$cfg"
 fi
