@@ -8,23 +8,41 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#FFFFFF",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": true },
+    "ios": {
+      "supportsTablet": true
+    },
     "android": {
       "package": "vn.sichuanhotpot.customer",
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#B3262D"
+      }
     },
     "web": {
       "name": "Sichuan Hotpot",
       "shortName": "Sichuan",
       "bundler": "metro",
       "output": "single",
-      "themeColor": "#AD282A",
-      "backgroundColor": "#FFFFFF"
+      "themeColor": "#B3262D",
+      "backgroundColor": "#FFFFFF",
+      "favicon": "./public/icon-192.png"
     },
     "plugins": [
-      ["expo-location", { "locationWhenInUsePermission": "Cho phép Sichuan Hotpot dùng vị trí để hỗ trợ địa chỉ giao hàng." }],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cho phép Sichuan Hotpot dùng vị trí để hỗ trợ địa chỉ giao hàng."
+        }
+      ],
       "expo-secure-store"
     ],
-    "experiments": { "tsconfigPaths": true }
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "icon": "./assets/app-icon.png"
   }
 }
