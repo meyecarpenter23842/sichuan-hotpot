@@ -7,8 +7,6 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
-import * as Google from "expo-auth-session/providers/google";
-import * as WebBrowser from "expo-web-browser";
 import {
   addCartLine, cartItemCount, setCartQuantity,
   type CartLine,
@@ -17,12 +15,11 @@ import {
   apiRequest, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
   type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
 } from "./src/api";
-import { addressError, optionSelectionError, passwordError, phoneError, usernameError, vnd } from "./src/validation";
-
-WebBrowser.maybeCompleteAuthSession();
+import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
+import { AuthScreen } from "./src/screens/AuthScreen";
+import { palette } from "./src/theme";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "login" | "address";
-type AuthMode = "login" | "register";
 type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
 };
@@ -30,14 +27,8 @@ const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
-const brand = "#AD282A";
+const brand = palette.red;
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
-const authWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
-const authAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
-const loginHeroUrl = "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png";
-const googleReady = Boolean(
-  Platform.OS === "web" ? authWebClientId : authAndroidClientId,
-);
 
 function Button({ label, onPress, disabled = false, alternate = false }: {
   label: string;
@@ -70,7 +61,7 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry = fals
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         style={styles.input} value={value} onChangeText={onChangeText}
-        placeholder={placeholder} placeholderTextColor="#8F7770"
+        placeholder={placeholder} placeholderTextColor="#98A2B3"
         secureTextEntry={secureTextEntry} keyboardType={keyboardType}
         autoCapitalize="none" autoCorrect={false}
         accessibilityLabel={label}
@@ -114,7 +105,7 @@ function selectedModifierPrice(product: Product, ids: readonly string[]): number
 }
 
 function CustomerApp() {
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>("login");
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [branchId, setBranchId] = useState("");
   const [menu, setMenu] = useState<BranchMenu | null>(null);
@@ -132,14 +123,7 @@ function CustomerApp() {
   const [notice, setNotice] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [principal, setPrincipal] = useState<Principal | null>(null);
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [loginHeroFailed, setLoginHeroFailed] = useState(false);
-  const [loginReturnTo, setLoginReturnTo] = useState<"cart" | "account">("account");
+  const [loginReturnTo, setLoginReturnTo] = useState<"home" | "cart" | "account">("home");
   const [address, setAddress] = useState<AddressDraft>({
     label: "Nhà", phone: "", line1: "", latitude: "", longitude: "",
   });
@@ -148,11 +132,6 @@ function CustomerApp() {
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
   const [addressErrorText, setAddressErrorText] = useState("");
-
-  const [googleRequest, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
-    webClientId: authWebClientId || "unconfigured.apps.googleusercontent.com",
-    androidClientId: authAndroidClientId || "unconfigured.apps.googleusercontent.com",
-  });
 
   const refreshCatalogue = useCallback(async (requestedBranch?: string) => {
     setCatalogLoading(true);
@@ -276,50 +255,9 @@ function CustomerApp() {
     if (Platform.OS !== "web") await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
-    setAuthError("");
-    setPassword("");
     setScreen(loginReturnTo);
     setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
-
-  useEffect(() => {
-    if (!googleResponse) return;
-    if (googleResponse.type === "error") { setAuthError("Không thể xác thực với Google. Vui lòng thử lại."); return; }
-    if (googleResponse.type !== "success") return;
-    const idToken = googleResponse.params?.id_token;
-    if (!idToken) {
-      setAuthError("Google chưa trả về mã định danh hợp lệ.");
-      return;
-    }
-    let cancelled = false;
-    setAuthLoading(true);
-    apiRequest<AuthTokens>("/auth/google", { method: "POST", body: { idToken } })
-      .then(tokens => cancelled ? undefined : saveLogin(tokens))
-      .catch(error => {
-        if (!cancelled) setAuthError(error instanceof Error ? error.message : "Đăng nhập Google thất bại.");
-      })
-      .finally(() => { if (!cancelled) setAuthLoading(false); });
-    return () => { cancelled = true; };
-  }, [googleResponse, saveLogin]);
-
-  async function submitCredentials() {
-    if (authLoading) return;
-    const error = usernameError(username) || passwordError(password, authMode === "register");
-    if (error) { setAuthError(error); return; }
-    setAuthLoading(true);
-    setAuthError("");
-    try {
-      const tokens = await apiRequest<AuthTokens>(
-        authMode === "register" ? "/auth/register" : "/auth/login",
-        { method: "POST", body: { username: username.trim(), password } },
-      );
-      await saveLogin(tokens);
-    } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Không thể đăng nhập.");
-    } finally {
-      setAuthLoading(false);
-    }
-  }
 
   async function signOut() {
     const token = accessToken;
@@ -331,6 +269,8 @@ function CustomerApp() {
     await AsyncStorage.removeItem(ADDRESS_KEY).catch(() => undefined);
     if (Platform.OS !== "web") await SecureStore.deleteItemAsync(REFRESH_KEY).catch(() => undefined);
     if (token) await apiRequest("/auth/logout", { method: "POST", accessToken: token }).catch(() => undefined);
+    setLoginReturnTo("home");
+    setScreen("login");
     setNotice("Đã đăng xuất trên thiết bị.");
   }
 
@@ -735,82 +675,6 @@ function CustomerApp() {
             </View>
           </View>
         );
-      case "login":
-        return (
-          <View style={styles.loginPage}>
-            <View style={styles.loginHeroFrame}>
-              {!loginHeroFailed ? (
-                <Image
-                  source={{ uri: loginHeroUrl }}
-                  resizeMode="cover"
-                  style={styles.loginHeroImage}
-                  accessibilityLabel="Ảnh lẩu Tứ Xuyên dùng cho màn đăng nhập"
-                  onError={() => setLoginHeroFailed(true)}
-                />
-              ) : (
-                <View style={styles.loginHeroFallback}>
-                  <Text style={styles.loginHeroFallbackIcon}>♨</Text>
-                  <Text style={styles.loginHeroFallbackText}>SICHUAN HOTPOT</Text>
-                </View>
-              )}
-              <View style={styles.loginHeroTint}>
-                <Pressable
-                  accessibilityRole="button" accessibilityLabel="Quay lại"
-                  style={styles.loginBack}
-                  onPress={() => setScreen(loginReturnTo)}
-                ><Text style={styles.loginBackText}>‹  Trở lại</Text></Pressable>
-                <View style={styles.loginHeroCopy}>
-                  <Text style={styles.loginEyebrow}>SICHUAN HOTPOT & MILK TEA</Text>
-                  <Text style={styles.loginHeadline}>Hương vị Tứ Xuyên,{"\n"}gắn kết yêu thương</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.loginContent}>
-              <Text style={styles.loginWelcome}>{authMode === "login" ? "Chào mừng trở lại!" : "Tạo tài khoản mới"}</Text>
-              <Text style={styles.loginSupporting}>Đăng nhập để lưu giỏ hàng và theo dõi đơn của bạn.</Text>
-              <View style={styles.segmentRow}>
-                <Pressable style={[styles.segment, authMode === "login" && styles.segmentActive]}
-                  accessibilityRole="button" accessibilityState={{ selected: authMode === "login" }}
-                  disabled={authLoading}
-                  onPress={() => { setAuthMode("login"); setAuthError(""); }}>
-                  <Text style={styles.segmentText}>Đăng nhập</Text>
-                </Pressable>
-                <Pressable style={[styles.segment, authMode === "register" && styles.segmentActive]}
-                  accessibilityRole="button" accessibilityState={{ selected: authMode === "register" }}
-                  disabled={authLoading}
-                  onPress={() => { setAuthMode("register"); setAuthError(""); }}>
-                  <Text style={styles.segmentText}>Đăng ký</Text>
-                </Pressable>
-              </View>
-              <Field label="Tên đăng nhập" value={username} onChangeText={setUsername} placeholder="Tên đăng nhập" />
-              <Field label="Mật khẩu" value={password} onChangeText={setPassword}
-                placeholder={authMode === "register" ? "Tối thiểu 12 ký tự" : "Nhập mật khẩu"}
-                secureTextEntry={!showPassword} />
-              <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                onPress={() => setShowPassword(old => !old)}
-                style={styles.smallAction}>
-                <Text style={styles.linkText}>{showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}</Text>
-              </Pressable>
-              {authMode === "register" && <Text style={styles.muted}>Tên đăng nhập 3–32 ký tự, mật khẩu tối thiểu 12 ký tự.</Text>}
-              {authError ? <Notice message={authError} error /> : null}
-              <Button label={authLoading ? "Đang xác thực..." : authMode === "login" ? "Đăng nhập" : "Tạo tài khoản"}
-                disabled={authLoading} onPress={() => void submitCredentials()} />
-              {authLoading && <ActivityIndicator accessibilityLabel="Đang xác thực" color={brand} />}
-              <View style={styles.loginDivider}>
-                <View style={styles.loginDividerLine} />
-                <Text style={styles.loginDividerText}>hoặc</Text>
-                <View style={styles.loginDividerLine} />
-              </View>
-              <Button label="Tiếp tục với Google" alternate disabled={!googleRequest || !googleReady || authLoading}
-                onPress={() => { setAuthError(""); void promptGoogle().catch(() => setAuthError("Không mở được cửa sổ Google.")); }} />
-              {!googleReady && <Text style={styles.muted}>Google chưa được cấu hình cho nền tảng này. Có thể đăng nhập bằng tài khoản.</Text>}
-              <Text style={styles.loginFootnote}>Chưa có API khôi phục mật khẩu tự động. Liên hệ cửa hàng khi cần hỗ trợ tài khoản.</Text>
-              <Pressable accessibilityRole="button" onPress={() => setScreen("menu")} style={styles.loginGuest}>
-                <Text style={styles.loginGuestText}>Xem thực đơn mà không cần đăng nhập  →</Text>
-              </Pressable>
-            </View>
-          </View>
-        );
       case "address":
         return (
           <View style={styles.section}>
@@ -880,64 +744,68 @@ function CustomerApp() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFF7EB" />
-        <View style={styles.shell}>
-          <View style={styles.header}>
-            <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
-            <View style={styles.headerText}>
-              <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
-              <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
-            </View>
-            <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
-              accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
-              <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
-            </Pressable>
-          </View>
-          <KeyboardAvoidingView style={styles.body}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <ScrollView keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}>
-              {notice ? <Notice message={notice} /> : null}
-              {mainContent()}
-            </ScrollView>
-          </KeyboardAvoidingView>
-          <View style={styles.bottomNavigation}>
-            {([
-              ["home", "Trang chủ", "⌂"],
-              ["menu", "Thực đơn", "☷"],
-              ["cart", "Giỏ hàng", "▣"],
-              ["account", "Tài khoản", "♙"],
-            ] as const).map(([target, label, glyph]) => (
-              <Pressable key={target} style={styles.navItem}
-                accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
-                accessibilityLabel={label} onPress={() => { setNotice(""); setScreen(target); }}>
-                <Text style={[styles.navGlyph, screen === target && styles.navActive]}>{glyph}</Text>
-                <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
+        <StatusBar barStyle="dark-content" backgroundColor={palette.white} />
+        {screen === "login" ? (
+          <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
+        ) : (
+          <View style={styles.shell}>
+            <View style={styles.header}>
+              <View style={styles.logoBadge}><Text style={styles.logoGlyph}>♨</Text></View>
+              <View style={styles.headerText}>
+                <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
+                <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
+              </View>
+              <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
+                accessibilityRole="button" accessibilityLabel={"Giỏ hàng, " + itemCount + " món"}>
+                <Text style={styles.headerCartText}>Giỏ · {itemCount}</Text>
               </Pressable>
-            ))}
+            </View>
+            <KeyboardAvoidingView style={styles.body}
+              behavior={Platform.OS === "ios" ? "padding" : undefined}>
+              <ScrollView keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}>
+                {notice ? <Notice message={notice} /> : null}
+                {mainContent()}
+              </ScrollView>
+            </KeyboardAvoidingView>
+            <View style={styles.bottomNavigation}>
+              {([
+                ["home", "Trang chủ", "⌂"],
+                ["menu", "Thực đơn", "☷"],
+                ["cart", "Giỏ hàng", "▣"],
+                ["account", "Tài khoản", "♙"],
+              ] as const).map(([target, label, glyph]) => (
+                <Pressable key={target} style={styles.navItem}
+                  accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
+                  accessibilityLabel={label} onPress={() => { setNotice(""); setScreen(target); }}>
+                  <Text style={[styles.navGlyph, screen === target && styles.navActive]}>{glyph}</Text>
+                  <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#FFF7EB" },
-  shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: "#FFF9F1" },
-  header: { paddingHorizontal: 18, paddingVertical: 14, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#F3DFD0" },
+  safeArea: { flex: 1, backgroundColor: palette.white },
+  shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white },
+  header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
   logoBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: brand, alignItems: "center", justifyContent: "center" },
-  logoGlyph: { color: "#FFF7EB", fontSize: 26, fontWeight: "800" },
+  logoGlyph: { color: "#FFFFFF", fontSize: 26, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
   brandName: { fontSize: 15, fontWeight: "900", color: brand, letterSpacing: 0.4 },
-  brandSub: { fontSize: 12, color: "#75564A" },
-  headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#F8E5D8", justifyContent: "center", alignItems: "center" },
+  brandSub: { fontSize: 12, color: "#667085" },
+  headerCart: { minWidth: 70, minHeight: 44, borderRadius: 13, backgroundColor: "#FFF0F0", justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: 13, color: brand, fontWeight: "800" },
   body: { flex: 1 },
-  scrollContent: { paddingBottom: 28 },
-  loginPage: { backgroundColor: "#FFF8F0", paddingBottom: 24 },
-  loginHeroFrame: { width: "100%", height: 268, backgroundColor: "#7C2326", overflow: "hidden" },
+  scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
+  loginPage: { backgroundColor: "#FFFFFF", paddingBottom: 24 },
+  loginHeroFrame: { width: "100%", height: 160, backgroundColor: palette.red, overflow: "hidden" },
   loginHeroImage: { width: "100%", height: "100%" },
   loginHeroFallback: { width: "100%", height: "100%", backgroundColor: "#822524", alignItems: "center", justifyContent: "center" },
   loginHeroFallbackIcon: { color: "#F9D29C", fontSize: 64 },
@@ -946,91 +814,91 @@ const styles = StyleSheet.create({
   loginBack: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: 10, borderRadius: 22, backgroundColor: "rgba(30,10,10,0.48)" },
   loginBackText: { color: "#FFF7ED", fontWeight: "700" },
   loginHeroCopy: { gap: 7, paddingBottom: 12 },
-  loginEyebrow: { color: "#F6CE93", letterSpacing: 2, fontSize: 11, fontWeight: "900" },
+  loginEyebrow: { color: "#FFFFFF", letterSpacing: 2, fontSize: 11, fontWeight: "900" },
   loginHeadline: { color: "#FFFDF8", fontSize: 26, fontWeight: "900", lineHeight: 34 },
   loginContent: { paddingHorizontal: 24, paddingTop: 25, gap: 11 },
-  loginWelcome: { color: "#4C2520", fontSize: 26, lineHeight: 34, fontWeight: "900" },
-  loginSupporting: { color: "#856B5A", fontSize: 13, lineHeight: 21, marginBottom: 7 },
+  loginWelcome: { color: "#20252B", fontSize: 26, lineHeight: 34, fontWeight: "900" },
+  loginSupporting: { color: "#667085", fontSize: 13, lineHeight: 21, marginBottom: 7 },
   loginDivider: { flexDirection: "row", gap: 12, alignItems: "center", justifyContent: "center", marginVertical: 8 },
-  loginDividerLine: { flex: 1, height: 1, backgroundColor: "#DFC9B9" },
-  loginDividerText: { color: "#826758", fontSize: 12 },
-  loginFootnote: { color: "#7D6458", fontSize: 12, lineHeight: 19 },
+  loginDividerLine: { flex: 1, height: 1, backgroundColor: "#D0D5DD" },
+  loginDividerText: { color: "#667085", fontSize: 12 },
+  loginFootnote: { color: "#667085", fontSize: 12, lineHeight: 19 },
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
-  hero: { backgroundColor: brand, borderRadius: 0, minHeight: 205, paddingHorizontal: 24, paddingVertical: 24, justifyContent: "center", gap: 7 },
-  heroEyebrow: { color: "#FBE3BA", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
-  heroTitle: { color: "#FFF7EB", fontWeight: "900", fontSize: 30, lineHeight: 36 },
-  heroSubtitle: { color: "#FBE5D8", fontSize: 13, lineHeight: 20 },
-  heroAction: { marginTop: 8, backgroundColor: "#FFE9BB", minHeight: 44, alignSelf: "flex-start", borderRadius: 12, paddingHorizontal: 17, justifyContent: "center" },
-  heroActionText: { color: "#743019", fontWeight: "800", fontSize: 13 },
-  pageTitle: { fontSize: 27, fontWeight: "900", color: "#3E2620", marginTop: 4 },
-  sectionTitle: { color: "#462923", fontSize: 18, fontWeight: "800" },
-  categoryTitle: { color: "#462923", fontSize: 17, fontWeight: "800", marginBottom: 7 },
+  hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
+  heroEyebrow: { color: "#FFFFFF", fontWeight: "800", fontSize: 11, letterSpacing: 1.3 },
+  heroTitle: { color: "#FFFFFF", fontWeight: "900", fontSize: 30, lineHeight: 36 },
+  heroSubtitle: { color: "#FFFFFF", fontSize: 13, lineHeight: 20 },
+  heroAction: { marginTop: 8, backgroundColor: "#FFFFFF", minHeight: 44, alignSelf: "flex-start", borderRadius: 10, paddingHorizontal: 16, justifyContent: "center" },
+  heroActionText: { color: "#B3262D", fontWeight: "800", fontSize: 13 },
+  pageTitle: { fontSize: 27, fontWeight: "900", color: "#20252B", marginTop: 4 },
+  sectionTitle: { color: "#20252B", fontSize: 18, fontWeight: "800" },
+  categoryTitle: { color: "#20252B", fontSize: 17, fontWeight: "800", marginBottom: 7 },
   categoryBlock: { gap: 8, paddingTop: 8 },
   pills: { flexGrow: 0 },
-  pill: { paddingHorizontal: 16, minHeight: 44, borderRadius: 24, backgroundColor: "#F7E7DA", justifyContent: "center", marginRight: 8 },
+  pill: { paddingHorizontal: 16, minHeight: 44, borderRadius: 24, backgroundColor: "#F2F4F7", justifyContent: "center", marginRight: 8 },
   pillActive: { backgroundColor: brand },
-  pillText: { color: "#704B3D", fontWeight: "700" },
+  pillText: { color: "#667085", fontWeight: "700" },
   pillTextActive: { color: "white" },
   branchPill: { borderRadius: 12, borderWidth: 1, borderColor: "#DCC2B2", paddingHorizontal: 12, paddingVertical: 11, marginRight: 8, minHeight: 44 },
-  branchActive: { borderColor: brand, backgroundColor: "#FAE6DC" },
-  branchText: { color: "#56362C", fontSize: 13, fontWeight: "700" },
-  productCard: { backgroundColor: "white", minHeight: 108, borderRadius: 16, padding: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#F1E3D6" },
-  productImage: { height: 86, width: 86, borderRadius: 12, backgroundColor: "#F8ECE2" },
-  productImageLarge: { width: "100%", height: "100%", borderRadius: 16, backgroundColor: "#F8ECE2" },
-  iconTile: { backgroundColor: "#FCE4D8", height: 86, width: 86, borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  iconTileTea: { backgroundColor: "#F5E2C7" },
+  branchActive: { borderColor: brand, backgroundColor: "#FFF0F0" },
+  branchText: { color: "#344054", fontSize: 13, fontWeight: "700" },
+  productCard: { backgroundColor: "white", minHeight: 108, borderRadius: 16, padding: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E4E7EC" },
+  productImage: { height: 86, width: 86, borderRadius: 12, backgroundColor: "#FFF0F0" },
+  productImageLarge: { width: "100%", height: "100%", borderRadius: 16, backgroundColor: "#FFF0F0" },
+  iconTile: { backgroundColor: "#FFF0F0", height: 86, width: 86, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  iconTileTea: { backgroundColor: "#FFF0F0" },
   iconGlyph: { fontSize: 43 },
   productInfo: { flex: 1, paddingHorizontal: 12, gap: 4 },
-  productName: { color: "#3F2820", fontSize: 15, fontWeight: "800", lineHeight: 21 },
+  productName: { color: "#20252B", fontSize: 15, fontWeight: "800", lineHeight: 21 },
   price: { color: brand, fontSize: 16, fontWeight: "900" },
-  availability: { color: "#866959", fontSize: 12 },
+  availability: { color: "#667085", fontSize: 12 },
   forward: { color: brand, fontSize: 31 },
-  detailHero: { height: 165, backgroundColor: "#FCE9DA", borderRadius: 16, justifyContent: "center", alignItems: "center" },
-  detailTitle: { fontSize: 27, fontWeight: "900", color: "#3E2620" },
+  detailHero: { height: 165, backgroundColor: "#FFF0F0", borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  detailTitle: { fontSize: 27, fontWeight: "900", color: "#20252B" },
   detailPrice: { color: brand, fontSize: 24, fontWeight: "900" },
-  group: { marginTop: 8, gap: 12, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#EBD9CA" },
-  option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#F1E2D8" },
+  group: { marginTop: 8, gap: 12, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
+  option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
   optionUnavailable: { opacity: 0.45 },
-  optionPrice: { color: "#A7382A", fontWeight: "700", fontSize: 13 },
+  optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
   savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#EAD7C8", padding: 10, gap: 4 },
   addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
-  optionText: { color: "#482E25", fontSize: 15, fontWeight: "700" },
+  optionText: { color: "#20252B", fontSize: 15, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
-  quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E8CBB9", borderRadius: 12 },
+  quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },
   step: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   stepText: { fontSize: 21, color: brand, fontWeight: "800" },
-  qtyText: { textAlign: "center", minWidth: 24, fontWeight: "800", color: "#4C3027" },
-  cartLine: { backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: "#F2E1D5", padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  qtyText: { textAlign: "center", minWidth: 24, fontWeight: "800", color: "#20252B" },
+  cartLine: { backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: "#E4E7EC", padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
   cartLineDetails: { flex: 1, gap: 6 },
   empty: { gap: 14, alignItems: "stretch", paddingVertical: 30 },
-  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#492E26" },
-  muted: { color: "#806556", fontSize: 13, lineHeight: 21 },
+  emptyTitle: { fontSize: 20, fontWeight: "800", color: "#20252B" },
+  muted: { color: "#667085", fontSize: 13, lineHeight: 21 },
   warning: { color: brand, fontSize: 13, fontWeight: "700" },
-  notice: { margin: 14, padding: 13, borderRadius: 12, backgroundColor: "#FAEBCB" },
-  noticeError: { backgroundColor: "#FBE1DE" },
-  noticeText: { color: "#623E2F", fontSize: 13, lineHeight: 19 },
+  notice: { margin: 14, padding: 13, borderRadius: 12, backgroundColor: "#F2F4F7" },
+  noticeError: { backgroundColor: "#FEE4E2" },
+  noticeText: { color: "#344054", fontSize: 13, lineHeight: 19 },
   field: { gap: 7, paddingTop: 3 },
-  fieldLabel: { color: "#5E4237", fontSize: 14, fontWeight: "800" },
-  input: { backgroundColor: "white", borderWidth: 1, borderColor: "#E1C6B8", borderRadius: 12, minHeight: 48, paddingHorizontal: 14, fontSize: 15, color: "#392820" },
+  fieldLabel: { color: "#344054", fontSize: 14, fontWeight: "800" },
+  input: { backgroundColor: "white", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 10, minHeight: 48, paddingHorizontal: 14, fontSize: 16, color: "#20252B" },
   button: { backgroundColor: brand, borderRadius: 14, minHeight: 50, justifyContent: "center", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, marginVertical: 2 },
   buttonText: { color: "white", fontSize: 15, textAlign: "center", fontWeight: "800" },
   buttonOutline: { backgroundColor: "transparent", borderWidth: 1, borderColor: brand },
   buttonOutlineText: { color: brand },
   buttonDisabled: { opacity: 0.45 },
   pressed: { opacity: 0.8 },
-  segmentRow: { flexDirection: "row", backgroundColor: "#F1DFD1", borderRadius: 14, padding: 4 },
+  segmentRow: { flexDirection: "row", backgroundColor: "#FFF0F0", borderRadius: 14, padding: 4 },
   segment: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: 11 },
   segmentActive: { backgroundColor: "white" },
   segmentText: { color: brand, fontSize: 14, fontWeight: "800" },
   smallAction: { alignSelf: "flex-end", paddingVertical: 9, minHeight: 44, justifyContent: "center" },
   linkText: { color: brand, fontSize: 13, fontWeight: "700" },
   orText: { textAlign: "center", paddingVertical: 8 },
-  bottomNavigation: { borderTopWidth: 1, borderTopColor: "#EDD9CD", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 65 },
+  bottomNavigation: { borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 65 },
   navItem: { flex: 1, minHeight: 64, alignItems: "center", justifyContent: "center", gap: 2 },
-  navGlyph: { fontSize: 24, color: "#9C8A82" },
-  navLabel: { color: "#9C8A82", fontSize: 11, fontWeight: "800" },
+  navGlyph: { fontSize: 24, color: "#98A2B3" },
+  navLabel: { color: "#98A2B3", fontSize: 11, fontWeight: "800" },
   navActive: { color: brand },
   loader: { marginTop: 30 },
 });
