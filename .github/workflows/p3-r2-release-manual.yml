@@ -106,11 +106,15 @@ jobs:
           grep -Fqx "$expected_api  /usr/local/sbin/hotpot-api-release-manual" <<< "$installed" || {
             echo "::error::VPS API helper differs from protected main; update BEFORE migration."; exit 1;
           }
-          scp -P "$VPS_PORT" -i "$RUNNER_TEMP/release.key" \
-            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" \
-            "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" \
-            "$target:/opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" >/dev/null 2>/dev/null
+          # Some hardened SSH servers refuse SFTP-backed scp even though the
+          # pinned SSH command channel is authorized. Stream the artifact over
+          # that existing channel; the root-owned helper verifies SHA256 and
+          # archive allowlist before any migration or API service activation.
+          ssh "${opts[@]}" "$target" \
+            "test -d /opt/sichuan-hotpot/incoming && test -w /opt/sichuan-hotpot/incoming && umask 077 && cat > /opt/sichuan-hotpot/incoming/hotpot-api-$REQUESTED_SHA.tgz" \
+            < "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" >/dev/null 2>/dev/null || {
+              echo "::error::VPS incoming folder is unwritable or SSH artifact streaming failed; migration was not started."; exit 1;
+            }
           digest="$(cat "$RUNNER_TEMP/archive.sha256")"
           ssh ${opts[@]} "$target" \
             "sudo -n /usr/local/sbin/hotpot-p3-operations --check '$REQUESTED_SHA' '$digest'" || {
