@@ -169,6 +169,22 @@ jobs:
             exit 1
           }
           if [[ "$TARGET_APP" == admin ]]; then
+            # Canonical Admin hostname is the ONLY browser origin for
+            # preview/custom domains once Vercel edge redirects take effect.
+            curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
+              -X OPTIONS -D "$RUNNER_TEMP/hotpot-admin-canonical-cors.txt" -o /dev/null \
+              -H 'Origin: https://admin.bepsi.click' \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type' \
+              "$PWA_API_ORIGIN/auth/login" || {
+              echo "::error::Canonical Admin login CORS preflight failed."
+              exit 1
+            }
+            tr -d '\r' < "$RUNNER_TEMP/hotpot-admin-canonical-cors.txt" |
+              grep -Fiq 'access-control-allow-origin: https://admin.bepsi.click' || {
+              echo "::error::Canonical Admin domain is not in production API CORS allowlist."
+              exit 1
+            }
             for verb in PATCH PUT; do
               curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
                 -X OPTIONS -D "$RUNNER_TEMP/hotpot-admin-$verb-cors.txt" -o /dev/null \
