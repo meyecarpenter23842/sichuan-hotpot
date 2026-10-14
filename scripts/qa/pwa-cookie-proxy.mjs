@@ -3,8 +3,13 @@ import { createReadStream, statSync } from "node:fs";
 import { join, extname, normalize, resolve, sep } from "node:path";
 
 // Disposable CI only: mimic Vercel same-origin rewrite and serve an exported Expo PWA.
-// Production uses apps/customer/vercel.json, not this local web server.
-const root = resolve("apps/customer/dist");
+// Admin and Customer run as separate local hosts with separate HttpOnly cookies.
+const app = process.env.HOTPOT_QA_PWA_APP || "customer";
+const port = Number(process.env.HOTPOT_QA_WEB_PORT || "3000");
+if (!["customer", "admin"].includes(app) || ![3000, 3002].includes(port)) {
+  throw new Error("Invalid isolated QA PWA target");
+}
+const root = resolve("apps", app, "dist");
 const types = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
@@ -12,7 +17,7 @@ const types = {
   ".svg": "image/svg+xml", ".woff2": "font/woff2",
 };
 createServer((req, res) => {
-  const pathname = new URL(req.url || "/", "http://127.0.0.1:3000").pathname;
+  const pathname = new URL(req.url || "/", "http://127.0.0.1:" + port).pathname;
   if (/^\/api\/session\/(start|refresh|logout)$/.test(pathname)) {
     const upstream = upstreamRequest({
       hostname: "127.0.0.1", port: 3001, method: req.method,
@@ -42,4 +47,4 @@ createServer((req, res) => {
   }
   res.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
   createReadStream(file).pipe(res);
-}).listen(3000, "127.0.0.1");
+}).listen(port, "127.0.0.1");

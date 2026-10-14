@@ -129,27 +129,24 @@ jobs:
             ../../node_modules/.bin/vercel env pull .env.production.local \
               --environment=production --yes --token "$VERCEL_TOKEN" >/dev/null
           )
-          if [[ "$TARGET_APP" == customer ]]; then
-            python3 - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           from urllib.parse import urlsplit
           import os
-          path=Path("apps/customer/.env.production.local")
+          path=Path(f"apps/{os.environ['TARGET_APP']}/.env.production.local")
           items=[line.split("=",1)[1].strip().strip("'\"")
                  for line in path.read_text().splitlines()
                  if line.startswith("EXPO_PUBLIC_API_BASE_URL=")]
           if len(items)!=1:
-              raise SystemExit("Customer production API base URL missing or duplicated in Vercel")
+              raise SystemExit("Production PWA API base URL missing or duplicated in Vercel")
           url=urlsplit(items[0])
           if url.scheme!="https" or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ("","/"):
-              raise SystemExit("Customer production API must have a valid HTTPS origin")
+              raise SystemExit("Production PWA API must have a valid HTTPS origin")
           with open(os.environ["GITHUB_ENV"],"a") as out:
               out.write("PWA_API_ORIGIN="+url.geturl().rstrip("/")+"\n")
           print("Vercel production API HTTPS origin loaded: PASS")
           PY
-          fi
-      - name: Verify public API and customer browser CORS before release
-        if: env.TARGET_APP == 'customer'
+      - name: Verify public API and browser CORS before release
         shell: bash
         run: |
           set -euo pipefail
@@ -160,20 +157,37 @@ jobs:
           }
           curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
             -X OPTIONS -D "$RUNNER_TEMP/hotpot-cors.txt" -o /dev/null \
-            -H 'Origin: https://sichuan-hotpot-customer.vercel.app' \
+            -H "Origin: https://sichuan-hotpot-$TARGET_APP.vercel.app" \
             -H 'Access-Control-Request-Method: POST' \
             -H 'Access-Control-Request-Headers: content-type' \
             "$PWA_API_ORIGIN/auth/login" || {
             echo "::error::Production API CORS preflight failed; PWA not published."
             exit 1
           }
-          tr -d '\r' < "$RUNNER_TEMP/hotpot-cors.txt" | grep -Eiq '^access-control-allow-origin: https://sichuan-hotpot-customer\.vercel\.app$' || {
-            echo "::error::Production API does not allow Customer PWA origin in CORS_ALLOWED_ORIGINS."
+          tr -d '\r' < "$RUNNER_TEMP/hotpot-cors.txt" | grep -Fiq "access-control-allow-origin: https://sichuan-hotpot-$TARGET_APP.vercel.app" || {
+            echo "::error::Production API does not allow selected PWA origin in CORS_ALLOWED_ORIGINS."
             exit 1
           }
-          echo "Customer API HTTPS and browser CORS: PASS"
+          if [[ "$TARGET_APP" == admin ]]; then
+            for verb in PATCH PUT; do
+              curl --fail --silent --show-error --connect-timeout 8 --max-time 15 \
+                -X OPTIONS -D "$RUNNER_TEMP/hotpot-admin-$verb-cors.txt" -o /dev/null \
+                -H "Origin: https://sichuan-hotpot-admin.vercel.app" \
+                -H "Access-Control-Request-Method: $verb" \
+                -H 'Access-Control-Request-Headers: authorization,content-type' \
+                "$PWA_API_ORIGIN/admin/branches/00000000-0000-4000-8000-000000000000/catalog" || {
+                  echo "::error::Admin $verb CORS preflight failed."
+                  exit 1
+                }
+              tr -d '\r' < "$RUNNER_TEMP/hotpot-admin-$verb-cors.txt" | grep -Fiq "access-control-allow-origin: https://sichuan-hotpot-admin.vercel.app" || exit 1
+              tr -d '\r' < "$RUNNER_TEMP/hotpot-admin-$verb-cors.txt" | grep -i 'access-control-allow-methods:' | grep -Fq "$verb" || {
+                echo "::error::Production API rejects Admin $verb; deploy API first."
+                exit 1
+              }
+            done
+          fi
+          echo "PWA API HTTPS and browser CORS: PASS"
       - name: Verify deployed backend supports secure browser session endpoints
-        if: env.TARGET_APP == 'customer'
         shell: bash
         run: |
           set -euo pipefail
@@ -181,7 +195,7 @@ jobs:
           # whereas an unupgraded API returns 404 and blocks the PWA release.
           status="$(curl --silent --show-error --connect-timeout 8 --max-time 15 \
             -o /dev/null -w '%{http_code}' -X POST \
-            -H 'Origin: https://sichuan-hotpot-customer.vercel.app' \
+            -H "Origin: https://sichuan-hotpot-$TARGET_APP.vercel.app" \
             "$PWA_API_ORIGIN/auth/browser/refresh")"
           test "$status" = 401 || {
             echo "::error::Secure browser session endpoint unavailable (expected 401); deploy backend first."
@@ -194,12 +208,10 @@ jobs:
           set -euo pipefail
           npm run build --workspace "apps/$TARGET_APP"
           test -s "apps/$TARGET_APP/dist/index.html"
-          if [[ "$TARGET_APP" == customer ]]; then
-            grep -FRq "$PWA_API_ORIGIN" "apps/customer/dist/_expo/static/js/web" || {
-              echo "::error::Expo bundle did not embed the approved production API URL."
-              exit 1
-            }
-          fi
+          grep -FRq "$PWA_API_ORIGIN" "apps/$TARGET_APP/dist/_expo/static/js/web" || {
+            echo "::error::Expo bundle did not embed the approved production API URL."
+            exit 1
+          }
           echo "Production environment embedded and Expo PWA build: PASS"
       - name: Package exact tested Expo export for Vercel (no remote rebuild)
         shell: bash
