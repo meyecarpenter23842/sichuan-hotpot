@@ -82,3 +82,15 @@ test("OWNER first-store onboarding uses real POST/PATCH endpoints and safe deliv
   assert.match(policy, /acceptingOrders/);
   assert.match(policy, /Lưu chính sách giao hàng/);
 });
+
+test("branch setup locates only after tapping GPS and keeps manually editable coordinates", () => {
+  const branch = readFileSync(new URL("../src/BranchPanel.tsx", import.meta.url), "utf8");
+  const pkg = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  assert.match(branch, /Location.requestForegroundPermissionsAsync/);
+  assert.match(branch, /Location.getCurrentPositionAsync/);
+  assert.match(branch, /latitude.toFixed\(7\)/);
+  assert.match(branch, /longitude.toFixed\(7\)/);
+  assert.match(branch, /Lấy định vị GPS hiện tại/);
+  assert.match(branch, /disabled=\{saving \|\| locating\}/);
+  assert.match(pkg, /"expo-location": "~19.0.8"/);
+});
