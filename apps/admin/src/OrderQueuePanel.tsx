@@ -61,9 +61,10 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
   return [];
 }
 const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
+const deliveryStatuses: OrderStatus[] = ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"];
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnabled }: {
-  token: string; branchId: string; role: string; mode: "orders" | "kitchen"; active: boolean;
+  token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery"; active: boolean;
   chimeEnabled: boolean;
 }) {
   const kitchenOnly = role === "KITCHEN";
@@ -186,18 +187,24 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
 
   const visible = orders.filter(order => {
     if (mode === "kitchen") return kitchenStatuses.includes(order.status);
+    if (mode === "delivery") return deliveryStatuses.includes(order.status);
     return filter === "all" || !["DELIVERED", "CANCELED", "DELIVERY_FAILED"].includes(order.status);
   });
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
     && clock - Date.parse(x.createdAt) >= 300000).length;
   const kitchenCount = orders.filter(x => x.status === "PREPARING").length;
+  const deliveryCount = orders.filter(x => x.status === "DELIVERING").length;
+  const deliveredCount = orders.filter(x => x.status === "DELIVERED").length;
 
   return <View style={s.page}>
     <View style={s.head}>
       <View style={s.headInfo}>
-        <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp" : "Đơn hàng"}</Text>
-        <Text style={s.note}>Đơn thật · realtime khi kết nối, tự đồng bộ dự phòng mỗi 10 giây</Text>
+        <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp"
+          : mode === "delivery" ? "Giao hàng" : "Đơn hàng"}</Text>
+        <Text style={s.note}>{mode === "delivery"
+          ? "Trạng thái đơn từ máy chủ. Phân công tài xế triển khai ở P5."
+          : "Đơn thật · cập nhật tức thời khi có kết nối, đồng bộ dự phòng 10 giây"}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
         disabled={syncing} onPress={() => void sync()} style={s.refresh}>
@@ -205,18 +212,19 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
       </Pressable>
     </View>
     <View style={s.summary}>
-      <View style={s.summaryMetric}>
-        <Text style={s.summaryNum}>{pendingCount}</Text>
-        <Text style={s.note}>Đơn mới</Text>
-      </View>
-      <View style={s.summaryMetric}>
-        <Text style={s.summaryNum}>{kitchenCount}</Text>
-        <Text style={s.note}>Đang nấu</Text>
-      </View>
-      <View style={s.summaryMetric}>
-        <Text style={s.summaryNum}>{orders.filter(x => x.status === "READY").length}</Text>
-        <Text style={s.note}>Chờ giao</Text>
-      </View>
+      {(mode === "delivery" ? [
+        ["Chờ giao", orders.filter(x => x.status === "READY").length],
+        ["Đang giao", deliveryCount],
+        ["Đã giao", deliveredCount],
+      ] : [
+        ["Đơn mới", pendingCount],
+        ["Đang nấu", kitchenCount],
+        ["Chờ giao", orders.filter(x => x.status === "READY").length],
+      ]).map(([label, value], index) => <View key={String(label)}
+        style={[s.summaryMetric, index === 0 && s.summaryMetricHot]}>
+        <Text style={s.summaryNum}>{value}</Text>
+        <Text style={s.note}>{label}</Text>
+      </View>)}
     </View>
     <Text style={[s.sync, error && s.syncError]}>
       {error ? "Mất đồng bộ — dữ liệu có thể đã cũ" :
@@ -231,31 +239,64 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
       <Pill label="Đang xử lý" active={filter === "active"} onPress={() => setFilter("active")} />
       <Pill label="Tất cả" active={filter === "all"} onPress={() => setFilter("all")} />
     </View>}
-    {loading ? <ActivityIndicator color={c.red} /> : visible.length === 0 ? <View style={s.empty}>
-      <Icon name={mode === "kitchen" ? "kitchen" : "orders"} color={c.secondary} size={30} />
-      <Text style={s.note}>{mode === "kitchen"
-        ? "Chưa có phiếu bếp cần xử lý." : "Chưa có đơn hàng trong nhóm này."}</Text>
-    </View> : <View style={s.rows}>
-      {visible.map(order => <Pressable accessibilityRole="button"
-        accessibilityLabel={"Xem đơn " + order.id.slice(0, 8)}
-        key={order.id} style={({ pressed }) => [s.row, pressed && s.pressed]}
-        onPress={() => void openDetail(order.id)}>
-        <View style={s.rowTop}>
-          <Text style={s.orderId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
-          <Text style={s.date}>{when(order.createdAt)}</Text>
+    {loading ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
+      visible.length === 0 ? <View style={s.empty}>
+        <View style={s.emptyIcon}>
+          <Icon name={mode === "kitchen" ? "kitchen" :
+            mode === "delivery" ? "delivery" : "orders"} color={c.red} size={29} />
         </View>
-        <View style={s.rowTop}>
-          <Text style={[s.status, order.status === "PENDING" && s.urgent]}>
-            {statusName[order.status]}
-          </Text>
-          {!kitchenOnly && order.totalVnd !== undefined &&
-            <Text style={s.total}>{money(order.totalVnd)}</Text>}
-        </View>
-        <Text numberOfLines={2} style={s.products}>
-          {order.items.map(x => x.quantity + "× " + x.productName).join(" · ")}
+        <Text style={s.emptyHeading}>
+          {mode === "kitchen" ? "Bếp chưa có phiếu cần xử lý"
+            : mode === "delivery" ? "Chưa có đơn trong danh sách giao"
+            : "Chưa có đơn hàng trong nhóm này"}
         </Text>
-      </Pressable>)}
-    </View>}
+        <Text style={s.note}>Danh sách chỉ hiển thị dữ liệu thật từ máy chủ.</Text>
+      </View> : <View style={s.rows}>
+        {visible.map(order => <View key={order.id} style={s.orderCard}>
+          <View style={s.orderHeader}>
+            <Text style={s.orderId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
+            <View style={[s.statusPill, order.status === "PENDING" && s.statusPillUrgent]}>
+              <Text style={[s.status, order.status === "PENDING" && s.urgent]}>
+                {statusName[order.status]}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }} />
+            <Icon name="clock" size={16} color={c.secondary} />
+            <Text style={s.date}>{when(order.createdAt)}</Text>
+          </View>
+          <View style={s.cardContent}>
+            <View style={s.cardDishIcon}>
+              <Icon name="kitchen" size={25} color={c.redDeep} />
+            </View>
+            <View style={s.cardProducts}>
+              {order.items.slice(0, 3).map((item, idx) =>
+                <Text key={idx} numberOfLines={1} style={s.productLine}>
+                  {item.quantity} × {item.productName}
+                </Text>)}
+              {order.items.length > 3 && <Text style={s.note}>
+                + {order.items.length - 3} món khác
+              </Text>}
+            </View>
+            {!kitchenOnly && order.totalVnd !== undefined && <View style={s.cardTotal}>
+              <Text style={s.note}>Tổng tiền</Text>
+              <Text style={s.total}>{money(order.totalVnd)}</Text>
+              {!!order.payment?.method &&
+                <Text style={s.paymentChip}>{order.payment.method}</Text>}
+            </View>}
+          </View>
+          <Pressable accessibilityRole="button"
+            accessibilityLabel={"Xem đơn " + order.id.slice(0, 8)}
+            style={({ pressed }) => [s.detailButton, pressed && s.pressed]}
+            onPress={() => void openDetail(order.id)}>
+            <Icon name="orders" size={19} color={c.redDeep} />
+            <Text style={s.detailButtonLabel}>
+              {mode === "kitchen" ? "Xem phiếu & xử lý bếp"
+                : mode === "delivery" ? "Xem trạng thái giao hàng" : "Xem chi tiết & xử lý"}
+            </Text>
+            <Text style={s.detailButtonArrow}>›</Text>
+          </Pressable>
+        </View>)}
+      </View>}
     {opening && <ActivityIndicator color={c.red} />}
     <Modal visible={!!selected} transparent animationType="slide"
       onRequestClose={() => { if (!saving) { setSelected(null); setAction(null); } }}>
@@ -271,8 +312,32 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
           </View>
           <ScrollView contentContainerStyle={s.sheetContent} keyboardShouldPersistTaps="handled">
             {selected && <>
-              <Text style={s.status}>{statusName[selected.status]} · {when(selected.createdAt)}</Text>
+              <View style={s.detailStatusRow}>
+                <View style={s.statusPill}><Text style={s.status}>{statusName[selected.status]}</Text></View>
+                <Text style={s.note}>Đặt lúc {when(selected.createdAt)}</Text>
+              </View>
+              <View style={s.timeline}>
+                {(["PENDING", "CONFIRMED", "PREPARING", "READY"] as const).map((status, index) => {
+                  const history = selected.statusHistory.find(row => row.toStatus === status);
+                  const reachedAt = status === "PENDING" ? selected.createdAt : history?.createdAt;
+                  return <View style={s.timelineStep} key={status}>
+                    <View style={[s.timelineDot, reachedAt && s.timelineDone]}>
+                      {reachedAt && <Icon name="check" size={14} color={c.white} />}
+                    </View>
+                    <Text style={[s.timelineLabel, reachedAt && s.timelineLabelDone]} numberOfLines={2}>
+                      {["Mới đặt", "Đã nhận", "Đang nấu", "Sẵn sàng"][index]}
+                    </Text>
+                    <Text style={s.timelineClock}>
+                      {reachedAt ? new Date(reachedAt).toLocaleTimeString("vi-VN",{
+                        hour:"2-digit", minute:"2-digit",
+                      }) : "--:--"}
+                    </Text>
+                  </View>;
+                })}
+              </View>
+              <Text style={s.detailSectionTitle}>Danh sách món ({selected.items.length} dòng món)</Text>
               {selected.items.map((item, i) => <View key={i} style={s.item}>
+                <View style={s.itemOrdinal}><Text style={s.itemOrdinalLabel}>{i + 1}</Text></View>
                 <View style={s.rowTop}>
                   <Text style={s.itemName}>{item.quantity} × {item.productName}</Text>
                   {!kitchenOnly && item.lineTotalVnd !== undefined &&
@@ -298,7 +363,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                 <Text style={s.products}>{selected.addressLineSnapshot}</Text>
                 {!!selected.phoneSnapshot && <Text style={s.note}>{selected.phoneSnapshot}</Text>}
               </>}
-              <Text style={s.itemName}>Lịch sử trạng thái</Text>
+              <Text style={s.detailSectionTitle}>Lịch sử trạng thái</Text>
               {selected.statusHistory.map((h,i) =>
                 <Text key={i} style={s.note}>
                   {when(h.createdAt)} · {statusName[h.toStatus]}
@@ -328,30 +393,33 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
 }
 
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 14, paddingTop: 16, paddingBottom: 24, gap: 12 },
+  page: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 24, gap: 12 },
   head: { flexDirection: "row", gap: 10, alignItems: "center" },
   headInfo: { flex: 1, gap: 5 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, color: c.secondary, lineHeight: 18 },
   refresh: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  summary: { flexDirection: "row", borderBottomWidth: 1, borderColor: c.line, paddingBottom: 10 },
-  summaryMetric: { flex: 1, gap: 5, paddingHorizontal: 10, alignItems: "center" },
+  summary: { flexDirection: "row", borderBottomWidth: 1, borderColor: c.line,
+    paddingBottom: 10, gap: 5 },
+  summaryMetric: { flex: 1, gap: 5, paddingHorizontal: 6, paddingVertical: 8,
+    alignItems: "center", borderRadius: 10 },
   summaryNum: { fontSize: 18, fontWeight: "800", color: c.ink },
   sync: { fontSize: font.caption, color: c.green },
   syncError: { color: c.red },
   filter: { flexDirection: "row", gap: 8 },
-  rows: { gap: 0 },
+  rows: { gap: 4 },
   row: { paddingVertical: 13, paddingHorizontal: 4, gap: 7,
     borderBottomWidth: 1, borderColor: c.line, minHeight: 100 },
   pressed: { opacity: 0.6 },
   rowTop: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
-  orderId: { fontWeight: "800", color: c.ink, fontSize: font.body },
+  orderId: { fontWeight: "900", color: c.ink, fontSize: 16 },
   date: { color: c.secondary, fontSize: font.caption },
   status: { color: c.green, fontWeight: "700", fontSize: font.note },
   urgent: { color: c.red },
-  total: { fontWeight: "800", color: c.ink, fontSize: font.body },
+  total: { fontWeight: "900", color: c.red, fontSize: 15 },
   products: { color: c.secondary, fontSize: font.note, lineHeight: 19, flexShrink: 1 },
-  empty: { minHeight: 150, justifyContent: "center", alignItems: "center", gap: 12 },
+  empty: { minHeight: 250, justifyContent: "center", alignItems: "center",
+    gap: 12, padding: 20 },
   overlay: { flex: 1, backgroundColor: "rgba(12,18,28,0.48)",
     justifyContent: "flex-end" },
   sheet: { maxHeight: "92%", backgroundColor: c.white,
@@ -364,4 +432,43 @@ const s = StyleSheet.create({
   itemName: { fontSize: font.body, fontWeight: "700", color: c.ink, flexShrink: 1 },
   totals: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderColor: c.line },
   actions: { paddingTop: 10, gap: 10 },
+  summaryMetricHot: { backgroundColor: "#FFE9EB", borderRadius: 12 },
+  orderCard: { backgroundColor: c.white, borderRadius: 15, borderColor: "#EFE3D9",
+    borderWidth: 1, padding: 12, gap: 12, marginBottom: 9,
+    shadowColor: "#45231B", shadowOpacity: 0.07, shadowRadius: 6, elevation: 2 },
+  orderHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  statusPill: { backgroundColor: "#F5EFE6", borderRadius: 13,
+    paddingVertical: 5, paddingHorizontal: 10 },
+  statusPillUrgent: { backgroundColor: "#FFE5E9" },
+  cardContent: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cardDishIcon: { width: 46, height: 51, borderRadius: 10,
+    backgroundColor: "#FFF1DF", alignItems: "center", justifyContent: "center" },
+  cardProducts: { flex: 1, minWidth: 0, gap: 4 },
+  productLine: { fontSize: 12, color: c.ink, fontWeight: "600", lineHeight: 17 },
+  cardTotal: { alignItems: "flex-end", gap: 3 },
+  paymentChip: { color: "#8E581B", backgroundColor: "#FFF2D8",
+    fontSize: 10, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  detailButton: { backgroundColor: "#FCE6E7", borderRadius: 9,
+    minHeight: 45, flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 10, paddingHorizontal: 12 },
+  detailButtonLabel: { fontSize: 12, fontWeight: "800", color: c.redDeep },
+  detailButtonArrow: { color: c.redDeep, fontSize: 21, marginLeft: "auto" },
+  emptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#FCE6E7",
+    alignItems: "center", justifyContent: "center" },
+  emptyHeading: { fontSize: 14, fontWeight: "800", color: c.ink },
+  detailStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  timeline: { backgroundColor: "#FFF9F3", paddingVertical: 15, paddingHorizontal: 8,
+    flexDirection: "row", borderRadius: 12, borderWidth: 1, borderColor: "#F2E7D9" },
+  timelineStep: { flex: 1, alignItems: "center", gap: 7 },
+  timelineDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#E5E5E9",
+    alignItems: "center", justifyContent: "center" },
+  timelineDone: { backgroundColor: c.red },
+  timelineLabel: { color: c.secondary, fontSize: 10, textAlign: "center", fontWeight: "600" },
+  timelineLabelDone: { color: c.red, fontWeight: "800" },
+  timelineClock: { color: c.secondary, fontSize: 10 },
+  detailSectionTitle: { fontSize: 15, fontWeight: "800", color: c.ink,
+    paddingLeft: 9, borderLeftWidth: 4, borderLeftColor: c.red },
+  itemOrdinal: { alignItems: "center", justifyContent: "center", width: 24, height: 24,
+    borderRadius: 12, backgroundColor: "#FCE5E7" },
+  itemOrdinalLabel: { fontSize: 12, fontWeight: "800", color: c.red },
 });

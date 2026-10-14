@@ -46,7 +46,13 @@ try {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
+  // Verify PWA width lock without interfering with single-touch scrolling.
   await page.goto(web, { waitUntil: "domcontentloaded" });
+  const vp = await page.locator('meta[name="viewport"]').getAttribute("content");
+  assert.match(vp ?? "", /maximum-scale=1/);
+  assert.match(vp ?? "", /user-scalable=no/);
+  assert.equal(await page.evaluate(() =>
+    getComputedStyle(document.documentElement).touchAction), "pan-x pan-y");
   await page.getByRole("textbox", { name: "Tên đăng nhập" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
@@ -109,7 +115,7 @@ try {
   await page.getByText("Cay vừa", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
 
-  await page.getByRole("tab", { name: "Thiết lập" }).click();
+  await page.getByRole("button", { name: "Mở thiết lập" }).click();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
@@ -142,13 +148,14 @@ try {
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 844 });
     for (const tab of ["Tổng quan", "Thực đơn", "Thiết lập"]) {
-      await page.getByRole("tab", { name: tab }).click();
+      if (tab === "Thiết lập") await page.getByRole("button", { name: "Mở thiết lập" }).click();
+      else await page.getByRole("tab", { name: tab }).click();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         true, "Admin horizontal overflow in " + tab + " at " + width);
       if (tab === "Thiết lập") {
         await page.getByRole("button", { name: "Mở Giờ bán" }).waitFor();
       } else {
-        await page.getByText(tab === "Tổng quan" ? "Tổng quan cửa hàng" : "Tìm món").first().waitFor();
+        await page.getByText(tab === "Tổng quan" ? "Đơn mới cần xác nhận" : "Tìm món").first().waitFor();
       }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
@@ -214,7 +221,10 @@ try {
   await ownerPage.getByRole("textbox", { name: "Tên đăng nhập" }).fill(ownerUsername);
   await ownerPage.getByRole("textbox", { name: "Mật khẩu" }).fill(ownerPassword);
   await ownerPage.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await ownerPage.getByText("Admin · Chủ cửa hàng").waitFor();
+  // Role is now shown on the dedicated Account screen, not the redesigned hero.
+  await ownerPage.getByRole("button", { name: "Mở tài khoản" }).click();
+  await ownerPage.getByText("Chủ cửa hàng", { exact: true }).waitFor();
+  await ownerPage.getByRole("tab", { name: "Tổng quan" }).click();
   await ownerPage.getByRole("button", { name: "Đổi chi nhánh" }).click();
   await ownerPage.getByRole("button", { name: "Chọn chi nhánh Chi nhánh Owner QA" }).click();
   await ownerPage.getByText("Chi nhánh Owner QA").first().waitFor();

@@ -8,11 +8,11 @@ const api = readFileSync(new URL("../../api/src/orders/admin-orders.controller.t
 const service = readFileSync(new URL("../../api/src/orders/admin-orders.service.ts", import.meta.url), "utf8");
 
 test("orders and kitchen are separate real Admin tabs, not dashboard setup cards", () => {
-  assert.match(app, /id: "orders", label: "Đơn hàng", icon: "orders"/);
-  assert.match(app, /id: "kitchen", label: "Bếp", icon: "kitchen"/);
+  assert.match(app, /id: "orders", label: "Đơn hàng", shortLabel: "Đơn", icon: "orders"/);
+  assert.match(app, /id: "kitchen", label: "Bếp", shortLabel: "Bếp", icon: "kitchen"/);
   assert.match(app, /<OrderQueuePanel key=\{branchId/);
   assert.match(app, /"\/admin\/orders\/branches"/);
-  assert.match(app, /item\.id === "kitchen" \|\| item\.id === "account"/);
+  assert.match(app, /!kitchenOnly \|\| item\.id === "kitchen"/);
 });
 
 test("orders never fake sync and use real backend status patch and retry on reconnect", () => {
