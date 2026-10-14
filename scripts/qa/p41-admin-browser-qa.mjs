@@ -221,7 +221,10 @@ try {
   await ownerPage.getByRole("textbox", { name: "Tên đăng nhập" }).fill(ownerUsername);
   await ownerPage.getByRole("textbox", { name: "Mật khẩu" }).fill(ownerPassword);
   await ownerPage.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await ownerPage.getByText("Admin · Chủ cửa hàng").waitFor();
+  // Role is now shown on the dedicated Account screen, not the redesigned hero.
+  await ownerPage.getByRole("button", { name: "Mở tài khoản" }).click();
+  await ownerPage.getByText("Chủ cửa hàng", { exact: true }).waitFor();
+  await ownerPage.getByRole("tab", { name: "Tổng quan" }).click();
   await ownerPage.getByRole("button", { name: "Đổi chi nhánh" }).click();
   await ownerPage.getByRole("button", { name: "Chọn chi nhánh Chi nhánh Owner QA" }).click();
   await ownerPage.getByText("Chi nhánh Owner QA").first().waitFor();

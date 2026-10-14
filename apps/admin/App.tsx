@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", alignItems: "center",
     gap: 10, paddingHorizontal: 13, paddingTop: 16, paddingBottom: 15, minHeight: 90 },
   headerText: { flex: 1, minWidth: 0 },
-  branchSelector: { flex: 1, minWidth: 0, minHeight: 64,
+  branchSelector: { flex: 1.3, minWidth: 0, minHeight: 64,
     flexDirection: "row", alignItems: "center", paddingHorizontal: 10,
     borderRadius: 13, borderWidth: 1, borderColor: "#A84B49",
     backgroundColor: "#7C201E", gap: 7 },
