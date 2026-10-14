@@ -234,16 +234,11 @@ jobs:
           ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key"
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
             -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
-          result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST"             'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-realtime-nginx.py)" || {
-            echo "::error::Verified WebSocket nginx configuration blocked; nginx rolled back."
+          result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" 'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-realtime-nginx.py)" || {
+            echo "::error::WebSocket nginx configuration blocked; nginx rolled back."
             exit 1
           }
-          grep -Eq '^realtime_https_upgrade=(PASS|ALREADY_READY)
-        if: always()
-        shell: bash
-        run: |
-          rm -f "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"
- <<< "$result" || exit 1
+          grep -Eq '^realtime_https_upgrade=(PASS|ALREADY_READY)$' <<< "$result" || exit 1
           echo "Authenticated realtime HTTPS upgrade: PASS"
       - name: Remove temporary SSH credentials
         if: always()
