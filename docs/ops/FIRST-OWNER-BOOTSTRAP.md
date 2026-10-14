@@ -12,7 +12,7 @@ The Admin PWA already supports OWNER sign-in with username/password but *cannot*
 On Windows at `F:\1_A_Disk_D\hotpot`, inspect `git status --short`, fetch `origin main`, and use `git pull --ff-only` when no tracked/local collisions exist. Preserve existing Android Studio files.
 
 ```powershell
-.\scripts\ops\bootstrap-first-owner.ps1 -Username "khuongbinh" -Email "khuongbinh.info@gmail.com" -KeyPath "<YOUR_EXISTING_SSH_PRIVATE_KEY_PATH>" -Server "132.145.103.89"
+.\scripts\ops\bootstrap-first-owner.ps1 -Username "your-owner-username" -Email "your-verified-email@example.com" -KeyPath "<YOUR_EXISTING_SSH_PRIVATE_KEY_PATH>" -Server "132.145.103.89"
 ```
 
 The command prompts for the OWNER password in a masked field. It SSH-streams the reviewed helper and credentials via stdin (nothing is committed or logged), checks a single existing PostgreSQL branch and that no OWNER/account collision exists, and sends a 6-digit Resend code to the supplied email. **No OWNER is created before a matching code is entered within 10 minutes.**
