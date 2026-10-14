@@ -20,6 +20,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
         self.assertIn(b"OTHER=unchanged\n", result)
         self.assertIn(module.CUSTOMER.encode(), result)
         self.assertIn(module.ADMIN.encode(), result)
+        self.assertIn(module.ADMIN_CUSTOM.encode(), result)
         self.assertEqual(result.count(b"CORS_ALLOWED_ORIGINS="), 1)
         self.assertEqual(module.rewrite_content(result), (result, False))
 
@@ -28,7 +29,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
                 b"https://bepsi.click\r\nJWT_SECRET=placeholder\r\n")
         modified, changed = module.rewrite_content(data)
         self.assertTrue(changed)
-        self.assertIn(b"https://bepsi.click,https://sichuan-hotpot-admin.vercel.app\r\n", modified)
+        self.assertIn(b"https://bepsi.click,https://sichuan-hotpot-admin.vercel.app,https://admin.bepsi.click\r\n", modified)
         self.assertTrue(modified.endswith(b"JWT_SECRET=placeholder\r\n"))
 
     def test_fail_closed_missing_duplicate_or_invalid_origins(self):
@@ -49,6 +50,10 @@ class NarrowCORSChangeTests(unittest.TestCase):
                   + b"Access-Control-Allow-Methods: GET,POST,PATCH,PUT,DELETE,OPTIONS\r\n\r\n")
         with patch.object(module, "run", return_value=(0, header)):
             self.assertTrue(module.good_preflight("http://127.0.0.1:3000", "PUT", "/auth/login", "content-type"))
+        custom_header = header.replace(module.ADMIN.encode(), module.ADMIN_CUSTOM.encode())
+        with patch.object(module, "run", return_value=(0, custom_header)):
+            self.assertTrue(module.good_preflight("http://127.0.0.1:3000", "PUT", "/auth/login", "content-type", module.ADMIN_CUSTOM))
+            self.assertFalse(module.good_preflight("http://127.0.0.1:3000", "PUT", "/auth/login", "content-type", module.ADMIN))
         with patch.object(module, "run", return_value=(0, header.replace(
                 module.ADMIN.encode(), b"https://evil.example"))):
             self.assertFalse(module.good_preflight("http://127.0.0.1:3000", "POST", "/auth/login", "content-type"))
