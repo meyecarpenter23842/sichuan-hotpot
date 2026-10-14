@@ -319,15 +319,16 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
               <View style={s.timeline}>
                 {(["PENDING", "CONFIRMED", "PREPARING", "READY"] as const).map((status, index) => {
                   const history = selected.statusHistory.find(row => row.toStatus === status);
+                  const reachedAt = status === "PENDING" ? selected.createdAt : history?.createdAt;
                   return <View style={s.timelineStep} key={status}>
-                    <View style={[s.timelineDot, history && s.timelineDone]}>
-                      {history && <Icon name="check" size={14} color={c.white} />}
+                    <View style={[s.timelineDot, reachedAt && s.timelineDone]}>
+                      {reachedAt && <Icon name="check" size={14} color={c.white} />}
                     </View>
-                    <Text style={[s.timelineLabel, history && s.timelineLabelDone]} numberOfLines={2}>
+                    <Text style={[s.timelineLabel, reachedAt && s.timelineLabelDone]} numberOfLines={2}>
                       {["Mới đặt", "Đã nhận", "Đang nấu", "Sẵn sàng"][index]}
                     </Text>
                     <Text style={s.timelineClock}>
-                      {history ? new Date(history.createdAt).toLocaleTimeString("vi-VN",{
+                      {reachedAt ? new Date(reachedAt).toLocaleTimeString("vi-VN",{
                         hour:"2-digit", minute:"2-digit",
                       }) : "--:--"}
                     </Text>

@@ -46,7 +46,7 @@ try {
   const branch = await db.branch.findUniqueOrThrow({ where: { code } });
   assert.equal(branch.address, "12 Nguyễn Huệ, Quận 1, TP HCM");
   assert.equal(branch.isActive, false);
-  await page.getByRole("tab", { name: "Thiết lập" }).waitFor();
+  await page.getByRole("button", { name: "Mở thiết lập" }).waitFor();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
@@ -85,7 +85,7 @@ try {
   assert.equal(savedHours[2].opensAt, "08:00");
   assert.equal(savedHours[2].closesAt, "21:00");
 
-  // Settings is its own tab: each icon opens exactly one workflow modal.
+  // Settings is its own screen opened from the header; workflow modals remain separate.
   await page.getByRole("button", { name: "Đóng popup" }).click();
   await page.getByRole("button", { name: "Mở Phí giao" }).click();
   await page.getByText("Chưa cấu hình phí giao.", { exact: false }).waitFor();
