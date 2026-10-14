@@ -205,7 +205,15 @@ export class AuthService {
 
   async resetPassword(emailInput: string, code: string, password: string) {
     const email = emailOf(emailInput);
-    newPasswordOk(password);
+    const account = await this.prisma.database.localCredential.findUnique({
+      where: { verifiedEmail: email }, select: { user: { select: { role: true } } },
+    });
+    if (!account) throw new BadRequestException("Mã không hợp lệ.");
+    if (account.user.role === "OWNER") {
+      if (password.length < 8 || password.length > 128) {
+        throw new BadRequestException("Mật khẩu OWNER phải có 8–128 ký tự.");
+      }
+    } else newPasswordOk(password);
     const record = await this.verifyCode(email, "RESET_PASSWORD", code);
     const passwordHash = await hash(password, this.hashOptions);
     await this.prisma.database.$transaction(async tx => {
