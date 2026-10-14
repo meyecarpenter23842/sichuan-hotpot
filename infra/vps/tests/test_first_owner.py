@@ -2,6 +2,7 @@
 import importlib.util
 import io
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 import unittest
@@ -65,6 +66,8 @@ class FirstOwnerTests(unittest.TestCase):
 
     def test_owner_insert_is_atomic_guarded_and_password_hashed(self):
         code=app.NODE_JS
+        syntax=subprocess.run(["node","--check"],input=code,encoding="utf8",capture_output=True,check=False)
+        self.assertEqual(syntax.returncode,0,"embedded JavaScript syntax must be valid")
         self.assertIn("pg_advisory_xact_lock",code)
         self.assertIn("TransactionIsolationLevel.Serializable",code)
         self.assertIn("if (!await eligible(tx))",code)
