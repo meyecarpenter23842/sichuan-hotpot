@@ -69,7 +69,8 @@ export function HoursPanel({ catalog, token, reload }: {
     if (saving) return;
     const time = day[field];
     const valid = hhmm.test(time) ? time : (field === "opensAt" ? "08:00" : "21:00");
-    const [hour, minute] = valid.split(":");
+    const hour = valid.slice(0, 2);
+    const minute = valid.slice(3, 5);
     setPicker({ weekday: day.weekday, field, hour, minute });
   }
 
