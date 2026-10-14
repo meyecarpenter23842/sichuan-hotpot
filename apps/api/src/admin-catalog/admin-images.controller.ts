@@ -1,4 +1,4 @@
-import { Body, Controller, Header, Headers, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Body, Controller, Headers, Param, ParseUUIDPipe, Post } from "@nestjs/common";
 import { IsInt, IsString, IsIn, Matches, Max, Min } from "class-validator";
 import { R2ProductImagesService } from "./r2-product-images.service";
 
@@ -13,7 +13,6 @@ class AttachImageInput {
 }
 const uuid = new ParseUUIDPipe({ version: "4" });
 @Controller("admin/branches/:branchId/catalog/products/:productId/images")
-@Header("Cache-Control", "no-store")
 export class AdminImagesController {
   constructor(private readonly images: R2ProductImagesService) {}
 
