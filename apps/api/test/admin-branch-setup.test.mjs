@@ -53,3 +53,12 @@ test("activation fails closed until seven real day rules and delivery policy exi
   const disabled = await service.update("Bearer x", "branch-id", { isActive: false });
   assert.equal(disabled.isActive, false);
 });
+
+test("rejects blank branch names and addresses after trimming", async () => {
+  const { service, writes } = setup();
+  await assert.rejects(service.create("Bearer x",
+    { ...details, name: "    " }), e => e.getStatus?.() === 400);
+  await assert.rejects(service.create("Bearer x",
+    { ...details, address: "          " }), e => e.getStatus?.() === 400);
+  assert.deepEqual(writes, []);
+});
