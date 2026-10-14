@@ -11,19 +11,23 @@ import {
 import { CatalogPanel } from "./src/CatalogPanel";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
+import { OrderQueuePanel } from "./src/OrderQueuePanel";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 
-type Tab = "overview" | "catalog" | "settings" | "account";
+type Tab = "overview" | "orders" | "kitchen" | "catalog" | "settings" | "account";
 const tabs: { id: Tab; label: string; icon: IconName }[] = [
   { id: "overview", label: "Tổng quan", icon: "dashboard" },
+  { id: "orders", label: "Đơn hàng", icon: "orders" },
+  { id: "kitchen", label: "Bếp", icon: "kitchen" },
   { id: "catalog", label: "Thực đơn", icon: "catalog" },
   { id: "settings", label: "Thiết lập", icon: "settings" },
   { id: "account", label: "Tài khoản", icon: "account" },
 ];
 function roleName(role: string): string {
-  return role === "OWNER" ? "Chủ cửa hàng" : "Quản lý chi nhánh";
+  return role === "OWNER" ? "Chủ cửa hàng" : role === "KITCHEN" ? "Nhân viên bếp" :
+    role === "DRIVER" ? "Nhân viên giao hàng" : "Quản lý chi nhánh";
 }
 function Overview({ catalog, onChangeTab }: { catalog: AdminCatalog; onChangeTab: (tab: Tab) => void }) {
   const products = catalog.categories.flatMap(x => x.products);
@@ -90,7 +94,7 @@ export default function AdminApp() {
     const user = await request<Principal>("/auth/me", access);
     // Branch membership can grant MANAGER even when the global role is CUSTOMER.
     // The backend enforces OWNER/MANAGER permissions for every Admin API.
-    const available = await request<Branch[]>("/admin/branches", access);
+    const available = await request<Branch[]>("/admin/orders/branches", access);
     if (available.length === 0 && user.role !== "OWNER") {
       throw new AdminApiError("Tài khoản chưa được cấp quyền quản trị chi nhánh.", 403);
     }
@@ -98,6 +102,7 @@ export default function AdminApp() {
     setBranches(available);
     setBranchId(old => old && available.some(b => b.id === old)
       ? old : (available[0]?.id ?? null));
+    if (available[0]?.staffRole === "KITCHEN") setTab("kitchen");
   }, []);
 
   useEffect(() => {
@@ -206,7 +211,7 @@ export default function AdminApp() {
   }, [token, accessExpiresAt, retryAt, renew]);
 
   const reload = useCallback(async () => {
-    if (!token || !branchId) return;
+    if (!token || !branchId || branches.find(b => b.id === branchId)?.staffRole === "KITCHEN") return;
     setLoading(true); setLoadError("");
     try {
       const data = await request<AdminCatalog>(
@@ -216,7 +221,7 @@ export default function AdminApp() {
       setLoadError(e instanceof Error ? e.message : "Không tải được thực đơn quản trị.");
       setCatalog(null);
     } finally { setLoading(false); }
-  }, [token, branchId]);
+  }, [token, branchId, branches]);
 
   useEffect(() => {
     setCatalog(null);
@@ -253,6 +258,9 @@ export default function AdminApp() {
     }
   };
   const selectedBranch = branches.find(b => b.id === branchId);
+  const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
+  const kitchenOnly = branchRole === "KITCHEN";
+  const visibleTabs = tabs.filter(item => !kitchenOnly || item.id === "kitchen" || item.id === "account");
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor={c.white} />
@@ -322,7 +330,7 @@ export default function AdminApp() {
           <View style={styles.headerTop}>
             <View style={styles.headerText}>
               <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
-              <Text style={styles.brandSub}>Admin · {principal && roleName(principal.role)}</Text>
+              <Text style={styles.brandSub}>Admin · {roleName(branchRole)}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Đổi chi nhánh"
               style={styles.branchSelector} onPress={() => { if (branches.length) setChooseBranch(v => !v); }}>
@@ -334,7 +342,8 @@ export default function AdminApp() {
             {branches.map(branch => <Pressable key={branch.id} accessibilityRole="button"
               accessibilityLabel={"Chọn chi nhánh " + branch.name}
               style={styles.branchItem} onPress={() => {
-                setBranchId(branch.id); setChooseBranch(false); setTab("overview");
+                setBranchId(branch.id); setChooseBranch(false);
+                setTab(branch.staffRole === "KITCHEN" ? "kitchen" : "overview");
               }}>
               <Text style={styles.branchItemText}>{branch.name}</Text>
               {branch.id === branchId && <Text style={styles.selectedMark}>✓</Text>}
@@ -352,7 +361,15 @@ export default function AdminApp() {
                 onCancel={() => setCreateBranch(false)} /> :
                 <Action label="Tạo chi nhánh đầu tiên" onPress={() => setCreateBranch(true)} />}
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
-          </View> : loading && !catalog ? <View style={styles.center}>
+          </View> : (tab === "orders" || tab === "kitchen") && branchId ?
+            <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
+              role={branchRole} mode={tab} active /> :
+            tab === "account" ? <View style={styles.account}>
+              <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
+              <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
+              <Text style={styles.caption}>Dữ liệu được phân quyền theo chi nhánh tại backend.</Text>
+              <Action label="Đăng xuất" dangerous onPress={() => void signOut()} />
+            </View> : loading && !catalog ? <View style={styles.center}>
             <ActivityIndicator color={c.red} />
             <Text style={styles.caption}>Đang tải dữ liệu chi nhánh...</Text>
           </View> : loadError || !catalog ? <View style={styles.center}>
@@ -376,7 +393,7 @@ export default function AdminApp() {
           )}
         </ScrollView>
         <View style={styles.bottomTabs}>
-          {tabs.map(item => <Pressable key={item.id}
+          {visibleTabs.map(item => <Pressable key={item.id}
             accessibilityRole="tab" accessibilityLabel={item.label}
             accessibilityState={{ selected: tab === item.id }}
             style={styles.tab} onPress={() => { setChooseBranch(false); setTab(item.id); }}>
