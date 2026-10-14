@@ -72,6 +72,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [clock, setClock] = useState(Date.now());
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [opening, setOpening] = useState(false);
   const [action, setAction] = useState<ActionStatus | null>(null);
@@ -121,6 +122,12 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     if (active) void sync();
     return () => { requestId.current++; };
   }, [active, branchId, sync]);
+
+  useEffect(() => {
+    if (!active) return;
+    const clockTick = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(clockTick);
+  }, [active]);
 
   useEffect(() => {
     if (!active) return;
@@ -181,6 +188,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     return filter === "all" || !["DELIVERED", "CANCELED", "DELIVERY_FAILED"].includes(order.status);
   });
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
+  const overdueCount = orders.filter(x => x.status === "PENDING"
+    && clock - Date.parse(x.createdAt) >= 300000).length;
   const kitchenCount = orders.filter(x => x.status === "PREPARING").length;
 
   return <View style={s.page}>
@@ -215,6 +224,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     </Text>
     {!!error && <Notice error text={error} />}
     {!!notice && <Notice text={notice} />}
+    {overdueCount > 0 && !kitchenOnly && <Notice error
+      text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
     {mode === "orders" && <View style={s.filter}>
       <Pill label="Đang xử lý" active={filter === "active"} onPress={() => setFilter("active")} />
       <Pill label="Tất cả" active={filter === "all"} onPress={() => setFilter("all")} />
