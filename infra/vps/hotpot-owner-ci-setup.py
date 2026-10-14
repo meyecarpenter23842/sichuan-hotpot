@@ -56,8 +56,11 @@ const EMAIL=process.env.BOOTSTRAP_EMAIL;
     return 'CREATED';
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   console.log('owner_database='+result);
-})().catch(()=>{
-  console.log('owner_database=BLOCKED');
+})().catch((failure)=>{
+  const reason=failure?.message==='owner_exists_different_account' ? 'other_owner' :
+    failure?.message==='identity_collision' ? 'identity_collision' :
+    failure?.code==='P2021' ? 'schema_not_ready' : 'runtime_failure';
+  console.log('owner_database=BLOCKED;reason='+reason);
   process.exitCode=2;
 }).finally(async()=>{await db.$disconnect();});
 """
@@ -97,6 +100,10 @@ def create_owner(dburl):
                        "-e",JS],cwd=API,env=env,stdout=subprocess.PIPE,
                      stderr=subprocess.DEVNULL,timeout=30,check=False)
     lines=p.stdout.decode("utf-8","replace").splitlines()
+    if p.returncode != 0 and len(lines)==1 and re.fullmatch(
+            r"owner_database=BLOCKED;reason=(other_owner|identity_collision|schema_not_ready|runtime_failure)",
+            lines[0]):
+        raise Blocked("database_"+lines[0].split("reason=",1)[1])
     require(p.returncode==0 and len(lines)==1 and lines[0] in
             ("owner_database=CREATED","owner_database=ALREADY_EXISTS"),
             "database_bootstrap_failed")
