@@ -399,10 +399,13 @@ export default function AdminApp() {
   const selectedBranch = branches.find(b => b.id === branchId);
   const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
   const kitchenOnly = branchRole === "KITCHEN";
-  const visibleTabs = tabs.filter(item => !kitchenOnly || item.id === "kitchen" || item.id === "account");
+  const visibleTabs = tabs.filter(item =>
+    ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id)
+    && (!kitchenOnly || item.id === "kitchen"));
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={c.white} />
+      <StatusBar barStyle={token ? "light-content" : "dark-content"}
+        backgroundColor={token ? "#5B0A0E" : c.white} />
       {!ready ? <View style={styles.center}>
         <ActivityIndicator color={c.red} size="large" />
         <Text style={styles.caption}>Đang kiểm tra phiên quản trị...</Text>
@@ -469,14 +472,51 @@ export default function AdminApp() {
           role={branchRole} chimeEnabled={chimeEnabled} />}
         <View style={styles.header}>
           <View style={styles.headerTop}>
+            <Image source={require("./assets/app-icon.png")} style={styles.headerLogo}
+              accessibilityLabel="Biểu tượng Lẩu Tứ Xuyên" />
             <View style={styles.headerText}>
-              <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
-              <Text style={styles.brandSub}>Admin · {roleName(branchRole)}</Text>
+              <Text style={styles.brandHeading} numberOfLines={2}>Lẩu Tứ Xuyên & Trà Sữa</Text>
+              <Text style={styles.brandTagline} numberOfLines={2}>
+                Quản lý đơn hàng · Vận hành cửa hàng
+              </Text>
             </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
+              onPress={() => { setChooseBranch(false); setTab("settings"); }}
+              style={styles.heroAction}>
+              <Icon name="settings" size={22} color="#F8E8D0" />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Mở tài khoản"
+              onPress={() => { setChooseBranch(false); setTab("account"); }}
+              style={styles.heroAction}>
+              <Icon name="account" size={22} color="#F8E8D0" />
+            </Pressable>
+          </View>
+          <View style={styles.headerBottom}>
             <Pressable accessibilityRole="button" accessibilityLabel="Đổi chi nhánh"
-              style={styles.branchSelector} onPress={() => { if (branches.length) setChooseBranch(v => !v); }}>
-              <Text style={styles.branchText} numberOfLines={1}>{selectedBranch?.name ?? "Chọn chi nhánh"}</Text>
+              style={styles.branchSelector} onPress={() => {
+                if (branches.length) setChooseBranch(v => !v);
+              }}>
+              <Icon name="pin" color="#FCE3D0" size={23} />
+              <View style={styles.branchCopy}>
+                <Text style={styles.branchHint}>Chi nhánh</Text>
+                <Text style={styles.branchText} numberOfLines={1}>
+                  {selectedBranch?.name ?? "Chọn chi nhánh"}
+                </Text>
+              </View>
               <Text style={styles.branchArrow}>⌄</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Thiết lập hoạt động cửa hàng"
+              onPress={() => { setChooseBranch(false); setTab("settings"); }}
+              style={styles.operationPill}>
+              <Icon name="store" color={selectedBranch?.isActive ? "#116837" : c.red} size={22} />
+              <View style={styles.operationCopy}>
+                <Text style={styles.operationText} numberOfLines={2}>
+                  {selectedBranch?.isActive ? "Đang hoạt động" : "Chưa kích hoạt"}
+                </Text>
+                <Text style={styles.operationSub}>Trạng thái chi nhánh</Text>
+              </View>
+              <View style={[styles.operationDot,
+                { backgroundColor: selectedBranch?.isActive ? "#0FA463" : c.red }]} />
             </Pressable>
           </View>
           {chooseBranch && <View style={styles.branchMenu}>
@@ -502,7 +542,7 @@ export default function AdminApp() {
                 onCancel={() => setCreateBranch(false)} /> :
                 <Action label="Tạo chi nhánh đầu tiên" onPress={() => setCreateBranch(true)} />}
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
-          </View> : (tab === "orders" || tab === "kitchen") && branchId ?
+          </View> : (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
               role={branchRole} mode={tab} active chimeEnabled={chimeEnabled} /> :
             tab === "account" ? <View style={styles.account}>
@@ -518,7 +558,7 @@ export default function AdminApp() {
             <Action label="Tải lại" onPress={() => void reload()} />
           </View> : (
             <>
-              {tab === "overview" && <Overview catalog={catalog} onChangeTab={setTab} />}
+              {tab === "overview" && <Overview catalog={catalog} token={token} branchId={branchId!} onChangeTab={setTab} />}
               {tab === "catalog" && <CatalogPanel catalog={catalog} token={token} reload={reload} />}
               {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
@@ -532,9 +572,10 @@ export default function AdminApp() {
           {visibleTabs.map(item => <Pressable key={item.id}
             accessibilityRole="tab" accessibilityLabel={item.label}
             accessibilityState={{ selected: tab === item.id }}
-            style={styles.tab} onPress={() => { setChooseBranch(false); setTab(item.id); }}>
-            <Icon name={item.icon} size={22} color={tab === item.id ? c.red : c.secondary} />
-            <Text style={[styles.tabLabel, tab === item.id && styles.tabActive]}>{item.label}</Text>
+            style={[styles.tab, tab === item.id && styles.tabSelected]}
+            onPress={() => { setChooseBranch(false); setTab(item.id); }}>
+            <Icon name={item.icon} size={26} color={tab === item.id ? "#FFD58A" : "#FAF1E6"} />
+            <Text style={[styles.tabLabel, tab === item.id && styles.tabActive]}>{item.shortLabel}</Text>
           </Pressable>)}
         </View>
       </View>}
@@ -542,7 +583,7 @@ export default function AdminApp() {
   </SafeAreaProvider>;
 }
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: c.white },
+  safeArea: { flex: 1, backgroundColor: "#5B0A0E" },
   shell: { flex: 1, width: "100%", maxWidth: 1080, alignSelf: "center",
     backgroundColor: c.white, overflow: "hidden" },
   center: { flex: 1, justifyContent: "center", alignItems: "stretch",
@@ -562,30 +603,34 @@ const styles = StyleSheet.create({
   brandName: { color: c.red, fontSize: font.section, fontWeight: "900", letterSpacing: 0.3 },
   brandSub: { color: c.secondary, fontSize: font.caption, marginTop: 3 },
   loginTitle: { color: c.ink, fontSize: font.title, fontWeight: "800" },
-  header: { borderBottomWidth: 1, borderBottomColor: c.line, backgroundColor: c.white },
+  header: { backgroundColor: "#650D11", borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22, overflow: "hidden" },
   headerTop: { flexDirection: "row", alignItems: "center",
-    gap: 10, paddingHorizontal: 14, minHeight: 62 },
+    gap: 10, paddingHorizontal: 13, paddingTop: 16, paddingBottom: 15, minHeight: 90 },
   headerText: { flex: 1, minWidth: 0 },
-  branchSelector: { minHeight: 42, maxWidth: "56%", flexDirection: "row",
-    alignItems: "center", paddingHorizontal: 10, borderRadius: 9,
-    borderWidth: 1, borderColor: c.line, gap: 5 },
-  branchText: { flexShrink: 1, fontSize: font.note, color: c.ink, fontWeight: "700" },
-  branchArrow: { fontSize: 15, color: c.red },
-  branchMenu: { borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 14 },
+  branchSelector: { flex: 1, minWidth: 0, minHeight: 64,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 10,
+    borderRadius: 13, borderWidth: 1, borderColor: "#A84B49",
+    backgroundColor: "#7C201E", gap: 7 },
+  branchText: { flexShrink: 1, fontSize: 12, color: c.white, fontWeight: "800", marginTop: 2 },
+  branchArrow: { fontSize: 21, color: c.white },
+  branchMenu: { borderTopWidth: 1, borderTopColor: "#A84B49", paddingHorizontal: 14 },
   branchItem: { minHeight: 44, flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center", borderBottomWidth: 1, borderBottomColor: c.line },
-  branchItemText: { fontSize: font.body, color: c.ink },
-  selectedMark: { color: c.red, fontSize: font.body, fontWeight: "800" },
+    alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#A84B49" },
+  branchItemText: { fontSize: font.body, color: c.white },
+  selectedMark: { color: "#FFD58A", fontSize: font.body, fontWeight: "800" },
   scroll: { flex: 1, minHeight: 0 },
   scrollContent: { paddingBottom: 22, flexGrow: 1 },
   pagePadding: { padding: 12 },
   bottomTabs: { flexDirection: "row", borderTopWidth: 1,
-    borderTopColor: c.line, backgroundColor: c.white, paddingBottom: 4 },
-  tab: { flex: 1, minWidth: 0, minHeight: 55, alignItems: "center",
-    justifyContent: "center", gap: 3 },
-  tabLabel: { color: c.secondary, fontSize: 10, fontWeight: "700" },
-  tabActive: { color: c.red },
-  overview: { paddingHorizontal: 14, paddingTop: 14, gap: 9 },
+    borderTopColor: "#8D3434", backgroundColor: "#420707", paddingBottom: 7,
+    paddingTop: 6, paddingHorizontal: 6 },
+  tab: { flex: 1, minWidth: 0, minHeight: 56, alignItems: "center",
+    justifyContent: "center", borderRadius: 13, gap: 3 },
+  tabSelected: { backgroundColor: "#6E351B" },
+  tabLabel: { color: "#FAF1E6", fontSize: 11, fontWeight: "700" },
+  tabActive: { color: "#FFD58A" },
+  overview: { paddingHorizontal: 13, paddingTop: 12, paddingBottom: 24, gap: 12 },
   stats: { flexDirection: "row", gap: 8, marginVertical: 6 },
   stat: { flex: 1, minHeight: 73, paddingHorizontal: 10,
     borderRightWidth: 1, borderRightColor: c.line, justifyContent: "center", gap: 5 },
@@ -599,4 +644,65 @@ const styles = StyleSheet.create({
   account: { padding: 15, gap: 12 },
   bootstrap: { padding: 16, gap: 14, flexGrow: 1, justifyContent: "center" },
   bootstrapTitle: { color: c.ink, fontSize: font.title, fontWeight: "800" },
+  brandHeading: { color: "#FFF8EE", fontSize: 19, lineHeight: 25, fontWeight: "800" },
+  brandTagline: { color: "#F5CFC6", fontSize: 11, lineHeight: 15, marginTop: 3 },
+  headerLogo: { width: 53, height: 53, borderRadius: 27, borderWidth: 1.5,
+    borderColor: "#EAC17C", backgroundColor: "#7E1317" },
+  heroAction: { height: 44, width: 36, alignItems: "center", justifyContent: "center" },
+  headerBottom: { flexDirection: "row", paddingHorizontal: 12,
+    paddingBottom: 16, gap: 9, alignItems: "stretch" },
+  branchCopy: { flex: 1, minWidth: 0 },
+  branchHint: { color: "#F7C9BD", fontSize: 10 },
+  operationPill: { flex: 1, minHeight: 64, paddingHorizontal: 10, gap: 5,
+    flexDirection: "row", borderRadius: 13, backgroundColor: "#FFF2DD",
+    alignItems: "center" },
+  operationCopy: { flex: 1, minWidth: 0 },
+  operationText: { fontSize: 12, fontWeight: "800", color: "#512C1B" },
+  operationSub: { color: "#986E49", fontSize: 9, marginTop: 2 },
+  operationDot: { width: 12, height: 12, borderRadius: 8 },
+  dashboardDateRow: { flexDirection: "row", justifyContent: "space-between",
+    gap: 5, alignItems: "center", paddingVertical: 5 },
+  dashboardDate: { flex: 1, fontSize: 12, color: c.ink, fontWeight: "600" },
+  dashboardRefresh: { minHeight: 44, justifyContent: "center", paddingLeft: 6 },
+  refreshText: { color: c.secondary, fontSize: 10 },
+  dashboardGrid: { flexDirection: "row", flexWrap: "wrap",
+    justifyContent: "space-between", rowGap: 10, columnGap: 10 },
+  dashboardMetric: { width: "48%", minHeight: 100, borderRadius: 14,
+    flexDirection: "row", alignItems: "center", padding: 12, gap: 9 },
+  metricIcon: { width: 44, height: 44, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.5)", alignItems: "center", justifyContent: "center" },
+  metricCopy: { flex: 1, gap: 5, minWidth: 0 },
+  metricLabel: { fontSize: 11, lineHeight: 16, color: "#3D3333" },
+  metricValue: { fontSize: 19, lineHeight: 25, fontWeight: "900" },
+  metricArrow: { fontSize: 22, fontWeight: "600" },
+  dashboardSectionHead: { marginTop: 8, minHeight: 47,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  dashboardSectionTitle: { color: c.ink, fontSize: 16, fontWeight: "900",
+    borderLeftColor: c.red, borderLeftWidth: 4, paddingLeft: 10, flexShrink: 1 },
+  dashboardLink: { color: c.secondary, fontSize: 11 },
+  dashboardEmpty: { padding: 30, borderRadius: 16, backgroundColor: "#FFFDFB",
+    borderWidth: 1, borderColor: "#F1E6E0", alignItems: "center", gap: 10 },
+  emptyTitle: { color: c.ink, fontSize: 14, fontWeight: "800" },
+  dashboardOrder: { padding: 13, borderWidth: 1, borderColor: "#EFE5DD",
+    backgroundColor: c.white, borderRadius: 15, gap: 11,
+    shadowColor: "#462320", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  dashboardOrderTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dashboardOrderId: { fontSize: 17, fontWeight: "900", color: "#241A1A" },
+  newPill: { backgroundColor: "#FFE4E7", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 },
+  newPillText: { color: c.red, fontSize: 11, fontWeight: "800" },
+  orderDate: { flex: 1, textAlign: "right", color: c.secondary, fontSize: 11 },
+  dashboardOrderItems: { flexDirection: "row", alignItems: "center", gap: 11 },
+  productMark: { height: 55, width: 55, borderRadius: 12,
+    backgroundColor: "#FFF1D9", alignItems: "center", justifyContent: "center" },
+  orderItemLine: { fontSize: 12, lineHeight: 18, color: c.ink, fontWeight: "600" },
+  orderMoney: { fontSize: 15, fontWeight: "900", color: c.red, flexShrink: 0 },
+  dashboardOrderActions: { flexDirection: "row", gap: 10 },
+  orderSecondaryButton: { flex: 1, minHeight: 44, borderRadius: 9,
+    backgroundColor: "#FCE5E5", alignItems: "center", justifyContent: "center" },
+  orderSecondaryText: { color: c.red, fontWeight: "800", fontSize: 12 },
+  orderPrimaryButton: { flex: 1, minHeight: 44, borderRadius: 9,
+    backgroundColor: c.redDeep, flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 7 },
+  orderPrimaryText: { color: c.white, fontWeight: "800", fontSize: 12 },
+  dashboardFootnote: { color: c.secondary, fontSize: 10, lineHeight: 16, marginTop: 7 },
 });
