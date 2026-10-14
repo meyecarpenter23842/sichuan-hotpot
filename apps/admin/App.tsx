@@ -301,7 +301,7 @@ export default function AdminApp() {
               setAuthError(""); setRecoveryInfo(""); setRecoveryPassword("");
               setRecoveryCode(""); setRecoveryMode("login");
             }} />
-          </> 
+          </>}
         </View>
       </KeyboardAvoidingView> : <View style={styles.shell}>
         <View style={styles.header}>
