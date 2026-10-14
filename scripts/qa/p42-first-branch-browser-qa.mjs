@@ -42,10 +42,12 @@ try {
   assert.equal(await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).inputValue(), "10.7731000");
   assert.equal(await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).inputValue(), "106.7032000");
   await page.getByRole("button", { name: "Tạo chi nhánh", exact: true }).click();
-  await page.getByText("Đã tạo chi nhánh thật.", { exact: false }).waitFor();
+  await page.getByText("Đã tạo chi nhánh. Mở Thiết lập", { exact: false }).waitFor();
   const branch = await db.branch.findUniqueOrThrow({ where: { code } });
   assert.equal(branch.address, "12 Nguyễn Huệ, Quận 1, TP HCM");
   assert.equal(branch.isActive, false);
+  await page.getByRole("tab", { name: "Thiết lập" }).waitFor();
+  await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
@@ -83,35 +85,48 @@ try {
   assert.equal(savedHours[2].opensAt, "08:00");
   assert.equal(savedHours[2].closesAt, "21:00");
 
-  await page.getByRole("tab", { name: "Tổng quan" }).click();
-  await page.getByRole("button", { name: "Cấu hình chi nhánh" }).click();
+  // Settings is its own tab: each icon opens exactly one workflow modal.
+  await page.getByRole("button", { name: "Đóng popup" }).click();
+  await page.getByRole("button", { name: "Mở Phí giao" }).click();
   await page.getByText("Chưa cấu hình phí giao.", { exact: false }).waitFor();
   const fees = [
-    ["Số mét giao cơ bản", "3000"], ["Phí giao cơ bản (VND)", "15000"],
-    ["Bước phụ thu (mét)", "1000"], ["Phụ thu mỗi bước (VND)", "5000"],
-    ["Khoảng cách đường tối đa (mét)", "12000"],
-    ["Đơn hàng tối thiểu (VND)", "50000"],
+    ["Quãng đường cơ bản (km)", "3"], ["Phí giao cơ bản (đ)", "15000"],
+    ["Mỗi bước phụ thu (km)", "1"], ["Phí mỗi bước (đ)", "5000"],
+    ["Phạm vi giao tối đa (km)", "12"],
+    ["Đơn hàng tối thiểu (đ)", "50000"],
   ];
   for (const [name, value] of fees) {
     await page.getByRole("textbox", { name }).fill(value);
   }
-  await page.getByRole("button", { name: "Nhận đơn", exact: true }).click();
-  await page.getByRole("button", { name: "Lưu chính sách giao hàng" }).click();
+  await page.getByRole("button", { name: "Lưu phí giao" }).click();
   await page.getByText("Đã lưu phiên bản 1", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Đóng popup" }).click();
+  await page.getByRole("button", { name: "Mở Nhận đơn" }).click();
+  await page.getByRole("button", { name: "Nhận đơn", exact: true }).click();
+  await page.getByRole("button", { name: "Lưu trạng thái nhận đơn" }).click();
+  await page.getByText("Đã lưu phiên bản 2", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Đóng popup" }).click();
+  await page.getByRole("button", { name: "Mở Hoạt động" }).click();
   await page.getByRole("button", { name: "Kích hoạt chi nhánh" }).click();
-  await page.getByRole("button", { name: "Xác nhận đổi trạng thái" }).click();
-  await page.getByText("Chi nhánh đã kích hoạt.").waitFor();
+  await page.getByRole("button", { name: "Xác nhận thay đổi" }).click();
+  await page.getByRole("button", { name: "Mở Hoạt động" }).click();
+  await page.getByText("Chi nhánh đã kích hoạt.", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Đóng popup" }).click();
   assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, true);
   const policy = await db.deliveryPolicyVersion.findFirst({ where: { branchId: branch.id } });
   assert.equal(policy?.acceptingOrders, true);
+  assert.equal(policy?.baseMeters, 3000, "UI km must persist as road meters");
+  assert.equal(policy?.maxRoadMeters, 12000, "Max km must persist as meters");
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 780 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   }
   // Leave the disposable QA branch closed so customer tests see only their own stores.
+  await page.getByRole("button", { name: "Mở Hoạt động" }).click();
   await page.getByRole("button", { name: "Tạm dừng chi nhánh" }).click();
-  await page.getByRole("button", { name: "Xác nhận đổi trạng thái" }).click();
-  await page.getByText("Đã tạm dừng chi nhánh.").waitFor();
+  await page.getByRole("button", { name: "Xác nhận thay đổi" }).click();
+  await page.getByRole("button", { name: "Mở Hoạt động" }).click();
+  await page.getByText("Chi nhánh đang tạm dừng.", { exact: false }).waitFor();
   assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, false);
   assert.deepEqual(errors, []);
   await context.close();
