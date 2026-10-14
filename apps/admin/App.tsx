@@ -10,10 +10,12 @@ import {
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
 import { HoursPanel } from "./src/HoursPanel";
+import { BranchPanel } from "./src/BranchPanel";
+import { DeliveryPolicyPanel } from "./src/DeliveryPolicyPanel";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 
-type Tab = "overview" | "catalog" | "hours" | "account";
+type Tab = "overview" | "catalog" | "hours" | "settings" | "account";
 const tabs: { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "Tổng quan", icon: "▦" },
   { id: "catalog", label: "Thực đơn", icon: "▤" },
@@ -51,6 +53,14 @@ function Overview({ catalog, onChangeTab }: { catalog: AdminCatalog; onChangeTab
         <Text style={styles.chevron}>›</Text>
       </Pressable>
       <Pressable style={styles.overviewRow} accessibilityRole="button"
+        accessibilityLabel="Cấu hình chi nhánh" onPress={() => onChangeTab("settings")}>
+        <View style={styles.overviewCopy}>
+          <Text style={styles.rowTitle}>Cài đặt cửa hàng & giao hàng</Text>
+          <Text style={styles.caption}>Địa chỉ, định vị, nhận đơn và phí giao</Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+      <Pressable style={styles.overviewRow} accessibilityRole="button"
         accessibilityLabel="Cấu hình giờ bán" onPress={() => onChangeTab("hours")}>
         <View style={styles.overviewCopy}>
           <Text style={styles.rowTitle}>Giờ hoạt động</Text>
@@ -80,6 +90,7 @@ export default function AdminApp() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [chooseBranch, setChooseBranch] = useState(false);
+  const [createBranch, setCreateBranch] = useState(false);
   const [catalog, setCatalog] = useState<AdminCatalog | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -238,6 +249,25 @@ export default function AdminApp() {
       setAuthError("Đã đăng xuất trên thiết bị. Có thể chưa thu hồi được phiên trên máy chủ."));
   }
 
+  const branchSaved = async (savedId: string, created: boolean) => {
+    if (!token) return;
+    const latest = await request<Branch[]>("/admin/branches", token);
+    if (!latest.some(branch => branch.id === savedId)) {
+      throw new Error("Đã lưu nhưng chưa tải lại được chi nhánh. Hãy thử tải lại.");
+    }
+    setBranches(latest);
+    setBranchId(savedId);
+    setCreateBranch(false);
+    setChooseBranch(false);
+    if (created) {
+      setTab("hours");
+      setNotice("Đã tạo chi nhánh thật. Hãy lưu giờ bán, chính sách giao hàng rồi kích hoạt.");
+    } else {
+      setTab("settings");
+      setNotice("Đã cập nhật chi nhánh.");
+      if (savedId === branchId) await reload();
+    }
+  };
   const selectedBranch = branches.find(b => b.id === branchId);
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -311,7 +341,7 @@ export default function AdminApp() {
               <Text style={styles.brandSub}>Admin · {principal && roleName(principal.role)}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Đổi chi nhánh"
-              style={styles.branchSelector} onPress={() => setChooseBranch(v => !v)}>
+              style={styles.branchSelector} onPress={() => { if (branches.length) setChooseBranch(v => !v); }}>
               <Text style={styles.branchText} numberOfLines={1}>{selectedBranch?.name ?? "Chọn chi nhánh"}</Text>
               <Text style={styles.branchArrow}>⌄</Text>
             </Pressable>
@@ -330,10 +360,14 @@ export default function AdminApp() {
         <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
-          {branches.length === 0 ? <View style={styles.center}>
-            <Notice text={principal?.role === "OWNER"
-              ? "Chưa có chi nhánh. Cần cấu hình chi nhánh đầu tiên trước khi quản lý thực đơn."
-              : "Chưa được cấp quyền quản lý chi nhánh nào. Chủ cửa hàng cần cấu hình phân quyền trên máy chủ."} error />
+          {branches.length === 0 ? <View style={styles.bootstrap}>
+            {principal?.role === "OWNER" ? <>
+              <Text style={styles.bootstrapTitle}>Khởi tạo cửa hàng đầu tiên</Text>
+              <Text style={styles.caption}>Chưa có chi nhánh. Tạo cửa hàng thật bằng địa chỉ và tọa độ giao hàng. Chi nhánh chưa mở bán cho đến khi cấu hình đầy đủ.</Text>
+              {createBranch ? <BranchPanel token={token} onSaved={branchSaved}
+                onCancel={() => setCreateBranch(false)} /> :
+                <Action label="Tạo chi nhánh đầu tiên" onPress={() => setCreateBranch(true)} />}
+            </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
           </View> : loading && !catalog ? <View style={styles.center}>
             <ActivityIndicator color={c.red} />
             <Text style={styles.caption}>Đang tải dữ liệu chi nhánh...</Text>
@@ -345,10 +379,21 @@ export default function AdminApp() {
               {tab === "overview" && <Overview catalog={catalog} onChangeTab={setTab} />}
               {tab === "catalog" && <CatalogPanel catalog={catalog} token={token} reload={reload} />}
               {tab === "hours" && <HoursPanel catalog={catalog} token={token} reload={reload} />}
+              {tab === "settings" && <View style={styles.settings}>
+                <Text style={styles.sectionTitle}>Cấu hình chi nhánh</Text>
+                {principal?.role === "OWNER" ? <>
+                  <BranchPanel key={selectedBranch?.id} token={token} branch={selectedBranch}
+                    onSaved={branchSaved} />
+                  <DeliveryPolicyPanel key={branchId} token={token} branchId={branchId!}
+                    active={selectedBranch?.isActive ?? false} />
+                </> : <Notice text="Chỉ OWNER được thay đổi thông tin và giá giao hàng." />}
+              </View>}
               {tab === "account" && <View style={styles.account}>
                 <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
                 <Text style={styles.rowTitle}>{principal && roleName(principal.role)}</Text>
                 <Text style={styles.caption}>Dữ liệu được giới hạn theo vai trò và chi nhánh trên API.</Text>
+                {principal?.role === "OWNER" && <Action label="Cài đặt chi nhánh" secondary
+                  onPress={() => setTab("settings")} />}
                 <Action label="Đăng xuất" dangerous onPress={() => void signOut()} />
               </View>}
             </>
@@ -424,4 +469,7 @@ const styles = StyleSheet.create({
   overviewCopy: { flex: 1, gap: 5 },
   chevron: { color: c.secondary, fontSize: 22 },
   account: { padding: 15, gap: 12 },
+  bootstrap: { padding: 16, gap: 14, flexGrow: 1, justifyContent: "center" },
+  bootstrapTitle: { color: c.ink, fontSize: font.title, fontWeight: "800" },
+  settings: { padding: 15, gap: 16 },
 });
