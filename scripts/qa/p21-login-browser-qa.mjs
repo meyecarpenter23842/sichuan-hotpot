@@ -15,6 +15,17 @@ assert.match(html, /user-scalable=no/);
 assert.match(html, /maximum-scale=1/);
 assert.match(html, /gesturestart/);
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+// Deterministic viewport QA uses the approved, tracked hero artwork. The remote
+// R2 object's availability is a separate production probe, not a UI layout test.
+const heroFixture = readFileSync("login-hero.png");
+const heroUrl = "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png";
+async function qaContext(options) {
+  const ctx = await browser.newContext(options);
+  await ctx.route(heroUrl, route => route.fulfill({
+    status: 200, contentType: "image/png", body: heroFixture,
+  }));
+  return ctx;
+}
 const failures = [];
 const getCode = async email => {
   const r = await fetch("http://127.0.0.1:3333/test/inbox?to=" + encodeURIComponent(email));
@@ -33,7 +44,7 @@ try {
   assert.equal(denied.headers.get("access-control-allow-origin"), null);
   console.log("PASS: CORS allowed origin and rejected unknown origin");
   for (const [width, height] of [[320, 568], [360, 640], [390, 844], [428, 926], [768, 1024]]) {
-    const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+    const ctx = await qaContext({ viewport: { width, height }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     page.on("pageerror", e => failures.push(width + "px: " + e.message));
     await page.goto(web, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -80,9 +91,9 @@ try {
     await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
     await ctx.close();
-    console.log("PASS: " + width + "x" + height + " login-first, no scrolling, R2 hero and guest access");
+    console.log("PASS: " + width + "x" + height + " login-first, no scrolling, tracked hero fixture and guest access");
   }
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await qaContext({ viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   page.on("pageerror", e => failures.push("registration: " + e.message));
   const responses = [];
