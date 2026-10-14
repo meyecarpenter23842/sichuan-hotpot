@@ -40,6 +40,7 @@ async function connect(person, scope, branch = branchId) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(endpoint, { headers: { Origin: "http://localhost:8081" } });
     sockets.push(socket);
+    let ready = false;
     const timeout = setTimeout(() => reject(new Error("WS_READY_TIMEOUT")), 3000);
     socket.on("open", () => socket.send(JSON.stringify({
       type: "subscribe", scope, token: person.token,
@@ -47,10 +48,13 @@ async function connect(person, scope, branch = branchId) {
     })));
     socket.on("message", raw => {
       const event = JSON.parse(String(raw));
-      if (event.type === "ready") { clearTimeout(timeout); resolve(socket); }
+      if (event.type === "ready") { ready = true; clearTimeout(timeout); resolve(socket); }
     });
     socket.on("error", error => { clearTimeout(timeout); reject(error); });
-    socket.on("close", () => { clearTimeout(timeout); });
+    socket.on("close", () => {
+      clearTimeout(timeout);
+      if (!ready) reject(new Error("WS_FORBIDDEN"));
+    });
   });
 }
 function nextMessage(socket) {
@@ -130,5 +134,5 @@ test("WS checks staff scope, branch membership and customer ownership", async ()
 });
 
 test("websocket rejects staff without membership and untrusted browser origins", async () => {
-  await assert.rejects(connect(outsider, "staff", foreignBranchId), /WS_READY_TIMEOUT|WS/);
+  await assert.rejects(connect(outsider, "staff", foreignBranchId), /WS_FORBIDDEN/);
 });
