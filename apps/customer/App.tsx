@@ -535,7 +535,7 @@ function CustomerApp() {
       setAddressModalOpen(false);
       setEditingAddressId(null);
       addressBeforeModal.current = null;
-      setScreen(addressEditorOrigin.current === "address" ? "address" : addressReturnTo);
+      setScreen(editingAddressId && addressEditorOrigin.current === "address" ? "address" : addressReturnTo);
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
     } finally { setAddressSaving(false); }
@@ -632,12 +632,12 @@ function CustomerApp() {
               onPress={() => editSavedAddress(saved, returnTo)}>
               <Text style={styles.addressEditGlyph}>Sửa</Text>
             </Pressable>
-            {!compact && <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
               style={styles.addressSmallButton} disabled={addressSaving}
               accessibilityState={{ disabled: addressSaving }}
               onPress={() => { setAddressErrorText(""); setPendingDeleteAddress(saved); }}>
               <Text style={styles.addressDeleteGlyph}>Xóa</Text>
-            </Pressable>}
+            </Pressable>
           </View>
         </View>
       );
