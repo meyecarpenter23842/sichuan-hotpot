@@ -86,6 +86,9 @@ test("branch queue is staff scoped and never accessible to unrelated CUSTOMER", 
   assert.equal(listed.body.length, 1);
   assert.equal(listed.body[0].staffRole, "KITCHEN");
   assert.equal(listed.body[0].id, branchId);
+  const kitchenList = await client.get(branchBase()).set(headers(kitchen.token)).expect(200);
+  assert.equal(kitchenList.body[0].totalVnd, undefined);
+  assert.equal(kitchenList.body[0].payment, undefined);
   const all = await client.get("/admin/orders/branches")
     .set(headers(owner.token)).expect(200);
   assert.ok(all.body.some(b => b.id === otherBranchId));
@@ -101,6 +104,9 @@ test("kitchen detail excludes phone/address while OWNER detail keeps delivery sn
     .set(headers(kitchen.token)).expect(200);
   assert.equal(kitchenResponse.body.addressLineSnapshot, undefined);
   assert.equal(kitchenResponse.body.phoneSnapshot, undefined);
+  assert.equal(kitchenResponse.body.totalVnd, undefined);
+  assert.equal(kitchenResponse.body.payment, undefined);
+  assert.equal(kitchenResponse.body.items[0].lineTotalVnd, undefined);
   assert.equal(kitchenResponse.body.items[0].productName, "Lẩu thử");
   const ownerResponse = await client.get(branchBase() + "/" + kitchenId)
     .set(headers(owner.token)).expect(200);
