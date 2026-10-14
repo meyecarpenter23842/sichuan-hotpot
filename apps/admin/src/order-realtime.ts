@@ -1,5 +1,3 @@
-import { Platform } from "react-native";
-
 const apiOrigin = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 
 export interface OrderRealtimeMessage {
@@ -57,8 +55,6 @@ export function watchOrderEvents(options: {
       retry = setTimeout(connect, 5000);
     }
   };
-  // Platform import keeps Expo's web/native environments explicit.
-  void Platform.OS;
   connect();
   return () => {
     stopped = true;

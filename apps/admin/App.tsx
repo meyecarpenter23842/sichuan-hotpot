@@ -371,7 +371,7 @@ export default function AdminApp() {
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
           </View> : (tab === "orders" || tab === "kitchen") && branchId ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active /> :
+              role={branchRole} mode={tab} active chimeEnabled={chimeEnabled} /> :
             tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
@@ -390,7 +390,8 @@ export default function AdminApp() {
               {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
-                onBranchSaved={branchSaved} />}
+                onBranchSaved={branchSaved} chimeEnabled={chimeEnabled}
+                onChimeChange={changeChime} />}
             </>
           )}
         </ScrollView>

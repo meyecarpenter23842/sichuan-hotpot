@@ -7,6 +7,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
 import { Icon } from "./Icon";
 import { request } from "./api";
+import { playOrderChime } from "./order-notifications";
+import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
 
 export type OrderStatus =
@@ -60,8 +62,9 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
 }
 const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
 
-export function OrderQueuePanel({ token, branchId, role, mode, active }: {
+export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnabled }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen"; active: boolean;
+  chimeEnabled: boolean;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -78,6 +81,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   const [filter, setFilter] = useState<"active" | "all">("active");
   const requestId = useRef(0);
   const lastIds = useRef<Set<string> | null>(null);
+  const pendingAlerts = useRef<Set<string>>(new Set());
 
   const sync = useCallback(async () => {
     const current = ++requestId.current;
@@ -88,7 +92,15 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
       const pending = fresh.filter(x => x.status === "PENDING");
       if (lastIds.current) {
         const newcomers = pending.filter(x => !lastIds.current?.has(x.id));
-        if (newcomers.length) setNotice("Có " + newcomers.length + " đơn mới. Kiểm tra và xác nhận.");
+        const unseen = newcomers.filter(x => {
+          if (pendingAlerts.current.has(x.id)) return false;
+          pendingAlerts.current.add(x.id);
+          return true;
+        });
+        if (unseen.length) {
+          setNotice("Có " + unseen.length + " đơn mới. Kiểm tra và xác nhận.");
+          if (chimeEnabled && !kitchenOnly) playOrderChime();
+        }
       }
       lastIds.current = new Set(pending.map(x => x.id));
       setOrders(fresh); setError(""); setLastSync(new Date());
@@ -99,11 +111,12 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     } finally {
       if (current === requestId.current) { setLoading(false); setSyncing(false); }
     }
-  }, [branchId, token]);
+  }, [branchId, token, chimeEnabled, kitchenOnly]);
 
   useEffect(() => {
     requestId.current++;
     lastIds.current = null;
+    pendingAlerts.current.clear();
     setOrders([]); setLastSync(null); setLoading(true); setNotice(""); setError("");
     if (active) void sync();
     return () => { requestId.current++; };
@@ -119,6 +132,20 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     });
     return () => { clearInterval(interval); sub.remove(); };
   }, [active, sync]);
+
+  useEffect(() => {
+    if (!active || !token) return;
+    return watchOrderEvents({
+      token, branchId,
+      onReady: () => { void sync(); },
+      onChange: event => {
+        if (event.type === "order.overdue" && !kitchenOnly) {
+          setNotice("Có đơn chờ xác nhận quá 5 phút. Vui lòng kiểm tra.");
+        }
+        void sync();
+      },
+    });
+  }, [active, token, branchId, kitchenOnly, sync]);
 
   const openDetail = async (id: string) => {
     setOpening(true); setNotice(""); setSelected(null); setAction(null); setReason("");
@@ -160,7 +187,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     <View style={s.head}>
       <View style={s.headInfo}>
         <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp" : "Đơn hàng"}</Text>
-        <Text style={s.note}>Đơn thật của chi nhánh · đồng bộ 10 giây/lần khi mở ứng dụng</Text>
+        <Text style={s.note}>Đơn thật · realtime khi kết nối, tự đồng bộ dự phòng mỗi 10 giây</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
         disabled={syncing} onPress={() => void sync()} style={s.refresh}>
