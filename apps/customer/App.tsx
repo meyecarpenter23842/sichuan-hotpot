@@ -180,7 +180,7 @@ function CustomerApp() {
   const [catalogError, setCatalogError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
@@ -215,42 +215,85 @@ function CustomerApp() {
   const addressEditorOrigin = useRef<Screen>("account");
   const addressBeforeModal = useRef<AddressDraft | null>(null);
 
-  const refreshCatalogue = useCallback(async (requestedBranch?: string) => {
-    setCatalogLoading(true);
-    setCatalogError("");
+  const catalogueRequest = useRef(0);
+  const currentBranch = useRef("");
+
+  // Catalog is an independently changing server resource. Recheck branch
+  // visibility and products, including after the Admin toggles availability.
+  // Ignore out-of-order HTTP responses when users switch branches rapidly.
+  const refreshCatalogue = useCallback(async (requestedBranch?: string, silent = false) => {
+    const requestId = ++catalogueRequest.current;
+    if (requestedBranch) currentBranch.current = requestedBranch;
+    if (!silent) setCatalogLoading(true);
     try {
-      let activeBranch = requestedBranch;
-      if (!activeBranch) {
-        const [list, savedId] = await Promise.all([
-          apiRequest<BranchSummary[]>("/catalog/branches"),
-          AsyncStorage.getItem(BRANCH_KEY).catch(() => null),
-        ]);
-        setBranches(list);
-        activeBranch = list.find(branch => branch.id === savedId)?.id ?? list[0]?.id;
-      }
+      const [list, savedId] = await Promise.all([
+        apiRequest<BranchSummary[]>("/catalog/branches"),
+        AsyncStorage.getItem(BRANCH_KEY).catch(() => null),
+      ]);
+      if (requestId !== catalogueRequest.current) return;
+      setBranches(list);
+      const selection = requestedBranch ?? currentBranch.current;
+      const activeBranch = list.find(branch => branch.id === selection)?.id
+        ?? list.find(branch => branch.id === savedId)?.id ?? list[0]?.id;
       if (!activeBranch) {
         setMenu(null);
         setBranchId("");
+        setCategoryId("");
+        setCatalogError("");
+        currentBranch.current = "";
         return;
       }
       const response = await apiRequest<BranchMenu>(
         "/catalog/branches/" + encodeURIComponent(activeBranch),
       );
+      if (requestId !== catalogueRequest.current) return;
+      currentBranch.current = activeBranch;
       setBranchId(activeBranch);
       setMenu(response);
-      // Preserve the live branch: cart product IDs are branch-scoped by catalogue.
-      await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
-        setNotice("Không thể lưu chi nhánh. Vui lòng kiểm tra dung lượng thiết bị.");
-      });
+      setCatalogError("");
       setCategoryId(old => response.categories.some(cat => cat.id === old)
-        ? old : (response.categories[0]?.id ?? ""));
+        ? old : "");
+      await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
+        if (requestId === catalogueRequest.current)
+          setNotice("Không thể lưu chi nhánh. Vui lòng kiểm tra dung lượng thiết bị.");
+      });
     } catch (error) {
+      if (requestId !== catalogueRequest.current) return;
       setCatalogError(error instanceof Error ? error.message : apiMissingMessage);
+      // Fail closed, never imply that stale stock/prices are currently for sale.
       setMenu(null);
     } finally {
-      setCatalogLoading(false);
+      if (requestId === catalogueRequest.current) setCatalogLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!["home", "menu", "detail", "cart"].includes(screen)) return;
+    const refreshIfVisible = () => {
+      if (Platform.OS === "web"
+        ? typeof document !== "undefined" && document.visibilityState === "visible"
+        : AppState.currentState === "active") {
+        void refreshCatalogue(undefined, true);
+      }
+    };
+    // On entering the Home/Menu, when tab returns to foreground and every
+    // 30 seconds while visible. Normal manual refresh still shows loading.
+    refreshIfVisible();
+    const timer = setInterval(refreshIfVisible, 30000);
+    const listener = AppState.addEventListener("change", state => {
+      if (state === "active") refreshIfVisible();
+    });
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", refreshIfVisible);
+    }
+    return () => {
+      clearInterval(timer);
+      listener.remove();
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", refreshIfVisible);
+      }
+    };
+  }, [screen, refreshCatalogue]);
 
   useEffect(() => { void refreshCatalogue(); }, [refreshCatalogue]);
 
@@ -668,7 +711,7 @@ function CustomerApp() {
   }
 
   function openProduct(product: Product) {
-    setSelectedProduct(product);
+    setSelectedProductId(product.id);
     setSelectedVariantId(null);
     setSelectedQuantity(1);
     setSelectedModifierIds([]);
@@ -698,6 +741,7 @@ function CustomerApp() {
     () => new Map(products.map(product => [product.id, product])),
     [products],
   );
+  const selectedProduct = selectedProductId ? productsById.get(selectedProductId) ?? null : null;
   const filteredCategories = useMemo(() => (
     menu?.categories.filter(cat => !categoryId || categoryId === cat.id)
       .map(cat => ({
@@ -734,7 +778,7 @@ function CustomerApp() {
     if (!menu || menu.categories.length === 0) {
       return <View style={styles.section}>
         <Text style={styles.emptyTitle}>Thực đơn đang được cập nhật</Text>
-        <Text style={styles.muted}>Hiện chưa có món công khai từ cửa hàng. Không hiển thị giá hay sản phẩm mẫu.</Text>
+        <Text style={styles.muted}>Chi nhánh chưa mở bán hoặc chưa có món công khai. Kiểm tra chi nhánh trong Admin và thử làm mới.</Text>
         <Button label="Làm mới" onPress={() => void refreshCatalogue()} alternate />
       </View>;
     }
@@ -896,7 +940,7 @@ function CustomerApp() {
                   <Text style={styles.emptyTitle}>Thực đơn đang cập nhật</Text>
                   <Text style={styles.muted}>
                     {catalogError ? "Chưa kết nối API thực đơn. Kiểm tra kết nối rồi thử lại." :
-                      catalogLoading ? "Đang tải thực đơn từ cửa hàng..." : "Chưa có món được mở bán."}
+                      catalogLoading ? "Đang tải thực đơn từ cửa hàng..." : "Chi nhánh chưa mở bán hoặc chưa có món công khai."}
                   </Text>
                   {!!catalogError && <Button label="Thử kết nối lại" alternate onPress={() => void refreshCatalogue()} />}
                   {!catalogError && <Button label="Xem thực đơn" alternate onPress={() => setScreen("menu")} />}
@@ -975,7 +1019,10 @@ function CustomerApp() {
           onReorder={reorder} />;
       case "detail": {
         const item = selectedProduct;
-        if (!item) return <Notice message="Không tìm thấy món. Vui lòng chọn lại." error />;
+        if (!item) return <View style={styles.section}>
+          <Notice message="Món vừa thay đổi hoặc chi nhánh đã ngừng bán. Vui lòng chọn lại từ thực đơn." error />
+          <Button label="Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
+        </View>;
         const variant = item.variants.find(v => v.id === selectedVariantId);
         const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0) + selectedModifierPrice(item, selectedModifierIds);
         return (

@@ -138,6 +138,7 @@ jobs:
           done
           curl --fail --silent --show-error http://127.0.0.1:3001/health/ready >/dev/null
           node scripts/qa/p41-admin-browser-qa.mjs
+          node scripts/qa/p44-image-optimizer-browser-qa.mjs
       - name: Archive P2.1 browser screenshots
         if: always()
         uses: actions/upload-artifact@v4

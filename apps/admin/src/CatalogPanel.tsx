@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { c, font } from "./theme";
 import { Icon } from "./Icon";
+import { prepareProductImage } from "./prepare-product-image";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
@@ -152,35 +153,45 @@ export function CatalogPanel({ catalog, token, reload }: {
   }
 
   function pickImage(productId: string) {
+    if (busy) return;
     if (Platform.OS !== "web") {
-      setError("Chọn ảnh hiện hỗ trợ trên Admin PWA; chức năng chọn ảnh Android cần được tích hợp riêng.");
+      setError("Chọn ảnh đang hỗ trợ trên Admin PWA. Android cần quyền chọn ảnh riêng.");
       return;
     }
     const input = document.createElement("input");
-    input.type = "file"; input.accept = "image/png,image/jpeg,image/webp";
+    input.type = "file";
+    input.accept = "image/*";
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file || busy) return;
-      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)
-          || file.size < 1 || file.size > 2097152) {
-        setError("Ảnh phải là PNG/JPEG/WebP, tối đa 2MB.");
-        return;
-      }
-      setBusy(true); setError("");
+      setBusy(true);
+      setError("");
+      setNotice("");
       try {
+        const prepared = await prepareProductImage(file);
         const ticket = await request<{ key: string; uploadUrl: string; contentType: string }>(
           root + "/products/" + productId + "/images/ticket", token, "POST",
-          { contentType: file.type, byteSize: file.size });
-        // Direct PUT only to an R2 short-lived signed URL. Never exposes bucket credentials.
-        const sent = await fetch(ticket.uploadUrl, { method: "PUT",
-          headers: { "Content-Type": ticket.contentType }, body: file });
-        if (!sent.ok) throw Error("Tải ảnh lên R2 thất bại. Kiểm tra cấu hình CORS của bucket.");
+          { contentType: prepared.contentType, byteSize: prepared.blob.size });
+        // Only send the compressed binary directly to the scoped, expiring R2 URL.
+        const sent = await fetch(ticket.uploadUrl, {
+          method: "PUT", headers: { "Content-Type": ticket.contentType }, body: prepared.blob,
+        });
+        if (!sent.ok) {
+          throw Error("R2 từ chối ảnh (" + sent.status + "). Kiểm tra CORS và quyền ghi bucket.");
+        }
         await request(root + "/products/" + productId + "/images/attach", token, "POST",
           { key: ticket.key });
         await reload();
-        setNotice("Đã thay ảnh món.");
-      } catch (e) { setError(e instanceof Error ? e.message : "Không tải được ảnh."); }
-      finally { setBusy(false); }
+        setNotice("Đã cập nhật ảnh món. Ảnh được tối ưu còn " +
+          Math.max(1, Math.round(prepared.blob.size / 1024)) + " KB.");
+      } catch (e) {
+        setError(e instanceof TypeError
+          ? "Không kết nối được R2. Kiểm tra CORS bucket và đường truyền."
+          : e instanceof Error ? e.message : "Không tải được ảnh lên R2.");
+      } finally {
+        setBusy(false);
+        input.value = "";
+      }
     };
     input.click();
   }
@@ -193,6 +204,11 @@ export function CatalogPanel({ catalog, token, reload }: {
       </View>
       <Action label="＋ Danh mục" secondary onPress={() => open("category")} />
     </View>
+    {!catalog.isActive && <View style={st.branchWarning}>
+      <Icon name="power" color={c.red} size={19} />
+      <Text style={st.warningText}>Chi nhánh chưa kích hoạt. Món có trạng thái “Đang bán”
+        vẫn không xuất hiện trong app khách. Mở Thiết lập → Hoạt động để kích hoạt.</Text>
+    </View>}
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
       placeholder="Tên lẩu, trà sữa, combo..." />
     <View style={st.pills}>
@@ -249,7 +265,7 @@ export function CatalogPanel({ catalog, token, reload }: {
               </Pressable>
             </View>
             {expanded && <Modal visible animationType="slide" transparent
-              onRequestClose={() => setExpandedId(null)}>
+              onRequestClose={() => { if (!busy) { setExpandedId(null); setError(""); } }}>
               <View style={st.backdrop}>
                 <View style={st.modal}>
                   <View style={st.modalHeading}>
@@ -258,7 +274,8 @@ export function CatalogPanel({ catalog, token, reload }: {
                       <Text style={st.sub}>Khẩu phần · Topping · Hình ảnh</Text>
                     </View>
                     <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết món"
-                      style={st.close} onPress={() => setExpandedId(null)}>
+                      style={st.close} disabled={busy}
+                      onPress={() => { if (!busy) { setExpandedId(null); setError(""); } }}>
                       <Icon name="close" size={19} color={c.secondary} />
                     </Pressable>
                   </View>
@@ -266,6 +283,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
                     {!!error && <Notice text={error} error />}
+                    {busy && <Text style={st.emptyNote}>Đang xử lý và tải ảnh. Vui lòng đợi...</Text>}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Khẩu phần / size</Text>
                 <Action label="＋ Size" secondary onPress={() => open("variant", undefined, product.id)} />
@@ -311,7 +329,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                   </Pressable>
                 </View>)}
               </View>)}
-              {Platform.OS === "web" && <Action label="Tải ảnh món lên R2" secondary
+              {Platform.OS === "web" && <Action label="Chọn ảnh (tự tối ưu trước khi tải)" secondary
                 disabled={busy} onPress={() => pickImage(product.id)} />}
               {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
                 disabled={busy} onPress={() => void mutate(
@@ -385,6 +403,9 @@ export function CatalogPanel({ catalog, token, reload }: {
 }
 const st = StyleSheet.create({
   container: { gap: 12, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 30 },
+  branchWarning: { flexDirection: "row", alignItems: "center", gap: 9,
+    borderBottomWidth: 1, borderColor: c.line, paddingVertical: 10 },
+  warningText: { flex: 1, fontSize: font.note, lineHeight: 19, color: c.red },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
