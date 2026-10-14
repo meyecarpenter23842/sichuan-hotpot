@@ -85,11 +85,11 @@ export class AdminBranchesController {
 }
 
 @Controller("admin/branches/:branchId/catalog")
-@Header("Cache-Control", "no-store")
 export class AdminCatalogController {
   constructor(private readonly catalogue: AdminCatalogService) {}
 
   @Get()
+  @Header("Cache-Control", "no-store")
   list(@Headers("authorization") auth: string | undefined,
        @Param("branchId", uuid) branchId: string) {
     return this.catalogue.catalogue(auth, branchId);
