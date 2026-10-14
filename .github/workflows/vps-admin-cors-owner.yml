@@ -4,11 +4,11 @@ on:
     types: [created]
 permissions:
   contents: read
-concurrency:
-  group: hotpot-production-vps-change
-  cancel-in-progress: false
 jobs:
   admin-cors:
+    concurrency:
+      group: hotpot-production-vps-change
+      cancel-in-progress: false
     if: >-
       github.event.issue.number == 3 &&
       github.event.issue.pull_request == null &&
