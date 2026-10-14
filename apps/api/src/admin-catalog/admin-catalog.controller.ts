@@ -4,10 +4,11 @@ import {
 } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString,
   IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested,
 } from "class-validator";
 import { AdminCatalogService } from "./admin-catalog.service";
+import { AdminBranchSetupService } from "./admin-branch-setup.service";
 
 class CategoryInput {
   @IsString() @MinLength(1) @MaxLength(160) name!: string;
@@ -72,11 +73,40 @@ class WeeklyHours {
   @ValidateNested({ each: true }) @Type(() => DailyHours)
   days!: DailyHours[];
 }
+class BranchDetailsInput {
+  @IsString() @MinLength(2) @MaxLength(200) name!: string;
+  @IsString() @Matches(/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/)
+  code!: string;
+  @IsString() @MinLength(10) @MaxLength(500) address!: string;
+  @IsNumber({ maxDecimalPlaces: 7 }) @Min(-90) @Max(90) latitude!: number;
+  @IsNumber({ maxDecimalPlaces: 7 }) @Min(-180) @Max(180) longitude!: number;
+}
+class BranchUpdateInput {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(200) name?: string;
+  @IsOptional() @IsString() @MinLength(10) @MaxLength(500) address?: string;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 7 }) @Min(-90) @Max(90) latitude?: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 7 }) @Min(-180) @Max(180) longitude?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
 const uuid = new ParseUUIDPipe({ version: "4" });
 
 @Controller("admin")
 export class AdminBranchesController {
-  constructor(private readonly catalogue: AdminCatalogService) {}
+  constructor(
+    private readonly catalogue: AdminCatalogService,
+    private readonly setup: AdminBranchSetupService,
+  ) {}
+  @Post("branches")
+  @Header("Cache-Control", "no-store")
+  create(@Headers("authorization") auth: string | undefined, @Body() input: BranchDetailsInput) {
+    return this.setup.create(auth, input);
+  }
+  @Patch("branches/:branchId")
+  @Header("Cache-Control", "no-store")
+  update(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", uuid) branchId: string, @Body() input: BranchUpdateInput) {
+    return this.setup.update(auth, branchId, input);
+  }
   @Get("branches")
   @Header("Cache-Control", "no-store")
   branches(@Headers("authorization") authorization?: string) {

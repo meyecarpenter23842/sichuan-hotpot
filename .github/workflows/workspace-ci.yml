@@ -81,6 +81,13 @@ jobs:
           set -euo pipefail
           npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.64.0
           npx playwright install --with-deps chromium
+          # Unit tests may leave disposable branch fixtures; first-store QA needs a blank DB.
+          # NEVER allow this CI-only reset to operate on a non-CI or remote database.
+          test "$DATABASE_URL" = "postgresql://hotpot_ci:hotpot_ci_only@127.0.0.1:5432/hotpot_ci?schema=public" || {
+            echo "::error::Refusing CI QA database reset outside dedicated localhost hotpot_ci."
+            exit 1
+          }
+          npm exec -- prisma migrate reset --force --skip-seed --schema apps/api/prisma/schema.prisma
           export AUTH_JWT_SECRET="$(openssl rand -hex 40)"
           export CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://127.0.0.1:3002"
           # Disposable local Resend-compatible mail endpoint, never production.
@@ -105,10 +112,6 @@ jobs:
                curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then break; fi
             sleep 1
           done
-          node scripts/qa/p21-login-browser-qa.mjs
-          node scripts/qa/p22-catalog-browser-qa.mjs
-          node scripts/qa/p24-home-browser-qa.mjs
-          node scripts/qa/p25-address-layout-browser-qa.mjs
           ( cd apps/admin && EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npx expo export --platform web --output-dir dist --clear )
           HOTPOT_QA_PWA_APP=admin HOTPOT_QA_WEB_PORT=3002 \
             node scripts/qa/pwa-cookie-proxy.mjs > /tmp/hotpot-ci-p41-admin-web.log 2>&1 &
@@ -117,6 +120,22 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3002/ >/dev/null; then break; fi
             sleep 1
           done
+          node scripts/qa/p42-first-branch-browser-qa.mjs
+          node scripts/qa/p21-login-browser-qa.mjs
+          node scripts/qa/p22-catalog-browser-qa.mjs
+          node scripts/qa/p24-home-browser-qa.mjs
+          node scripts/qa/p25-address-layout-browser-qa.mjs
+          # Separate QA suites so the production-equivalent 8/min login limiter
+          # remains enforced, rather than leaking test logins between suites.
+          kill "$api_pid"
+          wait "$api_pid" 2>/dev/null || true
+          PORT=3001 HOST=127.0.0.1 node apps/api/dist/main.js > /tmp/hotpot-ci-p41-api.log 2>&1 &
+          api_pid=$!
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3001/health/live >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:3001/health/ready >/dev/null
           node scripts/qa/p41-admin-browser-qa.mjs
       - name: Archive P2.1 browser screenshots
         if: always()

@@ -68,3 +68,17 @@ test("401 from Admin login is incorrect credentials, while session refresh remai
   assert.match(api, /response\.status === 401 \? "Phiên đăng nhập đã hết hạn\."/);
   assert.match(api, /\bwebSession\b/);
 });
+
+test("OWNER first-store onboarding uses real POST/PATCH endpoints and safe delivery policy", () => {
+  const branch = readFileSync(new URL("../src/BranchPanel.tsx", import.meta.url), "utf8");
+  const policy = readFileSync(new URL("../src/DeliveryPolicyPanel.tsx", import.meta.url), "utf8");
+  assert.match(app, /Tạo chi nhánh đầu tiên/);
+  assert.match(app, /onSaved={branchSaved}/);
+  assert.match(branch, /"\/admin\/branches"/);
+  assert.match(branch, /"PATCH"/);
+  assert.match(branch, /Địa chỉ cửa hàng/);
+  assert.match(branch, /Kích hoạt chi nhánh/);
+  assert.match(policy, /"\/delivery-policy"/);
+  assert.match(policy, /acceptingOrders/);
+  assert.match(policy, /Lưu chính sách giao hàng/);
+});
