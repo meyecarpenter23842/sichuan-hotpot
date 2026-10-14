@@ -97,12 +97,28 @@ def check_upgrade(origin):
                + "\r\nSec-WebSocket-Version: 13"
                + "\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="
                + "\r\n\r\n").encode()
-    with socket.create_connection((hostname, 443), timeout=6) as raw:
-        with ssl.create_default_context().wrap_socket(raw, server_hostname=hostname) as secure:
-            secure.settimeout(6)
-            secure.sendall(request)
-            response = secure.recv(2048)
-    require(response.startswith(b"HTTP/1.1 101 "), "websocket_upgrade_not_reachable")
+    try:
+        with socket.create_connection((hostname, 443), timeout=6) as raw:
+            with ssl.create_default_context().wrap_socket(raw, server_hostname=hostname) as secure:
+                secure.settimeout(6)
+                secure.sendall(request)
+                response = secure.recv(2048)
+    except ssl.SSLError as exc:
+        raise RealtimeConfigError("websocket_tls_verification_failed") from exc
+    except OSError as exc:
+        raise RealtimeConfigError("websocket_connection_unavailable") from exc
+    # Never print remote response bodies or certificates.
+    if not response.startswith(b"HTTP/1.1 101 "):
+        code = response.split(b" ", 2)[1:2]
+        if code == [b"404"]:
+            raise RealtimeConfigError("websocket_nginx_route_missing")
+        if code == [b"400"]:
+            raise RealtimeConfigError("websocket_handshake_rejected")
+        if code == [b"403"]:
+            raise RealtimeConfigError("websocket_handshake_forbidden")
+        if code == [b"502"]:
+            raise RealtimeConfigError("websocket_backend_unreachable")
+        raise RealtimeConfigError("websocket_upgrade_not_reachable")
 
 
 def main():
