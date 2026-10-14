@@ -15,15 +15,15 @@ export function Action({ label, onPress, secondary = false, dangerous = false, d
   </Pressable>;
 }
 export function Field({ label, value, onChangeText, placeholder, numeric = false,
-  secure = false, multiline = false }: {
+  secure = false, multiline = false, decimal = false }: {
   label: string; value: string; onChangeText: (value: string) => void;
-  placeholder?: string; numeric?: boolean; secure?: boolean; multiline?: boolean;
+  placeholder?: string; numeric?: boolean; secure?: boolean; multiline?: boolean; decimal?: boolean;
 }) {
   return <View style={s.field}>
     <Text style={s.fieldLabel}>{label}</Text>
     <TextInput style={[s.input, multiline && s.multiline]} accessibilityLabel={label}
       value={value} placeholder={placeholder} placeholderTextColor="#98A2B3"
-      onChangeText={onChangeText} keyboardType={numeric ? "number-pad" : "default"}
+      onChangeText={onChangeText} keyboardType={decimal ? "decimal-pad" : numeric ? "number-pad" : "default"}
       secureTextEntry={secure} autoCapitalize="none"
       multiline={multiline} />
   </View>;
