@@ -125,6 +125,7 @@ jobs:
           node scripts/qa/p22-catalog-browser-qa.mjs
           node scripts/qa/p24-home-browser-qa.mjs
           node scripts/qa/p25-address-layout-browser-qa.mjs
+          node scripts/qa/p43-customer-account-browser-qa.mjs
           # Separate QA suites so the production-equivalent 8/min login limiter
           # remains enforced, rather than leaking test logins between suites.
           kill "$api_pid"
