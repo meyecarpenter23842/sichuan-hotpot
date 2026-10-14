@@ -289,6 +289,9 @@ export function CatalogPanel({ catalog, token, reload }: {
               </View>)}
               {Platform.OS === "web" && <Action label="Tải ảnh món lên R2" secondary
                 disabled={busy} onPress={() => pickImage(product.id)} />}
+              {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
+                disabled={busy} onPress={() => void mutate(
+                  "/products/" + product.id + "/images", "DELETE")} />}
             </View>}
           </View>;
         })}
