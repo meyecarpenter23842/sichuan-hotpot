@@ -402,7 +402,7 @@ const st = StyleSheet.create({
     justifyContent: "space-between", paddingHorizontal: 15, borderBottomWidth: 1,
     borderBottomColor: c.line, minHeight: 53 },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  closeText: { fontSize: 24, color: c.secondary },
+  closeText: { fontSize: 20, color: c.secondary },
   modalBody: { padding: 15, gap: 12, paddingBottom: 35 },
   modalActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   smallLabel: { color: c.ink, fontSize: font.note, fontWeight: "700" },
