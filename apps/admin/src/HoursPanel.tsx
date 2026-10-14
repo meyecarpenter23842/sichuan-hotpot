@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request, type AdminCatalog, type OpeningHour } from "./api";
 import { Action, Notice, Pill } from "./ui";
 import { c, font } from "./theme";
+import { Icon } from "./Icon";
 
 const weekdays = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư",
   "Thứ năm", "Thứ sáu", "Thứ bảy"];
@@ -123,7 +124,7 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
                 pressed && st.pressed]}
               onPress={() => openPicker(day, "opensAt")}>
               <Text style={st.selectText}>{day.opensAt}</Text>
-              <Text style={st.chevron}>⌄</Text>
+              <View style={{ transform: [{ rotate: "90deg" }] }}><Icon name="chevron" size={16} color={c.red} /></View>
             </Pressable>
           </View>
           <Text style={st.dash}>–</Text>
@@ -136,20 +137,14 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
                 pressed && st.pressed]}
               onPress={() => openPicker(day, "closesAt")}>
               <Text style={st.selectText}>{day.closesAt}</Text>
-              <Text style={st.chevron}>⌄</Text>
+              <View style={{ transform: [{ rotate: "90deg" }] }}><Icon name="chevron" size={16} color={c.red} /></View>
             </Pressable>
           </View>
         </View>}
         {!!issue && <Text accessibilityRole="alert" style={st.dayError}>
           {weekdays[day.weekday]}: {issue}
         </Text>}
-      </View>;
-    })}
-    {!!error && <Notice text={error} error />}
-    {!!notice && <Notice text={notice} />}
-    <Action label={saving ? "Đang lưu..." : "Lưu lịch cửa hàng"} onPress={() => void save()} disabled={saving} />
-
-    {picker && <View style={st.sheet}>
+        {picker?.weekday === day.weekday && <View style={st.sheet}>
           <View style={st.sheetHead}>
             <View style={st.sheetTitleGroup}>
               <Text style={st.sheetTitle}>Chọn {picker.field === "opensAt" ? "giờ mở" : "giờ đóng"}</Text>
@@ -157,7 +152,7 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn giờ"
               style={st.close} onPress={() => setPicker(null)}>
-              <Text style={st.closeText}>✕</Text>
+              <Icon name="close" size={18} color={c.ink} />
             </Pressable>
           </View>
           <Text style={st.pickerPreview}>{picker.hour}:{picker.minute}</Text>
@@ -199,6 +194,12 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
           <Action label="Áp dụng giờ" onPress={applyPicker} />
           <Action label="Hủy" secondary onPress={() => setPicker(null)} />
     </View>}
+      </View>;
+    })}
+    {!!error && <Notice text={error} error />}
+    {!!notice && <Notice text={notice} />}
+    <Action label={saving ? "Đang lưu..." : "Lưu lịch cửa hàng"} onPress={() => void save()} disabled={saving} />
+
   </View>;
 }
 
