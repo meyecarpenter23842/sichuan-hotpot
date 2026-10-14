@@ -26,6 +26,21 @@ try {
     normalizedUsername: username, passwordHash: await hash(password),
     verifiedEmail: username + "@example.test" } });
   await db.branchMember.create({ data: { userId: staff.id, branchId: branch.id, role: "MANAGER" } });
+  const customer = await db.user.create({ data: { role: "CUSTOMER" } });
+  const policy = await db.deliveryPolicyVersion.create({ data: {
+    branchId: branch.id, version: 1, acceptingOrders: true, baseMeters: 2000,
+    baseFeeVnd: 10000, extraStepMeters: 1000, extraStepFeeVnd: 5000,
+    maxRoadMeters: 12000, minSubtotalVnd: 50000,
+  } });
+  const operationalOrder = await db.order.create({ data: {
+    branchId: branch.id, customerId: customer.id, deliveryPolicyVersionId: policy.id,
+    idempotencyKey: randomUUID(), status: "PENDING", subtotalVnd: 120000,
+    deliveryFeeVnd: 10000, totalVnd: 130000, roadDistanceMeters: 1700,
+    addressLineSnapshot: "Địa chỉ thử nghiệm",
+    latitudeSnapshot: "10.7731000", longitudeSnapshot: "106.7032000",
+    items: { create: [{ productName: "Lẩu phiếu bếp", quantity: 2,
+      unitPriceVnd: 60000, lineTotalVnd: 120000 }] },
+  } });
 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
@@ -36,6 +51,22 @@ try {
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await page.getByText("Chi nhánh QA Admin").waitFor();
+  // End-to-end operational flow using an actual order in disposable PostgreSQL.
+  const shortId = operationalOrder.id.slice(0, 8);
+  await page.getByRole("tab", { name: "Đơn hàng" }).click();
+  await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
+  await page.getByRole("button", { name: "Xác nhận đơn" }).click();
+  await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  await page.getByRole("tab", { name: "Bếp" }).click();
+  await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
+  await page.getByRole("button", { name: "Bắt đầu chế biến" }).click();
+  await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
+  await page.getByRole("button", { name: "Báo món đã sẵn sàng" }).click();
+  await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  assert.equal((await db.order.findUniqueOrThrow({ where: { id: operationalOrder.id } })).status, "READY");
+  assert.equal(await db.orderStatusHistory.count({ where: { orderId: operationalOrder.id } }), 3);
+  console.log("PASS P4: Admin accepts an order, kitchen prepares, then marks ready in real DB");
 
   await page.getByRole("tab", { name: "Thực đơn" }).click();
   await page.getByRole("button", { name: "＋ Danh mục" }).click();
