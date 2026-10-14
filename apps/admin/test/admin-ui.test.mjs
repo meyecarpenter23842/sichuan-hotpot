@@ -10,7 +10,9 @@ const theme = readFileSync(new URL("../src/theme.ts", import.meta.url), "utf8");
 
 test("independent Admin app uses real sign-in and branch-scoped role checks", () => {
   assert.match(app, /request<Principal>\("\/auth\/me"/);
-  assert.match(app, /role !== "OWNER" && user\.role !== "MANAGER"/);
+  assert.match(app, /request<Branch\[]>\("\/admin\/branches"/);
+  assert.match(app, /available\.length === 0/);
+  assert.doesNotMatch(app, /user\.role !== "OWNER" && user\.role !== "MANAGER"/);
   assert.match(app, /"\/admin\/branches"/);
   assert.match(app, /request<AuthTokens>\("\/auth\/login"/);
   assert.match(app, /refreshSession/);
