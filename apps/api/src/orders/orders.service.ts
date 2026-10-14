@@ -11,6 +11,7 @@ import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
 import { DeliveryQuoteService } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import { configuredQr, qrInstructions } from "../payments/vietqr";
+import { OrderRealtimeService } from "./order-realtime.service";
 
 export interface CheckoutRequest {
   branchId: string;
@@ -31,6 +32,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly quote: DeliveryQuoteService,
+    private readonly realtime: OrderRealtimeService,
   ) {}
 
   paymentMethods() { return { codAvailable: true, qrAvailable: configuredQr() !== null }; }
@@ -97,7 +99,7 @@ export class OrdersService {
     const maxAttempts = 8;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        return await db.$transaction(async tx => {
+        const created = await db.$transaction(async tx => {
           const existing = await tx.order.findUnique({
             where: { customerId_idempotencyKey: key }, select: existingSelect,
           });
@@ -187,6 +189,13 @@ export class OrdersService {
           });
           return this.replay(saved, hash, false);
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 });
+        if (!created.replayed) {
+          void this.realtime.publish({
+            type: "order.created", orderId: created.orderId, branchId: input.branchId,
+            customerId, status: "PENDING",
+          });
+        }
+        return created;
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           if (error.code === "P2002" || error.code === "P2034") {
