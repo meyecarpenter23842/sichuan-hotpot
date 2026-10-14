@@ -59,28 +59,36 @@ export async function prepareProductImage(file: File): Promise<PreparedProductIm
     const context = canvas.getContext("2d", { alpha: true });
     if (!context) throw Error("Thiết bị không hỗ trợ xử lý ảnh.");
     const scale = Math.min(1, MAX_EDGE / Math.max(decoded.width, decoded.height));
-    let width = Math.max(1, Math.round(decoded.width * scale));
-    let height = Math.max(1, Math.round(decoded.height * scale));
+    const width = Math.max(1, Math.round(decoded.width * scale));
+    const height = Math.max(1, Math.round(decoded.height * scale));
     const types: ("image/webp" | "image/jpeg")[] = ["image/webp", "image/jpeg"];
     for (const type of types) {
-      for (const quality of [0.88, 0.75, 0.6, 0.45]) {
-        canvas.width = width;
-        canvas.height = height;
-        context.clearRect(0, 0, width, height);
+      // Large textured photos may still exceed 2 MB at 1600px. Keep reducing
+      // dimensions rather than silently rejecting an otherwise valid image.
+      let candidateWidth = width;
+      let candidateHeight = height;
+      for (let attempt = 0; attempt < 7; attempt++) {
+        canvas.width = candidateWidth;
+        canvas.height = candidateHeight;
+        context.clearRect(0, 0, candidateWidth, candidateHeight);
         if (type === "image/jpeg") {
           context.fillStyle = "#ffffff";
-          context.fillRect(0, 0, width, height);
+          context.fillRect(0, 0, candidateWidth, candidateHeight);
         }
-        context.drawImage(decoded.source, 0, 0, width, height);
-        const blob = await encode(canvas, type, quality);
-        if (!blob || blob.type !== type) break; // Browser does not support this format.
-        if (blob.size > 0 && blob.size <= MAX_UPLOAD_BYTES) {
-          return { blob, contentType: type, originalBytes: file.size, width, height };
+        context.drawImage(decoded.source, 0, 0, candidateWidth, candidateHeight);
+        let supportsType = false;
+        for (const quality of [0.88, 0.74, 0.58, 0.43]) {
+          const blob = await encode(canvas, type, quality);
+          if (!blob || blob.type !== type) break;
+          supportsType = true;
+          if (blob.size > 0 && blob.size <= MAX_UPLOAD_BYTES) {
+            return { blob, contentType: type, originalBytes: file.size,
+              width: candidateWidth, height: candidateHeight };
+          }
         }
-        if (quality === 0.45 && Math.max(width, height) > 400) {
-          width = Math.max(1, Math.floor(width * 0.75));
-          height = Math.max(1, Math.floor(height * 0.75));
-        }
+        if (!supportsType || Math.max(candidateWidth, candidateHeight) <= 360) break;
+        candidateWidth = Math.max(1, Math.round(candidateWidth * 0.78));
+        candidateHeight = Math.max(1, Math.round(candidateHeight * 0.78));
       }
     }
     throw Error("Không nén được ảnh dưới 2 MB. Hãy chọn ảnh khác.");

@@ -252,7 +252,7 @@ function CustomerApp() {
       setMenu(response);
       setCatalogError("");
       setCategoryId(old => response.categories.some(cat => cat.id === old)
-        ? old : (response.categories[0]?.id ?? ""));
+        ? old : "");
       await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
         if (requestId === catalogueRequest.current)
           setNotice("Không thể lưu chi nhánh. Vui lòng kiểm tra dung lượng thiết bị.");
