@@ -157,6 +157,24 @@ try {
       } else {
         await page.getByText(tab === "Tổng quan" ? "Đơn mới cần xác nhận" : "Tìm món").first().waitFor();
       }
+      // Screen density is a visual/layout contract, not just a responsive
+      // overflow check. Size relative to CSS pixels; safe-area is OS-managed.
+      const nav = await page.getByRole("tab", { name: "Tổng quan" }).boundingBox();
+      const branchSwitch = await page.getByRole("button", { name: "Đổi chi nhánh" }).boundingBox();
+      assert.ok(nav && nav.height >= 44 && nav.height <= 52,
+        "Bottom navigation must stay compact and accessible at " + width);
+      assert.ok(branchSwitch && branchSwitch.height <= 56 && branchSwitch.height >= 44,
+        "Branch selector should not be oversized at " + width);
+      if (tab === "Tổng quan") {
+        const metric = await page.getByRole("button", { name: /^Đơn mới:/ }).boundingBox();
+        assert.ok(metric && metric.height <= 101 && metric.height >= 44,
+          "Dashboard KPI card should match its text density at " + width);
+      }
+      if (tab === "Thiết lập") {
+        const tile = await page.getByRole("button", { name: "Mở Thông báo" }).boundingBox();
+        assert.ok(tile && tile.height <= 116 && tile.height >= 44,
+          "Settings shortcut tile is too tall at " + width);
+      }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
     }
