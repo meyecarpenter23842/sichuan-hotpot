@@ -7,14 +7,14 @@ export function buildPwaOutputConfig(app, apiOrigin) {
     throw new Error("Invalid PWA target");
   }
   const routes = [];
-  if (app === "customer") {
+  if (app === "customer" || app === "admin") {
     if (!apiOrigin || typeof apiOrigin !== "string") {
-      throw new Error("Missing verified customer API HTTPS origin");
+      throw new Error("Missing verified PWA API HTTPS origin");
     }
     const url = new URL(apiOrigin);
     if (url.protocol !== "https:" || url.origin !== apiOrigin ||
         url.username || url.password || url.search || url.hash || url.pathname !== "/") {
-      throw new Error("Customer API origin must be a bare validated HTTPS origin");
+      throw new Error("PWA API origin must be a bare validated HTTPS origin");
     }
     // The prebuilt deployment owns all routing; apps/customer/vercel.json is
     // not automatically injected into Vercel's .vercel/output/config.json.
@@ -37,5 +37,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   mkdirSync(resolve("apps", app, ".vercel/output"), { recursive: true });
   writeFileSync(output, JSON.stringify(config) + "\n");
   console.log("Prebuilt " + app + " routing verified" +
-    (app === "customer" ? " (secure same-origin session proxy configured)" : ""));
+    " (secure same-origin session proxy configured)");
 }
