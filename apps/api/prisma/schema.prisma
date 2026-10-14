@@ -89,6 +89,13 @@ model BranchMember {
 
 // Configurable per-branch weekly opening hours. Server stores local HH:mm in
 // Asia/Ho_Chi_Minh (0=Sunday). No fake schedule is created automatically.
+// Durable outbox for safe cleanup of replaced/deleted product images in R2.
+// An image is never deleted while a Product still references its key.
+model R2ImageCleanup {
+  key       String   @id @db.VarChar(512)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+}
+
 model BranchOpeningHour {
   branchId  String   @db.Uuid
   weekday   Int
