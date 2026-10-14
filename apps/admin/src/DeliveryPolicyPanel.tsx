@@ -131,7 +131,7 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
   </View>;
 }
 const st = StyleSheet.create({
-  panel: { gap: 13 },
+  panel: { gap: 10 },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 18, color: c.secondary },
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },

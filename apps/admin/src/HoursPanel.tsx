@@ -204,11 +204,11 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
 }
 
 const st = StyleSheet.create({
-  root: { paddingBottom: 8, gap: 12 },
+  root: { paddingBottom: 8, gap: 9 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 19, color: c.secondary },
   row: { borderBottomWidth: 1, borderBottomColor: c.line,
-    paddingBottom: 10, paddingTop: 2, gap: 8 },
+    paddingBottom: 7, paddingTop: 2, gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   weekday: { fontSize: font.body, color: c.ink, fontWeight: "700" },
   times: { flexDirection: "row", gap: 10, alignItems: "center" },
