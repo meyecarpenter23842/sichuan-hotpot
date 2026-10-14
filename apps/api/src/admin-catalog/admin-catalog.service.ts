@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
@@ -28,6 +28,9 @@ export class AdminCatalogService {
 
   async branches(authorization: string | undefined) {
     const principal = await this.auth.principal(authorization);
+    if (principal.role !== "OWNER" && principal.role !== "MANAGER") {
+      throw new ForbiddenException("STAFF_CATALOG_PERMISSION_REQUIRED");
+    }
     if (principal.role === "OWNER") {
       return this.prisma.database.branch.findMany({
         select: { id: true, name: true, code: true, isActive: true },
