@@ -20,8 +20,11 @@ export function HoursPanel({ catalog, token, reload }: {
   const [notice, setNotice] = useState("");
   useEffect(() => {
     setDays(draft(catalog.openingHours));
-    setError(""); setNotice("");
   }, [catalog.id, catalog.openingHours]);
+  // Refreshing the saved schedule must not erase its success feedback.
+  useEffect(() => {
+    setError(""); setNotice("");
+  }, [catalog.id]);
 
   function edit(weekday: number, patch: Partial<OpeningHour>) {
     setDays(items => items.map(x => x.weekday === weekday ? { ...x, ...patch } : x));
