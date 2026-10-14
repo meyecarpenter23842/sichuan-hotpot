@@ -14,11 +14,11 @@ on:
     types: [created]
 permissions:
   contents: read
-concurrency:
-  group: hotpot-production-vps-change
-  cancel-in-progress: false
 jobs:
   api:
+    concurrency:
+      group: hotpot-production-vps-change
+      cancel-in-progress: false
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842') ||
       (github.event_name == 'issue_comment' &&
