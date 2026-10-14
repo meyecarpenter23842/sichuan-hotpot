@@ -160,7 +160,7 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
   </View>;
 }
 const st = StyleSheet.create({
-  panel: { gap: 13, backgroundColor: c.white },
+  panel: { gap: 10, backgroundColor: c.white },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   hint: { fontSize: font.note, lineHeight: 19, color: c.secondary },
   coordinates: { flexDirection: "row", gap: 10 },

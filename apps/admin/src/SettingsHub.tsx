@@ -10,6 +10,7 @@ import { Icon, type IconName } from "./Icon";
 import { Action, Notice } from "./ui";
 import { playOrderChime } from "./order-notifications";
 import { c, font } from "./theme";
+import { adminDensity } from "./density";
 
 type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
@@ -51,7 +52,7 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
           accessibilityLabel={"Mở " + item.label}
           onPress={() => open(item.id)}
           style={({ pressed }) => [s.tile, !mobile && s.tileWide, pressed && s.pressed]}>
-          <View style={s.iconWrap}><Icon name={item.icon} size={25} color={c.red} /></View>
+          <View style={s.iconWrap}><Icon name={item.icon} size={22} color={c.red} /></View>
           <Text style={s.tileLabel}>{item.label}</Text>
           <Text style={s.tileHint} numberOfLines={2}>{item.hint}</Text>
         </Pressable>)}
@@ -133,17 +134,18 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
 }
 
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28, gap: 9 },
+  page: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 18, gap: 6 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
-  note: { fontSize: font.note, lineHeight: 19, color: c.secondary },
-  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5, marginTop: 12 },
-  tile: { width: "33.3333%", minHeight: 126, paddingHorizontal: 5, paddingVertical: 8,
-    alignItems: "center", gap: 6, justifyContent: "flex-start" },
+  note: { fontSize: font.note, lineHeight: 17, color: c.secondary },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4, marginTop: 5 },
+  tile: { width: "33.3333%", minHeight: adminDensity.settingTile,
+    paddingHorizontal: 4, paddingVertical: 5,
+    alignItems: "center", gap: 4, justifyContent: "flex-start" },
   tileWide: { width: "16.6667%" },
-  iconWrap: { height: 55, width: 55, alignItems: "center", justifyContent: "center",
-    borderRadius: 15, backgroundColor: c.soft },
-  tileLabel: { fontSize: font.body, fontWeight: "700", color: c.ink, textAlign: "center" },
-  tileHint: { fontSize: font.caption, lineHeight: 14, textAlign: "center", color: c.secondary },
+  iconWrap: { height: adminDensity.settingIcon, width: adminDensity.settingIcon,
+    alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: c.soft },
+  tileLabel: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: c.ink, textAlign: "center" },
+  tileHint: { fontSize: font.caption, lineHeight: 13, textAlign: "center", color: c.secondary },
   pressed: { opacity: 0.62 },
   overlay: { flex: 1, justifyContent: "flex-end",
     backgroundColor: "rgba(10, 16, 22, 0.48)" },
@@ -151,14 +153,14 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: c.white, width: "100%", maxHeight: "92%",
     borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: "hidden" },
   desktopSheet: { maxWidth: 590, maxHeight: "90%", borderRadius: 17 },
-  sheetHead: { minHeight: 57, paddingHorizontal: 17,
+  sheetHead: { minHeight: 48, paddingHorizontal: 12,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     borderBottomWidth: 1, borderBottomColor: c.line },
   sheetHeading: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   sheetTitle: { color: c.ink, fontSize: font.section, fontWeight: "800" },
   close: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   body: { minHeight: 0, flexShrink: 1 },
-  bodyContent: { padding: 16, paddingBottom: 22 },
+  bodyContent: { padding: 12, paddingBottom: 18 },
   footer: { borderTopWidth: 1, borderTopColor: c.line, padding: 12, flexDirection: "row",
     justifyContent: "flex-end" },
   footerButton: { minWidth: 88, minHeight: 44, paddingHorizontal: 18,

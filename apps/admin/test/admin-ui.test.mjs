@@ -28,7 +28,7 @@ test("Admin cards and text are compact per the approved reference", () => {
   assert.match(theme, /caption: 11, note: 12, body: 13, action: 13, section: 14, title: 17/);
   assert.match(app, /fontSize: font\.title/);
   assert.match(app, /fontSize: font\.section/);
-  assert.match(catalog, /minHeight: 65/);
+  assert.match(catalog, /minHeight: 58/);
   assert.doesNotMatch(catalog, /fontSize:\s*(?:2[3-9]|[3-9][0-9])/);
 });
 
