@@ -135,7 +135,9 @@ try {
   const ownerBranchesResponse = await fetch(api + "/admin/branches", { headers: ownerHeaders });
   assert.equal(ownerBranchesResponse.status, 200);
   const ownerBranches = await ownerBranchesResponse.json();
-  assert.deepEqual(new Set(ownerBranches.map(x => x.id)), new Set([branch.id, otherBranch.id]));
+  const allBranchIds = new Set((await db.branch.findMany({ select: { id: true } })).map(x => x.id));
+  assert.ok(allBranchIds.has(branch.id) && allBranchIds.has(otherBranch.id));
+  assert.deepEqual(new Set(ownerBranches.map(x => x.id)), allBranchIds);
   const ownerCatalogResponse = await fetch(api + "/admin/branches/" + otherBranch.id + "/catalog",
     { headers: ownerHeaders });
   assert.equal(ownerCatalogResponse.status, 200);
