@@ -13,9 +13,14 @@ test("customer prebuilt PWA proxies only the three POST session actions before S
   ]);
 });
 
-test("no session proxy is added to admin PWA", () => {
-  assert.deepEqual(buildPwaOutputConfig("admin"), {
-    version: 3, routes: [{ handle: "filesystem" }, { src: "/(.*)", dest: "/index.html" }],
+test("Admin PWA secures refresh through its own host-only same-origin cookie proxy", () => {
+  assert.deepEqual(buildPwaOutputConfig("admin", "https://api.example.com"), {
+    version: 3, routes: [
+      { src: "^/api/session/(start|refresh|logout)$", methods: ["POST"],
+        dest: "https://api.example.com/auth/browser/$1" },
+      { handle: "filesystem" },
+      { src: "/(.*)", dest: "/index.html" },
+    ],
   });
 });
 
