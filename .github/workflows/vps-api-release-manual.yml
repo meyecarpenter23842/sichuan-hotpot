@@ -227,6 +227,24 @@ jobs:
             echo "::error::Backend helper did not confirm requested SHA."; exit 1;
           }
           echo "VPS API release, exact SHA, live and ready: PASS"
+      - name: Enable and verify HTTPS WebSocket Upgrade with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key"
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST"             'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-realtime-nginx.py)" || {
+            echo "::error::Verified WebSocket nginx configuration blocked; nginx rolled back."
+            exit 1
+          }
+          grep -Eq '^realtime_https_upgrade=(PASS|ALREADY_READY)
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/deploy.key" "$RUNNER_TEMP/known_hosts"
+ <<< "$result" || exit 1
+          echo "Authenticated realtime HTTPS upgrade: PASS"
       - name: Remove temporary SSH credentials
         if: always()
         shell: bash
