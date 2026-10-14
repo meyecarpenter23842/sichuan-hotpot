@@ -65,6 +65,15 @@ jobs:
         run: |
           npm run build --workspace @hotpot/customer
           test -f apps/customer/dist/index.html
+      - name: Check independent Admin Expo source (P4.1)
+        run: |
+          npm run lint --workspace @hotpot/admin
+          npm run typecheck --workspace @hotpot/admin
+          npm run test --workspace @hotpot/admin
+      - name: Build Admin Expo Web (PWA)
+        run: |
+          npm run build --workspace @hotpot/admin
+          test -s apps/admin/dist/index.html
       - name: P2.1 browser auth QA against disposable NestJS/Postgres
         shell: bash
         timeout-minutes: 7
