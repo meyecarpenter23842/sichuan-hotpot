@@ -13,7 +13,7 @@ mkdirSync(output, { recursive: true });
 try {
   const user = await db.user.create({ data: { role: "CUSTOMER" } });
   const username = "address" + randomUUID().replaceAll("-", "").slice(0, 12);
-  const secret = randomUUID() + "Aa1";
+  const secret = "Qa123456"; // Customer login input is intentionally limited to 8 characters.
   await db.localCredential.create({ data: { userId: user.id,
     normalizedUsername: username, passwordHash: await hash(secret),
     verifiedEmail: username + "@example.test" } });
