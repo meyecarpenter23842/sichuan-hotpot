@@ -57,13 +57,19 @@ try {
   await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
   await page.getByRole("button", { name: "Xác nhận đơn" }).click();
   await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  // A state mutation is complete only after the server replies and the modal closes.
+  await page.getByRole("button", { name: "Đóng chi tiết đơn" }).waitFor({ state: "hidden" });
   await page.getByRole("tab", { name: "Bếp" }).click();
   await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
   await page.getByRole("button", { name: "Bắt đầu chế biến" }).click();
   await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  // A state mutation is complete only after the server replies and the modal closes.
+  await page.getByRole("button", { name: "Đóng chi tiết đơn" }).waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "Xem đơn " + shortId }).click();
   await page.getByRole("button", { name: "Báo món đã sẵn sàng" }).click();
   await page.getByRole("button", { name: "Xác nhận cập nhật" }).click();
+  // A state mutation is complete only after the server replies and the modal closes.
+  await page.getByRole("button", { name: "Đóng chi tiết đơn" }).waitFor({ state: "hidden" });
   assert.equal((await db.order.findUniqueOrThrow({ where: { id: operationalOrder.id } })).status, "READY");
   assert.equal(await db.orderStatusHistory.count({ where: { orderId: operationalOrder.id } }), 3);
   console.log("PASS P4: Admin accepts an order, kitchen prepares, then marks ready in real DB");
