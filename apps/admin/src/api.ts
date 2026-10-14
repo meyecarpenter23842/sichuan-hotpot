@@ -7,7 +7,8 @@ export interface Principal { id: string; role: StaffRole }
 export interface AuthTokens {
   accessToken: string; refreshToken: string; accessTokenExpiresInSeconds: number;
 }
-export interface Branch { id: string; code: string; name: string; isActive: boolean }
+export interface Branch { id: string; code: string; name: string; address: string | null;
+  latitude: string | number; longitude: string | number; isActive: boolean }
 export interface CatalogOption { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean }
 export type CatalogVariant = CatalogOption;
 export interface CatalogGroup {
