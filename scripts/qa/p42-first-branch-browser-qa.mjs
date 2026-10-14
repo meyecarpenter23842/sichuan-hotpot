@@ -69,6 +69,11 @@ try {
     await page.setViewportSize({ width, height: 780 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   }
+  // Leave the disposable QA branch closed so customer tests see only their own stores.
+  await page.getByRole("button", { name: "Tạm dừng chi nhánh" }).click();
+  await page.getByRole("button", { name: "Xác nhận đổi trạng thái" }).click();
+  await page.getByText("Đã tạm dừng chi nhánh.").waitFor();
+  assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, false);
   assert.deepEqual(errors, []);
   await context.close();
   console.log("PASS P4.2 first-branch onboarding / real policy / activation");
