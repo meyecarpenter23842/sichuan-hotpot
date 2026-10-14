@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -11,54 +11,184 @@ import {
 import { CatalogPanel } from "./src/CatalogPanel";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
-import { OrderQueuePanel } from "./src/OrderQueuePanel";
+import { OrderQueuePanel, type StaffOrder } from "./src/OrderQueuePanel";
+import { watchOrderEvents } from "./src/order-realtime";
 import { OrderAlertWatcher } from "./src/OrderAlertWatcher";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 
-type Tab = "overview" | "orders" | "kitchen" | "catalog" | "settings" | "account";
-const tabs: { id: Tab; label: string; icon: IconName }[] = [
-  { id: "overview", label: "Tổng quan", icon: "dashboard" },
-  { id: "orders", label: "Đơn hàng", icon: "orders" },
-  { id: "kitchen", label: "Bếp", icon: "kitchen" },
-  { id: "catalog", label: "Thực đơn", icon: "catalog" },
-  { id: "settings", label: "Thiết lập", icon: "settings" },
-  { id: "account", label: "Tài khoản", icon: "account" },
+type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account";
+const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
+  { id: "overview", label: "Tổng quan", shortLabel: "Tổng quan", icon: "dashboard" },
+  { id: "orders", label: "Đơn hàng", shortLabel: "Đơn", icon: "orders" },
+  { id: "kitchen", label: "Bếp", shortLabel: "Bếp", icon: "kitchen" },
+  { id: "catalog", label: "Thực đơn", shortLabel: "Món", icon: "catalog" },
+  { id: "delivery", label: "Giao hàng", shortLabel: "Giao", icon: "delivery" },
+  { id: "settings", label: "Thiết lập", shortLabel: "Thiết lập", icon: "settings" },
+  { id: "account", label: "Tài khoản", shortLabel: "Tài khoản", icon: "account" },
 ];
 function roleName(role: string): string {
   return role === "OWNER" ? "Chủ cửa hàng" : role === "KITCHEN" ? "Nhân viên bếp" :
     role === "DRIVER" ? "Nhân viên giao hàng" : "Quản lý chi nhánh";
 }
-function Overview({ catalog, onChangeTab }: { catalog: AdminCatalog; onChangeTab: (tab: Tab) => void }) {
-  const products = catalog.categories.flatMap(x => x.products);
-  const stock = products.filter(x => !x.isAvailable);
+const formatMoney = (value: number): string => value.toLocaleString("vi-VN") + "đ";
+
+function Overview({ catalog, token, branchId, onChangeTab }: {
+  catalog: AdminCatalog; token: string; branchId: string;
+  onChangeTab: (tab: Tab) => void;
+}) {
+  const [orders, setOrders] = useState<StaffOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncError, setSyncError] = useState("");
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const sequence = useRef(0);
+
+  const refresh = useCallback(async () => {
+    const id = ++sequence.current;
+    try {
+      const rows = await request<StaffOrder[]>("/admin/orders/" + branchId, token);
+      if (id !== sequence.current) return;
+      setOrders(rows);
+      setSyncError("");
+      setLastSync(new Date());
+    } catch (error) {
+      if (id === sequence.current) setSyncError(error instanceof Error ? error.message : "Không đồng bộ được đơn.");
+    } finally {
+      if (id === sequence.current) setLoading(false);
+    }
+  }, [branchId, token]);
+
+  useEffect(() => {
+    setOrders([]); setLoading(true); setLastSync(null); setSyncError("");
+    void refresh();
+    const stop = watchOrderEvents({
+      branchId, token, onReady: () => { void refresh(); },
+      onChange: () => { void refresh(); },
+    });
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") void refresh();
+    }, 10000);
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") void refresh();
+    });
+    return () => {
+      sequence.current++; stop(); clearInterval(timer); subscription.remove();
+    };
+  }, [refresh, token, branchId]);
+
+  const counts = {
+    pending: orders.filter(order => order.status === "PENDING").length,
+    preparing: orders.filter(order => ["CONFIRMED", "PREPARING"].includes(order.status)).length,
+    ready: orders.filter(order => order.status === "READY").length,
+  };
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+  const deliveredVnd = orders
+    .filter(order => order.status === "DELIVERED"
+      && new Date(order.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }) === today)
+    .reduce((sum, order) => sum + (order.totalVnd ?? 0), 0);
+  const metrics: { label: string; value: string; icon: IconName; tone: string; text: string; target: Tab }[] = [
+    { label: "Đơn mới", value: String(counts.pending), icon: "orders",
+      tone: "#FFE6E9", text: c.redDeep, target: "orders" },
+    { label: "Đang chuẩn bị", value: String(counts.preparing), icon: "kitchen",
+      tone: "#FFF1D6", text: "#8A510B", target: "kitchen" },
+    { label: "Chờ giao", value: String(counts.ready), icon: "delivery",
+      tone: "#DDECFC", text: "#1A548B", target: "delivery" },
+    { label: "Giá trị đã giao hôm nay", value: formatMoney(deliveredVnd), icon: "dashboard",
+      tone: "#E3F5E8", text: "#167442", target: "delivery" },
+  ];
+  const pending = orders.filter(order => order.status === "PENDING")
+    .sort((a,b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 3);
+  const confirm = async (order: StaffOrder) => {
+    if (confirming) return;
+    setConfirming(order.id);
+    setSyncError("");
+    try {
+      await request("/admin/orders/" + branchId + "/" + order.id + "/status",
+        token, "PATCH", { expectedStatus: "PENDING", toStatus: "CONFIRMED" });
+      await refresh();
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "Không xác nhận được đơn.");
+      await refresh();
+    } finally { setConfirming(null); }
+  };
   return <View style={styles.overview}>
-    <Text style={styles.sectionTitle}>Tổng quan cửa hàng</Text>
-    <Text style={styles.caption}>Thống kê trực tiếp từ thực đơn chi nhánh.</Text>
-    <View style={styles.stats}>
-      {[
-        ["Danh mục", catalog.categories.length],
-        ["Sản phẩm", products.length],
-        ["Tạm hết", stock.length],
-      ].map(([label, value]) =>
-        <View key={String(label)} style={styles.stat} accessibilityLabel={String(label) + ": " + value}>
-          <Text style={styles.statNumber}>{value}</Text>
-          <Text style={styles.statLabel}>{label}</Text>
-        </View>)}
-    </View>
-    <View style={styles.overviewList}>
-      <Text style={styles.sectionTitle}>Điều hành</Text>
-      <Pressable style={styles.overviewRow} accessibilityRole="button"
-        accessibilityLabel="Quản lý thực đơn" onPress={() => onChangeTab("catalog")}>
-        <View style={styles.overviewCopy}>
-          <Text style={styles.rowTitle}>Thực đơn & tồn kho</Text>
-          <Text style={styles.caption}>Giá bán, topping, size và tạm hết hàng</Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
+    <View style={styles.dashboardDateRow}>
+      <Text style={styles.dashboardDate}>◷  {new Date().toLocaleDateString("vi-VN", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric",
+      })}</Text>
+      <Pressable style={styles.dashboardRefresh} accessibilityRole="button"
+        accessibilityLabel="Làm mới tổng quan" onPress={() => void refresh()}>
+        <Text style={styles.refreshText}>{lastSync
+          ? "Cập nhật " + lastSync.toLocaleTimeString("vi-VN", {hour:"2-digit",minute:"2-digit"})
+          : "Chưa đồng bộ"} ↻</Text>
       </Pressable>
     </View>
+    {!!syncError && <Notice text={"Dữ liệu có thể đã cũ: " + syncError} error />}
+    <View style={styles.dashboardGrid}>
+      {metrics.map(metric => <Pressable key={metric.label}
+        accessibilityRole="button" accessibilityLabel={metric.label + ": " + metric.value}
+        onPress={() => onChangeTab(metric.target)}
+        style={[styles.dashboardMetric, { backgroundColor: metric.tone }]}>
+        <View style={styles.metricIcon}><Icon name={metric.icon} size={24} color={metric.text} /></View>
+        <View style={styles.metricCopy}>
+          <Text style={styles.metricLabel}>{metric.label}</Text>
+          <Text style={[styles.metricValue, { color: metric.text }]} adjustsFontSizeToFit
+            numberOfLines={1}>{loading ? "—" : metric.value}</Text>
+        </View>
+        <Text style={[styles.metricArrow,{color:metric.text}]}>›</Text>
+      </Pressable>)}
+    </View>
+    <View style={styles.dashboardSectionHead}>
+      <Text style={styles.dashboardSectionTitle}>Đơn mới cần xác nhận</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Xem tất cả đơn mới"
+        onPress={() => onChangeTab("orders")}>
+        <Text style={styles.dashboardLink}>Xem tất cả ({loading ? "—" : counts.pending})  ›</Text>
+      </Pressable>
+    </View>
+    {loading ? <ActivityIndicator color={c.red} style={{ padding: 35 }} /> :
+      pending.length === 0 ? <View style={styles.dashboardEmpty}>
+        <Icon name="orders" color={c.secondary} size={31} />
+        <Text style={styles.emptyTitle}>Chưa có đơn mới</Text>
+        <Text style={styles.caption}>Đơn mới sẽ xuất hiện ở đây khi khách đặt thành công.</Text>
+      </View> : pending.map(order => <View key={order.id} style={styles.dashboardOrder}>
+        <View style={styles.dashboardOrderTop}>
+          <Text style={styles.dashboardOrderId}>#{order.id.slice(0,8).toUpperCase()}</Text>
+          <View style={styles.newPill}><Text style={styles.newPillText}>Mới</Text></View>
+          <Text style={styles.orderDate}>{new Date(order.createdAt).toLocaleTimeString("vi-VN", {
+            hour: "2-digit", minute: "2-digit",
+          })}</Text>
+        </View>
+        <View style={styles.dashboardOrderItems}>
+          <View style={styles.productMark}><Icon name="kitchen" color={c.red} size={26} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {order.items.slice(0,2).map((item,i) => <Text key={i}
+              style={styles.orderItemLine} numberOfLines={1}>{item.quantity} × {item.productName}</Text>)}
+            {order.items.length > 2 && <Text style={styles.caption}>
+              + {order.items.length - 2} món khác
+            </Text>}
+          </View>
+          {order.totalVnd !== undefined &&
+            <Text style={styles.orderMoney}>{formatMoney(order.totalVnd)}</Text>}
+        </View>
+        <View style={styles.dashboardOrderActions}>
+          <Pressable accessibilityRole="button" onPress={() => onChangeTab("orders")}
+            style={styles.orderSecondaryButton}><Text style={styles.orderSecondaryText}>
+              Xem / từ chối
+            </Text></Pressable>
+          <Pressable accessibilityRole="button" disabled={confirming !== null}
+            onPress={() => void confirm(order)} style={styles.orderPrimaryButton}>
+            <Icon name="check" color={c.white} size={20} />
+            <Text style={styles.orderPrimaryText}>
+              {confirming === order.id ? "Đang xác nhận..." : "Xác nhận"}
+            </Text>
+          </Pressable>
+        </View>
+      </View>)}
+    <Text style={styles.dashboardFootnote}>Số liệu từ API theo chi nhánh · Không dùng dữ liệu mẫu.
+      Giá trị đã giao không đồng nghĩa tiền COD đã đối soát.</Text>
   </View>;
 }
 
