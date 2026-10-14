@@ -20,7 +20,8 @@ try {
   } });
   const username = "admin" + randomUUID().replaceAll("-", "").slice(0, 15);
   const password = "admin123";
-  const staff = await db.user.create({ data: { role: "MANAGER" } });
+  // Real branch managers can have global CUSTOMER role.
+  const staff = await db.user.create({ data: { role: "CUSTOMER" } });
   await db.localCredential.create({ data: { userId: staff.id,
     normalizedUsername: username, passwordHash: await hash(password),
     verifiedEmail: username + "@example.test" } });
