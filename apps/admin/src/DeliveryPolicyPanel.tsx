@@ -14,13 +14,13 @@ interface Policy {
 type NumericKey = "baseMeters" | "baseFeeVnd" | "extraStepMeters" |
   "extraStepFeeVnd" | "maxRoadMeters" | "minSubtotalVnd" | "freeDeliveryAtSubtotalVnd";
 const labels: { key: NumericKey; label: string }[] = [
-  { key: "baseMeters", label: "Số mét giao cơ bản" },
-  { key: "baseFeeVnd", label: "Phí giao cơ bản (VND)" },
-  { key: "extraStepMeters", label: "Bước phụ thu (mét)" },
-  { key: "extraStepFeeVnd", label: "Phụ thu mỗi bước (VND)" },
-  { key: "maxRoadMeters", label: "Khoảng cách đường tối đa (mét)" },
-  { key: "minSubtotalVnd", label: "Đơn hàng tối thiểu (VND)" },
-  { key: "freeDeliveryAtSubtotalVnd", label: "Miễn phí giao từ (VND, có thể để trống)" },
+  { key: "baseMeters", label: "Quãng đường cơ bản (km)" },
+  { key: "baseFeeVnd", label: "Phí giao cơ bản (đ)" },
+  { key: "extraStepMeters", label: "Mỗi bước phụ thu (km)" },
+  { key: "extraStepFeeVnd", label: "Phí mỗi bước (đ)" },
+  { key: "maxRoadMeters", label: "Phạm vi giao tối đa (km)" },
+  { key: "minSubtotalVnd", label: "Đơn hàng tối thiểu (đ)" },
+  { key: "freeDeliveryAtSubtotalVnd", label: "Miễn phí giao từ (đ, để trống nếu không áp dụng)" },
 ];
 const bounds: Record<NumericKey, [number, number]> = {
   baseMeters: [0, 100000], baseFeeVnd: [0, 10000000],
@@ -33,8 +33,13 @@ const blank: Record<NumericKey, string> = {
   maxRoadMeters: "", minSubtotalVnd: "", freeDeliveryAtSubtotalVnd: "",
 };
 
-export function DeliveryPolicyPanel({ token, branchId, active }: {
+const metersKeys: NumericKey[] = ["baseMeters", "extraStepMeters", "maxRoadMeters"];
+const showNumber = (key: NumericKey, value: number | null) =>
+  value == null ? "" : String(metersKeys.includes(key) ? value / 1000 : value);
+
+export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery", onDirtyChange }: {
   token: string; branchId: string; active: boolean;
+  mode?: "delivery" | "orders"; onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,13 +58,20 @@ export function DeliveryPolicyPanel({ token, branchId, active }: {
         setCurrent(value);
         setAccepting(value?.acceptingOrders ?? false);
         setNumbers(value ? Object.fromEntries(labels.map(({ key }) => [key,
-          value[key] == null ? "" : String(value[key])])) as Record<NumericKey, string>
+          showNumber(key, value[key])])) as Record<NumericKey, string>
           : { ...blank });
       })
       .catch(e => { if (live) setError(e instanceof Error ? e.message : "Không tải được phí giao."); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [branchId, token]);
+
+  useEffect(() => {
+    if (loading) return;
+    const changed = accepting !== (current?.acceptingOrders ?? false) ||
+      labels.some(({ key }) => numbers[key] !== (current ? showNumber(key, current[key]) : ""));
+    onDirtyChange?.(changed);
+  }, [numbers, accepting, loading, current, onDirtyChange]);
 
   async function save() {
     if (saving) return;
@@ -68,12 +80,14 @@ export function DeliveryPolicyPanel({ token, branchId, active }: {
       const raw = numbers[key].trim();
       if (key === "freeDeliveryAtSubtotalVnd" && raw === "") { payload[key] = null; continue; }
       const [min, max] = bounds[key];
-      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)) ||
-        Number(raw) < min || Number(raw) > max) {
+      const distance = metersKeys.includes(key);
+      const value = distance ? Math.round(Number(raw) * 1000) : Number(raw);
+      if (!(distance ? /^\d+(?:\.\d{1,3})?$/.test(raw) : /^\d+$/.test(raw)) ||
+        !Number.isSafeInteger(value) || value < min || value > max) {
         setError("Giá trị không hợp lệ tại: " + labels.find(x => x.key === key)?.label);
         return;
       }
-      payload[key] = Number(raw);
+      payload[key] = value;
     }
     if ((payload.baseMeters as number) > (payload.maxRoadMeters as number)) {
       setError("Khoảng cách cơ bản không được lớn hơn khoảng cách tối đa.");
@@ -90,28 +104,34 @@ export function DeliveryPolicyPanel({ token, branchId, active }: {
   }
 
   return <View style={st.panel}>
-    <Text style={st.title}>Nhận đơn & chính sách giao hàng</Text>
+    <Text style={st.title}>{mode === "delivery" ? "Chính sách giao hàng" : "Nhận đơn trực tuyến"}</Text>
     {loading ? <ActivityIndicator color={c.red} /> : <>
       {!current && <Notice text="Chưa cấu hình phí giao. Hệ thống không tự áp phí 0 đồng và chưa thể nhận đơn." />}
       {current && <Text style={st.note}>Phiên bản chính sách hiện tại: {current.version}</Text>}
-      {!active && <Notice text="Chi nhánh đang tạm dừng. Sau khi lưu giờ bán và phí giao, quay lại phần thông tin cửa hàng để kích hoạt." />}
-      <Text style={st.note}>Trạng thái nhận đơn (ghi nhận thành phiên bản mới khi nhấn Lưu)</Text>
-      <View style={st.row}>
-        <Pill label="Dừng nhận đơn" active={!accepting} onPress={() => setAccepting(false)} />
-        <Pill label="Nhận đơn" active={accepting} onPress={() => setAccepting(true)} />
-      </View>
-      {labels.map(({ key, label }) => <Field key={key} label={label}
-        numeric placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : "Nhập số nguyên"}
-        value={numbers[key]} onChangeText={v => setNumbers(old => ({ ...old, [key]: v }))} />)}
+      {!active && <Notice text="Chi nhánh chưa kích hoạt. Bật Hoạt động sau khi hoàn tất cấu hình giờ bán và phí giao." />}
+      {mode === "orders" ? <>
+        <Text style={st.note}>Bật nhận đơn chỉ khi cửa hàng có thể xử lý đơn mới. Thao tác này được lưu thành phiên bản chính sách mới.</Text>
+        <View style={st.row}>
+          <Pill label="Tạm dừng" active={!accepting} onPress={() => setAccepting(false)} />
+          <Pill label="Nhận đơn" active={accepting} onPress={() => setAccepting(true)} />
+        </View>
+      </> : <>
+        <Text style={st.note}>Nhập khoảng cách theo km; hệ thống lưu theo mét. Phí và điều kiện được lưu bằng VND nguyên.</Text>
+        {labels.map(({ key, label }) => <Field key={key} label={label}
+          numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
+          placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
+          value={numbers[key]} onChangeText={v => setNumbers(old => ({ ...old, [key]: v }))} />)}
+      </>}
+      {mode === "orders" && !current && <Notice error text="Cần thiết lập Phí giao trước khi bật nhận đơn." />}
       {!!error && <Notice text={error} error />}
       {!!success && <Notice text={success} />}
-      <Action disabled={saving} label={saving ? "Đang lưu..." : "Lưu chính sách giao hàng"}
+      <Action disabled={saving || (mode === "orders" && !current)} label={saving ? "Đang lưu..." : mode === "orders" ? "Lưu trạng thái nhận đơn" : "Lưu phí giao"}
         onPress={() => void save()} />
     </>}
   </View>;
 }
 const st = StyleSheet.create({
-  panel: { gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: c.line },
+  panel: { gap: 13 },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 18, color: c.secondary },
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
