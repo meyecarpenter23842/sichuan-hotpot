@@ -209,9 +209,14 @@ export function CatalogPanel({ catalog, token, reload }: {
             <Text style={st.categoryName}>{category.name}</Text>
             <Text style={st.sub}>{category.products.length} món</Text>
           </View>
-          <Action label="Sửa mục" secondary onPress={() =>
-            open("category", category.id, undefined, category)} />
-          <Action label="＋ Món" onPress={() => open("product", undefined, category.id)} />
+          <Pressable accessibilityRole="button" accessibilityLabel={"Sửa danh mục " + category.name}
+            style={st.categoryAction} onPress={() => open("category", category.id, undefined, category)}>
+            <Icon name="edit" size={19} color={c.secondary} />
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="＋ Món"
+            style={st.categoryAction} onPress={() => open("product", undefined, category.id)}>
+            <Icon name="plus" size={21} color={c.red} />
+          </Pressable>
         </View>
         {category.products.map(product => {
           const expanded = expandedId === product.id;
@@ -276,7 +281,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                 <Pressable accessibilityRole="button" style={st.optionAction}
                   accessibilityLabel={"Sửa size " + variant.name}
                   onPress={() => open("variant", variant.id, product.id, variant)}>
-                  <Text style={st.miniEditText}>Sửa</Text>
+                  <Icon name="edit" size={17} color={c.red} />
                 </Pressable>
               </View>)}
               <View style={st.detailHead}>
@@ -302,7 +307,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <Pressable accessibilityRole="button"
                     accessibilityLabel={"Sửa tùy chọn " + option.name}
                     style={st.optionAction} onPress={() => open("option", option.id, group.id, option)}>
-                    <Text style={st.miniEditText}>Sửa</Text>
+                    <Icon name="edit" size={17} color={c.red} />
                   </Pressable>
                 </View>)}
               </View>)}
@@ -384,11 +389,12 @@ const st = StyleSheet.create({
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 7, paddingVertical: 2 },
-  categoryBlock: { borderTopWidth: 7, borderTopColor: "#F5F6F8", marginHorizontal: -14,
+  categoryBlock: { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -14,
     backgroundColor: c.white },
   categoryHeading: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14,
     paddingVertical: 9, gap: 7 },
-  categoryTitle: { flex: 1, gap: 2 },
+  categoryTitle: { flex: 1, minWidth: 0, gap: 2 },
+  categoryAction: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
   categoryName: { color: c.ink, fontWeight: "800", fontSize: font.section },
   productWrap: { borderTopWidth: 1, borderTopColor: c.line },
   productRow: { flexDirection: "row", alignItems: "center", gap: 5,
