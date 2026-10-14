@@ -390,7 +390,7 @@ export default function AdminApp() {
 }
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: c.white },
-  shell: { flex: 1, width: "100%", maxWidth: 680, alignSelf: "center",
+  shell: { flex: 1, width: "100%", maxWidth: 1080, alignSelf: "center",
     backgroundColor: c.white, overflow: "hidden" },
   center: { flex: 1, justifyContent: "center", alignItems: "stretch",
     paddingHorizontal: 24, gap: 16, minHeight: 150 },
