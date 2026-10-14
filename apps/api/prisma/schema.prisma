@@ -70,6 +70,7 @@ model Branch {
   memberships       BranchMember[]
   categories        CatalogCategory[]
   deliveryPolicies  DeliveryPolicyVersion[]
+  openingHours      BranchOpeningHour[]
   orders            Order[]
 }
 
@@ -84,6 +85,20 @@ model BranchMember {
 
   @@unique([branchId, userId])
   @@index([userId])
+}
+
+// Configurable per-branch weekly opening hours. Server stores local HH:mm in
+// Asia/Ho_Chi_Minh (0=Sunday). No fake schedule is created automatically.
+model BranchOpeningHour {
+  branchId  String   @db.Uuid
+  weekday   Int
+  opensAt   String   @db.VarChar(5)
+  closesAt  String   @db.VarChar(5)
+  isClosed  Boolean  @default(false)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@id([branchId, weekday])
 }
 
 model DeliveryPolicyVersion {
