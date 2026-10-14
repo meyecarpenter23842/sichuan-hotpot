@@ -26,6 +26,8 @@ test("saved addresses are genuine account records, not hardcoded examples", () =
 test("three quick add actions initialize the actual validation and map modal", () => {
   assert.match(app, /Thêm Nhà riêng/);
   assert.match(app, /Thêm Văn phòng/);
+  assert.match(app, /title: "Thêm", label: "Khác", icon: "\+"/);
+  assert.match(app, /item\.title === "Thêm Nhà riêng"/);
   assert.match(app, /Lưu địa chỉ thường dùng/);
   assert.match(app, /onPress=\{\(\) => openAddressEditor\(addressReturnTo, item\.label\)\}/);
   assert.match(app, /setAddress\(\{ label, phone: address\.phone, line1: "", latitude: "", longitude: "" \}\)/);
@@ -39,4 +41,12 @@ test("address list uses divider rows and subtle selection, not nested heavy card
   assert.match(app, /borderBottomColor: "#EEF0F3"/);
   assert.match(app, /savedAddressSelected: \{ borderLeftColor: palette\.red/);
   assert.doesNotMatch(app, /savedAddressSelected: \{ borderColor: palette\.red, backgroundColor: palette\.softRed \}/);
+});
+
+test("address deletion requires explicit confirmation and 44px targets", () => {
+  assert.match(app, /setPendingDeleteAddress\(saved\)/);
+  assert.match(app, /visible=\{!!pendingDeleteAddress\}/);
+  assert.match(app, /accessibilityLabel="Xác nhận xóa địa chỉ"/);
+  assert.match(app, /addressPinButton: \{ width: 44, height: 44/);
+  assert.match(app, /addressSmallButton: \{ width: 44, minHeight: 44/);
 });
