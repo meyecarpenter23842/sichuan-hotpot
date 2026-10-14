@@ -21,16 +21,17 @@ class OrderActionInput {
 }
 
 @Controller("admin/orders")
-@Header("Cache-Control", "no-store")
 export class AdminOrdersController {
   constructor(private readonly orders: AdminOrdersService) {}
 
   @Get("branches")
+  @Header("Cache-Control", "no-store")
   branches(@Headers("authorization") auth: string | undefined) {
     return this.orders.branches(auth);
   }
 
   @Get(":branchId")
+  @Header("Cache-Control", "no-store")
   list(
     @Headers("authorization") auth: string | undefined,
     @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
@@ -43,6 +44,7 @@ export class AdminOrdersController {
   }
 
   @Get(":branchId/:orderId")
+  @Header("Cache-Control", "no-store")
   detail(
     @Headers("authorization") auth: string | undefined,
     @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
@@ -52,6 +54,7 @@ export class AdminOrdersController {
   }
 
   @Patch(":branchId/:orderId/status")
+  @Header("Cache-Control", "no-store")
   transition(
     @Headers("authorization") auth: string | undefined,
     @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
