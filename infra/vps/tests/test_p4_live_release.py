@@ -74,6 +74,32 @@ class LiveP4SafetyTests(unittest.TestCase):
                        "isolated_restore_failed"):
             self.assertEqual(self.invoke(set(p4.PREVIOUS), p4.GateError(reason)), (1, 0))
 
+    def test_checksum_streams_large_encrypted_backups(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "encrypted.dump.age"
+            data = b"private-encrypted-test-bytes" * 140000
+            source.write_bytes(data)
+            self.assertEqual(p4.sha256_file(source), hashlib.sha256(data).hexdigest())
+
+    def test_migration_failure_cannot_reuse_backup_receipt(self):
+        with tempfile.TemporaryDirectory() as d:
+            receipt = Path(d) / "proof.json"
+            receipt.write_text('{"consumed": false, "offsite_verified": true, "restore_verified": true}')
+            with (patch.object(p4.os, "geteuid", return_value=0),
+                  patch("builtins.open", mock_open()),
+                  patch.object(p4.fcntl, "flock"),
+                  patch.object(p4, "checked_source", return_value=({"mock": b"x"}, {})),
+                  patch.object(p4, "checked_history", return_value=set(p4.PREVIOUS)),
+                  patch.object(p4, "backup_config"),
+                  patch.object(p4, "backup_restore", return_value=receipt),
+                  patch.object(p4, "private_file", side_effect=lambda x: Path(x)),
+                  patch.object(p4, "migrate", side_effect=p4.GateError("post_commit_check_failed"))):
+                with self.assertRaises(p4.GateError):
+                    p4.main(["--release", "a" * 40, "b" * 64])
+            import json
+            self.assertTrue(json.loads(receipt.read_text())["consumed"])
+
     def test_legacy_empty_database_helper_is_not_used_for_p4(self):
         source = (Path(__file__).parents[1] / "hotpot-p4-operations.py").read_text()
         self.assertNotIn("offline_empty", source)
