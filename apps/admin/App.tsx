@@ -12,6 +12,8 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
 import { OrderQueuePanel } from "./src/OrderQueuePanel";
+import { OrderAlertWatcher } from "./src/OrderAlertWatcher";
+import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
@@ -73,6 +75,7 @@ export default function AdminApp() {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryInfo, setRecoveryInfo] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const [chimeEnabled, setChimeEnabled] = useState(false);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -89,6 +92,12 @@ export default function AdminApp() {
   const renewing = useRef(false);
   const retryCount = useRef(0);
   const [retryAt, setRetryAt] = useState(0);
+
+  useEffect(() => { void loadOrderChime().then(setChimeEnabled).catch(() => undefined); }, []);
+  const changeChime = (enabled: boolean) => {
+    setChimeEnabled(enabled);
+    void saveOrderChime(enabled).catch(() => setChimeEnabled(!enabled));
+  };
 
   const loadIdentity = useCallback(async (access: string) => {
     const user = await request<Principal>("/auth/me", access);
@@ -326,6 +335,8 @@ export default function AdminApp() {
           </>}
         </View>
       </KeyboardAvoidingView> : <View style={styles.shell}>
+        {branchId && <OrderAlertWatcher token={token} branchId={branchId}
+          role={branchRole} chimeEnabled={chimeEnabled} />}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={styles.headerText}>
@@ -363,7 +374,7 @@ export default function AdminApp() {
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
           </View> : (tab === "orders" || tab === "kitchen") && branchId ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active /> :
+              role={branchRole} mode={tab} active chimeEnabled={chimeEnabled} /> :
             tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
@@ -382,7 +393,8 @@ export default function AdminApp() {
               {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
-                onBranchSaved={branchSaved} />}
+                onBranchSaved={branchSaved} chimeEnabled={chimeEnabled}
+                onChimeChange={changeChime} />}
             </>
           )}
         </ScrollView>

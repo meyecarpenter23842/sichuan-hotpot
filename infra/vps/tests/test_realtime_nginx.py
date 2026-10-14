@@ -1,0 +1,49 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+path = Path(__file__).resolve().parents[1] / "hotpot-realtime-nginx.py"
+spec = importlib.util.spec_from_file_location("hotpot_realtime_nginx", path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class RealtimeNginxTests(unittest.TestCase):
+    def test_adds_only_one_tls_websocket_location(self):
+        original = """
+server {
+ listen 80;
+ location / { return 308 https://example.test$request_uri; }
+}
+server {
+ listen 443 ssl;
+ server_name example.test;
+ location / {
+  proxy_pass http://127.0.0.1:3000;
+ }
+}
+"""
+        result = module.upgraded(original)
+        self.assertIn("proxy_set_header Upgrade $http_upgrade;", result)
+        self.assertIn('proxy_set_header Connection "upgrade";', result)
+        self.assertIn("return 308", result)
+        self.assertEqual(result, module.upgraded(result))
+
+    def test_ambiguous_tls_proxies_refused(self):
+        conf = """
+server { listen 443 ssl; location / { proxy_pass http://127.0.0.1:3000; } }
+server { listen 443 ssl; location / { proxy_pass http://127.0.0.1:3000; } }
+"""
+        with self.assertRaises(module.RealtimeConfigError):
+            module.upgraded(conf)
+
+    def test_unknown_existing_realtime_refused(self):
+        conf = """
+server {
+ listen 443 ssl;
+ location /realtime { proxy_pass http://127.0.0.1:3000; }
+ location / { proxy_pass http://127.0.0.1:3000; }
+}
+"""
+        with self.assertRaises(module.RealtimeConfigError):
+            module.upgraded(conf)

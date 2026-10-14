@@ -5,6 +5,7 @@ import { Prisma, type OrderStatus, type Role } from "@prisma/client";
 import { assertOrderTransition, OrderTransitionError } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { OrderRealtimeService } from "./order-realtime.service";
 
 const operatingRoles = ["OWNER", "MANAGER", "KITCHEN"] as const;
 type OperationalRole = (typeof operatingRoles)[number];
@@ -28,7 +29,7 @@ const kitchenOrderSelect = {
 
 @Injectable()
 export class AdminOrdersService {
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService, private readonly realtime: OrderRealtimeService) {}
 
   private async role(authorization: string | undefined, branchId: string): Promise<{
     actorId: string; role: OperationalRole;
@@ -103,9 +104,9 @@ export class AdminOrdersService {
       throw new BadRequestException("CANCEL_REASON_REQUIRED");
     }
     try {
-      return await this.prisma.database.$transaction(async tx => {
+      const changed = await this.prisma.database.$transaction(async tx => {
         const order = await tx.order.findFirst({
-          where: { id: orderId, branchId }, select: { status: true },
+          where: { id: orderId, branchId }, select: { status: true, customerId: true },
         });
         if (!order) throw new NotFoundException("ORDER_NOT_FOUND");
         if (order.status !== input.expectedStatus) {
@@ -130,8 +131,13 @@ export class AdminOrdersService {
           data: { orderId, actorId: actor.actorId, fromStatus: order.status,
             toStatus: input.toStatus, reason },
         });
-        return { id: orderId, fromStatus: order.status, status: input.toStatus };
+        return { id: orderId, fromStatus: order.status, status: input.toStatus, customerId: order.customerId };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      void this.realtime.publish({
+        type: "order.status", orderId, branchId, customerId: changed.customerId,
+        status: changed.status,
+      });
+      return { id: changed.id, fromStatus: changed.fromStatus, status: changed.status };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
         throw new ConflictException("ORDER_CHANGED_REFRESH");
