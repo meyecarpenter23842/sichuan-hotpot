@@ -187,7 +187,22 @@ export class AdminCatalogService {
     if (orderCount || variantCount || groupCount) {
       throw new ConflictException("PRODUCT_HAS_HISTORY_OR_OPTIONS_USE_OUT_OF_STOCK");
     }
-    await this.change(() => this.prisma.database.product.delete({ where: { id } }));
+    await this.change(() => this.prisma.database.$transaction(async tx => {
+      const previous = await tx.product.findFirst({
+        where: { id, category: { branchId } }, select: { imageKey: true },
+      });
+      if (!previous) throw new NotFoundException("PRODUCT_NOT_FOUND");
+      const deleted = await tx.product.deleteMany({
+        where: { id, imageKey: previous.imageKey },
+      });
+      if (deleted.count !== 1) throw new ConflictException("PRODUCT_CHANGED_RETRY");
+      if (previous.imageKey?.startsWith("products-image/")) {
+        await tx.r2ImageCleanup.upsert({
+          where: { key: previous.imageKey },
+          create: { key: previous.imageKey }, update: {},
+        });
+      }
+    }));
     return { status: "deleted" };
   }
 
