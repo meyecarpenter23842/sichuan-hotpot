@@ -117,7 +117,7 @@ jobs:
             apps/customer/package.json apps/admin/package.json \
             packages/shared/package.json packages/shared/dist packages/ui/package.json
           sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
-      - name: Deliver artifact to pre-provisioned inbox (no migration)
+      - name: Verified artifact, live P4.2 backup/migration, then API activation
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +131,7 @@ jobs:
           # The helper must validate artifact checksum, app path, service identity, health and rollback.
           ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
-            'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming && sudo -n /usr/local/sbin/hotpot-api-release-manual --check-config' \
+            'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming' \
             >/dev/null 2>/dev/null || { echo "::error::VPS manual release hook/inbox not provisioned."; exit 1; }
           # SFTP/scp can be disabled on the hardened VPS. Stream through the
           # pinned SSH command channel to an unprivileged, unique temporary file.
@@ -152,9 +152,29 @@ jobs:
           test "$actual" = "$digest" || {
             echo "::error::VPS staging checksum mismatch; API unchanged."; exit 1;
           }
+          # Update only an explicitly recognized reviewed helper to support P4.2.
+          expected_previous="$(git show 86239ea349493bd3a5d2e7c1ef61ea16f3c5b8d9:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
           expected_helper="$(sha256sum infra/vps/hotpot-api-release-manual.py | awk '{print $1}')"
           actual_helper="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'sudo -n sha256sum /usr/local/sbin/hotpot-api-release-manual' 2>/dev/null | awk '{print $1}')" || exit 1
+          if [[ "$actual_helper" != "$expected_previous" && "$actual_helper" != "$expected_helper" ]]; then
+            echo "::error::Unknown VPS release helper; stopping before migration."
+            exit 1
+          fi
+          if [[ "$actual_helper" == "$expected_previous" && "$actual_helper" != "$expected_helper" ]]; then
+            helper_tmp="/home/ubuntu/.hotpot-helper-$REQUESTED_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.py"
+            ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+              "umask 077 && test ! -e '$helper_tmp' && cat > '$helper_tmp'" \
+              < infra/vps/hotpot-api-release-manual.py >/dev/null 2>/dev/null || exit 1
+            helper_digest="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+              "sha256sum '$helper_tmp'" 2>/dev/null | awk '{print $1}')"
+            test "$helper_digest" = "$expected_helper" || exit 1
+            ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+              "sudo -n install -o root -g root -m 0755 '$helper_tmp' /usr/local/sbin/hotpot-api-release-manual && rm -f '$helper_tmp'" \
+              >/dev/null 2>/dev/null || exit 1
+            actual_helper="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+              'sudo -n sha256sum /usr/local/sbin/hotpot-api-release-manual' 2>/dev/null | awk '{print $1}')"
+          fi
           test "$expected_helper" = "$actual_helper" || {
             echo "::error::Installed VPS release helper is not protected main; API unchanged."; exit 1;
           }
@@ -168,6 +188,32 @@ jobs:
               echo "::error::Protected release archive validation failed; API unchanged."; exit 1;
             }
           grep -Fqx 'archive_validation=PASS' <<< "$verify" || exit 1
+          # Live P4.2 migration requires R2 encrypted backup and isolated restore.
+          p42_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+            "sudo -n /usr/bin/python3 - --check '$REQUESTED_SHA' '$digest'" \
+            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
+              reason="$(printf '%s\n' "$p42_check" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+              echo "::error::P4.2 preflight blocked: $reason"
+              exit 1
+            }
+          grep -Fq 'p42_preflight=PASS;' <<< "$p42_check" || exit 1
+          p42_result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+            "sudo -n /usr/bin/python3 - --release '$REQUESTED_SHA' '$digest'" \
+            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
+              reason="$(printf '%s\n' "$p42_result" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+              echo "::error::P4.2 R2 backup/restore/migration blocked: $reason; API unchanged."
+              exit 1
+            }
+          if grep -Fqx 'p42_database_ready=PASS' <<< "$p42_result"; then
+            echo "R2 encrypted backup, isolated restore, live P4.2 migration: PASS"
+          elif grep -Fqx 'migration=ALREADY_APPLIED' <<< "$p42_result"; then
+            echo "Verified P4.2 schema already applied: PASS"
+          else
+            echo "::error::No verified P4.2 migration result."
+            exit 1
+          fi
+          git fetch -q origin main
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
           outcome="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" 2>&1)" || {
               reason="$(printf '%s\n' "$outcome" | sed -n 's/^release_error=\([a-z_]*\)$/\1/p' | tail -n 1)"
