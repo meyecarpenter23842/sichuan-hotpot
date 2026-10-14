@@ -51,3 +51,13 @@ test("opening hours remain explicitly unconfigured until operator saves", () => 
   assert.match(hours, /method|PUT/);
   assert.match(hours, /HH:mm/);
 });
+
+test("Admin recovery requests a real backend Resend OTP and accepts OWNER longer passwords", () => {
+  assert.match(app, /request\("\/auth\/password\/request-code"/);
+  assert.match(app, /request\("\/auth\/password\/reset"/);
+  assert.match(app, /label="Quên mật khẩu\?"/);
+  assert.match(app, /label="Mã xác minh \(6 số\)"/);
+  assert.match(app, /label="Mật khẩu mới"/);
+  assert.match(app, /recoveryPassword\.length > 128/);
+  assert.doesNotMatch(app, /Set-Cookie:.*password/i);
+});

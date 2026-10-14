@@ -24,7 +24,9 @@ class ConfirmCodeInput {
   code!: string;
 }
 class PasswordResetInput extends ConfirmCodeInput {
-  @IsString() @MinLength(6) @MaxLength(8)
+  // Customer passwords remain 6-8; OWNER resets accept strong, longer passwords.
+  // The AuthService checks the account role before applying its password policy.
+  @IsString() @MinLength(6) @MaxLength(128)
   password!: string;
 }
 class EmailOnlyInput {
