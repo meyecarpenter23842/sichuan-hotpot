@@ -208,6 +208,7 @@ function CustomerApp() {
   const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
+  const [pendingDeleteAddress, setPendingDeleteAddress] = useState<SavedAddress | null>(null);
   const [addressErrorText, setAddressErrorText] = useState("");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const addressBeforeModal = useRef<AddressDraft | null>(null);
@@ -424,6 +425,7 @@ function CustomerApp() {
     refreshFailures.current = 0;
     setSavedAddresses([]);
     setSelectedAddressId(null);
+    setPendingDeleteAddress(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
     const cleared = await Promise.allSettled([
@@ -599,7 +601,7 @@ function CustomerApp() {
             <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
               style={styles.addressSmallButton} disabled={addressSaving}
               accessibilityState={{ disabled: addressSaving }}
-              onPress={() => void deleteSavedAddress(saved)}>
+              onPress={() => { setAddressErrorText(""); setPendingDeleteAddress(saved); }}>
               <Text style={styles.addressDeleteGlyph}>Xóa</Text>
             </Pressable>
           </View>
@@ -624,6 +626,7 @@ function CustomerApp() {
           latitude: replacement.latitude, longitude: replacement.longitude }
           : { ...old, line1: "", latitude: "", longitude: "" });
       }
+      setPendingDeleteAddress(null);
       setNotice("Đã xóa địa chỉ đã lưu.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
@@ -1150,7 +1153,7 @@ function CustomerApp() {
               {([
                 { title: "Thêm Nhà riêng", label: "Nhà", icon: "⌂", note: "" },
                 { title: "Thêm Văn phòng", label: "Công ty", icon: "▣", note: "" },
-                { title: "Thêm", label: "Nhà", icon: "+", note: "Lưu địa chỉ thường dùng" },
+                { title: "Thêm", label: "Khác", icon: "+", note: "Lưu địa chỉ thường dùng" },
               ] as const).map(item => (
                 <Pressable key={item.title} accessibilityRole="button"
                   accessibilityLabel={item.title === "Thêm" ? "＋ Thêm địa chỉ mới" : "Thêm địa chỉ " + item.label}
@@ -1158,7 +1161,7 @@ function CustomerApp() {
                     pressed && styles.addressRowPressed]}
                   onPress={() => openAddressEditor(addressReturnTo, item.label)}>
                   <View style={styles.addressQuickIconCircle}>
-                    {item.label === "Nhà"
+                    {item.title === "Thêm Nhà riêng"
                       ? <HotpotNavIcon name="home" size={21} />
                       : <Text style={styles.addressQuickIcon}>{item.icon}</Text>}
                   </View>
@@ -1285,6 +1288,31 @@ function CustomerApp() {
             </View>}
           </View>
         )}
+        <Modal visible={!!pendingDeleteAddress} transparent animationType="fade"
+          onRequestClose={() => { if (!addressSaving) setPendingDeleteAddress(null); }}>
+          <View style={styles.deleteModalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Xóa địa chỉ đã lưu?</Text>
+              <Text style={styles.deleteModalCopy}>
+                {pendingDeleteAddress?.label} sẽ bị xóa khỏi tài khoản. Bạn có thể thêm lại sau.
+              </Text>
+              {!!addressErrorText && <Notice message={addressErrorText} error />}
+              <View style={styles.deleteModalActions}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Hủy xóa địa chỉ"
+                  disabled={addressSaving} style={styles.deleteCancelAction}
+                  onPress={() => { setPendingDeleteAddress(null); setAddressErrorText(""); }}>
+                  <Text style={styles.deleteCancelText}>Hủy</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Xác nhận xóa địa chỉ"
+                  disabled={addressSaving} style={styles.deleteConfirmAction}
+                  onPress={() => { if (pendingDeleteAddress) void deleteSavedAddress(pendingDeleteAddress); }}>
+                  {addressSaving ? <ActivityIndicator size="small" color="#FFFFFF" /> :
+                    <Text style={styles.deleteConfirmText}>Xóa địa chỉ</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
         <Modal visible={addressModalOpen} transparent animationType="slide"
           onRequestClose={closeAddressEditor}>
           <KeyboardAvoidingView style={styles.addressModalBackdrop}
@@ -1406,6 +1434,19 @@ const styles = StyleSheet.create({
   logoutButton: { borderColor: palette.red, borderWidth: 1, backgroundColor: palette.softRed,
     minHeight: 48, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   logoutText: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
+  deleteModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(17,24,39,0.48)", paddingHorizontal: 20 },
+  deleteModalCard: { width: "100%", maxWidth: 410, padding: 19, borderRadius: 18,
+    backgroundColor: palette.white, gap: 12 },
+  deleteModalTitle: { fontSize: 17, fontWeight: "800", color: palette.text },
+  deleteModalCopy: { fontSize: 13, lineHeight: 20, color: palette.muted },
+  deleteModalActions: { flexDirection: "row", gap: 10, marginTop: 7 },
+  deleteCancelAction: { flex: 1, minHeight: 46, alignItems: "center",
+    justifyContent: "center", borderRadius: 11, borderWidth: 1, borderColor: palette.line },
+  deleteCancelText: { fontSize: 14, fontWeight: "700", color: palette.text },
+  deleteConfirmAction: { flex: 1, minHeight: 46, alignItems: "center",
+    justifyContent: "center", borderRadius: 11, backgroundColor: palette.red },
+  deleteConfirmText: { fontSize: 14, fontWeight: "800", color: palette.white },
   addressModalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.45)",
     justifyContent: "center", alignItems: "center", paddingHorizontal: 12, paddingVertical: 20 },
   addressModalSheet: { width: "100%", maxWidth: 540, maxHeight: "94%", backgroundColor: palette.white,
@@ -1557,9 +1598,9 @@ const styles = StyleSheet.create({
   addressCardLine: { color: "#636C77", fontSize: 12, lineHeight: 18 },
   addressRowActions: { flexDirection: "row", alignItems: "center" },
   addressRowPressed: { opacity: 0.7 },
-  addressPinButton: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
+  addressPinButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   addressPinGlyph: { fontSize: 25, color: palette.red },
-  addressSmallButton: { width: 36, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  addressSmallButton: { width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   addressDeleteGlyph: { fontSize: 12, fontWeight: "700", color: "#9B5A5E" },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
