@@ -383,12 +383,6 @@ export default function AdminApp() {
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
                 onBranchSaved={branchSaved} />}
-              {tab === "account" && <View style={styles.account}>
-                <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
-                <Text style={styles.rowTitle}>{principal && roleName(principal.role)}</Text>
-                <Text style={styles.caption}>Dữ liệu được giới hạn theo vai trò và chi nhánh trên API.</Text>
-                <Action label="Đăng xuất" dangerous onPress={() => void signOut()} />
-              </View>}
             </>
           )}
         </ScrollView>
