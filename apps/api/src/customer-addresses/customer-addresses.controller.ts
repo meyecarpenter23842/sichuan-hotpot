@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException,
-  Get, Headers, NotFoundException, Param, ParseUUIDPipe, Post,
+  Get, Headers, NotFoundException, Param, ParseUUIDPipe, Patch, Post,
 } from "@nestjs/common";
 import { IsString, Length, Matches } from "class-validator";
 import { AuthService } from "../auth/auth.service";
@@ -68,6 +68,36 @@ export class CustomerAddressesController {
       await tx.user.update({ where: { id: userId }, data: { phoneE164: phone } });
       return { id: row.id, label: row.label, line1: row.line1,
         latitude: row.latitude.toString(), longitude: row.longitude.toString() };
+    });
+  }
+
+
+  @Patch(":addressId")
+  async update(@Headers("authorization") authorization: string | undefined,
+               @Param("addressId", new ParseUUIDPipe({ version: "4" })) addressId: string,
+               @Body() input: CreateAddressInput) {
+    const userId = await this.customerId(authorization);
+    const latitude = Number(input.latitude), longitude = Number(input.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+        || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      throw new BadRequestException("Invalid delivery coordinates");
+    }
+    const label = input.label.trim(), line1 = input.line1.trim();
+    if (!label || line1.length < 8) throw new BadRequestException("Invalid address label or street");
+    const phone = input.phone.startsWith("0") ? "+84" + input.phone.slice(1) : input.phone;
+    // Update only this customer's existing record. Never create a duplicate during edit.
+    return this.prisma.database.$transaction(async tx => {
+      const changed = await tx.address.updateMany({
+        where: { id: addressId, userId },
+        data: { label, line1, latitude: input.latitude, longitude: input.longitude },
+      });
+      if (changed.count !== 1) throw new NotFoundException("Address not found");
+      await tx.user.update({ where: { id: userId }, data: { phoneE164: phone } });
+      const row = await tx.address.findFirstOrThrow({
+        where: { id: addressId, userId },
+        select: { id: true, label: true, line1: true, latitude: true, longitude: true },
+      });
+      return { ...row, latitude: row.latitude.toString(), longitude: row.longitude.toString() };
     });
   }
 
