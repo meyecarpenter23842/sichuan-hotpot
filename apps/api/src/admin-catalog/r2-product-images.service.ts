@@ -2,7 +2,7 @@ import {
   BadRequestException, ConflictException, Injectable, NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 
@@ -58,7 +58,7 @@ export function signedR2Url(method: "PUT" | "HEAD", key: string, now = new Date(
   return "https://" + host + path + "?" + query + "&X-Amz-Signature=" + signature;
 }
 function requireSha256(value: string): string {
-  return createHmac("sha256", "").update(value).digest("hex");
+  return createHash("sha256").update(value).digest("hex");
 }
 
 @Injectable()
