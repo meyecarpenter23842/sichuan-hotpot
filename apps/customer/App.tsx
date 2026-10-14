@@ -180,7 +180,7 @@ function CustomerApp() {
   const [catalogError, setCatalogError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
@@ -268,7 +268,7 @@ function CustomerApp() {
   }, []);
 
   useEffect(() => {
-    if (screen !== "home" && screen !== "menu") return;
+    if (!["home", "menu", "detail", "cart"].includes(screen)) return;
     const refreshIfVisible = () => {
       if (Platform.OS === "web"
         ? typeof document !== "undefined" && document.visibilityState === "visible"
@@ -711,7 +711,7 @@ function CustomerApp() {
   }
 
   function openProduct(product: Product) {
-    setSelectedProduct(product);
+    setSelectedProductId(product.id);
     setSelectedVariantId(null);
     setSelectedQuantity(1);
     setSelectedModifierIds([]);
@@ -741,6 +741,7 @@ function CustomerApp() {
     () => new Map(products.map(product => [product.id, product])),
     [products],
   );
+  const selectedProduct = selectedProductId ? productsById.get(selectedProductId) ?? null : null;
   const filteredCategories = useMemo(() => (
     menu?.categories.filter(cat => !categoryId || categoryId === cat.id)
       .map(cat => ({
@@ -1018,7 +1019,10 @@ function CustomerApp() {
           onReorder={reorder} />;
       case "detail": {
         const item = selectedProduct;
-        if (!item) return <Notice message="Không tìm thấy món. Vui lòng chọn lại." error />;
+        if (!item) return <View style={styles.section}>
+          <Notice message="Món vừa thay đổi hoặc chi nhánh đã ngừng bán. Vui lòng chọn lại từ thực đơn." error />
+          <Button label="Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
+        </View>;
         const variant = item.variants.find(v => v.id === selectedVariantId);
         const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0) + selectedModifierPrice(item, selectedModifierIds);
         return (
