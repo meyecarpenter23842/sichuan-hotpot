@@ -15,6 +15,8 @@ test("independent Admin app uses real sign-in and branch-scoped role checks", ()
   assert.doesNotMatch(app, /user\.role !== "OWNER" && user\.role !== "MANAGER"/);
   assert.match(app, /"\/admin\/branches"/);
   assert.match(app, /request<AuthTokens>\("\/auth\/login"/);
+  assert.match(app, /placeholder="Nhập mật khẩu"/);
+  assert.doesNotMatch(app, /placeholder="6–8 ký tự"/);
   assert.match(app, /refreshSession/);
   assert.match(app, /forgetSession/);
   assert.match(api, /Platform\.OS === "web"/);

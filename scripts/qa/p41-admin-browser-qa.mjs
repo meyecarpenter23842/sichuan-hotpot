@@ -93,6 +93,68 @@ try {
   assert.deepEqual(errors, []);
   console.log("PASS: Admin role-based sign-in, CRUD, stock, size, topping, hours, 320/360/390/428");
 
+  // Exercise real OWNER and branch-scoped MANAGER permissions on disposable CI DB only.
+  // The Admin login endpoint intentionally accepts passwords longer than the
+  // separate 6–8 character CUSTOMER registration rule.
+  const otherBranch = await db.branch.create({ data: {
+    code: "OWN" + randomUUID().replaceAll("-", "").slice(0, 16),
+    name: "Chi nhánh Owner QA", latitude: "10.2345678", longitude: "106.8765432",
+  } });
+  const managerLogin = await fetch(api + "/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  assert.equal(managerLogin.status, 201);
+  const managerTokens = await managerLogin.json();
+  const managerHeaders = { Authorization: "Bearer " + managerTokens.accessToken };
+  const managerBranchesResponse = await fetch(api + "/admin/branches", { headers: managerHeaders });
+  assert.equal(managerBranchesResponse.status, 200);
+  const managerBranches = await managerBranchesResponse.json();
+  assert.deepEqual(managerBranches.map(x => x.id), [branch.id]);
+  const deniedOtherBranch = await fetch(api + "/admin/branches/" + otherBranch.id + "/catalog",
+    { headers: managerHeaders });
+  assert.equal(deniedOtherBranch.status, 403);
+
+  const ownerUsername = "owner" + randomUUID().replaceAll("-", "").slice(0, 15);
+  const ownerPassword = "owner9!xZ"; // CI-only nine-character fixture, never a production credential.
+  assert.equal(ownerPassword.length, 9);
+  const owner = await db.user.create({ data: { role: "OWNER" } });
+  await db.localCredential.create({ data: { userId: owner.id,
+    normalizedUsername: ownerUsername, passwordHash: await hash(ownerPassword),
+    verifiedEmail: ownerUsername + "@example.test" } });
+  const ownerLogin = await fetch(api + "/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: ownerUsername, password: ownerPassword }),
+  });
+  assert.equal(ownerLogin.status, 201);
+  const ownerTokens = await ownerLogin.json();
+  const ownerHeaders = { Authorization: "Bearer " + ownerTokens.accessToken };
+  const ownerMeResponse = await fetch(api + "/auth/me", { headers: ownerHeaders });
+  assert.equal(ownerMeResponse.status, 200);
+  assert.equal((await ownerMeResponse.json()).role, "OWNER");
+  const ownerBranchesResponse = await fetch(api + "/admin/branches", { headers: ownerHeaders });
+  assert.equal(ownerBranchesResponse.status, 200);
+  const ownerBranches = await ownerBranchesResponse.json();
+  const allBranchIds = new Set((await db.branch.findMany({ select: { id: true } })).map(x => x.id));
+  assert.ok(allBranchIds.has(branch.id) && allBranchIds.has(otherBranch.id));
+  assert.deepEqual(new Set(ownerBranches.map(x => x.id)), allBranchIds);
+  const ownerCatalogResponse = await fetch(api + "/admin/branches/" + otherBranch.id + "/catalog",
+    { headers: ownerHeaders });
+  assert.equal(ownerCatalogResponse.status, 200);
+
+  const ownerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ownerPage = await ownerContext.newPage();
+  await ownerPage.goto(web, { waitUntil: "domcontentloaded" });
+  await ownerPage.getByRole("textbox", { name: "Tên đăng nhập" }).fill(ownerUsername);
+  await ownerPage.getByRole("textbox", { name: "Mật khẩu" }).fill(ownerPassword);
+  await ownerPage.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  await ownerPage.getByText("Admin · Chủ cửa hàng").waitFor();
+  await ownerPage.getByRole("button", { name: "Đổi chi nhánh" }).click();
+  await ownerPage.getByRole("button", { name: "Chọn chi nhánh Chi nhánh Owner QA" }).click();
+  await ownerPage.getByText("Chi nhánh Owner QA").first().waitFor();
+  await ownerContext.close();
+  console.log("PASS: nine-character OWNER sign-in, both branches; MANAGER denied other branch");
+
   const forbidden = await db.user.create({ data: { role: "CUSTOMER" } });
   const customerUsername = "customer" + randomUUID().replaceAll("-", "").slice(0, 12);
   await db.localCredential.create({ data: { userId: forbidden.id,
