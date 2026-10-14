@@ -18,6 +18,6 @@ test("PWA and Android use real draggable pins with manual coordinate fallback", 
 test("draft address modal preserves existing selection on cancel, selects only after save", () => {
   assert.match(address, /addressBeforeModal\.current = address/);
   assert.match(address, /if \(addressBeforeModal\.current\) setAddress\(addressBeforeModal\.current\)/);
-  assert.match(address, /setSelectedAddressId\(created\.id\)/);
+  assert.match(address, /setSelectedAddressId\(saved\.id\)/);
   assert.match(address, /setAddressModalOpen\(false\)/);
 });
