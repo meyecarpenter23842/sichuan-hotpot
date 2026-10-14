@@ -152,7 +152,7 @@ export default function AdminApp() {
     setRecoveryBusy(true); setAuthError(""); setRecoveryInfo("");
     try {
       const email = recoveryEmail.trim().toLowerCase();
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         setAuthError("Email không hợp lệ."); return;
       }
       if (recoveryMode === "request") {
