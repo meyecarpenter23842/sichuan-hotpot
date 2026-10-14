@@ -20,6 +20,7 @@ class OwnerReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("StrictHostKeyChecking=yes", workflow)
         self.assertIn("persist-credentials: false", workflow)
         self.assertIn("cat > '$remote_tmp'", workflow)
+        self.assertIn('$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tgz', workflow)
         self.assertNotIn('scp -P "$VPS_PORT"', workflow)
         self.assertIn('test "$actual" = "$digest"', workflow)
         self.assertIn('test "$expected_helper" = "$actual_helper"', workflow)
