@@ -61,3 +61,10 @@ test("Admin recovery requests a real backend Resend OTP and accepts OWNER longer
   assert.match(app, /recoveryPassword\.length > 128/);
   assert.doesNotMatch(app, /Set-Cookie:.*password/i);
 });
+
+test("401 from Admin login is incorrect credentials, while session refresh remains expired", () => {
+  assert.match(api, /path === "\/auth\/login"/);
+  assert.match(api, /Tên đăng nhập hoặc mật khẩu không đúng/);
+  assert.match(api, /response\.status === 401 \? "Phiên đăng nhập đã hết hạn\."/);
+  assert.match(api, /\bwebSession\b/);
+});

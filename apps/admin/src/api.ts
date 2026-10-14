@@ -66,10 +66,15 @@ export async function request<T>(path: string, token?: string, method = "GET",
     const data: unknown = await response.json().catch(() => null);
     const serverMessage = data && typeof data === "object" && "message" in data
       && typeof data.message === "string" ? data.message : null;
-    throw new AdminApiError(serverMessage ?? (
-      response.status === 401 ? "Phiên đăng nhập đã hết hạn." :
-      response.status === 403 ? "Tài khoản không có quyền quản trị chi nhánh này." :
-      "Yêu cầu thất bại (" + response.status + ")."), response.status);
+    // Login 401 means invalid credentials, NOT an expired session.
+    // Reserve the session-expired message for authenticated refresh/API calls.
+    const message = response.status === 401 && path === "/auth/login"
+      ? "Tên đăng nhập hoặc mật khẩu không đúng."
+      : serverMessage ?? (
+        response.status === 401 ? "Phiên đăng nhập đã hết hạn." :
+        response.status === 403 ? "Tài khoản không có quyền quản trị chi nhánh này." :
+        "Yêu cầu thất bại (" + response.status + ").");
+    throw new AdminApiError(message, response.status);
   }
   return response.json() as Promise<T>;
 }

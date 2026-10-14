@@ -7,6 +7,18 @@ export function buildPwaOutputConfig(app, apiOrigin) {
     throw new Error("Invalid PWA target");
   }
   const routes = [];
+  if (app === "admin") {
+    // Prebuilt Vercel deployments have immutable *.vercel.app URLs. They are
+    // NOT API CORS origins: send browsers to the canonical, allowlisted Admin
+    // hostname before the PWA, browser cookie proxy or Expo assets execute.
+    // Build Output API v3 routes support host matchers and 307 Location.
+    routes.push({
+      src: "^/(.*)$",
+      has: [{ type: "host", value: { suf: ".vercel.app" } }],
+      status: 307,
+      headers: { Location: "https://admin.bepsi.click/$1" },
+    });
+  }
   if (app === "customer" || app === "admin") {
     if (!apiOrigin || typeof apiOrigin !== "string") {
       throw new Error("Missing verified PWA API HTTPS origin");
