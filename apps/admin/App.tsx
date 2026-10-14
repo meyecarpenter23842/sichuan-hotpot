@@ -96,7 +96,7 @@ export default function AdminApp() {
     // Branch membership can grant MANAGER even when the global role is CUSTOMER.
     // The backend enforces OWNER/MANAGER permissions for every Admin API.
     const available = await request<Branch[]>("/admin/branches", access);
-    if (available.length === 0) {
+    if (available.length === 0 && user.role !== "OWNER") {
       throw new AdminApiError("Tài khoản chưa được cấp quyền quản trị chi nhánh.", 403);
     }
     setPrincipal(user);
@@ -331,7 +331,9 @@ export default function AdminApp() {
           contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
           {branches.length === 0 ? <View style={styles.center}>
-            <Notice text="Chưa được cấp quyền quản lý chi nhánh nào. Chủ cửa hàng cần cấu hình phân quyền trên máy chủ." error />
+            <Notice text={principal?.role === "OWNER"
+              ? "Chưa có chi nhánh. Cần cấu hình chi nhánh đầu tiên trước khi quản lý thực đơn."
+              : "Chưa được cấp quyền quản lý chi nhánh nào. Chủ cửa hàng cần cấu hình phân quyền trên máy chủ."} error />
           </View> : loading && !catalog ? <View style={styles.center}>
             <ActivityIndicator color={c.red} />
             <Text style={styles.caption}>Đang tải dữ liệu chi nhánh...</Text>
