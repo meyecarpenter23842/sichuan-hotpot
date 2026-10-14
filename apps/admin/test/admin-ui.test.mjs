@@ -94,3 +94,22 @@ test("branch setup locates only after tapping GPS and keeps manually editable co
   assert.match(branch, /disabled=\{saving \|\| locating\}/);
   assert.match(pkg, /"expo-location": "~19.0.8"/);
 });
+
+test("hours are chosen from a mobile picker rather than manually typed", () => {
+  assert.match(hours, /accessibilityLabel=\{"Giờ mở " \+ weekdays\[day\.weekday\]\}/);
+  assert.match(hours, /accessibilityLabel=\{"Giờ đóng " \+ weekdays\[day\.weekday\]\}/);
+  assert.match(hours, /accessibilityLabel=\{"Chọn giờ " \+ hour\}/);
+  assert.match(hours, /accessibilityLabel=\{"Chọn phút " \+ minute\}/);
+  assert.match(hours, /"Áp dụng giờ"/);
+  assert.match(hours, /<Modal transparent visible=\{!!picker\}/);
+  assert.doesNotMatch(hours, /<TextInput/);
+});
+test("freshly opened weekdays do not retain invalid midnight-only ranges", () => {
+  assert.match(hours, /const needsHours = !hhmm\.test\(day\.opensAt\)/);
+  assert.match(hours, /isClosed: false, opensAt: "08:00", closesAt: "21:00"/);
+  assert.match(hours, /if \(day\.isClosed\) return null;/);
+  assert.match(hours, /days\.find\(x => validDay\(x\) !== null\)/);
+  assert.match(hours, /weekdays\[invalid\.weekday\] \+ ": " \+ validDay\(invalid\)/);
+  assert.match(hours, /setError\(""\); setNotice\(""\)/);
+  assert.match(hours, /"PUT", \{ days \}/);
+});
