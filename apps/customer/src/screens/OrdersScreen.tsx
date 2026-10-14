@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
+import { watchCustomerOrderEvents } from "../order-realtime";
 import { palette, typeScale } from "../theme";
 import { actionDepth } from "../components/action-depth";
 import { vnd } from "../validation";
@@ -68,6 +69,13 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
   }, [focusOrderId, accessToken, openOrder]);
 
   const detailId = detail?.id ?? null;
+  useEffect(() => {
+    if (!accessToken) return;
+    return watchCustomerOrderEvents(accessToken, () => {
+      if (selectedOrderId.current) void openOrder(selectedOrderId.current, true);
+      else void load(true);
+    });
+  }, [accessToken, load, openOrder]);
   useEffect(() => {
     if (!accessToken) return;
     const refresh = () => {
