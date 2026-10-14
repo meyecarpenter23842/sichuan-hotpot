@@ -141,6 +141,7 @@ def apply(key):
     backup = API_ENV.with_name("api.env.resend-rollback-" + secrets.token_hex(8))
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
     fd = os.open(backup, flags, 0o600)
+    verified_or_restored = False
     try:
         with os.fdopen(fd, "wb") as output:
             output.write(previous)
@@ -152,6 +153,7 @@ def apply(key):
             require(code == 0, "api_restart_failed")
             for _ in range(12):
                 if live_and_ready(origin):
+                    verified_or_restored = True
                     print("resend_config=PASS;api_live=PASS;api_ready=PASS", flush=True)
                     return
                 time.sleep(2)
@@ -160,9 +162,12 @@ def apply(key):
             atomic_replace(API_ENV, previous, st)
             run(["/usr/bin/systemctl", "restart", SERVICE], timeout=50)
             require(live_and_ready(origin), "rollback_health_failed")
+            verified_or_restored = True
             raise Blocked("resend_update_rolled_back")
     finally:
-        backup.unlink(missing_ok=True)
+        # Keep the root-only rollback copy if restoration itself fails.
+        if verified_or_restored:
+            backup.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
