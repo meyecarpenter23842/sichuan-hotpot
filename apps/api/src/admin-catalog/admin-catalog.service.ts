@@ -32,13 +32,15 @@ export class AdminCatalogService {
     // and is authorized only by a per-branch OWNER/MANAGER membership.
     if (principal.role === "OWNER") {
       return this.prisma.database.branch.findMany({
-        select: { id: true, name: true, code: true, isActive: true },
+        select: { id: true, name: true, code: true, address: true,
+          latitude: true, longitude: true, isActive: true },
         orderBy: { name: "asc" },
       });
     }
     const branches = await this.prisma.database.branch.findMany({
       where: { memberships: { some: { userId: principal.id, role: { in: ["OWNER", "MANAGER"] } } } },
-      select: { id: true, name: true, code: true, isActive: true },
+      select: { id: true, name: true, code: true, address: true,
+          latitude: true, longitude: true, isActive: true },
       orderBy: { name: "asc" },
     });
     if (branches.length === 0) {
