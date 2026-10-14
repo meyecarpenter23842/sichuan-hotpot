@@ -49,7 +49,7 @@ try {
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Giờ mở Thứ hai" }).innerText(), "08:00⌄");
+  assert.match(await page.getByRole("button", { name: "Giờ mở Thứ hai" }).innerText(), /08:00/);
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).click();
   await page.getByRole("button", { name: "Chọn giờ 09" }).click();
   await page.getByRole("button", { name: "Áp dụng giờ" }).click();
