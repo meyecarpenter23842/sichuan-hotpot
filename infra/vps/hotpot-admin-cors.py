@@ -21,6 +21,8 @@ API_ENV = Path("/etc/sichuan-hotpot/api.env")
 RELEASE_SETTINGS = Path("/etc/sichuan-hotpot/release.json")
 SERVICE = "hotpot-api.service"
 ADMIN = "https://sichuan-hotpot-admin.vercel.app"
+ADMIN_CUSTOM = "https://admin.bepsi.click"
+ADMIN_ORIGINS = (ADMIN, ADMIN_CUSTOM)
 CUSTOMER = "https://sichuan-hotpot-customer.vercel.app"
 
 
@@ -53,9 +55,10 @@ def rewrite_content(data):
                 and parsed.path == "" and not parsed.query and not parsed.fragment
                 and not parsed.username and not parsed.password and origin == parsed.geturl(),
                 "unsafe_cors_origin")
-    if ADMIN in origins:
+    missing = [origin for origin in ADMIN_ORIGINS if origin not in origins]
+    if not missing:
         return data, False
-    origins.append(ADMIN)
+    origins.extend(missing)
     parts[index] = "CORS_ALLOWED_ORIGINS=" + ",".join(origins) + ending
     return "".join(parts).encode("utf-8"), True
 
@@ -87,11 +90,11 @@ def good_http(url):
     return code == 0
 
 
-def good_preflight(base, method, resource, requested_headers):
+def good_preflight(base, method, resource, requested_headers, admin_origin=ADMIN):
     code, headers = run(["/usr/bin/curl", "--fail", "--silent", "--show-error",
                          "--connect-timeout", "3", "--max-time", "6",
                          "-X", "OPTIONS", "-D", "-", "-o", "/dev/null",
-                         "-H", "Origin: " + ADMIN,
+                         "-H", "Origin: " + admin_origin,
                          "-H", "Access-Control-Request-Method: " + method,
                          "-H", "Access-Control-Request-Headers: " + requested_headers,
                          base + resource], timeout=10)
@@ -103,7 +106,7 @@ def good_preflight(base, method, resource, requested_headers):
             k, v = row.split(":", 1)
             fields[k.strip().lower()] = v.strip()
     methods = [item.strip() for item in fields.get("access-control-allow-methods", "").split(",")]
-    return fields.get("access-control-allow-origin") == ADMIN and method in methods
+    return fields.get("access-control-allow-origin") == admin_origin and method in methods
 
 
 def healthy_https_and_cors(origin):
@@ -111,13 +114,15 @@ def healthy_https_and_cors(origin):
         for path in ("/health/live", "/health/ready"):
             if not good_http(base + path):
                 return False
-        if not good_preflight(base, "POST", "/auth/login", "content-type"):
-            return False
-        for method in ("PATCH", "PUT"):
-            if not good_preflight(base, method,
-                                  "/admin/branches/00000000-0000-4000-8000-000000000000/catalog",
-                                  "authorization,content-type"):
+        for admin_origin in ADMIN_ORIGINS:
+            if not good_preflight(base, "POST", "/auth/login",
+                                  "content-type", admin_origin):
                 return False
+            for method in ("PATCH", "PUT"):
+                if not good_preflight(base, method,
+                                      "/admin/branches/00000000-0000-4000-8000-000000000000/catalog",
+                                      "authorization,content-type", admin_origin):
+                    return False
     return True
 
 
