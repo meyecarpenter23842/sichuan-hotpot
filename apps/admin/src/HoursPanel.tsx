@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request, type AdminCatalog, type OpeningHour } from "./api";
 import { Action, Notice, Pill } from "./ui";
 import { c, font } from "./theme";
@@ -32,8 +31,9 @@ function draft(hours: OpeningHour[]): OpeningHour[] {
     ?? { weekday, opensAt: "00:00", closesAt: "00:00", isClosed: true });
 }
 
-export function HoursPanel({ catalog, token, reload }: {
+export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
   catalog: AdminCatalog; token: string; reload: () => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [days, setDays] = useState(() => draft(catalog.openingHours));
   const [saving, setSaving] = useState(false);
@@ -45,6 +45,8 @@ export function HoursPanel({ catalog, token, reload }: {
 
   useEffect(() => { setDays(draft(catalog.openingHours)); }, [catalog.id, catalog.openingHours]);
   useEffect(() => { setError(""); setNotice(""); setPicker(null); }, [catalog.id]);
+  useEffect(() => { onDirtyChange?.(JSON.stringify(days) !== JSON.stringify(draft(catalog.openingHours))); },
+    [days, catalog.openingHours, onDirtyChange]);
 
   function edit(weekday: number, patch: Partial<OpeningHour>) {
     setDays(items => items.map(x => x.weekday === weekday ? { ...x, ...patch } : x));
@@ -147,12 +149,7 @@ export function HoursPanel({ catalog, token, reload }: {
     {!!notice && <Notice text={notice} />}
     <Action label={saving ? "Đang lưu..." : "Lưu lịch cửa hàng"} onPress={() => void save()} disabled={saving} />
 
-    <Modal transparent visible={!!picker} animationType="fade"
-      onRequestClose={() => setPicker(null)}>
-      <SafeAreaView style={st.backdrop}>
-        <Pressable accessibilityLabel="Hủy chọn giờ" accessibilityRole="button"
-          style={StyleSheet.absoluteFill} onPress={() => setPicker(null)} />
-        {picker && <View style={st.sheet}>
+    {picker && <View style={st.sheet}>
           <View style={st.sheetHead}>
             <View style={st.sheetTitleGroup}>
               <Text style={st.sheetTitle}>Chọn {picker.field === "opensAt" ? "giờ mở" : "giờ đóng"}</Text>
@@ -201,14 +198,12 @@ export function HoursPanel({ catalog, token, reload }: {
           <Text style={st.sheetHint}>Chọn giờ và phút từ danh sách. Có thể chọn chính xác từng phút.</Text>
           <Action label="Áp dụng giờ" onPress={applyPicker} />
           <Action label="Hủy" secondary onPress={() => setPicker(null)} />
-        </View>}
-      </SafeAreaView>
-    </Modal>
+    </View>}
   </View>;
 }
 
 const st = StyleSheet.create({
-  root: { paddingHorizontal: 15, paddingVertical: 16, paddingBottom: 36, gap: 12 },
+  root: { paddingBottom: 8, gap: 12 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 19, color: c.secondary },
   row: { borderBottomWidth: 1, borderBottomColor: c.line,
@@ -227,10 +222,8 @@ const st = StyleSheet.create({
   chevron: { fontSize: 20, color: c.red },
   pressed: { opacity: 0.75 },
   dayError: { fontSize: font.note, lineHeight: 18, color: c.red },
-  backdrop: { flex: 1, alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(17, 24, 39, 0.5)", paddingHorizontal: 15 },
-  sheet: { width: "100%", maxWidth: 430, maxHeight: "94%",
-    borderRadius: 18, backgroundColor: c.white, padding: 16, gap: 10 },
+  sheet: { width: "100%", borderTopWidth: 1, borderTopColor: c.line,
+    backgroundColor: c.pale, padding: 12, gap: 10 },
   sheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sheetTitleGroup: { flex: 1, gap: 4 },
   sheetTitle: { fontSize: font.title, color: c.ink, fontWeight: "800" },
