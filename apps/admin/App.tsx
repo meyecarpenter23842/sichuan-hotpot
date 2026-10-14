@@ -9,18 +9,18 @@ import {
   type AdminCatalog, type AuthTokens, type Branch, type Principal,
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
-import { HoursPanel } from "./src/HoursPanel";
 import { BranchPanel } from "./src/BranchPanel";
-import { DeliveryPolicyPanel } from "./src/DeliveryPolicyPanel";
+import { SettingsHub } from "./src/SettingsHub";
+import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 
-type Tab = "overview" | "catalog" | "hours" | "settings" | "account";
-const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: "overview", label: "Tổng quan", icon: "▦" },
-  { id: "catalog", label: "Thực đơn", icon: "▤" },
-  { id: "hours", label: "Giờ bán", icon: "◷" },
-  { id: "account", label: "Tài khoản", icon: "♙" },
+type Tab = "overview" | "catalog" | "settings" | "account";
+const tabs: { id: Tab; label: string; icon: IconName }[] = [
+  { id: "overview", label: "Tổng quan", icon: "dashboard" },
+  { id: "catalog", label: "Thực đơn", icon: "catalog" },
+  { id: "settings", label: "Thiết lập", icon: "settings" },
+  { id: "account", label: "Tài khoản", icon: "account" },
 ];
 function roleName(role: string): string {
   return role === "OWNER" ? "Chủ cửa hàng" : "Quản lý chi nhánh";
@@ -52,22 +52,6 @@ function Overview({ catalog, onChangeTab }: { catalog: AdminCatalog; onChangeTab
         </View>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
-      <Pressable style={styles.overviewRow} accessibilityRole="button"
-        accessibilityLabel="Cấu hình chi nhánh" onPress={() => onChangeTab("settings")}>
-        <View style={styles.overviewCopy}>
-          <Text style={styles.rowTitle}>Cài đặt cửa hàng & giao hàng</Text>
-          <Text style={styles.caption}>Địa chỉ, định vị, nhận đơn và phí giao</Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
-      <Pressable style={styles.overviewRow} accessibilityRole="button"
-        accessibilityLabel="Cấu hình giờ bán" onPress={() => onChangeTab("hours")}>
-        <View style={styles.overviewCopy}>
-          <Text style={styles.rowTitle}>Giờ hoạt động</Text>
-          <Text style={styles.caption}>Lịch mở cửa theo chi nhánh</Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
     </View>
   </View>;
 }
@@ -91,7 +75,6 @@ export default function AdminApp() {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [chooseBranch, setChooseBranch] = useState(false);
   const [createBranch, setCreateBranch] = useState(false);
-  const [addingBranch, setAddingBranch] = useState(false);
   const [catalog, setCatalog] = useState<AdminCatalog | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -259,11 +242,10 @@ export default function AdminApp() {
     setBranches(latest);
     setBranchId(savedId);
     setCreateBranch(false);
-    setAddingBranch(false);
     setChooseBranch(false);
     if (created) {
-      setTab("hours");
-      setNotice("Đã tạo chi nhánh thật. Hãy lưu giờ bán, chính sách giao hàng rồi kích hoạt.");
+      setTab("settings");
+      setNotice("Đã tạo chi nhánh. Mở Thiết lập để lưu giờ bán, phí giao và kích hoạt.");
     } else {
       setTab("settings");
       setNotice("Đã cập nhật chi nhánh.");
@@ -380,27 +362,14 @@ export default function AdminApp() {
             <>
               {tab === "overview" && <Overview catalog={catalog} onChangeTab={setTab} />}
               {tab === "catalog" && <CatalogPanel catalog={catalog} token={token} reload={reload} />}
-              {tab === "hours" && <HoursPanel catalog={catalog} token={token} reload={reload} />}
-              {tab === "settings" && <View style={styles.settings}>
-                <Text style={styles.sectionTitle}>Cấu hình chi nhánh</Text>
-                {principal?.role === "OWNER" ? <>
-                  <Action label={addingBranch ? "Đóng biểu mẫu tạo chi nhánh" : "Thêm chi nhánh mới"}
-                    secondary onPress={() => setAddingBranch(v => !v)} />
-                  {addingBranch ? <BranchPanel token={token} onSaved={branchSaved}
-                    onCancel={() => setAddingBranch(false)} /> : <>
-                    <BranchPanel key={selectedBranch?.id} token={token} branch={selectedBranch}
-                      onSaved={branchSaved} />
-                    <DeliveryPolicyPanel key={branchId} token={token} branchId={branchId!}
-                      active={selectedBranch?.isActive ?? false} />
-                  </>}
-                </> : <Notice text="Chỉ OWNER được thay đổi thông tin và giá giao hàng." />}
-              </View>}
+              {tab === "settings" && selectedBranch && <SettingsHub
+                token={token} branch={selectedBranch} catalog={catalog}
+                owner={principal?.role === "OWNER"} reload={reload}
+                onBranchSaved={branchSaved} />}
               {tab === "account" && <View style={styles.account}>
                 <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
                 <Text style={styles.rowTitle}>{principal && roleName(principal.role)}</Text>
                 <Text style={styles.caption}>Dữ liệu được giới hạn theo vai trò và chi nhánh trên API.</Text>
-                {principal?.role === "OWNER" && <Action label="Cài đặt chi nhánh" secondary
-                  onPress={() => setTab("settings")} />}
                 <Action label="Đăng xuất" dangerous onPress={() => void signOut()} />
               </View>}
             </>
@@ -411,7 +380,7 @@ export default function AdminApp() {
             accessibilityRole="tab" accessibilityLabel={item.label}
             accessibilityState={{ selected: tab === item.id }}
             style={styles.tab} onPress={() => { setChooseBranch(false); setTab(item.id); }}>
-            <Text style={[styles.tabIcon, tab === item.id && styles.tabActive]}>{item.icon}</Text>
+            <Icon name={item.icon} size={22} color={tab === item.id ? c.red : c.secondary} />
             <Text style={[styles.tabLabel, tab === item.id && styles.tabActive]}>{item.label}</Text>
           </Pressable>)}
         </View>
@@ -421,7 +390,7 @@ export default function AdminApp() {
 }
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: c.white },
-  shell: { flex: 1, width: "100%", maxWidth: 680, alignSelf: "center",
+  shell: { flex: 1, width: "100%", maxWidth: 1080, alignSelf: "center",
     backgroundColor: c.white, overflow: "hidden" },
   center: { flex: 1, justifyContent: "center", alignItems: "stretch",
     paddingHorizontal: 24, gap: 16, minHeight: 150 },
@@ -461,13 +430,12 @@ const styles = StyleSheet.create({
     borderTopColor: c.line, backgroundColor: c.white, paddingBottom: 4 },
   tab: { flex: 1, minWidth: 0, minHeight: 55, alignItems: "center",
     justifyContent: "center", gap: 3 },
-  tabIcon: { color: c.secondary, fontSize: 19 },
   tabLabel: { color: c.secondary, fontSize: 10, fontWeight: "700" },
   tabActive: { color: c.red },
   overview: { paddingHorizontal: 14, paddingTop: 14, gap: 9 },
   stats: { flexDirection: "row", gap: 8, marginVertical: 6 },
-  stat: { flex: 1, borderRadius: 10, borderWidth: 1, borderColor: c.line,
-    minHeight: 75, paddingHorizontal: 11, justifyContent: "center", gap: 5 },
+  stat: { flex: 1, minHeight: 73, paddingHorizontal: 10,
+    borderRightWidth: 1, borderRightColor: c.line, justifyContent: "center", gap: 5 },
   statNumber: { color: c.ink, fontSize: 17, fontWeight: "800" },
   statLabel: { color: c.secondary, fontSize: font.caption },
   overviewList: { paddingTop: 10, gap: 6 },
@@ -478,5 +446,4 @@ const styles = StyleSheet.create({
   account: { padding: 15, gap: 12 },
   bootstrap: { padding: 16, gap: 14, flexGrow: 1, justifyContent: "center" },
   bootstrapTitle: { color: c.ink, fontSize: font.title, fontWeight: "800" },
-  settings: { padding: 15, gap: 16 },
 });

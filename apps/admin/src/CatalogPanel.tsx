@@ -9,6 +9,7 @@ import {
   type CatalogGroup, type CatalogOption, type CatalogProduct, type CatalogVariant,
 } from "./api";
 import { c, font } from "./theme";
+import { Icon } from "./Icon";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
@@ -76,6 +77,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     });
     setError("");
     setConfirmDelete(false);
+    setExpandedId(null);
   }
   function change<K extends keyof Values>(key: K, value: Values[K]) {
     setEditor(old => old ? { ...old, values: { ...old.values, [key]: value } } : old);
@@ -207,9 +209,14 @@ export function CatalogPanel({ catalog, token, reload }: {
             <Text style={st.categoryName}>{category.name}</Text>
             <Text style={st.sub}>{category.products.length} món</Text>
           </View>
-          <Action label="Sửa mục" secondary onPress={() =>
-            open("category", category.id, undefined, category)} />
-          <Action label="＋ Món" onPress={() => open("product", undefined, category.id)} />
+          <Pressable accessibilityRole="button" accessibilityLabel={"Sửa danh mục " + category.name}
+            style={st.categoryAction} onPress={() => open("category", category.id, undefined, category)}>
+            <Icon name="edit" size={19} color={c.secondary} />
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="＋ Món"
+            style={st.categoryAction} onPress={() => open("product", undefined, category.id)}>
+            <Icon name="plus" size={21} color={c.red} />
+          </Pressable>
         </View>
         {category.products.map(product => {
           const expanded = expandedId === product.id;
@@ -238,10 +245,27 @@ export function CatalogPanel({ catalog, token, reload }: {
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={"Sửa món " + product.name}
                 style={st.miniEdit} onPress={() => open("product", product.id, undefined, product)}>
-                <Text style={st.miniEditText}>Sửa</Text>
+                <Icon name="edit" size={19} color={c.red} />
               </Pressable>
             </View>
-            {expanded && <View style={st.details}>
+            {expanded && <Modal visible animationType="slide" transparent
+              onRequestClose={() => setExpandedId(null)}>
+              <View style={st.backdrop}>
+                <View style={st.modal}>
+                  <View style={st.modalHeading}>
+                    <View style={st.modalName}>
+                      <Text style={st.title} numberOfLines={2}>{product.name}</Text>
+                      <Text style={st.sub}>Khẩu phần · Topping · Hình ảnh</Text>
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết món"
+                      style={st.close} onPress={() => setExpandedId(null)}>
+                      <Icon name="close" size={19} color={c.secondary} />
+                    </Pressable>
+                  </View>
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
+                    <View style={st.details}>
+                    {!!error && <Notice text={error} error />}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Khẩu phần / size</Text>
                 <Action label="＋ Size" secondary onPress={() => open("variant", undefined, product.id)} />
@@ -257,7 +281,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                 <Pressable accessibilityRole="button" style={st.optionAction}
                   accessibilityLabel={"Sửa size " + variant.name}
                   onPress={() => open("variant", variant.id, product.id, variant)}>
-                  <Text style={st.miniEditText}>Sửa</Text>
+                  <Icon name="edit" size={17} color={c.red} />
                 </Pressable>
               </View>)}
               <View style={st.detailHead}>
@@ -283,7 +307,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <Pressable accessibilityRole="button"
                     accessibilityLabel={"Sửa tùy chọn " + option.name}
                     style={st.optionAction} onPress={() => open("option", option.id, group.id, option)}>
-                    <Text style={st.miniEditText}>Sửa</Text>
+                    <Icon name="edit" size={17} color={c.red} />
                   </Pressable>
                 </View>)}
               </View>)}
@@ -292,7 +316,11 @@ export function CatalogPanel({ catalog, token, reload }: {
               {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
                 disabled={busy} onPress={() => void mutate(
                   "/products/" + product.id + "/images", "DELETE")} />}
-            </View>}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+            </Modal>}
           </View>;
         })}
       </View>
@@ -361,11 +389,12 @@ const st = StyleSheet.create({
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 7, paddingVertical: 2 },
-  categoryBlock: { borderTopWidth: 7, borderTopColor: "#F5F6F8", marginHorizontal: -14,
+  categoryBlock: { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -14,
     backgroundColor: c.white },
   categoryHeading: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14,
     paddingVertical: 9, gap: 7 },
-  categoryTitle: { flex: 1, gap: 2 },
+  categoryTitle: { flex: 1, minWidth: 0, gap: 2 },
+  categoryAction: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
   categoryName: { color: c.ink, fontWeight: "800", fontSize: font.section },
   productWrap: { borderTopWidth: 1, borderTopColor: c.line },
   productRow: { flexDirection: "row", alignItems: "center", gap: 5,
@@ -386,7 +415,7 @@ const st = StyleSheet.create({
   stockTextOn: { color: c.green }, stockTextOff: { color: c.red },
   miniEdit: { minHeight: 44, minWidth: 38, justifyContent: "center", alignItems: "center" },
   miniEditText: { fontSize: font.note, color: c.red, fontWeight: "700" },
-  details: { backgroundColor: "#F9FAFB", paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
+  details: { gap: 9 },
   detailHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center",
     gap: 7, justifyContent: "space-between", paddingVertical: 5 },
   detailHeading: { flex: 1, color: c.ink, fontSize: font.note, fontWeight: "800" },
@@ -395,12 +424,13 @@ const st = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 },
   optionName: { flex: 1, fontSize: font.note, color: c.ink },
   optionAction: { minHeight: 44, minWidth: 35, justifyContent: "center", alignItems: "center" },
-  group: { paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: "#D8DDE4", gap: 2 },
+  group: { borderTopWidth: 1, borderTopColor: c.line, paddingTop: 9, gap: 4 },
   groupName: { flex: 1, fontSize: font.note, color: c.ink, fontWeight: "700" },
   backdrop: { flex: 1, backgroundColor: "rgba(14,20,29,0.48)",
     justifyContent: "center", padding: 13 },
   modal: { backgroundColor: c.white, borderRadius: 16, maxHeight: "93%",
     width: "100%", maxWidth: 550, alignSelf: "center", overflow: "hidden" },
+  modalName: { flex: 1, minWidth: 0, gap: 4 },
   modalHeading: { flexDirection: "row", alignItems: "center",
     justifyContent: "space-between", paddingHorizontal: 15, borderBottomWidth: 1,
     borderBottomColor: c.line, minHeight: 53 },

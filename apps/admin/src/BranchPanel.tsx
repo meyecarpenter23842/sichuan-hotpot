@@ -8,11 +8,13 @@ import { c, font } from "./theme";
 const coordinate = /^-?\d+(?:\.\d{1,7})?$/;
 const branchCode = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
 
-export function BranchPanel({ token, branch, onSaved, onCancel }: {
+export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details", onDirtyChange }: {
   token: string;
   branch?: Branch;
   onSaved: (id: string, created: boolean) => Promise<void>;
   onCancel?: () => void;
+  mode?: "details" | "status";
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [name, setName] = useState(branch?.name ?? "");
   const [code, setCode] = useState(branch?.code ?? "");
@@ -32,6 +34,14 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
     setLng(branch?.longitude?.toString() ?? "");
     setError(""); setFeedback(""); setConfirmStatus(false);
   }, [branch?.id]);
+
+  useEffect(() => {
+    onDirtyChange?.(mode === "details" && (
+      name !== (branch?.name ?? "") || code !== (branch?.code ?? "") ||
+      address !== (branch?.address ?? "") ||
+      lat !== (branch?.latitude?.toString() ?? "") ||
+      lng !== (branch?.longitude?.toString() ?? "")));
+  }, [mode, name, code, address, lat, lng, branch, onDirtyChange]);
 
   async function locateStore() {
     if (locating || saving) return;
@@ -100,8 +110,27 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
     } finally { setSaving(false); }
   }
 
+  if (mode === "status" && branch) return <View style={st.panel}>
+    <Text style={st.title}>Trạng thái chi nhánh</Text>
+    <Notice text={branch.isActive
+      ? "Chi nhánh đã kích hoạt. Muốn nhận đơn, cần bật thêm trong mục Nhận đơn."
+      : "Chi nhánh đang tạm dừng. Khách không thể đặt đơn tại đây."} />
+    {!!error && <Notice text={error} error />}
+    {!!feedback && <Notice text={feedback} />}
+    {confirmStatus ? <>
+      <Text style={st.hint}>{branch.isActive
+        ? "Tạm dừng chi nhánh sẽ ngăn khách tạo đơn mới."
+        : "Chỉ kích hoạt khi đã có lịch bán và chính sách phí giao."}</Text>
+      <Action label={saving ? "Đang cập nhật..." : "Xác nhận thay đổi"} dangerous
+        disabled={saving} onPress={() => void updateStatus()} />
+      <Action label="Giữ nguyên" secondary disabled={saving}
+        onPress={() => setConfirmStatus(false)} />
+    </> : <Action label={branch.isActive ? "Tạm dừng chi nhánh" : "Kích hoạt chi nhánh"}
+      disabled={saving} onPress={() => setConfirmStatus(true)} />}
+  </View>;
+
   return <View style={st.panel}>
-    <Text style={st.title}>{branch ? "Thông tin cửa hàng" : "Tạo chi nhánh đầu tiên"}</Text>
+    <Text style={st.title}>{branch ? "Thông tin & định vị" : "Chi nhánh mới"}</Text>
     {branch && <>
       <Notice text={branch.isActive
         ? "Chi nhánh đang hoạt động. Việc nhận đơn vẫn phụ thuộc chính sách giao hàng."
@@ -128,24 +157,10 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
     <Action label={saving ? "Đang lưu..." : branch ? "Lưu thông tin chi nhánh" : "Tạo chi nhánh"}
       onPress={() => void save()} disabled={saving || locating} />
     {onCancel && <Action label="Hủy" secondary onPress={onCancel} disabled={saving} />}
-    {branch && <>
-      {!confirmStatus ? <Action label={branch.isActive ? "Tạm dừng chi nhánh" : "Kích hoạt chi nhánh"}
-        secondary onPress={() => setConfirmStatus(true)} disabled={saving} /> :
-        <View style={st.confirm}>
-          <Text style={st.hint}>{branch.isActive
-            ? "Xác nhận tạm dừng: khách sẽ không tạo được đơn mới tại chi nhánh."
-            : "Chỉ kích hoạt sau khi lưu giờ bán và chính sách giao hàng thật."}</Text>
-          <Action label="Xác nhận đổi trạng thái" dangerous
-            onPress={() => void updateStatus()} disabled={saving} />
-          <Action label="Không đổi" secondary onPress={() => setConfirmStatus(false)}
-            disabled={saving} />
-        </View>}
-    </>}
   </View>;
 }
 const st = StyleSheet.create({
-  panel: { gap: 12, borderRadius: 12, borderWidth: 1, borderColor: c.line,
-    padding: 14, backgroundColor: c.white },
+  panel: { gap: 13, backgroundColor: c.white },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   hint: { fontSize: font.note, lineHeight: 19, color: c.secondary },
   coordinates: { flexDirection: "row", gap: 10 },

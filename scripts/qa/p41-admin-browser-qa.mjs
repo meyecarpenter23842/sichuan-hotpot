@@ -55,6 +55,7 @@ try {
   await page.getByRole("textbox", { name: "Tên", exact: true }).fill("Phần hai người");
   await page.getByRole("textbox", { name: "Phụ thu (VND)" }).fill("49000");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
   await page.getByText("Phần hai người", { exact: false }).waitFor();
 
   await page.getByRole("button", { name: "＋ Nhóm" }).click();
@@ -62,13 +63,17 @@ try {
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("1");
   await page.getByRole("textbox", { name: "Chọn tối đa" }).fill("1");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
   await page.getByText("Độ cay (1–1)").waitFor();
   await page.getByRole("button", { name: "＋ Chọn" }).click();
   await page.getByRole("textbox", { name: "Tên", exact: true }).fill("Cay vừa");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
   await page.getByText("Cay vừa", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
 
-  await page.getByRole("tab", { name: "Giờ bán" }).click();
+  await page.getByRole("tab", { name: "Thiết lập" }).click();
+  await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
@@ -86,6 +91,7 @@ try {
   await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).waitFor();
   await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
   await page.getByText("Đã lưu lịch mở cửa cho chi nhánh.").waitFor();
+  await page.getByRole("button", { name: "Đóng popup" }).click();
   const savedHours = await db.branchOpeningHour.findMany({
     where: { branchId: branch.id }, orderBy: { weekday: "asc" },
   });
@@ -98,13 +104,15 @@ try {
 
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const tab of ["Tổng quan", "Thực đơn", "Giờ bán"]) {
+    for (const tab of ["Tổng quan", "Thực đơn", "Thiết lập"]) {
       await page.getByRole("tab", { name: tab }).click();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         true, "Admin horizontal overflow in " + tab + " at " + width);
-      const selector = tab === "Tổng quan" ? "Tổng quan cửa hàng" :
-        tab === "Thực đơn" ? "Tìm món" : "Giờ bán";
-      await page.getByText(selector).first().waitFor();
+      if (tab === "Thiết lập") {
+        await page.getByRole("button", { name: "Mở Giờ bán" }).waitFor();
+      } else {
+        await page.getByText(tab === "Tổng quan" ? "Tổng quan cửa hàng" : "Tìm món").first().waitFor();
+      }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
     }
@@ -112,7 +120,7 @@ try {
     assert.equal(headings, 0, "Admin uses compact RN typography, not browser default headings");
   }
   assert.deepEqual(errors, []);
-  console.log("PASS: Admin role-based sign-in, CRUD, stock, size, topping, hours, 320/360/390/428");
+  console.log("PASS: Admin role-based sign-in, flat catalog detail modal, size, topping, settings hours, 320/360/390/428");
 
   // Exercise real OWNER and branch-scoped MANAGER permissions on disposable CI DB only.
   // The Admin login endpoint intentionally accepts passwords longer than the

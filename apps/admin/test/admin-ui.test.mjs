@@ -80,7 +80,9 @@ test("OWNER first-store onboarding uses real POST/PATCH endpoints and safe deliv
   assert.match(branch, /Kích hoạt chi nhánh/);
   assert.match(policy, /"\/delivery-policy"/);
   assert.match(policy, /acceptingOrders/);
-  assert.match(policy, /Lưu chính sách giao hàng/);
+  assert.match(policy, /Lưu phí giao/);
+  assert.match(policy, /Nhận đơn trực tuyến/);
+  assert.match(policy, /showNumber\(key, value\[key\]\)/);
 });
 
 test("branch setup locates only after tapping GPS and keeps manually editable coordinates", () => {
@@ -101,7 +103,8 @@ test("hours are chosen from a mobile picker rather than manually typed", () => {
   assert.match(hours, /accessibilityLabel=\{"Chọn giờ " \+ hour\}/);
   assert.match(hours, /accessibilityLabel=\{"Chọn phút " \+ minute\}/);
   assert.match(hours, /"Áp dụng giờ"/);
-  assert.match(hours, /<Modal transparent visible=\{!!picker\}/);
+  assert.match(hours, /picker\?\.weekday === day\.weekday/);
+  assert.doesNotMatch(hours, /<Modal transparent visible=\{!!picker\}/);
   assert.doesNotMatch(hours, /<TextInput/);
 });
 test("freshly opened weekdays do not retain invalid midnight-only ranges", () => {
@@ -112,4 +115,24 @@ test("freshly opened weekdays do not retain invalid midnight-only ranges", () =>
   assert.match(hours, /weekdays\[invalid\.weekday\] \+ ": " \+ validDay\(invalid\)/);
   assert.match(hours, /setError\(""\); setNotice\(""\)/);
   assert.match(hours, /"PUT", \{ days \}/);
+});
+
+test("Settings is a dedicated icon tab with single modal workflows, not an Overview card", () => {
+  const hub = readFileSync(new URL("../src/SettingsHub.tsx", import.meta.url), "utf8");
+  const icons = readFileSync(new URL("../src/Icon.tsx", import.meta.url), "utf8");
+  assert.match(app, /id: "settings", label: "Thiết lập", icon: "settings"/);
+  assert.match(app, /tab === "settings" && selectedBranch && <SettingsHub/);
+  assert.doesNotMatch(app, /onChangeTab\("settings"\)/);
+  assert.match(hub, /style=\{s\.grid\}/);
+  assert.match(hub, /<Modal visible=\{selected !== null\}/);
+  assert.match(hub, /confirmClose/);
+  assert.match(hub, /onDirtyChange=\{setDirty\}/);
+  assert.match(icons, /Consistent line icons drawn with React Native primitives/);
+});
+
+test("Catalog keeps product list flat and moves sizes, toppings and images into a detail modal", () => {
+  assert.match(catalog, /\{expanded && <Modal visible animationType="slide" transparent/);
+  assert.match(catalog, /<Icon name="edit" size=\{19\}/);
+  assert.match(catalog, /setExpandedId\(null\)/);
+  assert.doesNotMatch(catalog, /\{expanded && <View style=\{st\.details\}>/);
 });
