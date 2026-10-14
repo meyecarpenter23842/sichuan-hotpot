@@ -28,20 +28,23 @@ export class AdminCatalogService {
 
   async branches(authorization: string | undefined) {
     const principal = await this.auth.principal(authorization);
-    if (principal.role !== "OWNER" && principal.role !== "MANAGER") {
-      throw new ForbiddenException("STAFF_CATALOG_PERMISSION_REQUIRED");
-    }
+    // Global OWNER sees all branches. A MANAGER may have global CUSTOMER role
+    // and is authorized only by a per-branch OWNER/MANAGER membership.
     if (principal.role === "OWNER") {
       return this.prisma.database.branch.findMany({
         select: { id: true, name: true, code: true, isActive: true },
         orderBy: { name: "asc" },
       });
     }
-    return this.prisma.database.branch.findMany({
+    const branches = await this.prisma.database.branch.findMany({
       where: { memberships: { some: { userId: principal.id, role: { in: ["OWNER", "MANAGER"] } } } },
       select: { id: true, name: true, code: true, isActive: true },
       orderBy: { name: "asc" },
     });
+    if (branches.length === 0) {
+      throw new ForbiddenException("STAFF_CATALOG_PERMISSION_REQUIRED");
+    }
+    return branches;
   }
 
   async catalogue(authorization: string | undefined, branchId: string) {
