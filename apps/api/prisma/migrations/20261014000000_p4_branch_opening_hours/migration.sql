@@ -16,3 +16,11 @@ CREATE TABLE "BranchOpeningHour" (
 );
 ALTER TABLE "BranchOpeningHour" ADD CONSTRAINT "BranchOpeningHour_branchId_fkey"
   FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Replacement/deletion image cleanup is persisted in the same transaction as
+-- the product image reference change so object removal may be retried safely.
+CREATE TABLE "R2ImageCleanup" (
+    "key" VARCHAR(512) NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "R2ImageCleanup_pkey" PRIMARY KEY ("key")
+);
