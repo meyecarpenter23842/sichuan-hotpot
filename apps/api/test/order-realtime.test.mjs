@@ -8,6 +8,7 @@ const { NestFactory } = require("@nestjs/core");
 const { PrismaClient } = require("@prisma/client");
 const jwt = require("jsonwebtoken");
 const WebSocket = require("ws");
+const supertest = require("supertest");
 const { AppModule } = require("../dist/app.module.js");
 const { configureApp } = require("../dist/bootstrap.js");
 const { OrderRealtimeService } = require("../dist/orders/order-realtime.service.js");
@@ -17,7 +18,7 @@ process.env.AUTH_JWT_SECRET = secret;
 process.env.CORS_ALLOWED_ORIGINS = "http://localhost:8081";
 
 let app, db, stream, endpoint, branchId, foreignBranchId;
-let owner, cook, customer, outsider;
+let owner, cook, customer, outsider, pendingOrderId;
 const sockets = [];
 async function principal(role, branchRole) {
   const user = await db.user.create({ data: { role } });
@@ -99,6 +100,22 @@ before(async () => {
   cook = await principal("CUSTOMER", "KITCHEN");
   customer = await principal("CUSTOMER");
   outsider = await principal("CUSTOMER");
+  const policy = await db.deliveryPolicyVersion.create({ data: {
+    branchId, version: 1, acceptingOrders: true, baseMeters: 2000,
+    baseFeeVnd: 10000, extraStepMeters: 1000, extraStepFeeVnd: 5000,
+    maxRoadMeters: 10000, minSubtotalVnd: 0,
+  } });
+  pendingOrderId = (await db.order.create({ data: {
+    branchId, customerId: customer.id, deliveryPolicyVersionId: policy.id,
+    idempotencyKey: randomUUID(), status: "PENDING",
+    subtotalVnd: 80000, deliveryFeeVnd: 10000, totalVnd: 90000,
+    roadDistanceMeters: 2000, phoneSnapshot: "+84901111222",
+    addressLineSnapshot: "Integration test only",
+    latitudeSnapshot: "10.77", longitudeSnapshot: "106.70",
+    statusHistory: { create: { toStatus: "PENDING", actorId: customer.id } },
+    items: { create: [{ productName: "CI test", quantity: 1,
+      unitPriceVnd: 80000, lineTotalVnd: 80000 }] },
+  } })).id;
 });
 after(async () => {
   for (const socket of sockets) socket.terminate();
@@ -111,7 +128,7 @@ test("WS checks staff scope, branch membership and customer ownership", async ()
   const kitchen = await connect(cook, "staff");
   const own = await connect(customer, "customer");
   const other = await connect(outsider, "customer");
-  const orderId = randomUUID();
+  const orderId = pendingOrderId;
   const waitStaff = nextMessage(staff);
   const waitOwn = nextMessage(own);
   await stream.publish({ type: "order.created", orderId, branchId,
@@ -127,10 +144,19 @@ test("WS checks staff scope, branch membership and customer ownership", async ()
   assert.equal(other.readyState, WebSocket.OPEN);
 
   const waitKitchen = nextMessage(kitchen);
-  await stream.publish({ type: "order.status", orderId, branchId,
-    customerId: customer.id, status: "PREPARING" });
+  const result = await supertest(app.getHttpServer())
+    .patch("/admin/orders/" + branchId + "/" + orderId + "/status")
+    .set({ Authorization: "Bearer " + owner.token })
+    .send({ expectedStatus: "PENDING", toStatus: "CONFIRMED" })
+    .expect(200);
   const kitchenEvent = await waitKitchen;
-  assert.equal(kitchenEvent.status, "PREPARING");
+  assert.equal(result.body.status, "CONFIRMED");
+  assert.equal(kitchenEvent.status, "CONFIRMED");
+  const record = await db.order.findUniqueOrThrow({
+    where: { id: orderId }, select: { status: true, statusHistory: true },
+  });
+  assert.equal(record.status, "CONFIRMED");
+  assert.equal(record.statusHistory.at(-1).toStatus, "CONFIRMED");
 });
 
 test("websocket rejects staff without membership and untrusted browser origins", async () => {
