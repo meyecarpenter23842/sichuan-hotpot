@@ -20,6 +20,11 @@ const selectOrder = {
     modifiers: { select: { name: true, priceVnd: true } },
   } },
 } as const satisfies Prisma.OrderSelect;
+const kitchenOrderSelect = {
+  id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
+  items: { select: { productName: true, variantName: true, quantity: true,
+    modifiers: { select: { name: true } } } },
+} as const satisfies Prisma.OrderSelect;
 
 @Injectable()
 export class AdminOrdersService {
@@ -64,11 +69,11 @@ export class AdminOrdersService {
   }
 
   async list(authorization: string | undefined, branchId: string, status?: OrderStatus) {
-    await this.role(authorization, branchId);
+    const staff = await this.role(authorization, branchId);
     return this.prisma.database.order.findMany({
       where: { branchId, ...(status ? { status } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 100, select: selectOrder,
+      take: 100, select: staff.role === "KITCHEN" ? kitchenOrderSelect : selectOrder,
     });
   }
 
@@ -76,7 +81,7 @@ export class AdminOrdersService {
     const staff = await this.role(authorization, branchId);
     const record = await this.prisma.database.order.findFirst({
       where: { id: orderId, branchId }, select: {
-        ...selectOrder, statusHistory: { orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        ...(staff.role === "KITCHEN" ? kitchenOrderSelect : selectOrder), statusHistory: { orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: { fromStatus: true, toStatus: true, reason: true, createdAt: true } },
         ...(staff.role === "KITCHEN" ? {} : {
           phoneSnapshot: true, addressLineSnapshot: true, roadDistanceMeters: true,
