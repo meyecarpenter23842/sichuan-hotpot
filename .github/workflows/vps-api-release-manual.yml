@@ -117,7 +117,7 @@ jobs:
             apps/customer/package.json apps/admin/package.json \
             packages/shared/package.json packages/shared/dist packages/ui/package.json
           sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
-      - name: Deliver artifact to pre-provisioned inbox (no migration)
+      - name: Verified artifact, live P4.2 backup/migration, then API activation
         shell: bash
         run: |
           set -euo pipefail
