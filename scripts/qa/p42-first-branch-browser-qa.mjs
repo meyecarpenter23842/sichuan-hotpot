@@ -61,6 +61,17 @@ try {
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
   await page.getByRole("button", { name: "Giờ mở Thứ ba" }).waitFor();
   await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).waitFor();
+  // Invalid time on a day above the viewport must identify that exact weekday.
+  await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 07" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
+  await page.getByText("Thứ ba: Giờ đóng phải sau giờ mở trong cùng ngày.").first().waitFor();
+  await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
+  assert.equal(await db.branchOpeningHour.count({ where: { branchId: branch.id } }), 0,
+    "Invalid draft must not be saved");
+  await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 21" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
   await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
   await page.getByText("Đã lưu lịch mở cửa cho chi nhánh.").waitFor();
   const savedHours = await db.branchOpeningHour.findMany({
