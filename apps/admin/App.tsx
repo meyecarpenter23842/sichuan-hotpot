@@ -68,6 +68,12 @@ export default function AdminApp() {
   const [loginUser, setLoginUser] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset">("login");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryInfo, setRecoveryInfo] = useState("");
   const [token, setToken] = useState<string | null>(null);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
@@ -139,6 +145,35 @@ export default function AdminApp() {
     } catch (e) {
       setAuthError(e instanceof Error ? e.message : "Đăng nhập không thành công.");
     } finally { setLoginBusy(false); }
+  }
+
+  async function submitRecovery() {
+    if (recoveryBusy) return;
+    setRecoveryBusy(true); setAuthError(""); setRecoveryInfo("");
+    try {
+      const email = recoveryEmail.trim().toLowerCase();
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+        setAuthError("Email không hợp lệ."); return;
+      }
+      if (recoveryMode === "request") {
+        await request("/auth/password/request-code", undefined, "POST", { email });
+        setRecoveryMode("reset"); setRecoveryCode("");
+        setRecoveryInfo("Nếu email đã đăng ký, mã sẽ gửi qua Resend. Kiểm tra cả thư rác.");
+      } else {
+        if (!/^[0-9]{6}$/.test(recoveryCode)) {
+          setAuthError("Nhập mã email gồm đúng 6 số."); return;
+        }
+        if (recoveryPassword.length < 6 || recoveryPassword.length > 128) {
+          setAuthError("Mật khẩu phải có 6–128 ký tự (OWNER tối thiểu 8)."); return;
+        }
+        await request("/auth/password/reset", undefined, "POST",
+          { email, code: recoveryCode, password: recoveryPassword });
+        setRecoveryMode("login"); setRecoveryPassword(""); setRecoveryCode("");
+        setRecoveryInfo("Đổi mật khẩu thành công. Đăng nhập bằng tài khoản OWNER.");
+      }
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : "Không xử lý được yêu cầu. Thử lại.");
+    } finally { setRecoveryBusy(false); }
   }
 
   const renew = useCallback(async () => {
@@ -230,16 +265,43 @@ export default function AdminApp() {
               <Text style={styles.brandSub}>Quản trị cửa hàng</Text>
             </View>
           </View>
-          <Text style={styles.loginTitle}>Đăng nhập quản trị</Text>
-          <Text style={styles.caption}>Chỉ dành cho chủ cửa hàng và quản lý đã được cấp quyền.</Text>
-          <Field label="Tên đăng nhập" value={loginUser} onChangeText={setLoginUser}
-            placeholder="Tài khoản nhân viên" />
-          <Field label="Mật khẩu" value={loginPassword} secure onChangeText={setLoginPassword}
-            placeholder="Nhập mật khẩu" />
-          {!!authError && <Notice text={authError} error />}
-          <Action label={loginBusy ? "Đang đăng nhập..." : "Đăng nhập"}
-            disabled={loginBusy || !loginUser.trim() || !loginPassword}
-            onPress={() => void login()} />
+          <Text style={styles.loginTitle}>{recoveryMode === "login" ? "Đăng nhập quản trị" :
+            recoveryMode === "request" ? "Quên mật khẩu" : "Đặt lại mật khẩu"}</Text>
+          <Text style={styles.caption}>{recoveryMode === "login"
+            ? "Chỉ dành cho chủ cửa hàng và quản lý đã được cấp quyền."
+            : "Xác minh qua email đã gắn với tài khoản quản trị."}</Text>
+          {recoveryMode === "login" ? <>
+            <Field label="Tên đăng nhập" value={loginUser} onChangeText={setLoginUser}
+              placeholder="Tài khoản nhân viên" />
+            <Field label="Mật khẩu" value={loginPassword} secure onChangeText={setLoginPassword}
+              placeholder="Nhập mật khẩu" />
+            {!!authError && <Notice text={authError} error />}
+            {!!recoveryInfo && <Notice text={recoveryInfo} />}
+            <Action label={loginBusy ? "Đang đăng nhập..." : "Đăng nhập"}
+              disabled={loginBusy || !loginUser.trim() || !loginPassword}
+              onPress={() => void login()} />
+            <Action label="Quên mật khẩu?" secondary onPress={() => {
+              setAuthError(""); setRecoveryInfo(""); setRecoveryMode("request");
+            }} />
+          </> : <>
+            <Field label="Email khôi phục" value={recoveryEmail} onChangeText={setRecoveryEmail}
+              placeholder="Email đã xác minh" />
+            {recoveryMode === "reset" && <>
+              <Field label="Mã xác minh (6 số)" value={recoveryCode} onChangeText={setRecoveryCode}
+                placeholder="Nhập mã từ Gmail" numeric />
+              <Field label="Mật khẩu mới" value={recoveryPassword} onChangeText={setRecoveryPassword}
+                secure placeholder="OWNER: 8–128 ký tự" />
+            </>}
+            {!!authError && <Notice text={authError} error />}
+            {!!recoveryInfo && <Notice text={recoveryInfo} />}
+            <Action label={recoveryBusy ? "Đang xử lý..." :
+              recoveryMode === "request" ? "Gửi mã qua email" : "Đổi mật khẩu"}
+              disabled={recoveryBusy || !recoveryEmail.trim()} onPress={() => void submitRecovery()} />
+            <Action label="Quay lại đăng nhập" secondary onPress={() => {
+              setAuthError(""); setRecoveryInfo(""); setRecoveryPassword("");
+              setRecoveryCode(""); setRecoveryMode("login");
+            }} />
+          </> 
         </View>
       </KeyboardAvoidingView> : <View style={styles.shell}>
         <View style={styles.header}>
