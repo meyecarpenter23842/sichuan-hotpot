@@ -9,12 +9,12 @@ const { R2ProductImagesService, signedR2Url } =
   require("../dist/admin-catalog/r2-product-images.service.js");
 const branchId = randomUUID(), categoryId = randomUUID(), productId = randomUUID();
 
-function stub(role = "OWNER") {
+function stub(role = "OWNER", membership = false) {
   const writes = [];
   const db = {
     branch: {
       findUnique: async () => ({ id: branchId }),
-      findMany: async data => { writes.push(["branches", data]); return []; },
+      findMany: async data => { writes.push(["branches", data]); return membership ? [{ id: branchId, name: "CI" }] : []; },
       findUniqueOrThrow: async data => { writes.push(["menu", data]); return { categories: [] }; },
     },
     catalogCategory: {
@@ -37,7 +37,7 @@ function stub(role = "OWNER") {
   const auth = {
     principal: async () => ({ id: "staff", role }),
     adminAccess: async () => {
-      if (!["OWNER", "MANAGER"].includes(role)) {
+      if (role !== "OWNER" && !membership) {
         const e = new Error("forbidden"); e.getStatus = () => 403; throw e;
       }
       return { status: "ok" };
@@ -50,9 +50,12 @@ test("OWNER sees branches, MANAGER sees only explicit manager memberships", asyn
   const owner = stub();
   await owner.service.branches("Bearer valid");
   assert.equal(owner.writes[0][1].where, undefined);
-  const manager = stub("MANAGER");
-  await manager.service.branches("Bearer valid");
+  const manager = stub("CUSTOMER", true);
+  const visible = await manager.service.branches("Bearer valid");
+  assert.equal(visible.length, 1);
   assert.deepEqual(manager.writes[0][1].where.memberships.some.role.in, ["OWNER", "MANAGER"]);
+  await assert.rejects(stub("CUSTOMER").service.branches("Bearer x"),
+    err => err.getStatus?.() === 403);
 });
 
 test("CUSTOMER/KITCHEN/DRIVER cannot read or alter products", async () => {
@@ -95,6 +98,38 @@ test("seven-day hours update is one database transaction; invalid weeks rejected
     days.map(x => ({ ...x, closesAt: "08:00" }))), err => err.getStatus?.() === 400);
 });
 
+test("R2 image mutations create durable cleanup before removing an old object", async () => {
+  const existing = "products-image/" + branchId + "/" + productId + "/" + randomUUID() + ".webp";
+  const staged = "products-image/" + branchId + "/" + productId + "/" + randomUUID() + ".webp";
+  const queued = [];
+  let current = existing;
+  const tx = {
+    product: {
+      findFirst: async () => ({ imageKey: current }),
+      updateMany: async x => {
+        assert.equal(x.where.imageKey, current);
+        current = x.data.imageKey;
+        return { count: 1 };
+      },
+    },
+    r2ImageCleanup: {
+      upsert: async x => { queued.push(x.create.key); return x.create; },
+    },
+  };
+  const db = {
+    ...tx,
+    $transaction: async callback => callback(tx),
+    r2ImageCleanup: { findMany: async () => [] },
+  };
+  const svc = new R2ProductImagesService({ adminAccess: async () => ({ status: "ok" }) },
+    { database: db });
+  const result = await svc.replaceImage(branchId, productId, staged);
+  assert.equal(result.imageKey, staged);
+  assert.deepEqual(queued, [existing]);
+  await svc.replaceImage(branchId, productId, null);
+  assert.deepEqual(queued, [existing, staged]);
+});
+
 test("R2 signer generates short-lived scoped PUT only, no public write credentials", async () => {
   const saved = {
     R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
@@ -107,6 +142,7 @@ test("R2 signer generates short-lived scoped PUT only, no public write credentia
   const key = "products-image/" + branchId + "/" + productId + "/" + randomUUID() + ".webp";
   try {
     const url = new URL(signedR2Url("PUT", key, new Date("2026-10-14T06:00:00.000Z")));
+    assert.match(signedR2Url("DELETE", key), /X-Amz-Signature=[a-f0-9]{64}/);
     assert.equal(url.protocol, "https:");
     assert.ok(url.hostname.endsWith(".r2.cloudflarestorage.com"));
     assert.equal(url.searchParams.get("X-Amz-Expires"), "300");
