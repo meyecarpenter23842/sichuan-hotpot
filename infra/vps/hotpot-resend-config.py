@@ -132,6 +132,10 @@ def apply(key):
     origin = trusted_api_origin()
     code, output = run(["/usr/bin/systemctl", "is-active", SERVICE], timeout=10)
     require(code == 0 and output.strip() == b"active", "api_service_inactive")
+    code, env_files = run(["/usr/bin/systemctl", "show", SERVICE,
+                           "--property=EnvironmentFiles"], timeout=10)
+    require(code == 0 and b"/etc/sichuan-hotpot/api.env" in env_files,
+            "api_environment_not_attached")
     require(live_and_ready(origin), "api_unhealthy_before_change")
     if not changed:
         print("resend_config=ALREADY_READY;api_live=PASS;api_ready=PASS", flush=True)
