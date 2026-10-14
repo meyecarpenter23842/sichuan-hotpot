@@ -43,7 +43,7 @@ async function eligible(tx) {
       algorithm:Algorithm.Argon2id,memoryCost:19456,timeCost:2,parallelism:1,outputLen:32
     });
     await db.$transaction(async tx=>{
-      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(787,6)');
+      await tx.$queryRawUnsafe('SELECT 1 AS acquired FROM pg_advisory_xact_lock(787,6)');
       if (!await eligible(tx)) throw Error('not eligible');
       await tx.localCredential.create({data:{
         normalizedUsername:input.username,verifiedEmail:input.email,passwordHash,
