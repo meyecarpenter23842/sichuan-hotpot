@@ -1376,7 +1376,7 @@ function CustomerApp() {
             <View style={styles.addressModalSheet}>
               <View style={styles.addressModalHeader}>
                 <Text style={styles.sectionTitle}>{editingAddressId ? "Sửa địa chỉ " : "Thêm địa chỉ "}{address.label}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Đóng biểu mẫu địa chỉ"
+                <Pressable accessibilityRole="button" accessibilityLabel={editingAddressId ? "Đóng sửa địa chỉ" : "Đóng thêm địa chỉ"}
                   onPress={closeAddressEditor} style={styles.addressModalClose}>
                   <Text style={styles.addressModalCloseText}>✕</Text>
                 </Pressable>
