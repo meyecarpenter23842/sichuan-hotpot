@@ -91,6 +91,7 @@ export default function AdminApp() {
   const [branchId, setBranchId] = useState<string | null>(null);
   const [chooseBranch, setChooseBranch] = useState(false);
   const [createBranch, setCreateBranch] = useState(false);
+  const [addingBranch, setAddingBranch] = useState(false);
   const [catalog, setCatalog] = useState<AdminCatalog | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -258,6 +259,7 @@ export default function AdminApp() {
     setBranches(latest);
     setBranchId(savedId);
     setCreateBranch(false);
+    setAddingBranch(false);
     setChooseBranch(false);
     if (created) {
       setTab("hours");
@@ -382,10 +384,15 @@ export default function AdminApp() {
               {tab === "settings" && <View style={styles.settings}>
                 <Text style={styles.sectionTitle}>Cấu hình chi nhánh</Text>
                 {principal?.role === "OWNER" ? <>
-                  <BranchPanel key={selectedBranch?.id} token={token} branch={selectedBranch}
-                    onSaved={branchSaved} />
-                  <DeliveryPolicyPanel key={branchId} token={token} branchId={branchId!}
-                    active={selectedBranch?.isActive ?? false} />
+                  <Action label={addingBranch ? "Đóng biểu mẫu tạo chi nhánh" : "Thêm chi nhánh mới"}
+                    secondary onPress={() => setAddingBranch(v => !v)} />
+                  {addingBranch ? <BranchPanel token={token} onSaved={branchSaved}
+                    onCancel={() => setAddingBranch(false)} /> : <>
+                    <BranchPanel key={selectedBranch?.id} token={token} branch={selectedBranch}
+                      onSaved={branchSaved} />
+                    <DeliveryPolicyPanel key={branchId} token={token} branchId={branchId!}
+                      active={selectedBranch?.isActive ?? false} />
+                  </>}
                 </> : <Notice text="Chỉ OWNER được thay đổi thông tin và giá giao hàng." />}
               </View>}
               {tab === "account" && <View style={styles.account}>
