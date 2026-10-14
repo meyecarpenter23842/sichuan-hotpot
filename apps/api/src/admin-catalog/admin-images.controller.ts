@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Headers, Param, ParseUUIDPipe, Post } from "@nestjs/common";
 import { IsInt, IsString, IsIn, Matches, Max, Min } from "class-validator";
 import { R2ProductImagesService } from "./r2-product-images.service";
 
@@ -28,5 +28,11 @@ export class AdminImagesController {
     @Param("branchId", uuid) branchId: string, @Param("productId", uuid) productId: string,
     @Body() input: AttachImageInput) {
     return this.images.attach(authorization, branchId, productId, input.key);
+  }
+
+  @Delete()
+  remove(@Headers("authorization") authorization: string | undefined,
+    @Param("branchId", uuid) branchId: string, @Param("productId", uuid) productId: string) {
+    return this.images.remove(authorization, branchId, productId);
   }
 }
