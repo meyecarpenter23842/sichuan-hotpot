@@ -21,7 +21,7 @@ const tabs: { id: Tab; label: string; icon: string }[] = [
   { id: "account", label: "Tài khoản", icon: "♙" },
 ];
 function roleName(role: string): string {
-  return role === "OWNER" ? "Chủ cửa hàng" : role === "MANAGER" ? "Quản lý" : "Không được cấp quyền";
+  return role === "OWNER" ? "Chủ cửa hàng" : "Quản lý chi nhánh";
 }
 function Overview({ catalog, onChangeTab }: { catalog: AdminCatalog; onChangeTab: (tab: Tab) => void }) {
   const products = catalog.categories.flatMap(x => x.products);
@@ -87,10 +87,12 @@ export default function AdminApp() {
 
   const loadIdentity = useCallback(async (access: string) => {
     const user = await request<Principal>("/auth/me", access);
-    if (user.role !== "OWNER" && user.role !== "MANAGER") {
-      throw new AdminApiError("Tài khoản chưa được cấp vai trò quản trị.", 403);
-    }
+    // Branch membership can grant MANAGER even when the global role is CUSTOMER.
+    // The backend enforces OWNER/MANAGER permissions for every Admin API.
     const available = await request<Branch[]>("/admin/branches", access);
+    if (available.length === 0) {
+      throw new AdminApiError("Tài khoản chưa được cấp quyền quản trị chi nhánh.", 403);
+    }
     setPrincipal(user);
     setBranches(available);
     setBranchId(old => old && available.some(b => b.id === old)
