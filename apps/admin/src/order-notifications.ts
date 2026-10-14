@@ -43,3 +43,19 @@ export function playOrderChime(): void {
     // Audio may be denied by browser autoplay policy; order data still refreshes.
   }
 }
+
+const recentlyNotified = new Set<string>();
+/** One sound per order per device; survives navigation and web page reload. */
+export function markNewOrderAlerted(branchId: string, orderId: string): boolean {
+  const key = "sichuan.admin.order.alert." + branchId + "." + orderId;
+  if (recentlyNotified.has(key)) return false;
+  recentlyNotified.add(key);
+  if (Platform.OS === "web" && typeof localStorage !== "undefined") {
+    try {
+      const previous = Number(localStorage.getItem(key) ?? 0);
+      if (Date.now() - previous < 86400000) return false;
+      localStorage.setItem(key, String(Date.now()));
+    } catch { /* Private browsing storage can be unavailable. */ }
+  }
+  return true;
+}

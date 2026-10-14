@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
 import { Icon } from "./Icon";
 import { request } from "./api";
-import { playOrderChime } from "./order-notifications";
+import { markNewOrderAlerted, playOrderChime } from "./order-notifications";
 import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
 
@@ -100,7 +100,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
         });
         if (unseen.length) {
           setNotice("Có " + unseen.length + " đơn mới. Kiểm tra và xác nhận.");
-          if (chimeEnabled && !kitchenOnly) playOrderChime();
+          if (chimeEnabled && !kitchenOnly
+            && unseen.some(item => markNewOrderAlerted(branchId, item.id))) playOrderChime();
         }
       }
       lastIds.current = new Set(pending.map(x => x.id));

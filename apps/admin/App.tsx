@@ -12,6 +12,7 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
 import { OrderQueuePanel } from "./src/OrderQueuePanel";
+import { OrderAlertWatcher } from "./src/OrderAlertWatcher";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
@@ -334,6 +335,8 @@ export default function AdminApp() {
           </>}
         </View>
       </KeyboardAvoidingView> : <View style={styles.shell}>
+        {branchId && <OrderAlertWatcher token={token} branchId={branchId}
+          role={branchRole} chimeEnabled={chimeEnabled} />}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={styles.headerText}>
