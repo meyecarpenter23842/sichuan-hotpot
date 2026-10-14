@@ -16,12 +16,12 @@ type ActionStatus = "CONFIRMED" | "CANCELED" | "PREPARING" | "READY";
 
 export interface StaffOrder {
   id: string; branchId: string; status: OrderStatus; createdAt: string; updatedAt: string;
-  subtotalVnd: number; deliveryFeeVnd: number; totalVnd: number;
-  payment: { method: "COD" | "QR"; status: string } | null;
+  subtotalVnd?: number; deliveryFeeVnd?: number; totalVnd?: number;
+  payment?: { method: "COD" | "QR"; status: string } | null;
   items: {
     productName: string; variantName: string | null; quantity: number;
-    unitPriceVnd: number; lineTotalVnd: number;
-    modifiers: { name: string; priceVnd: number }[];
+    unitPriceVnd?: number; lineTotalVnd?: number;
+    modifiers: { name: string; priceVnd?: number }[];
   }[];
 }
 interface OrderDetail extends StaffOrder {
@@ -63,6 +63,7 @@ const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
 export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen"; active: boolean;
 }) {
+  const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -208,7 +209,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
           <Text style={[s.status, order.status === "PENDING" && s.urgent]}>
             {statusName[order.status]}
           </Text>
-          <Text style={s.total}>{money(order.totalVnd)}</Text>
+          {!kitchenOnly && order.totalVnd !== undefined &&
+            <Text style={s.total}>{money(order.totalVnd)}</Text>}
         </View>
         <Text numberOfLines={2} style={s.products}>
           {order.items.map(x => x.quantity + "× " + x.productName).join(" · ")}
@@ -234,19 +236,24 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
               {selected.items.map((item, i) => <View key={i} style={s.item}>
                 <View style={s.rowTop}>
                   <Text style={s.itemName}>{item.quantity} × {item.productName}</Text>
-                  <Text style={s.products}>{money(item.lineTotalVnd)}</Text>
+                  {!kitchenOnly && item.lineTotalVnd !== undefined &&
+                    <Text style={s.products}>{money(item.lineTotalVnd)}</Text>}
                 </View>
                 {!!item.variantName && <Text style={s.note}>{item.variantName}</Text>}
                 {item.modifiers.map((m,j) =>
-                  <Text key={j} style={s.note}>+ {m.name} ({money(m.priceVnd)})</Text>)}
+                  <Text key={j} style={s.note}>+ {m.name}
+                    {!kitchenOnly && m.priceVnd !== undefined ? " (" + money(m.priceVnd) + ")" : ""}
+                  </Text>)}
               </View>)}
-              <View style={s.totals}>
-                <Text style={s.note}>Tiền món: {money(selected.subtotalVnd)}</Text>
-                <Text style={s.note}>Phí giao: {money(selected.deliveryFeeVnd)}</Text>
-                <Text style={s.total}>Tổng thu: {money(selected.totalVnd)}</Text>
-                <Text style={s.note}>Thanh toán: {selected.payment?.method ?? "Chưa xác định"}
-                  {" · "}{selected.payment?.status ?? "Chưa xác định"}</Text>
-              </View>
+              {!kitchenOnly && selected.subtotalVnd !== undefined &&
+                selected.deliveryFeeVnd !== undefined && selected.totalVnd !== undefined &&
+                <View style={s.totals}>
+                  <Text style={s.note}>Tiền món: {money(selected.subtotalVnd)}</Text>
+                  <Text style={s.note}>Phí giao: {money(selected.deliveryFeeVnd)}</Text>
+                  <Text style={s.total}>Tổng thu: {money(selected.totalVnd)}</Text>
+                  <Text style={s.note}>Thanh toán: {selected.payment?.method ?? "Chưa xác định"}
+                    {" · "}{selected.payment?.status ?? "Chưa xác định"}</Text>
+                </View>}
               {!!selected.addressLineSnapshot && <>
                 <Text style={s.itemName}>Giao tới</Text>
                 <Text style={s.products}>{selected.addressLineSnapshot}</Text>
