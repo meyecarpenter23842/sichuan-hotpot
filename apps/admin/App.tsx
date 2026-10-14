@@ -235,7 +235,7 @@ export default function AdminApp() {
           <Field label="Tên đăng nhập" value={loginUser} onChangeText={setLoginUser}
             placeholder="Tài khoản nhân viên" />
           <Field label="Mật khẩu" value={loginPassword} secure onChangeText={setLoginPassword}
-            placeholder="6–8 ký tự" />
+            placeholder="Nhập mật khẩu" />
           {!!authError && <Notice text={authError} error />}
           <Action label={loginBusy ? "Đang đăng nhập..." : "Đăng nhập"}
             disabled={loginBusy || !loginUser.trim() || !loginPassword}
