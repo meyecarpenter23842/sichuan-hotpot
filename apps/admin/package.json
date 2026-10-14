@@ -12,7 +12,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test test/*.test.mjs",
-    "build": "expo export --platform web --output-dir dist"
+    "build": "expo export --platform web --output-dir dist",
+    "icons:generate": "node scripts/generate-icons.mjs",
+    "prebuild": "npm run icons:generate",
+    "prestart": "npm run icons:generate",
+    "preweb": "npm run icons:generate",
+    "preandroid": "npm run icons:generate"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -27,6 +32,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "eslint": "^9.35.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "pngjs": "3.4.0"
   }
 }
