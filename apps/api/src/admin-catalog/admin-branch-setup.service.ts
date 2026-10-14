@@ -1,5 +1,5 @@
 import {
-  ConflictException, ForbiddenException, Injectable, NotFoundException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
@@ -31,6 +31,10 @@ export class AdminBranchSetupService {
   }
 
   private details(input: Partial<BranchDetails>): Partial<BranchDetails> {
+    if ((input.name !== undefined && input.name.trim().length < 2) ||
+        (input.address !== undefined && input.address.trim().length < 10)) {
+      throw new BadRequestException("BRANCH_NAME_OR_ADDRESS_INVALID");
+    }
     return {
       ...(input.name === undefined ? {} : { name: input.name.trim() }),
       ...(input.code === undefined ? {} : { code: input.code.trim() }),
