@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import * as Location from "expo-location";
 import { request, type Branch } from "./api";
 import { Action, Field, Notice } from "./ui";
 import { c, font } from "./theme";
@@ -19,6 +20,7 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
   const [lat, setLat] = useState(branch?.latitude?.toString() ?? "");
   const [lng, setLng] = useState(branch?.longitude?.toString() ?? "");
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [confirmStatus, setConfirmStatus] = useState(false);
@@ -31,8 +33,33 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
     setError(""); setFeedback(""); setConfirmStatus(false);
   }, [branch?.id]);
 
+  async function locateStore() {
+    if (locating || saving) return;
+    setLocating(true); setError(""); setFeedback("");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        throw new Error("Chưa có quyền truy cập GPS. Hãy cấp quyền vị trí cho ứng dụng hoặc nhập tọa độ thủ công.");
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const { latitude, longitude } = position.coords;
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error("GPS chưa trả về tọa độ hợp lệ. Hãy thử lại.");
+      }
+      setLat(latitude.toFixed(7));
+      setLng(longitude.toFixed(7));
+      setFeedback("Đã lấy vị trí thiết bị. Hãy xác nhận đây là địa điểm cửa hàng trước khi lưu.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không thể lấy GPS. Hãy kiểm tra quyền vị trí và thử lại.");
+    } finally {
+      setLocating(false);
+    }
+  }
+
   async function save() {
-    if (saving) return;
+    if (saving || locating) return;
     if (name.trim().length < 2 || name.trim().length > 200 ||
       address.trim().length < 10 || address.trim().length > 500 ||
       (!branch && !branchCode.test(code.trim())) ||
@@ -87,7 +114,9 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
       onChangeText={setCode} placeholder="vi-du-quan-1" />}
     <Field label="Địa chỉ cửa hàng" value={address} onChangeText={setAddress}
       placeholder="Số nhà, đường, phường, tỉnh/thành" multiline />
-    <Text style={st.hint}>Tọa độ cửa hàng trên bản đồ, không phải vị trí hiện tại của điện thoại.</Text>
+    <Text style={st.hint}>Chỉ dùng GPS khi đang đứng tại cửa hàng. Vị trí thiết bị có thể khác địa chỉ kinh doanh.</Text>
+    <Action label={locating ? "Đang xác định GPS..." : "Lấy định vị GPS hiện tại"}
+      secondary disabled={saving || locating} onPress={() => void locateStore()} />
     <View style={st.coordinates}>
       <View style={st.coordinate}><Field label="Vĩ độ (latitude)" value={lat}
         onChangeText={setLat} placeholder="10.1234567" /></View>
@@ -97,7 +126,7 @@ export function BranchPanel({ token, branch, onSaved, onCancel }: {
     {!!error && <Notice error text={error} />}
     {!!feedback && <Notice text={feedback} />}
     <Action label={saving ? "Đang lưu..." : branch ? "Lưu thông tin chi nhánh" : "Tạo chi nhánh"}
-      onPress={() => void save()} disabled={saving} />
+      onPress={() => void save()} disabled={saving || locating} />
     {onCancel && <Action label="Hủy" secondary onPress={onCancel} disabled={saving} />}
     {branch && <>
       {!confirmStatus ? <Action label={branch.isActive ? "Tạm dừng chi nhánh" : "Kích hoạt chi nhánh"}

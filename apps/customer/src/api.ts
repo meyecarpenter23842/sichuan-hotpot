@@ -117,7 +117,7 @@ export function apiBaseUrl(): string {
 
 export async function apiRequest<T>(
   path: string,
-  options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; accessToken?: string; signal?: AbortSignal } = {},
+  options: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; accessToken?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   const url = apiBaseUrl() + path;
   const controller = new AbortController();

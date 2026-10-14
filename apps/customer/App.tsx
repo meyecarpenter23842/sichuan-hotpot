@@ -211,6 +211,8 @@ function CustomerApp() {
   const [pendingDeleteAddress, setPendingDeleteAddress] = useState<SavedAddress | null>(null);
   const [addressErrorText, setAddressErrorText] = useState("");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const addressEditorOrigin = useRef<Screen>("account");
   const addressBeforeModal = useRef<AddressDraft | null>(null);
 
   const refreshCatalogue = useCallback(async (requestedBranch?: string) => {
@@ -502,15 +504,25 @@ function CustomerApp() {
     setAddressErrorText("");
     try {
       if (principal && accessToken) {
-        const created = await apiRequest<SavedAddress>("/customer/addresses", {
-          method: "POST", accessToken,
+        const saved = await apiRequest<SavedAddress>(editingAddressId
+          ? "/customer/addresses/" + encodeURIComponent(editingAddressId)
+          : "/customer/addresses", {
+          method: editingAddressId ? "PATCH" : "POST", accessToken,
           body: { label: address.label, line1: address.line1,
             phone: address.phone.replace(/[\s.-]/g, ""),
             latitude: address.latitude, longitude: address.longitude },
         });
-        setSavedAddresses(old => [created, ...old]);
-        setSelectedAddressId(created.id);
-        setNotice("Đã lưu địa chỉ vào tài khoản.");
+        if (editingAddressId) {
+          setSavedAddresses(old => old.map(item => item.id === saved.id ? saved : item));
+          if (selectedAddressId !== saved.id && addressBeforeModal.current) {
+            setAddress({ ...addressBeforeModal.current, phone: address.phone });
+          }
+          setNotice("Đã cập nhật địa chỉ đã lưu. Phí giao sẽ được tính lại khi đặt hàng.");
+        } else {
+          setSavedAddresses(old => [saved, ...old]);
+          setSelectedAddressId(saved.id);
+          setNotice("Đã lưu địa chỉ vào tài khoản.");
+        }
       } else {
         setNotice("Đã lưu bản nháp trên thiết bị. Đăng nhập để lưu nhiều địa chỉ.");
       }
@@ -521,8 +533,9 @@ function CustomerApp() {
         await AsyncStorage.setItem(ADDRESS_KEY, JSON.stringify(address));
       }
       setAddressModalOpen(false);
+      setEditingAddressId(null);
       addressBeforeModal.current = null;
-      setScreen(addressReturnTo);
+      setScreen(editingAddressId && addressEditorOrigin.current === "address" ? "address" : addressReturnTo);
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lưu được địa chỉ.");
     } finally { setAddressSaving(false); }
@@ -543,7 +556,21 @@ function CustomerApp() {
       return;
     }
     addressBeforeModal.current = address;
+    addressEditorOrigin.current = screen;
+    setEditingAddressId(null);
     setAddress({ label, phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddressReturnTo(returnTo);
+    setAddressErrorText("");
+    setAddressModalOpen(true);
+  }
+
+  function editSavedAddress(saved: SavedAddress, returnTo: "cart" | "account") {
+    if (addressSaving) return;
+    addressBeforeModal.current = address;
+    addressEditorOrigin.current = screen;
+    setEditingAddressId(saved.id);
+    setAddress({ label: saved.label, phone: address.phone, line1: saved.line1,
+      latitude: saved.latitude, longitude: saved.longitude });
     setAddressReturnTo(returnTo);
     setAddressErrorText("");
     setAddressModalOpen(true);
@@ -553,6 +580,7 @@ function CustomerApp() {
     if (addressSaving) return;
     if (addressBeforeModal.current) setAddress(addressBeforeModal.current);
     addressBeforeModal.current = null;
+    setEditingAddressId(null);
     setAddressErrorText("");
     setAddressModalOpen(false);
   }
@@ -597,6 +625,12 @@ function CustomerApp() {
             <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
               style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
               <Text style={styles.addressPinGlyph}>⌖</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Sửa địa chỉ " + saved.label}
+              style={styles.addressSmallButton} disabled={addressSaving}
+              accessibilityState={{ disabled: addressSaving }}
+              onPress={() => editSavedAddress(saved, returnTo)}>
+              <Text style={styles.addressEditGlyph}>Sửa</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
               style={styles.addressSmallButton} disabled={addressSaving}
@@ -1121,10 +1155,32 @@ function CustomerApp() {
                     <Text style={styles.addressAllLinkArrow}>›</Text>
                   </Pressable>
                 </View>
-                <View style={styles.accountGroup}>
+                <View style={styles.accountOrdersSection}>
                   <Text style={styles.sectionTitle}>Đơn hàng & mua lại</Text>
-                  <Button label="Sản phẩm đã mua" alternate onPress={() => setScreen("purchased")} />
-                  <Button label="Lịch sử và theo dõi đơn hàng" alternate onPress={() => setScreen("orders")} />
+                  <Pressable accessibilityRole="button" accessibilityLabel="Sản phẩm đã mua"
+                    style={({ pressed }) => [styles.accountOrderRow, pressed && styles.addressRowPressed]}
+                    onPress={() => setScreen("purchased")}>
+                    <View style={styles.addressRowIcon}>
+                      <HotpotNavIcon name="favorites" size={20} />
+                    </View>
+                    <View style={styles.accountOrderCopy}>
+                      <Text style={styles.accountOrderTitle}>Sản phẩm đã mua</Text>
+                      <Text style={styles.addressCardLine}>Xem món đã giao và mua lại nhanh</Text>
+                    </View>
+                    <Text style={styles.addressQuickChevron}>›</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Lịch sử và theo dõi đơn hàng"
+                    style={({ pressed }) => [styles.accountOrderRow, pressed && styles.addressRowPressed]}
+                    onPress={() => setScreen("orders")}>
+                    <View style={styles.addressRowIcon}>
+                      <HotpotNavIcon name="orders" size={20} />
+                    </View>
+                    <View style={styles.accountOrderCopy}>
+                      <Text style={styles.accountOrderTitle}>Lịch sử & theo dõi đơn</Text>
+                      <Text style={styles.addressCardLine}>Xem trạng thái, chi tiết và đặt lại</Text>
+                    </View>
+                    <Text style={styles.addressQuickChevron}>›</Text>
+                  </Pressable>
                 </View>
                 <View style={styles.accountLogout}>
                   <Pressable accessibilityRole="button" style={({ pressed }) => [
@@ -1319,8 +1375,8 @@ function CustomerApp() {
             behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={styles.addressModalSheet}>
               <View style={styles.addressModalHeader}>
-                <Text style={styles.sectionTitle}>Thêm địa chỉ {address.label}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Đóng thêm địa chỉ"
+                <Text style={styles.sectionTitle}>{editingAddressId ? "Sửa địa chỉ " : "Thêm địa chỉ "}{address.label}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={editingAddressId ? "Đóng sửa địa chỉ" : "Đóng thêm địa chỉ"}
                   onPress={closeAddressEditor} style={styles.addressModalClose}>
                   <Text style={styles.addressModalCloseText}>✕</Text>
                 </Pressable>
@@ -1360,7 +1416,7 @@ function CustomerApp() {
               }} />
             )}
             {!!addressErrorText && <Notice message={addressErrorText} error />}
-            <Button label={addressSaving ? "Đang lưu địa chỉ..." : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
+            <Button label={addressSaving ? "Đang lưu địa chỉ..." : editingAddressId ? "Cập nhật địa chỉ" : principal ? "Lưu địa chỉ vào tài khoản" : "Lưu bản nháp trên máy"}
               disabled={addressSaving} onPress={() => void saveAddress()} />
 
                 <Button label="Hủy" alternate disabled={addressSaving} onPress={closeAddressEditor} />
@@ -1424,6 +1480,11 @@ const styles = StyleSheet.create({
   accountGroup: { padding: 14, borderRadius: 16, backgroundColor: palette.white,
     borderWidth: 1, borderColor: palette.line, gap: 12 },
   accountAddressSection: { backgroundColor: palette.white, paddingTop: 3, paddingBottom: 5 },
+  accountOrdersSection: { backgroundColor: palette.white, paddingTop: 8, paddingBottom: 5 },
+  accountOrderRow: { flexDirection: "row", alignItems: "center",
+    minHeight: 70, borderBottomWidth: 1, borderBottomColor: "#EEF0F3", paddingHorizontal: 8 },
+  accountOrderCopy: { flex: 1, minWidth: 0, paddingVertical: 11, gap: 5 },
+  accountOrderTitle: { color: palette.text, fontSize: 14, fontWeight: "700" },
   addressAllLink: { flexDirection: "row", minHeight: 44, alignItems: "center",
     justifyContent: "space-between", paddingLeft: 8, paddingRight: 11 },
   addressAllLinkText: { color: palette.red, fontSize: 13, fontWeight: "700" },
@@ -1602,6 +1663,7 @@ const styles = StyleSheet.create({
   addressPinGlyph: { fontSize: 25, color: palette.red },
   addressSmallButton: { width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   addressDeleteGlyph: { fontSize: 12, fontWeight: "700", color: "#9B5A5E" },
+  addressEditGlyph: { fontSize: 12, fontWeight: "800", color: palette.red },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },

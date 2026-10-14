@@ -33,7 +33,7 @@ test("three quick add actions initialize the actual validation and map modal", (
   assert.match(app, /setAddress\(\{ label, phone: address\.phone, line1: "", latitude: "", longitude: "" \}\)/);
   assert.match(app, /<AddressPinMap latitude=\{address\.latitude\}/);
   assert.match(app, /addressError\(address\.line1, address\.latitude, address\.longitude\)/);
-  assert.match(app, /setSelectedAddressId\(created\.id\)/);
+  assert.match(app, /setSelectedAddressId\(saved\.id\)/);
 });
 
 test("address list uses divider rows and subtle selection, not nested heavy cards", () => {

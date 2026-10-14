@@ -14,7 +14,7 @@ test("server quote and checkout must use selected persisted address, server amou
   assert.match(checkout, /pending\.idempotencyKey/);
   assert.match(checkout, /lock\.current = true/);
   assert.match(checkout, /AsyncStorage\.setItem\(PENDING_KEY/);
-  assert.match(app, /setSelectedAddressId\(created\.id\)/);
+  assert.match(app, /setSelectedAddressId\(saved\.id\)/);
   assert.doesNotMatch(app, /Đặt hàng \(chưa khả dụng\)/);
 });
 test("orders have live history, timeline and safe reorder without silently substituting modifiers", () => {
