@@ -208,6 +208,7 @@ function CustomerApp() {
   const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
+  const [pendingDeleteAddress, setPendingDeleteAddress] = useState<SavedAddress | null>(null);
   const [addressErrorText, setAddressErrorText] = useState("");
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const addressBeforeModal = useRef<AddressDraft | null>(null);
@@ -424,6 +425,7 @@ function CustomerApp() {
     refreshFailures.current = 0;
     setSavedAddresses([]);
     setSelectedAddressId(null);
+    setPendingDeleteAddress(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
     const cleared = await Promise.allSettled([
@@ -535,13 +537,13 @@ function CustomerApp() {
     setScreen(returnTo);
   }
 
-  function openAddressEditor(returnTo: "cart" | "account") {
+  function openAddressEditor(returnTo: "cart" | "account", label = "Nhà") {
     if (principal && savedAddresses.length >= 10) {
       setNotice("Tài khoản đã lưu tối đa 10 địa chỉ. Xóa một địa chỉ cũ trước khi thêm.");
       return;
     }
     addressBeforeModal.current = address;
-    setAddress({ label: "Nhà", phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddress({ label, phone: address.phone, line1: "", latitude: "", longitude: "" });
     setAddressReturnTo(returnTo);
     setAddressErrorText("");
     setAddressModalOpen(true);
@@ -566,30 +568,46 @@ function CustomerApp() {
       .catch(() => setNotice("Không mở được bản đồ ghim địa chỉ."));
   }
 
-  function savedAddressCards(returnTo: "cart" | "account") {
-    return savedAddresses.map(saved => (
-      <View key={saved.id} style={[styles.savedAddress,
-        selectedAddressId === saved.id && styles.savedAddressSelected]}>
-        <View style={styles.addressCardCopy}>
-          <Text style={styles.addressCardLabel}>{saved.label}
-            {selectedAddressId === saved.id ? "  · Đang dùng" : ""}</Text>
-          <Text style={styles.addressCardLine}>{saved.line1}</Text>
+  function savedAddressCards(returnTo: "cart" | "account", compact = false) {
+    // On the account overview always show the selected destination first.
+    const selected = savedAddresses.find(item => item.id === selectedAddressId);
+    const preview = selected
+      ? [selected, ...savedAddresses.filter(item => item.id !== selected.id)]
+      : savedAddresses;
+    const displayed = compact ? preview.slice(0, 2) : savedAddresses;
+    return displayed.map(saved => {
+      const isSelected = selectedAddressId === saved.id;
+      return (
+        <View key={saved.id} style={[styles.savedAddress,
+          isSelected && styles.savedAddressSelected]}>
+          <View style={styles.addressRowIcon}>
+            <HotpotNavIcon name="home" size={19} active={isSelected} />
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
+            accessibilityState={{ selected: isSelected }}
+            style={({ pressed }) => [styles.addressCardCopy, pressed && styles.addressRowPressed]}
+            onPress={() => selectSavedAddress(saved, returnTo)}>
+            <View style={styles.addressLabelRow}>
+              <Text style={styles.addressCardLabel} numberOfLines={1}>{saved.label}</Text>
+              {isSelected && <Text style={styles.addressCurrentBadge}>Đang dùng</Text>}
+            </View>
+            <Text style={styles.addressCardLine} numberOfLines={2}>{saved.line1}</Text>
+          </Pressable>
+          <View style={styles.addressRowActions}>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
+              style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
+              <Text style={styles.addressPinGlyph}>⌖</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
+              style={styles.addressSmallButton} disabled={addressSaving}
+              accessibilityState={{ disabled: addressSaving }}
+              onPress={() => { setAddressErrorText(""); setPendingDeleteAddress(saved); }}>
+              <Text style={styles.addressDeleteGlyph}>Xóa</Text>
+            </Pressable>
+          </View>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
-          style={styles.addressPinButton} onPress={() => showAddressPin(saved)}>
-          <Text style={styles.addressPinGlyph}>⌖</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Dùng địa chỉ " + saved.label}
-          style={styles.addressSmallButton} onPress={() => selectSavedAddress(saved, returnTo)}>
-          <Text style={styles.linkText}>Chọn</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={"Xóa địa chỉ " + saved.label}
-          style={styles.addressSmallButton} disabled={addressSaving}
-          onPress={() => void deleteSavedAddress(saved)}>
-          <Text style={styles.warning}>Xóa</Text>
-        </Pressable>
-      </View>
-    ));
+      );
+    });
   }
 
   async function deleteSavedAddress(saved: SavedAddress) {
@@ -608,6 +626,7 @@ function CustomerApp() {
           latitude: replacement.latitude, longitude: replacement.longitude }
           : { ...old, line1: "", latitude: "", longitude: "" });
       }
+      setPendingDeleteAddress(null);
       setNotice("Đã xóa địa chỉ đã lưu.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không xóa được địa chỉ.");
@@ -1085,7 +1104,7 @@ function CustomerApp() {
             </View>
             {principal ? (
               <>
-                <View style={styles.accountGroup}>
+                <View style={styles.accountAddressSection}>
                   <View style={styles.accountGroupHeader}>
                     <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
                     <Pressable accessibilityRole="button" style={styles.accountAdd}
@@ -1093,8 +1112,14 @@ function CustomerApp() {
                       <Text style={styles.linkText}>＋ Thêm địa chỉ</Text>
                     </Pressable>
                   </View>
-                  {savedAddresses.length > 0 ? savedAddressCards("account") :
-                    <Text style={styles.muted}>Chưa lưu địa chỉ. Thêm địa chỉ để đặt hàng nhanh hơn.</Text>}
+                  {savedAddresses.length > 0 ? savedAddressCards("account", true) :
+                    <Text style={styles.addressEmptyText}>Chưa có địa chỉ. Thêm vị trí nhận hàng để đặt món nhanh hơn.</Text>}
+                  <Pressable style={styles.addressAllLink} accessibilityRole="button"
+                    accessibilityLabel="Xem tất cả địa chỉ đã lưu"
+                    onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
+                    <Text style={styles.addressAllLinkText}>Quản lý địa chỉ{savedAddresses.length > 0 ? " (" + savedAddresses.length + ")" : ""}</Text>
+                    <Text style={styles.addressAllLinkArrow}>›</Text>
+                  </Pressable>
                 </View>
                 <View style={styles.accountGroup}>
                   <Text style={styles.sectionTitle}>Đơn hàng & mua lại</Text>
@@ -1120,19 +1145,52 @@ function CustomerApp() {
         );
       case "address":
         return (
-          <View style={styles.section}>
-            <Button label={addressReturnTo === "cart" ? "‹ Trở về giỏ hàng" : "‹ Trở về tài khoản"}
-              alternate onPress={() => setScreen(addressReturnTo)} />
-            <Text style={styles.pageTitle}>Địa chỉ giao hàng</Text>
-            <Text style={styles.muted}>Kiểm tra địa chỉ và ghim trước khi chọn. Phí giao được máy chủ tính theo đường xe chạy.</Text>
-            {!!principal && savedAddresses.length > 0 && (
-              <View style={styles.accountGroup}>
-                <Text style={styles.sectionTitle}>Địa chỉ đã lưu ({savedAddresses.length}/10)</Text>
-                {savedAddressCards(addressReturnTo)}
+          <View style={styles.addressPage} testID="saved-address-page">
+            <Text style={styles.addressPageHint}>
+              Chọn địa chỉ nhận hàng đã lưu hoặc thêm vị trí mới.
+            </Text>
+            <View style={styles.addressQuickActions}>
+              {([
+                { title: "Thêm Nhà riêng", label: "Nhà", icon: "⌂", note: "" },
+                { title: "Thêm Văn phòng", label: "Công ty", icon: "▣", note: "" },
+                { title: "Thêm", label: "Khác", icon: "+", note: "Lưu địa chỉ thường dùng" },
+              ] as const).map(item => (
+                <Pressable key={item.title} accessibilityRole="button"
+                  accessibilityLabel={item.title === "Thêm" ? "＋ Thêm địa chỉ mới" : "Thêm địa chỉ " + item.label}
+                  style={({ pressed }) => [styles.addressQuickRow,
+                    pressed && styles.addressRowPressed]}
+                  onPress={() => openAddressEditor(addressReturnTo, item.label)}>
+                  <View style={styles.addressQuickIconCircle}>
+                    {item.title === "Thêm Nhà riêng"
+                      ? <HotpotNavIcon name="home" size={21} />
+                      : <Text style={styles.addressQuickIcon}>{item.icon}</Text>}
+                  </View>
+                  <View style={styles.addressQuickCopy}>
+                    <Text style={styles.addressQuickTitle}>{item.title}</Text>
+                    {!!item.note && <Text style={styles.addressQuickNote}>{item.note}</Text>}
+                  </View>
+                  <Text style={styles.addressQuickChevron}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.addressListSection}>
+              <View style={styles.addressListHeader}>
+                <Text style={styles.addressListHeading}>Địa chỉ đã lưu</Text>
+                <Text style={styles.addressListCount}>{principal ? savedAddresses.length + "/10" : "Chưa đăng nhập"}</Text>
               </View>
-            )}
-            <Button label={principal ? "＋ Thêm địa chỉ mới" : "＋ Thêm địa chỉ giao hàng"}
-              onPress={() => openAddressEditor(addressReturnTo)} />
+              {principal && savedAddresses.length > 0 ? savedAddressCards(addressReturnTo) : (
+                <View style={styles.addressEmptyState}>
+                  <Text style={styles.addressEmptyText}>
+                    {principal
+                      ? "Chưa có địa chỉ đã lưu. Thêm Nhà riêng, Văn phòng hoặc địa chỉ khác ở phía trên."
+                      : "Đăng nhập để lưu nhiều địa chỉ. Bạn vẫn có thể thêm bản nháp trên thiết bị."}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.addressDeliveryFootnote}>
+              Phí giao được tính theo tuyến đường thực tế sau khi chọn địa chỉ.
+            </Text>
             {!!addressErrorText && <Notice message={addressErrorText} error />}
           </View>
         );
@@ -1160,7 +1218,15 @@ function CustomerApp() {
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />
         ) : (
           <View style={styles.shell}>
-            {screen === "home" ? (
+            {screen === "address" ? (
+              <View style={styles.addressPageHeader}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Quay lại từ địa chỉ đã lưu"
+                  style={styles.addressBackButton} onPress={() => setScreen(addressReturnTo)}>
+                  <Text style={styles.addressBackArrow}>←</Text>
+                </Pressable>
+                <Text style={styles.addressPageTitle}>Địa điểm đã lưu</Text>
+              </View>
+            ) : screen === "home" ? (
               <View style={styles.homeHeader}>
                 <View style={styles.homeHeaderLine}>
                   <Pressable style={styles.deliveryLocation} accessibilityRole="button"
@@ -1196,7 +1262,7 @@ function CustomerApp() {
                 </Pressable>
               </View>
             )}
-            <KeyboardAvoidingView style={styles.body}
+            <KeyboardAvoidingView style={[styles.body, screen === "address" && styles.addressBody]}
               behavior={Platform.OS === "ios" ? "padding" : undefined}>
               <ScrollView keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.scrollContent}
@@ -1205,7 +1271,7 @@ function CustomerApp() {
                 {mainContent()}
               </ScrollView>
             </KeyboardAvoidingView>
-            <View style={styles.bottomNavigation}>
+            {screen !== "address" && <View style={styles.bottomNavigation}>
               {([
                 ["home", "Trang chủ", "home"],
                 ["menu", "Thực đơn", "menu"],
@@ -1219,16 +1285,41 @@ function CustomerApp() {
                   <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
                 </Pressable>
               ))}
-            </View>
+            </View>}
           </View>
         )}
+        <Modal visible={!!pendingDeleteAddress} transparent animationType="fade"
+          onRequestClose={() => { if (!addressSaving) setPendingDeleteAddress(null); }}>
+          <View style={styles.deleteModalBackdrop}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Xóa địa chỉ đã lưu?</Text>
+              <Text style={styles.deleteModalCopy}>
+                {pendingDeleteAddress?.label} sẽ bị xóa khỏi tài khoản. Bạn có thể thêm lại sau.
+              </Text>
+              {!!addressErrorText && <Notice message={addressErrorText} error />}
+              <View style={styles.deleteModalActions}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Hủy xóa địa chỉ"
+                  disabled={addressSaving} style={styles.deleteCancelAction}
+                  onPress={() => { setPendingDeleteAddress(null); setAddressErrorText(""); }}>
+                  <Text style={styles.deleteCancelText}>Hủy</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Xác nhận xóa địa chỉ"
+                  disabled={addressSaving} style={styles.deleteConfirmAction}
+                  onPress={() => { if (pendingDeleteAddress) void deleteSavedAddress(pendingDeleteAddress); }}>
+                  {addressSaving ? <ActivityIndicator size="small" color="#FFFFFF" /> :
+                    <Text style={styles.deleteConfirmText}>Xóa địa chỉ</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
         <Modal visible={addressModalOpen} transparent animationType="slide"
           onRequestClose={closeAddressEditor}>
           <KeyboardAvoidingView style={styles.addressModalBackdrop}
             behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={styles.addressModalSheet}>
               <View style={styles.addressModalHeader}>
-                <Text style={styles.sectionTitle}>Thêm địa chỉ mới</Text>
+                <Text style={styles.sectionTitle}>Thêm địa chỉ {address.label}</Text>
                 <Pressable accessibilityRole="button" accessibilityLabel="Đóng thêm địa chỉ"
                   onPress={closeAddressEditor} style={styles.addressModalClose}>
                   <Text style={styles.addressModalCloseText}>✕</Text>
@@ -1295,6 +1386,13 @@ const styles = StyleSheet.create({
   headerCart: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1, minHeight: 0, paddingBottom: 58 },
+  addressBody: { paddingBottom: 0 },
+  addressPageHeader: { flexDirection: "row", alignItems: "center", minHeight: 58,
+    paddingHorizontal: 12, backgroundColor: palette.white,
+    borderBottomWidth: 1, borderBottomColor: "#EEF0F3" },
+  addressBackButton: { width: 44, height: 48, alignItems: "center", justifyContent: "center" },
+  addressBackArrow: { color: palette.text, fontSize: 26, fontWeight: "400" },
+  addressPageTitle: { color: palette.text, fontSize: 18, fontWeight: "800", marginLeft: 7 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
   loginPage: { backgroundColor: "#FFFFFF", paddingBottom: 24 },
   loginHeroFrame: { width: "100%", height: 160, backgroundColor: palette.red, overflow: "hidden" },
@@ -1325,12 +1423,30 @@ const styles = StyleSheet.create({
   accountIdentityText: { flex: 1, gap: 3 },
   accountGroup: { padding: 14, borderRadius: 16, backgroundColor: palette.white,
     borderWidth: 1, borderColor: palette.line, gap: 12 },
+  accountAddressSection: { backgroundColor: palette.white, paddingTop: 3, paddingBottom: 5 },
+  addressAllLink: { flexDirection: "row", minHeight: 44, alignItems: "center",
+    justifyContent: "space-between", paddingLeft: 8, paddingRight: 11 },
+  addressAllLinkText: { color: palette.red, fontSize: 13, fontWeight: "700" },
+  addressAllLinkArrow: { color: palette.red, fontSize: 22 },
   accountGroupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   accountAdd: { minHeight: 44, justifyContent: "center", paddingHorizontal: 3 },
   accountLogout: { marginTop: "auto", paddingTop: 28, paddingBottom: 12 },
   logoutButton: { borderColor: palette.red, borderWidth: 1, backgroundColor: palette.softRed,
     minHeight: 48, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   logoutText: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
+  deleteModalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(17,24,39,0.48)", paddingHorizontal: 20 },
+  deleteModalCard: { width: "100%", maxWidth: 410, padding: 19, borderRadius: 18,
+    backgroundColor: palette.white, gap: 12 },
+  deleteModalTitle: { fontSize: 17, fontWeight: "800", color: palette.text },
+  deleteModalCopy: { fontSize: 13, lineHeight: 20, color: palette.muted },
+  deleteModalActions: { flexDirection: "row", gap: 10, marginTop: 7 },
+  deleteCancelAction: { flex: 1, minHeight: 46, alignItems: "center",
+    justifyContent: "center", borderRadius: 11, borderWidth: 1, borderColor: palette.line },
+  deleteCancelText: { fontSize: 14, fontWeight: "700", color: palette.text },
+  deleteConfirmAction: { flex: 1, minHeight: 46, alignItems: "center",
+    justifyContent: "center", borderRadius: 11, backgroundColor: palette.red },
+  deleteConfirmText: { fontSize: 14, fontWeight: "800", color: palette.white },
   addressModalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.45)",
     justifyContent: "center", alignItems: "center", paddingHorizontal: 12, paddingVertical: 20 },
   addressModalSheet: { width: "100%", maxWidth: 540, maxHeight: "94%", backgroundColor: palette.white,
@@ -1443,15 +1559,49 @@ const styles = StyleSheet.create({
   option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
   optionUnavailable: { opacity: 0.45 },
   optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
-  savedAddress: { flexDirection: "row", alignItems: "center", backgroundColor: palette.graySurface,
-    borderRadius: 13, borderWidth: 1, borderColor: palette.line, padding: 10, gap: 3 },
-  savedAddressSelected: { borderColor: palette.red, backgroundColor: palette.softRed },
-  addressCardCopy: { flex: 1, gap: 4, minWidth: 0 },
-  addressCardLabel: { color: palette.text, fontWeight: "800", fontSize: typeScale.body },
-  addressCardLine: { color: palette.muted, fontSize: typeScale.small, lineHeight: 17 },
+  addressPage: { paddingBottom: 26, backgroundColor: palette.white },
+  addressPageHint: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 11,
+    color: palette.muted, fontSize: 12, lineHeight: 19 },
+  addressQuickActions: { backgroundColor: palette.white, paddingHorizontal: 18 },
+  addressQuickRow: { minHeight: 67, flexDirection: "row", alignItems: "center",
+    gap: 13, borderBottomWidth: 1, borderBottomColor: "#EEF0F3" },
+  addressQuickIconCircle: { width: 41, height: 41, borderRadius: 22,
+    backgroundColor: "#F5F6F8", alignItems: "center", justifyContent: "center" },
+  addressQuickIcon: { color: palette.text, fontSize: 25, fontWeight: "400" },
+  addressQuickCopy: { flex: 1, minWidth: 0, gap: 3, paddingVertical: 11 },
+  addressQuickTitle: { color: palette.red, fontSize: 15, fontWeight: "700" },
+  addressQuickNote: { color: palette.muted, fontSize: 12, lineHeight: 17 },
+  addressQuickChevron: { color: "#9AA1AC", fontSize: 22, paddingRight: 4 },
+  addressListSection: { marginTop: 16, borderTopWidth: 8, borderTopColor: "#F6F7F9" },
+  addressListHeader: { minHeight: 53, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", paddingHorizontal: 18, gap: 12 },
+  addressListHeading: { color: palette.text, fontSize: 15, fontWeight: "800" },
+  addressListCount: { color: palette.muted, fontSize: 12 },
+  addressEmptyState: { paddingHorizontal: 18, paddingVertical: 16 },
+  addressEmptyText: { color: palette.muted, fontSize: 13, lineHeight: 20 },
+  addressDeliveryFootnote: { color: palette.muted, fontSize: 12,
+    lineHeight: 19, paddingHorizontal: 18, paddingTop: 16 },
+  savedAddress: { flexDirection: "row", alignItems: "center",
+    paddingVertical: 10, paddingLeft: 12, paddingRight: 12, minHeight: 83,
+    backgroundColor: palette.white, borderBottomWidth: 1,
+    borderBottomColor: "#EEF0F3", borderLeftWidth: 3, borderLeftColor: "transparent" },
+  savedAddressSelected: { borderLeftColor: palette.red, backgroundColor: "#FFF8F8" },
+  addressRowIcon: { width: 40, height: 40, marginRight: 9, borderRadius: 22,
+    backgroundColor: "#F5F6F8", justifyContent: "center", alignItems: "center" },
+  addressCardCopy: { flex: 1, gap: 5, minWidth: 0, justifyContent: "center",
+    minHeight: 53, paddingVertical: 6 },
+  addressLabelRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
+  addressCardLabel: { color: palette.text, fontWeight: "700", fontSize: 14, flexShrink: 1 },
+  addressCurrentBadge: { color: palette.red, fontSize: 10, fontWeight: "800",
+    backgroundColor: "#FCE7E8", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3,
+    overflow: "hidden" },
+  addressCardLine: { color: "#636C77", fontSize: 12, lineHeight: 18 },
+  addressRowActions: { flexDirection: "row", alignItems: "center" },
+  addressRowPressed: { opacity: 0.7 },
   addressPinButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  addressPinGlyph: { fontSize: 27, color: palette.red },
-  addressSmallButton: { minHeight: 44, paddingHorizontal: 8, justifyContent: "center" },
+  addressPinGlyph: { fontSize: 25, color: palette.red },
+  addressSmallButton: { width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  addressDeleteGlyph: { fontSize: 12, fontWeight: "700", color: "#9B5A5E" },
   optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },

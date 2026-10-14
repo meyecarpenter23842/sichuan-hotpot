@@ -92,7 +92,7 @@ try {
   await page.getByRole("button", { name: "Xác nhận mã và tạo tài khoản" }).click();
   await page.getByText(productName).waitFor();
   await page.getByRole("button", { name: "Thêm địa chỉ giao hàng" }).click();
-  await page.getByRole("button", { name: "＋ Thêm địa chỉ mới" }).click();
+  await page.getByRole("button", { name: "Thêm địa chỉ Nhà" }).click();
   await page.getByRole("button", { name: "Đóng thêm địa chỉ" }).waitFor();
   await page.getByRole("textbox", { name: "Số điện thoại" }).fill("0912345678");
   await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("12 Nguyễn Trãi, Quận 1, TP HCM");
@@ -120,6 +120,7 @@ try {
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();
   await page.getByRole("button", { name: "Xem ghim Công ty" }).waitFor();
   await page.getByRole("button", { name: "Xóa địa chỉ Nhà" }).click();
+  await page.getByRole("button", { name: "Xác nhận xóa địa chỉ" }).click();
   await page.getByRole("button", { name: "Xem ghim Nhà" }).waitFor({ state: "detached" });
   assert.ok(requests.some(x => x.path.startsWith("/customer/addresses/") && x.status === 200));
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-address-390.png", fullPage: true });
