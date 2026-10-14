@@ -37,6 +37,15 @@ def require(value, reason):
         raise GateError(reason)
 
 
+def sha256_file(path):
+    """Hash large encrypted backups in bounded memory (1 MiB chunks)."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def private_file(path):
     path = Path(path)
     st = path.lstat()
@@ -146,7 +155,7 @@ def encrypt_dump(target, recipient):
                 dump.wait()
         dest.flush()
         os.fsync(dest.fileno())
-    return hashlib.sha256(target.read_bytes()).hexdigest()
+    return sha256_file(target)
 
 
 def isolated_restore(cipher):
@@ -190,7 +199,7 @@ def backup_restore(sha):
     roundtrip = BACKUPS / (stamp + ".download.age")
     try:
         run(["/usr/bin/rclone", "copyto", dest, str(roundtrip)], env=env, timeout=600)
-        require(hashlib.sha256(roundtrip.read_bytes()).hexdigest() == digest,
+        require(sha256_file(roundtrip) == digest,
                 "offsite_download_checksum_mismatch")
         restored = isolated_restore(roundtrip)
     finally:
@@ -293,10 +302,18 @@ def main(args):
         # A complete, independent backup+R2 download+isolated restore must
         # succeed before any migration transaction touches production.
         receipt = backup_restore(sha)
-        migrate(files, hashes)
+        # Single-use proof is consumed BEFORE any migration command. If a
+        # migration commits and a later health/schema validation fails, the
+        # receipt must never remain reusable for an unsafe blind retry.
         proof = json.loads(private_file(receipt).read_text())
         proof["consumed"] = True
-        receipt.write_text(json.dumps(proof))
+        with receipt.open("r+") as handle:
+            handle.seek(0)
+            json.dump(proof, handle)
+            handle.truncate()
+            handle.flush()
+            os.fsync(handle.fileno())
+        migrate(files, hashes)
         print("p4_database_ready=PASS", flush=True)
 
 
