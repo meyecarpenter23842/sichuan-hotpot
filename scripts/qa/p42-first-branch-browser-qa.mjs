@@ -16,7 +16,9 @@ try {
     userId: owner.id, normalizedUsername: username,
     passwordHash: await hash(secret), verifiedEmail: username + "@example.test",
   } });
-  const context = await browser.newContext({ viewport: { width: 360, height: 780 } });
+  const context = await browser.newContext({ viewport: { width: 360, height: 780 },
+    permissions: ["geolocation"],
+    geolocation: { latitude: 10.7731, longitude: 106.7032 } });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -34,6 +36,11 @@ try {
     ["Vĩ độ (latitude)", "10.7731000"],
     ["Kinh độ (longitude)", "106.7032000"],
   ]) await page.getByRole("textbox", { name: field }).fill(value);
+  // GPS is requested only after a tap; the coordinates must match the consented device.
+  await page.getByRole("button", { name: "Lấy định vị GPS hiện tại" }).click();
+  await page.getByText("Đã lấy vị trí thiết bị.", { exact: false }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).inputValue(), "10.7731000");
+  assert.equal(await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).inputValue(), "106.7032000");
   await page.getByRole("button", { name: "Tạo chi nhánh", exact: true }).click();
   await page.getByText("Đã tạo chi nhánh thật.", { exact: false }).waitFor();
   const branch = await db.branch.findUniqueOrThrow({ where: { code } });
