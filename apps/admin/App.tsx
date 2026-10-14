@@ -12,6 +12,7 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
 import { OrderQueuePanel } from "./src/OrderQueuePanel";
+import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
@@ -73,6 +74,7 @@ export default function AdminApp() {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryInfo, setRecoveryInfo] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const [chimeEnabled, setChimeEnabled] = useState(false);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -89,6 +91,12 @@ export default function AdminApp() {
   const renewing = useRef(false);
   const retryCount = useRef(0);
   const [retryAt, setRetryAt] = useState(0);
+
+  useEffect(() => { void loadOrderChime().then(setChimeEnabled).catch(() => undefined); }, []);
+  const changeChime = (enabled: boolean) => {
+    setChimeEnabled(enabled);
+    void saveOrderChime(enabled).catch(() => setChimeEnabled(!enabled));
+  };
 
   const loadIdentity = useCallback(async (access: string) => {
     const user = await request<Principal>("/auth/me", access);

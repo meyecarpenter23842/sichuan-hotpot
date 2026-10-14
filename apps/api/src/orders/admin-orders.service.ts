@@ -50,10 +50,6 @@ export class AdminOrdersService {
     return { actorId: principal.id, role: member.role as OperationalRole };
   }
 
-  async authorizeRealtime(authorization: string | undefined, branchId: string) {
-    return this.role(authorization, branchId);
-  }
-
   async branches(authorization: string | undefined) {
     const principal = await this.auth.principal(authorization);
     if (principal.role === "OWNER") {

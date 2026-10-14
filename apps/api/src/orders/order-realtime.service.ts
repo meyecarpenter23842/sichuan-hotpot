@@ -5,7 +5,7 @@ import type { Duplex } from "node:stream";
 import { AuthService } from "../auth/auth.service";
 import { allowedCorsOrigins } from "../bootstrap";
 import { PrismaService } from "../database/prisma.service";
-import { AdminOrdersService } from "./admin-orders.service";
+
 
 type Status = "PENDING" | "CONFIRMED" | "PREPARING" | "READY" |
   "DELIVERING" | "DELIVERED" | "CANCELED" | "DELIVERY_FAILED";
@@ -54,7 +54,6 @@ export class OrderRealtimeService implements OnModuleDestroy {
 
   constructor(
     private readonly auth: AuthService,
-    private readonly admin: AdminOrdersService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -114,7 +113,7 @@ export class OrderRealtimeService implements OnModuleDestroy {
       if (typeof value.branchId !== "string" || !uuid.test(value.branchId)) {
         throw new Error("BAD_BRANCH");
       }
-      const staff = await this.admin.authorizeRealtime(authorization, value.branchId);
+      const staff = await this.authorizeStaff(authorization, value.branchId);
       client.subscription = {
         authorization, actorId: staff.actorId, role: staff.role, branchId: value.branchId,
       };
@@ -126,6 +125,23 @@ export class OrderRealtimeService implements OnModuleDestroy {
     if (client.socket.readyState === 1) {
       client.socket.send(JSON.stringify({ type: "ready" }));
     }
+  }
+
+  private async authorizeStaff(authorization: string, branchId: string) {
+    const principal = await this.auth.principal(authorization);
+    const branch = await this.prisma.database.branch.findUnique({
+      where: { id: branchId }, select: { id: true },
+    });
+    if (!branch) throw new Error("BRANCH_NOT_FOUND");
+    if (principal.role === "OWNER") return { actorId: principal.id, role: "OWNER" };
+    const membership = await this.prisma.database.branchMember.findUnique({
+      where: { branchId_userId: { branchId, userId: principal.id } },
+      select: { role: true },
+    });
+    if (!membership || !["OWNER", "MANAGER", "KITCHEN"].includes(membership.role)) {
+      throw new Error("BRANCH_FORBIDDEN");
+    }
+    return { actorId: principal.id, role: membership.role };
   }
 
   private ping(): void {
@@ -155,7 +171,7 @@ export class OrderRealtimeService implements OnModuleDestroy {
         const current = await this.auth.principal(subscription.authorization);
         if (current.id !== subscription.actorId) throw new Error("SESSION_CHANGED");
         if (subscription.role !== "CUSTOMER") {
-          const staff = await this.admin.authorizeRealtime(subscription.authorization, change.branchId);
+          const staff = await this.authorizeStaff(subscription.authorization, change.branchId);
           if (staff.actorId !== subscription.actorId) throw new Error("ROLE_CHANGED");
           if (staff.role === "KITCHEN" && change.status === "PENDING") return;
         }

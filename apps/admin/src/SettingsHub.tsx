@@ -8,10 +8,12 @@ import { DeliveryPolicyPanel } from "./DeliveryPolicyPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { Action, Notice } from "./ui";
+import { playOrderChime } from "./order-notifications";
 import { c, font } from "./theme";
 
-type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create";
+type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
+  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Âm báo đơn hàng", owner: false },
   { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, vị trí GPS", owner: true },
   { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
   { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Km, phụ phí, giá trị đơn", owner: true },
@@ -20,10 +22,11 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
 ];
 
-export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved }: {
+export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, onChimeChange }: {
   token: string; branch: Branch; catalog: AdminCatalog; owner: boolean;
   reload: () => Promise<void>;
   onBranchSaved: (id: string, created: boolean) => Promise<void>;
+  chimeEnabled: boolean; onChimeChange: (enabled: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Setting | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -75,6 +78,16 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
           <ScrollView style={s.body} contentContainerStyle={s.bodyContent}
             keyboardShouldPersistTaps="handled" nestedScrollEnabled
             showsVerticalScrollIndicator={false}>
+            {selected === "alerts" && <View style={{ gap: 12 }}>
+              <Text style={s.note}>Chuông báo đơn mới trên thiết bị này. Trình duyệt cần anh bật
+                âm thanh bằng thao tác chạm; khi ứng dụng đóng, thông báo nền cần Web Push.</Text>
+              <Action label={chimeEnabled ? "Tắt chuông báo đơn" : "Bật chuông báo đơn"}
+                secondary={!chimeEnabled} onPress={() => {
+                  onChimeChange(!chimeEnabled);
+                  if (!chimeEnabled) playOrderChime();
+                }} />
+              <Text style={s.note}>Đơn chờ lâu vẫn được đánh dấu khi bật lại ứng dụng.</Text>
+            </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
               branch={branch} mode="details" onDirtyChange={setDirty}
               onSaved={async (id, created) => {
