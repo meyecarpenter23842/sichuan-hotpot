@@ -48,7 +48,11 @@ async function order(status, key = randomUUID(), branch = branchId) {
   }, select: { id: true } });
 }
 before(async () => {
-  assert.ok(process.env.DATABASE_URL?.includes("hotpot_ci"), "disposable CI Postgres only");
+  const ciUrl = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/invalid");
+  assert.ok(ciUrl.protocol === "postgresql:" &&
+    ["localhost", "127.0.0.1"].includes(ciUrl.hostname) &&
+    ["/hotpot_ci", "/hotpot_api_release_check"].includes(ciUrl.pathname),
+  "disposable CI Postgres only");
   app = await NestFactory.create(AppModule, { logger: false });
   configureApp(app);
   await app.init();
