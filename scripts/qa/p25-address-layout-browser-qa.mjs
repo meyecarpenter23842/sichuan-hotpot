@@ -26,6 +26,11 @@ try {
       true, "Address screen horizontal overflow at " + width);
     await page.screenshot({ path: directory + "/p25-address-empty-" + width + ".png" });
 
+    await page.getByRole("button", { name: "＋ Thêm địa chỉ mới" }).click();
+    assert.equal(await page.getByRole("textbox",
+      { name: "Tên gợi nhớ (Nhà, Công ty...)" }).inputValue(), "Khác");
+    await page.getByRole("button", { name: "Hủy", exact: true }).click();
+
     await page.getByRole("button", { name: "Thêm địa chỉ Công ty" }).click();
     await page.getByRole("textbox", { name: "Tên gợi nhớ (Nhà, Công ty...)" }).waitFor();
     assert.equal(await page.getByRole("textbox",
