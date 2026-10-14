@@ -113,7 +113,9 @@ try {
   await page.getByText("Chi nhánh đã kích hoạt.", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng popup" }).click();
   assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, true);
-  const policy = await db.deliveryPolicyVersion.findFirst({ where: { branchId: branch.id } });
+  const policy = await db.deliveryPolicyVersion.findFirst({
+    where: { branchId: branch.id }, orderBy: { version: "desc" },
+  });
   assert.equal(policy?.acceptingOrders, true);
   assert.equal(policy?.baseMeters, 3000, "UI km must persist as road meters");
   assert.equal(policy?.maxRoadMeters, 12000, "Max km must persist as meters");
