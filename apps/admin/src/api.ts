@@ -9,7 +9,7 @@ export interface AuthTokens {
 }
 export interface Branch { id: string; code: string; name: string; isActive: boolean }
 export interface CatalogOption { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean }
-export interface CatalogVariant extends CatalogOption {}
+export type CatalogVariant = CatalogOption;
 export interface CatalogGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
   options: CatalogOption[];
