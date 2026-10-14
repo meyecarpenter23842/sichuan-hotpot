@@ -16,7 +16,7 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
   { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Km, phụ phí, giá trị đơn", owner: true },
   { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
-  { id: "orders", label: "Nhận đơn", icon: "bell", hint: "Mở hoặc dừng nhận đơn", owner: true },
+  { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
   { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
 ];
 
@@ -47,7 +47,7 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
         <Pressable key={item.id} accessibilityRole="button"
           accessibilityLabel={"Mở " + item.label}
           onPress={() => open(item.id)}
-          style={({ pressed }) => [s.tile, pressed && s.pressed]}>
+          style={({ pressed }) => [s.tile, !mobile && s.tileWide, pressed && s.pressed]}>
           <View style={s.iconWrap}><Icon name={item.icon} size={25} color={c.red} /></View>
           <Text style={s.tileLabel}>{item.label}</Text>
           <Text style={s.tileHint} numberOfLines={2}>{item.hint}</Text>
@@ -126,6 +126,7 @@ const s = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5, marginTop: 12 },
   tile: { width: "33.3333%", minHeight: 126, paddingHorizontal: 5, paddingVertical: 8,
     alignItems: "center", gap: 6, justifyContent: "flex-start" },
+  tileWide: { width: "16.6667%" },
   iconWrap: { height: 55, width: 55, alignItems: "center", justifyContent: "center",
     borderRadius: 15, backgroundColor: c.soft },
   tileLabel: { fontSize: font.body, fontWeight: "700", color: c.ink, textAlign: "center" },
