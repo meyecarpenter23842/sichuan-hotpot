@@ -95,7 +95,7 @@ test("seven-day hours update is one database transaction; invalid weeks rejected
     days.map(x => ({ ...x, closesAt: "08:00" }))), err => err.getStatus?.() === 400);
 });
 
-test("R2 signer generates short-lived scoped PUT only, no public write credentials", () => {
+test("R2 signer generates short-lived scoped PUT only, no public write credentials", async () => {
   const saved = {
     R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
