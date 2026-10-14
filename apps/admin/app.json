@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Sichuan Hotpot Admin",
+    "slug": "sichuan-hotpot-admin",
+    "scheme": "sichuanhotpotadmin",
+    "version": "0.4.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFFFFF",
+    "newArchEnabled": true,
+    "android": {
+      "package": "vn.sichuanhotpot.admin",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app-icon.png",
+        "backgroundColor": "#B3262D"
+      }
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "web": {
+      "name": "Sichuan Hotpot Admin",
+      "shortName": "Hotpot Admin",
+      "bundler": "metro",
+      "output": "single",
+      "themeColor": "#B3262D",
+      "backgroundColor": "#FFFFFF",
+      "favicon": "./public/icon-192.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "icon": "./assets/app-icon.png"
+  }
+}
