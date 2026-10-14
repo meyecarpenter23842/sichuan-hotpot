@@ -47,10 +47,42 @@ try {
   assert.equal(branch.address, "12 Nguyễn Huệ, Quận 1, TP HCM");
   assert.equal(branch.isActive, false);
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
-  await page.getByRole("textbox", { name: "Giờ mở Thứ hai" }).fill("09:00");
-  await page.getByRole("textbox", { name: "Giờ đóng Thứ hai" }).fill("22:00");
+  // Opening a previously closed day must seed valid times, not 00:00–00:00.
+  await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
+  assert.match(await page.getByRole("button", { name: "Giờ mở Thứ hai" }).innerText(), /08:00/);
+  await page.getByRole("button", { name: "Giờ mở Thứ hai" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 09" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
+  await page.getByRole("button", { name: "Giờ đóng Thứ hai" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 22" }).click();
+  await page.getByRole("button", { name: "Chọn phút 15" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
+  // A second opened day must not silently invalidate the entire weekly form.
+  await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
+  await page.getByRole("button", { name: "Giờ mở Thứ ba" }).waitFor();
+  await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).waitFor();
+  // Invalid time on a day above the viewport must identify that exact weekday.
+  await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 07" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
+  await page.getByText("Thứ ba: Giờ đóng phải sau giờ mở trong cùng ngày.").first().waitFor();
+  await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
+  assert.equal(await db.branchOpeningHour.count({ where: { branchId: branch.id } }), 0,
+    "Invalid draft must not be saved");
+  await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).click();
+  await page.getByRole("button", { name: "Chọn giờ 21" }).click();
+  await page.getByRole("button", { name: "Áp dụng giờ" }).click();
   await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
   await page.getByText("Đã lưu lịch mở cửa cho chi nhánh.").waitFor();
+  const savedHours = await db.branchOpeningHour.findMany({
+    where: { branchId: branch.id }, orderBy: { weekday: "asc" },
+  });
+  assert.equal(savedHours.length, 7, "A complete 7-day schedule must persist");
+  assert.equal(savedHours[1].opensAt, "09:00");
+  assert.equal(savedHours[1].closesAt, "22:15");
+  assert.equal(savedHours[2].opensAt, "08:00");
+  assert.equal(savedHours[2].closesAt, "21:00");
+
   await page.getByRole("tab", { name: "Tổng quan" }).click();
   await page.getByRole("button", { name: "Cấu hình chi nhánh" }).click();
   await page.getByText("Chưa cấu hình phí giao.", { exact: false }).waitFor();
