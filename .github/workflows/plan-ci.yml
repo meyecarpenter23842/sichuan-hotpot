@@ -78,10 +78,19 @@ jobs:
               else:
                   assert events == ["workflow_dispatch"], name
               assert doc.get("permissions",{}).get("contents")=="read",name
-              assert doc.get("concurrency",{}).get("cancel-in-progress")=="false",name
               jobs=doc.get("jobs",{})
               assert len(jobs)==1,name
               job=next(iter(jobs.values()))
+              # Jobs skipped by unrelated issue comments must not reserve or cancel
+              # the shared production VPS slot. Keep root locks on unrelated jobs.
+              if name in ("vps-api-release-manual.yml","vps-db-backup-manual.yml",
+                          "vps-db-migrate-manual.yml"):
+                  assert "concurrency" not in doc,name
+                  concurrency=job.get("concurrency",{})
+                  assert concurrency.get("group")=="hotpot-production-vps-change",name
+              else:
+                  concurrency=doc.get("concurrency",{})
+              assert concurrency.get("cancel-in-progress")=="false",name
               assert job.get("environment"),"Environment-scoped credentials must remain available: "+name
               if name != "vps-audit-readonly.yml":
                   assert "github.actor == 'meyecarpenter23842'" in job.get("if",""),name
