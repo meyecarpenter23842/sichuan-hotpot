@@ -90,8 +90,19 @@ try {
   await page.getByRole("textbox", { name: "Giá bán (VND)" }).fill("179000");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
   await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).waitFor();
-  await page.getByRole("button", { name: "Tạm hết Lẩu QA P4.1" }).click();
-  await page.getByRole("button", { name: "Bật bán Lẩu QA P4.1" }).waitFor();
+  const productSwitch = page.getByRole("switch", { name: "Bán món Lẩu QA P4.1" });
+  await productSwitch.waitFor();
+  assert.equal(await productSwitch.isChecked(), true);
+  await productSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán món Lẩu QA P4.1"]');
+    return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
+  });
+  await productSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán món Lẩu QA P4.1"]');
+    return el instanceof HTMLInputElement ? el.checked : el?.getAttribute("aria-checked") === "true";
+  });
 
   await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
   await page.getByRole("button", { name: "＋ Size" }).click();
@@ -115,6 +126,45 @@ try {
   await page.getByText("Cay vừa", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
 
+  await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
+  await page.getByText("Nhóm hiện được lưu riêng theo từng món.", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Khẩu phần của Lẩu QA P4.1" }).click();
+  const variantSwitch = page.getByRole("switch", { name: "Bán size Phần hai người của Lẩu QA P4.1" });
+  await variantSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán size Phần hai người của Lẩu QA P4.1"]');
+    return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
+  });
+  assert.equal((await db.productVariant.findFirstOrThrow({
+    where: { name: "Phần hai người", product: { name: "Lẩu QA P4.1" } },
+  })).isAvailable, false);
+  await variantSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán size Phần hai người của Lẩu QA P4.1"]');
+    return el instanceof HTMLInputElement ? el.checked : el?.getAttribute("aria-checked") === "true";
+  });
+  await page.getByRole("button", { name: "Mở nhóm Độ cay của Lẩu QA P4.1" }).click();
+  const optionSwitch = page.getByRole("switch", { name: "Bán Cay vừa trong Độ cay" });
+  await optionSwitch.click();
+  await page.getByText("Nhóm “Độ cay” yêu cầu ít nhất 1 lựa chọn đang bán.", { exact: false }).waitFor();
+  assert.equal(await optionSwitch.isChecked(), true);
+  await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).click();
+  await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("0");
+  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
+  await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).waitFor();
+  await optionSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
+    return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
+  });
+  assert.equal((await db.modifierOption.findFirstOrThrow({
+    where: { name: "Cay vừa", group: { name: "Độ cay" } },
+  })).isAvailable, false);
+  await optionSwitch.click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
+    return el instanceof HTMLInputElement ? el.checked : el?.getAttribute("aria-checked") === "true";
+  });
   await page.getByRole("button", { name: "Mở thiết lập" }).click();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
@@ -174,6 +224,13 @@ try {
         const tile = await page.getByRole("button", { name: "Mở Thông báo" }).boundingBox();
         assert.ok(tile && tile.height <= 116 && tile.height >= 44,
           "Settings shortcut tile is too tall at " + width);
+      }
+      if (tab === "Thực đơn") {
+        await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+          true, "L05 modifier list overflow at " + width);
+        await page.screenshot({ path: "apps/admin/qa-artifacts/p45-l05-modifiers-" + width + ".png" });
+        await page.getByRole("tab", { name: "Món", exact: true }).click();
       }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
