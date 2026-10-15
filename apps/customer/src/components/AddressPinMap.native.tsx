@@ -75,7 +75,6 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
     },
     onPanResponderTerminate: () => setDrag({ dx: 0, dy: 0 }),
   // Ref always contains fresh callback, position and zoom.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
   const center = world(pin, zoom);
@@ -90,13 +89,15 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
       if (y < 0 || y >= count) continue;
       const tileX = ((x % count) + count) % count;
       tileViews.push(
-        <Image pointerEvents="none" key={zoom + ":" + x + ":" + y}
-          source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
-          onError={() => setTilesFailed(true)}
-          onLoad={() => setTilesFailed(false)}
+        <View pointerEvents="none" key={zoom + ":" + x + ":" + y}
           style={{ position: "absolute", width: TILE, height: TILE,
             left: x * TILE - center.x + width / 2 + drag.dx,
-            top: y * TILE - center.y + HEIGHT / 2 + drag.dy }} />,
+            top: y * TILE - center.y + HEIGHT / 2 + drag.dy }}>
+          <Image source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
+            onError={() => setTilesFailed(true)}
+            onLoad={() => setTilesFailed(false)}
+            style={{ width: TILE, height: TILE }} />
+        </View>,
       );
     }
   }
