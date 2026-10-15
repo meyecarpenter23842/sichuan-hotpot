@@ -10,7 +10,10 @@ export type DeliveryQuoteErrorCode =
   | "INVALID_SUBTOTAL"
   | "BELOW_MINIMUM"
   | "ROUTE_UNAVAILABLE"
-  | "OUT_OF_RANGE";
+  | "OUT_OF_RANGE"
+  | "ADDRESS_REGION_UNCONFIRMED"
+  | "ZONE_NOT_SERVED"
+  | "ZONE_RATE_MISSING";
 
 export class DeliveryQuoteError extends Error {
   constructor(public readonly code: DeliveryQuoteErrorCode) {
@@ -97,5 +100,82 @@ export function quoteDelivery(
     extraSteps,
     totalVnd,
     freeDeliveryApplied,
+  };
+}
+
+/** Explicit administrative codes only: never match Vietnamese display names or GPS distances. */
+export interface ZoneAddress {
+  readonly provinceCode: string | null;
+  readonly wardCode: string | null;
+  readonly catalogVersion: string | null;
+}
+export interface ZoneRate {
+  readonly id: string;
+  readonly name: string;
+  readonly provinceCode: string;
+  readonly catalogVersion: string;
+  readonly wardCodes: readonly string[];
+  readonly feeVnd: number;
+  readonly isActive: boolean;
+}
+export interface ZonePolicy {
+  readonly versionId: string;
+  readonly acceptingOrders: boolean;
+  readonly minSubtotalVnd: number;
+  readonly freeDeliveryAtSubtotalVnd: number | null;
+}
+export interface ZoneDeliveryQuote {
+  readonly pricingMode: "ZONE";
+  readonly policyVersionId: string;
+  readonly routeDistanceMeters: null;
+  readonly extraSteps: null;
+  readonly zoneId: string;
+  readonly zoneName: string;
+  readonly provinceCode: string;
+  readonly wardCode: string;
+  readonly catalogVersion: string;
+  readonly subtotalVnd: number;
+  readonly feeVnd: number;
+  readonly totalVnd: number;
+  readonly freeDeliveryApplied: boolean;
+}
+
+/**
+ * Ward-specific rates take precedence over a single province fallback.
+ * Duplicate matches at the same specificity are rejected instead of guessing.
+ */
+export function quoteZoneDelivery(
+  subtotalVnd: number, address: ZoneAddress, rates: readonly ZoneRate[], policy: ZonePolicy,
+): ZoneDeliveryQuote {
+  if (!policy.versionId?.trim() || !validVnd(policy.minSubtotalVnd)
+    || (policy.freeDeliveryAtSubtotalVnd !== null && !validVnd(policy.freeDeliveryAtSubtotalVnd))) {
+    throw new DeliveryQuoteError("INVALID_POLICY");
+  }
+  if (!validVnd(subtotalVnd)) throw new DeliveryQuoteError("INVALID_SUBTOTAL");
+  if (!policy.acceptingOrders) throw new DeliveryQuoteError("STORE_CLOSED");
+  if (subtotalVnd < policy.minSubtotalVnd) throw new DeliveryQuoteError("BELOW_MINIMUM");
+  if (!address.provinceCode || !address.wardCode || !address.catalogVersion) {
+    throw new DeliveryQuoteError("ADDRESS_REGION_UNCONFIRMED");
+  }
+  const candidates = rates.filter(rate => rate.isActive && rate.provinceCode === address.provinceCode
+    && rate.catalogVersion === address.catalogVersion);
+  const specific = candidates.filter(rate => rate.wardCodes.includes(address.wardCode!));
+  const fallback = candidates.filter(rate => rate.wardCodes.length === 0);
+  const found = specific.length ? specific : fallback;
+  if (!found.length) throw new DeliveryQuoteError("ZONE_NOT_SERVED");
+  if (found.length !== 1) throw new DeliveryQuoteError("INVALID_POLICY");
+  const zone = found[0];
+  if (!validVnd(zone.feeVnd)) throw new DeliveryQuoteError("ZONE_RATE_MISSING");
+  const freeDeliveryApplied = policy.freeDeliveryAtSubtotalVnd !== null
+    && subtotalVnd >= policy.freeDeliveryAtSubtotalVnd;
+  const feeVnd = freeDeliveryApplied ? 0 : zone.feeVnd;
+  const totalVnd = subtotalVnd + feeVnd;
+  if (!validVnd(totalVnd)) throw new DeliveryQuoteError("INVALID_POLICY");
+  return {
+    pricingMode: "ZONE", policyVersionId: policy.versionId,
+    routeDistanceMeters: null, extraSteps: null,
+    zoneId: zone.id, zoneName: zone.name, provinceCode: address.provinceCode,
+    wardCode: address.wardCode, catalogVersion: address.catalogVersion,
+    subtotalVnd, feeVnd, totalVnd, freeDeliveryApplied,
   };
 }

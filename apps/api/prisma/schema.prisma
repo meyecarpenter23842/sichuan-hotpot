@@ -41,6 +41,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum DeliveryPricingMode {
+  DISTANCE
+  ZONE
+}
+
 model User {
   id                 String               @id @default(uuid()) @db.Uuid
   clerkSubject       String?              @unique @db.VarChar(255) // Legacy DEV-only; do not populate new accounts
@@ -115,19 +120,39 @@ model DeliveryPolicyVersion {
   branchId                      String   @db.Uuid
   version                       Int
   acceptingOrders               Boolean
-  baseMeters                    Int
-  baseFeeVnd                    Int
-  extraStepMeters               Int
-  extraStepFeeVnd               Int
-  maxRoadMeters                 Int
+  pricingMode                   DeliveryPricingMode @default(DISTANCE)
+  // Legacy distance fields remain nullable on new ZONE versions; old versions stay intact.
+  baseMeters                    Int?
+  baseFeeVnd                    Int?
+  extraStepMeters               Int?
+  extraStepFeeVnd               Int?
+  maxRoadMeters                 Int?
   minSubtotalVnd                Int
   freeDeliveryAtSubtotalVnd     Int?
   createdAt                     DateTime @default(now()) @db.Timestamptz(6)
   branch                        Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   orders                        Order[]
+  zones                         DeliveryZone[]
 
   @@unique([branchId, version])
   @@index([branchId, createdAt])
+}
+
+// Zone rates are immutable children of an immutable policy version.
+// Each zone represents a group of current wards, or a province fallback when wardCodes is empty.
+model DeliveryZone {
+  id              String                @id @default(uuid()) @db.Uuid
+  policyVersionId String                @db.Uuid
+  name            String                @db.VarChar(160)
+  catalogVersion  String                @db.VarChar(40)
+  provinceCode    String                @db.VarChar(24)
+  wardCodes       String[]              @default([])
+  feeVnd          Int
+  isActive        Boolean               @default(true)
+  policy          DeliveryPolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Restrict)
+  orders          Order[]
+
+  @@index([policyVersionId, provinceCode])
 }
 
 model CatalogCategory {
@@ -207,6 +232,10 @@ model Address {
   line1      String   @db.VarChar(500)
   latitude   Decimal  @db.Decimal(10, 7)
   longitude  Decimal  @db.Decimal(10, 7)
+  // Old addresses remain unmapped until the customer confirms the administrative codes.
+  catalogVersion String? @db.VarChar(40)
+  provinceCode String? @db.VarChar(24)
+  wardCode String? @db.VarChar(24)
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @db.Timestamptz(6)
   user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -226,7 +255,13 @@ model Order {
   subtotalVnd              Int
   deliveryFeeVnd           Int
   totalVnd                 Int
-  roadDistanceMeters       Int
+  roadDistanceMeters       Int?
+  pricingMode              DeliveryPricingMode @default(DISTANCE)
+  zoneId                   String?                @db.Uuid
+  zoneNameSnapshot         String?                @db.VarChar(160)
+  provinceCodeSnapshot     String?                @db.VarChar(24)
+  wardCodeSnapshot         String?                @db.VarChar(24)
+  catalogVersionSnapshot   String?                @db.VarChar(40)
   addressLineSnapshot      String                 @db.VarChar(500)
   latitudeSnapshot         Decimal                @db.Decimal(10, 7)
   longitudeSnapshot        Decimal                @db.Decimal(10, 7)
@@ -235,6 +270,7 @@ model Order {
   branch                   Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
   customer                 User                   @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
   deliveryPolicyVersion    DeliveryPolicyVersion  @relation(fields: [deliveryPolicyVersionId], references: [id], onDelete: Restrict)
+  zone                     DeliveryZone?          @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   items                    OrderItem[]
   statusHistory            OrderStatusHistory[]
   deliveryAssignment       DeliveryAssignment?

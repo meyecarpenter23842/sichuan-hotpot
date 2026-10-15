@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { quoteDelivery, DeliveryQuoteError } from "../dist/delivery.js";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError } from "../dist/delivery.js";
 
 const policy = Object.freeze({
   versionId: "v1",
@@ -63,4 +63,49 @@ test("invalid policy, subtotal and unsafe integer totals are rejected", () => {
     () => quoteDelivery(Number.MAX_SAFE_INTEGER, 2000, policy),
     { code: "INVALID_POLICY" },
   );
+});
+
+const zonePolicy = { versionId: "zone-v2", acceptingOrders: true, minSubtotalVnd: 80000,
+  freeDeliveryAtSubtotalVnd: null };
+const zoneAddress = { provinceCode: "79", wardCode: "26734", catalogVersion: "vn-2025-07" };
+const zoneRates = [
+  { id: "fallback", name: "HCM", provinceCode: "79", catalogVersion: "vn-2025-07",
+    wardCodes: [], feeVnd: 25000, isActive: true },
+  { id: "district", name: "Vùng trung tâm", provinceCode: "79", catalogVersion: "vn-2025-07",
+    wardCodes: ["26734", "26737"], feeVnd: 12000, isActive: true },
+];
+test("zone fee is authoritative: ward precedence, immutable snapshot, no road distance", () => {
+  assert.deepEqual(quoteZoneDelivery(100000, zoneAddress, zoneRates, zonePolicy), {
+    pricingMode: "ZONE", policyVersionId: "zone-v2", routeDistanceMeters: null, extraSteps: null,
+    zoneId: "district", zoneName: "Vùng trung tâm", provinceCode: "79",
+    wardCode: "26734", catalogVersion: "vn-2025-07", subtotalVnd: 100000,
+    feeVnd: 12000, totalVnd: 112000, freeDeliveryApplied: false,
+  });
+  assert.equal(quoteZoneDelivery(100000, { ...zoneAddress, wardCode: "00001" },
+    zoneRates, zonePolicy).feeVnd, 25000);
+});
+test("zone mismatches, legacy addresses, duplicate overlapping ward and no configured rate fail closed", () => {
+  for (const address of [{...zoneAddress, provinceCode: "01"},
+    {...zoneAddress, catalogVersion: "vn-2024"}, {...zoneAddress, wardCode: "11111"}]) {
+    assert.throws(() => quoteZoneDelivery(100000, address, zoneRates.slice(1), zonePolicy),
+      { code: "ZONE_NOT_SERVED" });
+  }
+  assert.throws(() => quoteZoneDelivery(100000,
+    { ...zoneAddress, wardCode: null }, zoneRates, zonePolicy),
+  { code: "ADDRESS_REGION_UNCONFIRMED" });
+  assert.throws(() => quoteZoneDelivery(100000, zoneAddress,
+    [zoneRates[1], { ...zoneRates[1], id: "overlap" }], zonePolicy),
+  { code: "INVALID_POLICY" });
+  assert.throws(() => quoteZoneDelivery(100000, zoneAddress,
+    [{...zoneRates[1], feeVnd: -1}], zonePolicy), { code: "ZONE_RATE_MISSING" });
+});
+test("zone minimum, explicit free delivery and store closed are enforced", () => {
+  assert.throws(() => quoteZoneDelivery(70000, zoneAddress, zoneRates, zonePolicy),
+    { code: "BELOW_MINIMUM" });
+  assert.throws(() => quoteZoneDelivery(100000, zoneAddress, zoneRates,
+    {...zonePolicy, acceptingOrders: false}), { code: "STORE_CLOSED" });
+  assert.equal(quoteZoneDelivery(100000, zoneAddress, zoneRates,
+    {...zonePolicy, freeDeliveryAtSubtotalVnd: 100000}).feeVnd, 0);
+  assert.equal(quoteZoneDelivery(100000, zoneAddress, zoneRates,
+    {...zonePolicy, freeDeliveryAtSubtotalVnd: null}).feeVnd, 12000);
 });
