@@ -1479,8 +1479,9 @@ function CustomerApp() {
               onChangeText={text => { setAddress(old => ({ ...old, line1: text })); }}
               placeholder="Ví dụ: 25 Nguyễn Trãi, số nhà/tầng..." />
             {(() => {
-              const gap = approximateWardDistanceKm(address,
-                Number(address.latitude), Number(address.longitude));
+              const gap = address.latitude && address.longitude
+                ? approximateWardDistanceKm(address, Number(address.latitude), Number(address.longitude))
+                : null;
               return gap !== null && gap > 30
                 ? <Text style={styles.muted}>Ghim có vẻ cách xa phường/xã đã chọn. Hãy kiểm tra vị trí trên bản đồ trước khi lưu; GPS không quyết định phí giao.</Text>
                 : null;
