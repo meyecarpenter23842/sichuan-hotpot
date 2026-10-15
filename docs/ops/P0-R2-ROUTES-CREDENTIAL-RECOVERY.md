@@ -1,46 +1,22 @@
-# P0 repair: R2 upload ticket 503 and Google driving-distance quote 503
+# R2 upload credentials (Google Routes retired)
 
-## Confirmed cause
+> Historical filename retained for existing issue/PR links. **Do not provision Google Routes or add a Google API key.** All road-distance pricing now uses self-hosted OSRM; see [OSRM capacity and rollout](OSRM-SELFHOSTED-ROUTING.md).
 
-- Admin POST image ticket returns HTTP 503 **before** an R2 upload starts. The API signs S3 URLs only when R2 credentials are present and valid.
-- Customer checkout requires **real road distance** calculated on the backend. A missing or denied Google Routes API key fails closed. Never substitute straight-line distance or 0đ shipping.
-- Production read-only audits [#38713835066](https://github.com/meyecarpenter23842/sichuan-hotpot/actions/runs/38713835066) and [#38729795360](https://github.com/meyecarpenter23842/sichuan-hotpot/actions/runs/38729795360) confirmed the root-owned \`/etc/sichuan-hotpot/api.env\` lacks \`R2_ACCOUNT_ID\`, \`R2_ACCESS_KEY_ID\`, \`R2_SECRET_ACCESS_KEY\`, \`R2_BUCKET\`, \`GOOGLE_ROUTES_API_KEY\`.
-- Cloudflare bucket \`hot-pot\` already has Admin PWA PUT/content-type CORS; changing CORS will not resolve an initial API 503.
+## R2 image ticket HTTP 503 is separate from routing
 
-## One-time credentials (GitHub protected environment, not chat/source)
+Cloudflare R2 bucket `hot-pot` exists and PWA PUT CORS allows `https://admin.bepsi.click`. The Admin upload ticket cannot be signed without backend R2 S3-compatible credentials. This is **not** caused by GPS, OSRM, image size under the 2 MB limit, or Google.
 
-The Google Cloud account administrator must enable **Routes API**, configure billing and create an API key allowed to call \`routes.googleapis.com\` **from the VPS backend** (not restricted to browser HTTP referrers). API restriction should permit only Routes API. For IP restrictions, use the server's verified outbound address; do not assume it without checking.
+The Cloudflare account owner must create a bucket-scoped **Object Read/Write** R2 token for `hot-pot` only. Do not reuse private PostgreSQL backup bucket credentials.
 
-The Cloudflare R2 account administrator creates an R2 S3 API token with Object Read/Write permissions **scoped exclusively to bucket \`hot-pot\`**, **not** the private DB backups bucket. Keep the R2 Access Key ID and Secret Access Key private. Existing private DB backup credentials must not be reused for public product images.
+Store only these two values under GitHub repository Settings → Environments → `production-api` → Environment secrets:
 
-Add the **three secret values** under repository Settings → Environments → \`production-api\` → Environment secrets:
-
-| Protected secret name | Value source |
+| Secret name | Source |
 |---|---|
-| \`HOTPOT_R2_ACCESS_KEY_ID\` | Scoped R2 access key ID |
-| \`HOTPOT_R2_SECRET_ACCESS_KEY\` | Scoped R2 secret access key |
-| \`HOTPOT_GOOGLE_ROUTES_API_KEY\` | Server-only Google Routes key |
+| `HOTPOT_R2_ACCESS_KEY_ID` | Cloudflare R2 bucket-scoped S3 Access Key ID |
+| `HOTPOT_R2_SECRET_ACCESS_KEY` | Matching Secret Access Key |
 
-Never add credentials to issue comments, commit history, local PWA env, Vercel \`EXPO_PUBLIC_*\` or a chat. Cloudflare account identifier and bucket are public configuration and pre-pinned in the reviewed installer.
+Never paste secrets into chat, issues, files, command-line arguments or client-side Expo/Vercel environment.
 
-## One owner command after provisioning
+After storing both secrets **and** getting explicit production authorization, the repository owner can comment `/configure-hotpot-services` on Issue #3. The [protected workflow](../../.github/workflows/prod-services-configure.yml) verifies an actual R2 signed PUT → HEAD → DELETE of a noncustomer disposable object, atomically updates only the root-owned API R2 variables, restarts NestJS with health gates and restores the previous environment on failure. **No Google key/Google provider checks are involved.** API and database migrations are unrelated.
 
-Post exactly this comment on **Issue #3** after secret provisioning:
-
-\`/configure-hotpot-services\`
-
-The [protected, owner-only workflow](../../.github/workflows/prod-services-configure.yml) will:
-
-1. Check current \`main\`, private \`production-api\` secrets, pinned VPS host key and owner authorization.
-2. Deliver the secret values from ephemeral runner memory/file to the root-only VPS helper over encrypted SSH stdin, never via URL/CLI argument or log.
-3. **Before touching production:** validate token formats, issue R2 signed PUT and HEAD to a disposable \`products-image/_bootstrap-check/\` object, remove the object; call Google Routes with fixed public coordinates and ensure real distance is returned. Failure blocks the configuration, leaving API env unchanged.
-4. Back up the existing root-only API env, atomically add/update five relevant keys while preserving all unrelated settings, restart API and check local \`/health/live\` and \`/health/ready\`.
-5. Roll back the original environment and restart if health fails. Never run Prisma migrations or write production orders. Delete ephemeral helper, SSH files and runner payload.
-
-A green run means **provider connectivity and API health checked**. It does not replace authorized real-browser tests: Admin product upload/preview/save/reload and Customer address quote/order, WebSocket/notification, or Safari/Android QA. Watch for any 403 due to token scope, 400 due to key API restrictions, or provider quota/billing denial before declaring success.
-
-## Release / incident tracking
-
-- Existing API deployment and both PWAs are on commit \`39d108cca8250ca436dca04d1e4ae741ffe84d0f\` (2026-10-15). Re-deploying this commit cannot create missing runtime secrets.
-- Incident [#117](https://github.com/meyecarpenter23842/sichuan-hotpot/issues/117) stays open until this one-time installer **and** E2E functional testing PASS.
-- No need to manually edit the VPS env or restart it in the terminal after using this workflow. No Windows F: synchronization is claimed by this PR.
+The OSRM provider is deployed independently only after VPS RAM requirements pass. An R2 workflow PASS does not establish OSRM/checkout readiness, and vice versa. Close incident [#117](https://github.com/meyecarpenter23842/sichuan-hotpot/issues/117) only once both R2 upload and route/checkout are verified on production.
