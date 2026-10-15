@@ -1,0 +1,29 @@
+name: L03 Native Picker Lockfile Refresh
+on:
+  push:
+    branches:
+      - feat/130-reusable-topping-media
+    paths:
+      - .github/workflows/l03-native-picker-lock.yml
+permissions:
+  contents: write
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Add Expo SDK 54 Android image picker with generated npm lock
+        run: npm install expo-image-picker@17.0.11 --workspace @hotpot/admin --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit reproducible native dependency lock to this feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/admin/package.json package-lock.json
+          git diff --cached --quiet || git commit -m "build(admin): lock Expo SDK54 native image picker (#130)"
+          git push origin HEAD:feat/130-reusable-topping-media
