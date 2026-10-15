@@ -84,9 +84,11 @@ export function CatalogPanel({ catalog, token, reload }: {
         && product.name.toLocaleLowerCase("vi").includes(filter.toLocaleLowerCase("vi").trim())),
     })).filter(category => category.products.length > 0 || (!stockOnly && !filter.trim())),
     [catalog, filter, stockOnly]);
-  const featuredCategories = useMemo(() => categories.map(category => ({
-    ...category, products: category.products.filter(product => product.isFeatured),
-  })).filter(category => category.products.length > 0), [categories]);
+  const featuredCategories = useMemo(() => catalog.categories.map(category => ({
+    ...category, products: category.products.filter(product =>
+      product.isFeatured && product.name.toLocaleLowerCase("vi")
+        .includes(filter.toLocaleLowerCase("vi").trim())),
+  })).filter(category => category.products.length > 0), [catalog, filter]);
 
   function open(kind: Kind, id?: string, parentId?: string,
     source?: CatalogCategory | CatalogProduct | CatalogGroup | CatalogVariant | CatalogOption) {
