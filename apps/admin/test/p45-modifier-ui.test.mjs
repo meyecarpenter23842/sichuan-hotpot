@@ -25,9 +25,12 @@ test("L05 does not present product-scoped groups as a reusable library", () => {
 });
 
 test("L05 displays server and selection errors in both tabs", () => {
-  const alert = '{!!error && !editor && <Notice text={error} error />}';
-  const boundary = '{tab === "products" && <>';
-  assert.ok(catalog.indexOf(alert) >= 0 && catalog.indexOf(alert) < catalog.indexOf(boundary),
-    "Errors cannot be scoped to only the products tab");
+  const toast = '{toast && <View style={st.toastLayer} pointerEvents="box-none">';
+  const modal = '<Modal visible={editor !== null}';
+  assert.ok(catalog.indexOf(toast) >= 0 && catalog.indexOf(toast) < catalog.indexOf(modal),
+    "Errors must render above the scrolling body for either tab");
+  assert.match(catalog, /setTimeout\(\(\) =>/);
+  assert.match(catalog, /4200/);
+  assert.match(catalog, /accessibilityLabel="Đóng thông báo"/);
   assert.match(catalog, /remaining < group\.minSelect/);
 });

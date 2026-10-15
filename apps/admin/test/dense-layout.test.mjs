@@ -11,8 +11,8 @@ const catalog = read("../src/CatalogPanel.tsx");
 
 test("shared UI density reduces visual height without sacrificing 44dp actions", () => {
   for (const token of [
-    /headerTop: 68/, /branchSelector: 50/, /bottomTab: 46/,
-    /dashboardMetric: 82/, /settingTile: 104/, /settingIcon: 44/,
+    /headerTop: 62/, /branchSelector: 44/, /bottomTab: 46/,
+    /dashboardMetric: 70/, /settingTile: 104/, /settingIcon: 44/,
   ]) assert.match(density, token);
   assert.match(app, /minHeight: adminDensity\.bottomTab/);
   assert.match(app, /height: 44, width: 44/);
@@ -27,4 +27,13 @@ test("status and totals remain server driven, no fake counts", () => {
   assert.match(app, /selectedBranch\?\.isActive/);
   assert.match(app, /pending: orders\.filter/);
   assert.match(app, /formatMoney\(deliveredVnd\)/);
+});
+
+test("branch chooser overlays without changing page layout, and catalog tabs stay above local scroller", () => {
+  assert.match(app, /style=\{\[styles\.branchOverlay, \{ top: headerHeight \}\]\}/);
+  assert.match(app, /position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 50/);
+  assert.match(app, /tab === "catalog" && catalog && branches\.length > 0/);
+  assert.match(catalog, /<ScrollView key=\{tab\} style=\{st\.contentScroll\}/);
+  assert.match(catalog, /minHeight: 0/);
+  assert.doesNotMatch(catalog, /branchWarning:/);
 });
