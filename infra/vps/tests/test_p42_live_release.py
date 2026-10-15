@@ -56,20 +56,28 @@ class LiveP4HistoryTests(unittest.TestCase):
 
 class LiveP4SafetyTests(unittest.TestCase):
     def invoke(self, applied, failed_backup=None, mode="--release"):
-        with (patch.object(p4.os, "geteuid", return_value=0),
-              patch("builtins.open", mock_open()),
-              patch.object(p4.fcntl, "flock"),
-              patch.object(p4, "checked_source", return_value=({"mock": b"x"}, {})),
-              patch.object(p4, "checked_history", return_value=applied),
-              patch.object(p4, "backup_config"),
-              patch.object(p4, "backup_restore", side_effect=failed_backup or (lambda sha: Path("/tmp/mock"))) as backup,
-              patch.object(p4, "migrate") as migrate):
-            if failed_backup:
-                with self.assertRaises(p4.GateError):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "restore-receipt.json"
+            receipt.write_text('{"consumed": false, "offsite_verified": true, "restore_verified": true}')
+            with (patch.object(p4.os, "geteuid", return_value=0),
+                  patch("builtins.open", mock_open()),
+                  patch.object(p4.fcntl, "flock"),
+                  patch.object(p4, "checked_source", return_value=({"mock": b"x"}, {})),
+                  patch.object(p4, "checked_history", return_value=applied),
+                  patch.object(p4, "backup_config"),
+                  patch.object(p4, "private_file", side_effect=lambda path: Path(path)),
+                  patch.object(p4, "backup_restore",
+                               side_effect=failed_backup or (lambda sha: receipt)) as backup,
+                  patch.object(p4, "migrate") as migrate):
+                if failed_backup:
+                    with self.assertRaises(p4.GateError):
+                        p4.main([mode, "a" * 40, "b" * 64])
+                else:
                     p4.main([mode, "a" * 40, "b" * 64])
-            else:
-                p4.main([mode, "a" * 40, "b" * 64])
-            return backup.call_count, migrate.call_count
+                if mode == "--release" and not failed_backup and backup.call_count:
+                    import json
+                    self.assertTrue(json.loads(receipt.read_text())["consumed"])
+                return backup.call_count, migrate.call_count
 
     def test_already_applied_does_not_rebackup_or_migrate(self):
         self.assertEqual(self.invoke(set(p4.PREVIOUS + p4.UPDATES)), (0, 0))
