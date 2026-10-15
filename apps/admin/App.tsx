@@ -552,7 +552,7 @@ export default function AdminApp() {
           </View> : (
             <>
               {tab === "overview" && <Overview catalog={catalog} token={token} branchId={branchId!} onChangeTab={setTab} />}
-remove scroll catalog              {tab === "settings" && selectedBranch && <SettingsHub
+              {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
                 onBranchSaved={branchSaved} chimeEnabled={chimeEnabled}
