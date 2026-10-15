@@ -80,9 +80,11 @@ test("OWNER first-store onboarding uses real POST/PATCH endpoints and safe deliv
   assert.match(branch, /Kích hoạt chi nhánh/);
   assert.match(policy, /"\/delivery-policy"/);
   assert.match(policy, /acceptingOrders/);
-  assert.match(policy, /Lưu phí giao/);
+  assert.match(policy, /Lưu chính sách phí vùng/);
   assert.match(policy, /Nhận đơn trực tuyến/);
-  assert.match(policy, /showNumber\(key, value\[key\]\)/);
+  assert.match(policy, /wardCodes/);
+  assert.match(policy, /catalogVersion/);
+  assert.match(policy, /pricingMode: "ZONE"/);
 });
 
 test("branch setup locates only after tapping GPS and keeps manually editable coordinates", () => {
