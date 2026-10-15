@@ -58,10 +58,10 @@ export function renderIcon(logo, size, adaptive = false) {
   const png = new PNG({ width: size, height: size, colorType: 6 });
   const d = png.data;
   // Keep the exact owner artwork without superimposing the former red disc.
-  // Android adaptive foreground is transparent, and the system supplies white background.
+  // All PNG assets carry true alpha; OS surfaces provide their own background.
   for (let i = 0; i < d.length; i += 4) {
     d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
-    d[i + 3] = adaptive ? 0 : 255;
+    d[i + 3] = 0; // All app/PWA icon exports keep the approved pot only; no white square.
   }
   const { bbox, width, data } = logo;
   const extent = size * (adaptive ? 0.60 : 0.82);
@@ -90,9 +90,9 @@ export function renderIcon(logo, size, adaptive = false) {
 export function generate() {
   const logo = cleanLogo(readFileSync(resolve(root, "assets/brand-approved-20261015.png")));
   const outputs = [
-    ["public/icon-192-v20261015.png", 192, false],
-    ["public/icon-512-v20261015.png", 512, false],
-    ["public/apple-touch-icon-v20261015.png", 180, false],
+    ["public/icon-192-v20261015b.png", 192, false],
+    ["public/icon-512-v20261015b.png", 512, false],
+    ["public/apple-touch-icon-v20261015b.png", 180, false],
     ["assets/app-icon.png", 1024, false],
     ["assets/adaptive-icon.png", 1024, true],
   ];
@@ -107,8 +107,8 @@ export function generate() {
     id: "/", start_url: "/", scope: "/", display: "standalone",
     theme_color: "#B3262D", background_color: "#FFFFFF",
     icons: [
-      { src: "/icon-192-v20261015.png", sizes: "192x192", type: "image/png" },
-      { src: "/icon-512-v20261015.png", sizes: "512x512", type: "image/png" },
+      { src: "/icon-192-v20261015b.png", sizes: "192x192", type: "image/png" },
+      { src: "/icon-512-v20261015b.png", sizes: "512x512", type: "image/png" },
     ],
   };
   writeFileSync(resolve(adminDir, "public/site.webmanifest"),
