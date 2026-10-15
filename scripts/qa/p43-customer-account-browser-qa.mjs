@@ -45,20 +45,24 @@ try {
   const fields = [
     ["Tên gợi nhớ (Nhà, Công ty...)", "Nhà"],
     ["Số điện thoại", "0912345678"],
-    ["Số nhà, đường, phường/xã", "414/7 Ấp 03A Đạo Thạnh"],
+    ["Số nhà, tên đường và ghi chú giao", "414/7 Ấp 03A Đạo Thạnh"],
     ["Vĩ độ (latitude)", "10.1234567"],
     ["Kinh độ (longitude)", "106.1234567"],
   ];
   for (const [name, value] of fields) {
     await page.getByRole("textbox", { name }).fill(value);
   }
+  await page.getByRole("button", { name: "Chọn Tỉnh/Thành phố" }).click();
+  await page.getByRole("radio", { name: /Hồ Chí Minh/ }).click();
+  await page.getByRole("button", { name: "Chọn Phường/Xã/Đặc khu" }).click();
+  await page.getByRole("radio", { name: /Thủ Dầu Một/ }).click();
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();
   await page.getByRole("button", { name: "Sửa địa chỉ Nhà" }).waitFor();
   assert.equal(await db.address.count({ where: { userId: user.id } }), 1);
   await page.getByRole("button", { name: "Sửa địa chỉ Nhà" }).click();
-  assert.equal(await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).inputValue(),
+  assert.equal(await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" }).inputValue(),
     "414/7 Ấp 03A Đạo Thạnh");
-  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" })
+  await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" })
     .fill("414/7 Ấp 03B Đạo Thạnh");
   await page.getByRole("button", { name: "Cập nhật địa chỉ" }).click();
   await page.getByText("414/7 Ấp 03B Đạo Thạnh").waitFor();
@@ -67,7 +71,7 @@ try {
   assert.equal(rows[0].line1, "414/7 Ấp 03B Đạo Thạnh");
   // A canceled edit does not overwrite saved data or local selection.
   await page.getByRole("button", { name: "Sửa địa chỉ Nhà" }).click();
-  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" })
+  await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" })
     .fill("Địa chỉ chưa lưu");
   await page.getByRole("button", { name: "Hủy", exact: true }).click();
   assert.equal((await db.address.findUniqueOrThrow({ where: { id: rows[0].id } })).line1,

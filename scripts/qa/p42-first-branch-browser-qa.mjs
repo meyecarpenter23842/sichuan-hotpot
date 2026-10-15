@@ -41,6 +41,10 @@ try {
   await page.getByText("Đã lấy vị trí thiết bị.", { exact: false }).waitFor();
   assert.equal(await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).inputValue(), "10.7731000");
   assert.equal(await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).inputValue(), "106.7032000");
+  await page.getByRole("button", { name: "Chọn Tỉnh/Thành phố" }).click();
+  await page.getByRole("radio", { name: /Hồ Chí Minh/ }).click();
+  await page.getByRole("button", { name: "Chọn Phường/Xã/Đặc khu" }).click();
+  await page.getByRole("radio", { name: /Thủ Dầu Một/ }).click();
   await page.getByRole("button", { name: "Tạo chi nhánh", exact: true }).click();
   await page.getByText("Đã tạo chi nhánh. Mở Thiết lập", { exact: false }).waitFor();
   const branch = await db.branch.findUniqueOrThrow({ where: { code } });
@@ -93,11 +97,14 @@ try {
   for (const [name, value] of [
     ["Giá trị đơn tối thiểu (VND)", "50000"],
     ["Tên vùng thương mại", "Trung tâm"],
-    ["Phiên bản danh mục", "vn-2025-07"],
-    ["Mã tỉnh/TP", "79"],
     ["Phí giao vùng (VND)", "15000"],
   ]) await page.getByRole("textbox", { name }).fill(value);
-  await page.getByRole("textbox", { name: /Mã phường\/xã/ }).fill("26734, 26737");
+  await page.getByRole("button", { name: "Chọn Tỉnh/Thành phố" }).click();
+  await page.getByRole("radio", { name: /Hồ Chí Minh/ }).click();
+  await page.getByRole("button", { name: "Chọn các phường/xã" }).click();
+  await page.getByRole("checkbox", { name: /Thủ Dầu Một/ }).click();
+  await page.getByRole("checkbox", { name: /Phú Lợi/ }).click();
+  await page.getByRole("button", { name: "Áp dụng" }).click();
   await page.getByRole("button", { name: "Thêm vùng vào danh sách" }).click();
   await page.getByText("Trung tâm · 15.000 đ").waitFor();
   await page.getByRole("button", { name: "Lưu chính sách phí vùng" }).click();
@@ -129,7 +136,7 @@ try {
   assert.equal(policy?.baseMeters, null, "Zone rate never writes fake road meters");
   assert.equal(policy?.zones.length, 1);
   assert.equal(policy?.zones[0].feeVnd, 15000);
-  assert.deepEqual(policy?.zones[0].wardCodes, ["26734", "26737"]);
+  assert.deepEqual(policy?.zones[0].wardCodes, ["25747", "25750"]);
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 780 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));

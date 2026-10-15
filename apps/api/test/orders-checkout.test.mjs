@@ -247,15 +247,15 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
   route.drivingMeters = async () => { called++; throw Error("OSRM MUST NOT BE CALLED FOR ZONE"); };
   try {
     await db.address.update({ where: { id: addressId }, data: {
-      catalogVersion: "vn-2025-07", provinceCode: "79", wardCode: "26734",
+      catalogVersion: "vn-2026-09-08", provinceCode: "79", wardCode: "25747",
     } });
     const second = await db.deliveryPolicyVersion.create({ data: {
       branchId, version: 2, pricingMode: "ZONE", acceptingOrders: true,
       minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null,
       zones: { create: [
-        { name: "Nhóm trung tâm", catalogVersion: "vn-2025-07",
-          provinceCode: "79", wardCodes: ["26734"], feeVnd: 12000, isActive: true },
-        { name: "Còn lại", catalogVersion: "vn-2025-07",
+        { name: "Nhóm trung tâm", catalogVersion: "vn-2026-09-08",
+          provinceCode: "79", wardCodes: ["25747"], feeVnd: 12000, isActive: true },
+        { name: "Còn lại", catalogVersion: "vn-2026-09-08",
           provinceCode: "79", wardCodes: [], feeVnd: 25000, isActive: true },
       ] },
     } });
@@ -275,8 +275,8 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
     assert.equal(saved.roadDistanceMeters,null);
     assert.equal(saved.zoneNameSnapshot,"Nhóm trung tâm");
     assert.equal(saved.provinceCodeSnapshot,"79");
-    assert.equal(saved.wardCodeSnapshot,"26734");
-    assert.equal(saved.catalogVersionSnapshot,"vn-2025-07");
+    assert.equal(saved.wardCodeSnapshot,"25747");
+    assert.equal(saved.catalogVersionSnapshot,"vn-2026-09-08");
     assert.equal(saved.deliveryPolicyVersionId,second.id);
     const detail = await client.get("/customer/orders/"+saved.id)
       .set("Authorization","Bearer "+token).expect(200);
@@ -287,8 +287,8 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
     await db.deliveryPolicyVersion.create({ data: {
       branchId, version: 3, pricingMode: "ZONE", acceptingOrders: true,
       minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null,
-      zones: { create: [{ name: "Cước mới", catalogVersion: "vn-2025-07",
-        provinceCode: "79", wardCodes: ["26734"], feeVnd: 20000, isActive: true }] },
+      zones: { create: [{ name: "Cước mới", catalogVersion: "vn-2026-09-08",
+        provinceCode: "79", wardCodes: ["25747"], feeVnd: 20000, isActive: true }] },
     } });
     const repriced = await request(orderBody(randomUUID())).expect(201);
     assert.equal(repriced.body.totalVnd,120000);

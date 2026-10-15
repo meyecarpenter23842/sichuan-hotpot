@@ -84,6 +84,7 @@ test("OWNER first-store onboarding uses real POST/PATCH endpoints and safe deliv
   assert.match(policy, /Nhận đơn trực tuyến/);
   assert.match(policy, /wardCodes/);
   assert.match(policy, /catalogVersion/);
+  assert.match(policy, /VietnamWardMultiPicker/);
   assert.match(policy, /pricingMode: "ZONE"/);
 });
 
