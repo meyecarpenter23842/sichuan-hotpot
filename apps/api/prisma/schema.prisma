@@ -79,6 +79,7 @@ model Branch {
   updatedAt         DateTime                @updatedAt @db.Timestamptz(6)
   memberships       BranchMember[]
   categories        CatalogCategory[]
+  modifierLibrary   ModifierGroup[]
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
@@ -163,6 +164,7 @@ model CatalogCategory {
   branchId  String    @db.Uuid
   name      String    @db.VarChar(160)
   sortOrder Int       @default(0)
+  imageKey  String?   @db.VarChar(512)
   branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
   products  Product[]
 
@@ -183,6 +185,7 @@ model Product {
   category    CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   variants    ProductVariant[]
   modifierGroups ModifierGroup[]
+  modifierAssignments ProductModifierGroupAssignment[]
   imageKey    String?        @db.VarChar(512)
   orderItems  OrderItem[]
 
@@ -203,18 +206,38 @@ model ProductVariant {
 }
 
 // DEV/CI migration only. Admin will configure real option groups in P4.
+// Existing ModifierGroup/ModifierOption IDs become branch-scoped reusable templates.
+// productId remains a nullable legacy origin for read compatibility and old test fixtures;
+// active attachments are an explicit M:N relation, never an implicit cross-branch lookup.
 model ModifierGroup {
-  id        String           @id @default(uuid()) @db.Uuid
-  productId String           @db.Uuid
-  name      String           @db.VarChar(160)
-  minSelect Int              @default(0)
-  maxSelect Int              @default(1)
-  sortOrder Int              @default(0)
-  product   Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
-  options   ModifierOption[]
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String?  @db.Uuid
+  branchId    String?  @db.Uuid
+  name        String   @db.VarChar(160)
+  minSelect   Int      @default(0)
+  maxSelect   Int      @default(1)
+  sortOrder   Int      @default(0)
+  isAvailable Boolean  @default(true)
+  imageKey    String?  @db.VarChar(512)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  options     ModifierOption[]
+  assignments ProductModifierGroupAssignment[]
 
   @@unique([productId, name])
   @@index([productId, sortOrder])
+  @@index([branchId, sortOrder])
+}
+
+model ProductModifierGroupAssignment {
+  productId String @db.Uuid
+  groupId   String @db.Uuid
+  sortOrder Int    @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  group     ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@id([productId, groupId])
+  @@index([groupId])
 }
 
 model ModifierOption {
@@ -223,6 +246,7 @@ model ModifierOption {
   name          String         @db.VarChar(160)
   priceDeltaVnd Int            @default(0)
   isAvailable   Boolean        @default(true)
+  imageKey      String?        @db.VarChar(512)
   group         ModifierGroup  @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@unique([groupId, name])
