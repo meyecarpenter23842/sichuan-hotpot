@@ -129,7 +129,7 @@ jobs:
           ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null
           # Host must have an independently reviewed hotpot-api-release-manual helper.
           # The helper must validate artifact checksum, app path, service identity, health and rollback.
-          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3)
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming' \
             >/dev/null 2>/dev/null || { echo "::error::VPS manual release hook/inbox not provisioned."; exit 1; }
@@ -231,12 +231,27 @@ jobs:
           fi
           git fetch -q origin main
           test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
-          outcome="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
-            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" 2>&1)" || {
-              reason="$(printf '%s\n' "$outcome" | sed -n 's/^release_error=\([a-z_]*\)$/\1/p' | tail -n 1)"
-              echo "::error::API release blocked: ${reason:-unknown}; check VPS health/rollback."
-              exit 1
-            }
+          # Stream *only* allowlisted stage markers; the helper suppresses
+          # all npm/prisma output. Preserve SSH exit status across the pipes.
+          # Without this the capture waits silently for up to 35 minutes.
+          outcome_file="$RUNNER_TEMP/hotpot-api-release-outcome.txt"
+          set +e
+          ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+            "sudo -n /usr/local/sbin/hotpot-api-release-manual '$REQUESTED_SHA' '$digest'" 2>&1 \
+            | awk '/^runtime_build_step=[a-z_]+:(START|PASS)$/ || \
+                     /^release_sha=[0-9a-f]+$/ || \
+                     /^health_live=PASS;health_ready=PASS$/ || \
+                     /^release_error=[a-z_]+$/ || \
+                     /^previous_release=[0-9a-f]+$/ { print; fflush(); }' \
+            | tee "$outcome_file"
+          release_status="${PIPESTATUS[0]}"
+          set -e
+          outcome="$(cat "$outcome_file")"
+          if (( release_status != 0 )); then
+            reason="$(printf '%s\n' "$outcome" | sed -n 's/^release_error=\([a-z_]*\)$/\1/p' | tail -n 1)"
+            echo "::error::API release blocked: ${reason:-unknown}; check VPS health/rollback."
+            exit 1
+          fi
           grep -Fqx 'health_live=PASS;health_ready=PASS' <<< "$outcome" || {
             echo "::error::Backend helper did not confirm live and ready."; exit 1;
           }
@@ -250,7 +265,7 @@ jobs:
           set -euo pipefail
           ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key"
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3)
           result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" 'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-realtime-nginx.py)" || {
             if [[ "$result" =~ ^realtime_https_upgrade=BLOCKED\;reason=([a-z_]+)$ ]]; then
               echo "::error::Realtime proxy gate: ${BASH_REMATCH[1]}"

@@ -46,6 +46,17 @@ class MigrationManifestTests(unittest.TestCase):
         self.assertIn("20270101000000_new_feature", release.migration_names(files))
 
 
+class SilentBuildSafetyTests(unittest.TestCase):
+    def test_preparation_has_bounded_sanitized_stages(self):
+        source = (Path(__file__).parents[1] / "hotpot-api-release-manual.py").read_text()
+        for stage in ("npm_install", "prisma_generate", "npm_prune", "runtime_imports"):
+            self.assertIn('build_run("' + stage + '"', source)
+        self.assertIn('runtime_build_step=', source)
+        self.assertIn('subprocess.TimeoutExpired', source)
+        self.assertIn('stdout=subprocess.DEVNULL', source)
+        self.assertIn('stderr=subprocess.DEVNULL', source)
+
+
 class ArchiveTests(unittest.TestCase):
     def test_accepts_expected_runtime_only(self):
         self.assertEqual(set(release.archive_files(archive())),
