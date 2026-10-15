@@ -188,7 +188,7 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
           disabled={busy || rememberSaving}
           trackColor={{ false: "#B7B8BC", true: "#FA850F" }}
           thumbColor="#FFFFFF" ios_backgroundColor="#B7B8BC" />
-        <Text style={s.rememberText}>{remember ? "Ghi nhớ: bật" : "Ghi nhớ: tắt"}</Text>
+        <Text style={s.rememberText}>{remember ? "Nhớ tên đăng nhập: bật" : "Nhớ tên đăng nhập: tắt"}</Text>
       </View>
       <Pressable accessibilityRole="button" onPress={() => switchMode("forgot")}>
         <Text style={s.link}>Quên mật khẩu?</Text>
