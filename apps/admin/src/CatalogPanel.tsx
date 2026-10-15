@@ -40,7 +40,10 @@ export function CatalogPanel({ catalog, token, reload }: {
   catalog: AdminCatalog; token: string; reload: () => Promise<void>;
 }) {
   const [filter, setFilter] = useState("");
-  const [tab, setTab] = useState<"products" | "modifiers">("products");
+  const [tab, setTab] = useState<"products" | "featured" | "modifiers">("products");
+  const [featuredDraft, setFeaturedDraft] = useState<string[] | null>(null);
+  const [sortDraft, setSortDraft] = useState<string[] | null>(null);
+  const [pickerSearch, setPickerSearch] = useState("");
   const busyRef = useRef(false);
   const [stockOnly, setStockOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -72,6 +75,8 @@ export function CatalogPanel({ catalog, token, reload }: {
     const products = catalog.categories.flatMap(category => category.products);
     return { all: products.length, off: products.filter(product => !product.isAvailable).length };
   }, [catalog]);
+  const allProducts = useMemo(() => catalog.categories.flatMap(category => category.products), [catalog]);
+  const featuredCount = allProducts.filter(product => product.isFeatured).length;
   const categories = useMemo(() =>
     catalog.categories.map(category => ({
       ...category, products: category.products.filter(product =>
@@ -79,6 +84,9 @@ export function CatalogPanel({ catalog, token, reload }: {
         && product.name.toLocaleLowerCase("vi").includes(filter.toLocaleLowerCase("vi").trim())),
     })).filter(category => category.products.length > 0 || (!stockOnly && !filter.trim())),
     [catalog, filter, stockOnly]);
+  const featuredCategories = useMemo(() => categories.map(category => ({
+    ...category, products: category.products.filter(product => product.isFeatured),
+  })).filter(category => category.products.length > 0), [categories]);
 
   function open(kind: Kind, id?: string, parentId?: string,
     source?: CatalogCategory | CatalogProduct | CatalogGroup | CatalogVariant | CatalogOption) {
@@ -195,6 +203,32 @@ export function CatalogPanel({ catalog, token, reload }: {
       "PATCH", { isAvailable: next });
   }
 
+  async function saveSelection(kind: "featured" | "order", ids: string[]) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true); setError("");
+    try {
+      await request(root + "/products/" + kind, token, "PUT",
+        { ids, revision: catalog.catalogRevision });
+      await reload();
+      setFeaturedDraft(null); setSortDraft(null);
+      setNotice(kind === "featured" ? "Đã lưu món gợi ý." : "Đã lưu thứ tự món.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Không lưu được. Tải lại rồi thử.");
+    } finally { busyRef.current = false; setBusy(false); }
+  }
+  function shiftOrder(index: number, by: number) {
+    setSortDraft(old => {
+      if (!old || index + by < 0 || index + by >= old.length) return old;
+      const source = allProducts.find(product => product.id === old[index]);
+      const target = allProducts.find(product => product.id === old[index + by]);
+      if (!source || !target || source.categoryId !== target.categoryId) return old;
+      const next = [...old];
+      [next[index], next[index + by]] = [next[index + by]!, next[index]!];
+      return next;
+    });
+  }
+
   function pickImage(productId: string) {
     if (busy) return;
     if (Platform.OS !== "web") {
@@ -243,15 +277,29 @@ export function CatalogPanel({ catalog, token, reload }: {
     <View style={st.heading}>
       <View style={st.headingText}>
         <Text style={st.title}>Thực đơn</Text>
-        <Text style={st.sub}>{counts.all} món · {counts.off} tạm hết</Text>
+        <Text style={st.sub}>{counts.all} món · {featuredCount} gợi ý · {counts.off} tạm hết</Text>
       </View>
-      {tab === "products" && <Action label="＋ Danh mục" secondary onPress={() => open("category")} />}
+      <View style={{ flexDirection: "row", gap: 5 }}>
+        {tab === "products" && <Action label="＋ Danh mục" secondary onPress={() => open("category")} />}
+        {tab === "featured" && <Action label="＋ Gợi ý" secondary onPress={() => {
+          setPickerSearch(""); setError("");
+          setFeaturedDraft(allProducts.filter(product => product.isFeatured).map(product => product.id));
+        }} />}
+        {tab !== "modifiers" && <Action label="↕ Thứ tự" secondary onPress={() => {
+          setError(""); setSortDraft(allProducts.map(product => product.id));
+        }} />}
+      </View>
     </View>
     <View style={st.menuTabs} accessibilityRole="tablist">
       <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "products" }}
         accessibilityLabel="Món" style={[st.menuTab, tab === "products" && st.menuTabActive]}
         onPress={() => { setTab("products"); setExpandedId(null); setError(""); setToast(null); }}>
         <Text style={[st.menuTabText, tab === "products" && st.menuTabTextActive]}>Món</Text>
+      </Pressable>
+      <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "featured" }}
+        accessibilityLabel="Món gợi ý" style={[st.menuTab, tab === "featured" && st.menuTabActive]}
+        onPress={() => { setTab("featured"); setExpandedId(null); setError(""); setToast(null); }}>
+        <Text style={[st.menuTabText, tab === "featured" && st.menuTabTextActive]}>Món gợi ý</Text>
       </Pressable>
       <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "modifiers" }}
         accessibilityLabel="Nhóm tùy chọn"
@@ -261,17 +309,19 @@ export function CatalogPanel({ catalog, token, reload }: {
       </Pressable>
     </View>
     <View style={st.body}>
-      <ScrollView key={tab} testID="catalog-body-scroll" style={st.contentScroll} contentContainerStyle={st.content}
+      <ScrollView testID="catalog-body-scroll" style={st.contentScroll} contentContainerStyle={st.content}
         keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-    {tab === "products" && <>
+    {(tab === "products" || tab === "featured") && <>
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
       placeholder="Tên lẩu, trà sữa, combo..." />
-    <View style={st.pills}>
+    {tab === "products" && <View style={st.pills}>
       <Pill label="Tất cả" active={!stockOnly} onPress={() => setStockOnly(false)} />
       <Pill label="Tạm hết" active={stockOnly} onPress={() => setStockOnly(true)} />
-    </View>
-    {categories.length === 0 && <Notice text="Không có món phù hợp trong chi nhánh này." />}
-    {categories.map(category => (
+    </View>}
+    {(tab === "featured" ? featuredCategories : categories).length === 0 &&
+      <Notice text={tab === "featured" ? "Chưa có món gợi ý. Nhấn ＋ Gợi ý để chọn món." :
+        "Không có món phù hợp trong chi nhánh này."} />}
+    {(tab === "featured" ? featuredCategories : categories).map(category => (
       <View key={category.id} style={st.categoryBlock}>
         <View style={st.categoryHeading}>
           <View style={st.categoryTitle}>
@@ -300,7 +350,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <View style={st.thumbnailFallback}><Text style={st.thumbnailText}>Ảnh</Text></View>}
                 <View style={st.productCopy}>
                   <Text style={st.productName} numberOfLines={2}>{product.name}</Text>
-                  <Text style={st.price}>{toPrice(product.priceVnd)}</Text>
+                  <Text style={st.price}>{toPrice(product.priceVnd)} · Đã bán {product.soldCount}</Text>
                 </View>
               </Pressable>
               <StatusSwitch value={product.isAvailable} busy={busy}
@@ -464,6 +514,93 @@ export function CatalogPanel({ catalog, token, reload }: {
         </View>
       </KeyboardAvoidingView>
     </Modal>
+
+      <Modal visible={featuredDraft !== null} transparent animationType="fade"
+        onRequestClose={() => { if (!busy) setFeaturedDraft(null); }}>
+        <View style={st.backdrop}>
+          <View style={st.modal}>
+            <View style={st.modalHeading}>
+              <View style={st.modalName}>
+                <Text style={st.title}>Chọn món gợi ý</Text>
+                <Text style={st.sub}>Món tạm hết vẫn có thể gợi ý nhưng khách không đặt được.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn món gợi ý"
+                style={st.close} disabled={busy} onPress={() => setFeaturedDraft(null)}>
+                <Icon name="close" size={19} color={c.secondary} />
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+              <Field label="Tìm món" value={pickerSearch} onChangeText={setPickerSearch}
+                placeholder="Tìm theo tên món..." />
+              {!!error && <Notice text={error} error />}
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ minHeight: 0 }}
+              contentContainerStyle={st.modalBody}>
+              {allProducts.filter(item => item.name.toLocaleLowerCase("vi")
+                .includes(pickerSearch.toLocaleLowerCase("vi").trim())).map(item =>
+                <View key={item.id} style={st.optionRow}>
+                  <Text style={st.optionName} numberOfLines={2}>
+                    {item.name} · {toPrice(item.priceVnd)}
+                  </Text>
+                  <StatusSwitch value={featuredDraft?.includes(item.id) ?? false} busy={busy}
+                    label={"Gợi ý món " + item.name} onValueChange={value =>
+                      setFeaturedDraft(old => !old ? old : value
+                        ? [...old, item.id] : old.filter(id => id !== item.id))} />
+                </View>)}
+              {allProducts.length === 0 && <Text style={st.emptyNote}>Chưa có món nào để chọn.</Text>}
+            </ScrollView>
+            <View style={[st.modalActions, { padding: 12 }]}>
+              <Action label="Hủy" secondary disabled={busy} onPress={() => setFeaturedDraft(null)} />
+              <Action label={busy ? "Đang lưu..." : "Lưu món gợi ý"}
+                disabled={busy} onPress={() => void saveSelection("featured", featuredDraft ?? [])} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={sortDraft !== null} transparent animationType="fade"
+        onRequestClose={() => { if (!busy) setSortDraft(null); }}>
+        <View style={st.backdrop}>
+          <View style={st.modal}>
+            <View style={st.modalHeading}>
+              <View style={st.modalName}>
+                <Text style={st.title}>Sắp xếp thứ tự món</Text>
+                <Text style={st.sub}>Dùng mũi tên để đổi vị trí trong từng danh mục.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng sắp xếp"
+                style={st.close} disabled={busy} onPress={() => setSortDraft(null)}>
+                <Icon name="close" size={19} color={c.secondary} />
+              </Pressable>
+            </View>
+            {!!error && <View style={{ paddingHorizontal: 12 }}><Notice text={error} error /></View>}
+            <ScrollView style={{ minHeight: 0 }} contentContainerStyle={st.modalBody}>
+              {sortDraft?.map((id, index) => {
+                const product = allProducts.find(item => item.id === id);
+                if (!product) return null;
+                const previous = allProducts.find(item => item.id === sortDraft[index - 1]);
+                const next = allProducts.find(item => item.id === sortDraft[index + 1]);
+                return <View key={id} style={st.optionRow}>
+                  <Text style={st.optionName} numberOfLines={2}>{product.name}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={"Đưa " + product.name + " lên"}
+                    disabled={busy || previous?.categoryId !== product.categoryId}
+                    style={st.optionAction} onPress={() => shiftOrder(index, -1)}>
+                    <Text style={st.miniEditText}>↑</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={"Đưa " + product.name + " xuống"}
+                    disabled={busy || next?.categoryId !== product.categoryId}
+                    style={st.optionAction} onPress={() => shiftOrder(index, 1)}>
+                    <Text style={st.miniEditText}>↓</Text>
+                  </Pressable>
+                </View>;
+              })}
+            </ScrollView>
+            <View style={[st.modalActions, { padding: 12 }]}>
+              <Action label="Hủy" secondary disabled={busy} onPress={() => setSortDraft(null)} />
+              <Action label={busy ? "Đang lưu..." : "Lưu thứ tự"}
+                disabled={busy} onPress={() => void saveSelection("order", sortDraft ?? [])} />
+            </View>
+          </View>
+        </View>
+      </Modal>
   </View>;
 }
 const st = StyleSheet.create({
