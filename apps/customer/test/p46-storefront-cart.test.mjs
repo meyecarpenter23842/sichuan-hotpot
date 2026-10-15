@@ -13,7 +13,7 @@ test("closed store remains browseable; checkout popup preserves cart", () => {
   assert.match(app, /branchActive=\{menu\?\.isActive \?\? false\}/);
   assert.match(checkout, /if \(!branchActive\) \{ setClosedPopup\(true\); return; \}/);
   assert.match(checkout, /Quán hiện đã nghỉ/);
-  assert.match(checkout, /Giỏ hàng/);
+  assert.match(checkout, /giỏ hàng/);
 });
 test("adding a product continues shopping in menu instead of forcing checkout", () => {
   const start = app.indexOf("function addSelectedProduct()");
