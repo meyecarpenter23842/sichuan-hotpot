@@ -20,6 +20,7 @@ export function StatusSwitch({ value, onValueChange, label, hint, disabled = fal
     accessibilityLabel={label}
     accessibilityHint={hint ?? (value ? "Đang bật" : "Đang tắt")}
     accessibilityState={{ checked: value, disabled: locked, busy }}
+    aria-checked={value}
     disabled={locked}
     onPress={() => { if (!locked) onValueChange(!value); }}
     style={({ pressed }) => [st.touch, pressed && !locked && st.pressed,

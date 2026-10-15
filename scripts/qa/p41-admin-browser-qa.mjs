@@ -92,6 +92,10 @@ try {
   await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).waitFor();
   const productSwitch = page.getByRole("switch", { name: "Bán món Lẩu QA P4.1" });
   await productSwitch.waitFor();
+  const savedProduct = await db.product.findFirstOrThrow({ where: { name: "Lẩu QA P4.1" } });
+  assert.equal(savedProduct.isAvailable, true, "Product must be available when created");
+  assert.equal(await productSwitch.getAttribute("aria-checked"), "true",
+    "Switch ARIA state must match real product availability");
   assert.equal(await productSwitch.isChecked(), true);
   await productSwitch.click();
   await page.waitForFunction(() => {
