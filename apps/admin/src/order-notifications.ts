@@ -14,9 +14,11 @@ export async function saveOrderChime(enabled: boolean): Promise<void> {
 
 // A deliberate tap to enable sound unlocks browser audio on Safari/Chrome.
 // Android vibrates as an additional cue until packaged app notification audio is configured.
+/** Classic double-ring bell (~3 seconds), deliberately longer than the old 0.6s beep. */
 export function playOrderChime(): void {
   if (Platform.OS !== "web") {
-    Vibration.vibrate(280);
+    // Native fallback until the packaged Android app has an approved sound asset.
+    Vibration.vibrate([0, 900, 240, 900, 240, 650]);
     return;
   }
   try {
@@ -25,22 +27,31 @@ export function playOrderChime(): void {
     if (!Audio) return;
     context ??= new Audio();
     if (context.state === "suspended") void context.resume();
-    const start = context.currentTime;
-    for (const [index, pitch] of [740, 988, 740].entries()) {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.value = pitch;
-      gain.gain.setValueAtTime(0.0001, start + index * 0.19);
-      gain.gain.exponentialRampToValueAtTime(0.11, start + index * 0.19 + 0.035);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + index * 0.19 + 0.17);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start(start + index * 0.19);
-      oscillator.stop(start + index * 0.19 + 0.18);
+    const start = context.currentTime + 0.02;
+    // Two classic telephone-style rings, with a distinct pause between them.
+    for (const offset of [0, 1.5]) {
+      for (const [frequency, volume] of [[610, 0.14], [810, 0.11]] as const) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        // Tremolo creates the "reng reng" bell cadence, not a short notification beep.
+        gain.gain.setValueAtTime(0.0001, start + offset);
+        for (let i = 0; i < 12; i++) {
+          const t = start + offset + i * 0.098;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.linearRampToValueAtTime(volume, t + 0.018);
+          gain.gain.setValueAtTime(volume, t + 0.063);
+          gain.gain.linearRampToValueAtTime(0.0001, t + 0.096);
+        }
+        oscillator.start(start + offset);
+        oscillator.stop(start + offset + 1.20);
+      }
     }
   } catch {
-    // Audio may be denied by browser autoplay policy; order data still refreshes.
+    // Browser autoplay policy can mute unsolicited sound; orders still reconcile.
   }
 }
 

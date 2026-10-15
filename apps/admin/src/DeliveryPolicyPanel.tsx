@@ -110,7 +110,25 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     <Text style={st.title}>{mode === "delivery" ? "Chính sách giao hàng" : "Nhận đơn trực tuyến"}</Text>
     {loading ? <ActivityIndicator color={c.red} /> : <>
       {!current && <Notice text="Chưa cấu hình phí giao. Hệ thống không tự áp phí 0 đồng và chưa thể nhận đơn." />}
-      {current && <Text style={st.note}>Phiên bản chính sách hiện tại: {current.version}</Text>}
+      {current && <View style={st.savedPolicy}>
+        <View style={st.savedHeading}>
+          <Text style={st.savedTitle}>Phí giao đang áp dụng</Text>
+          <Text style={st.version}>Phiên bản {current.version}</Text>
+        </View>
+        <View style={st.savedLine}><Text style={st.note}>Km cơ bản</Text>
+          <Text style={st.savedValue}>{showNumber("baseMeters", current.baseMeters)} km · {current.baseFeeVnd.toLocaleString("vi-VN")} đ</Text></View>
+        <View style={st.savedLine}><Text style={st.note}>Phụ thu sau mỗi</Text>
+          <Text style={st.savedValue}>{showNumber("extraStepMeters", current.extraStepMeters)} km · +{current.extraStepFeeVnd.toLocaleString("vi-VN")} đ</Text></View>
+        <View style={st.savedLine}><Text style={st.note}>Giao tối đa</Text>
+          <Text style={st.savedValue}>{showNumber("maxRoadMeters", current.maxRoadMeters)} km</Text></View>
+        <View style={st.savedLine}><Text style={st.note}>Đơn tối thiểu</Text>
+          <Text style={st.savedValue}>{current.minSubtotalVnd.toLocaleString("vi-VN")} đ</Text></View>
+        <View style={st.savedLine}><Text style={st.note}>Miễn phí từ</Text>
+          <Text style={st.savedValue}>{current.freeDeliveryAtSubtotalVnd === null
+            ? "Không áp dụng" : current.freeDeliveryAtSubtotalVnd.toLocaleString("vi-VN") + " đ"}</Text></View>
+        <View style={st.savedLine}><Text style={st.note}>Nhận đơn</Text>
+          <Text style={st.savedValue}>{current.acceptingOrders ? "Đang bật" : "Đang tạm dừng"}</Text></View>
+      </View>}
       {!active && <Notice text="Chi nhánh chưa kích hoạt. Bật Hoạt động sau khi hoàn tất cấu hình giờ bán và phí giao." />}
       {mode === "orders" ? <>
         <Text style={st.note}>Bật nhận đơn chỉ khi cửa hàng có thể xử lý đơn mới. Thao tác này được lưu thành phiên bản chính sách mới.</Text>
@@ -128,10 +146,22 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
         </View>
       </> : <>
         <Text style={st.note}>Nhập khoảng cách theo km; hệ thống lưu theo mét. Phí và điều kiện được lưu bằng VND nguyên.</Text>
-        {labels.map(({ key, label }) => <Field key={key} label={label}
-          numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
-          placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
-          value={numbers[key]} onChangeText={v => setNumbers(old => ({ ...old, [key]: v }))} />)}
+        {([
+          { title: "Cước giao cơ bản", keys: ["baseMeters", "baseFeeVnd"] },
+          { title: "Phụ thu theo quãng đường", keys: ["extraStepMeters", "extraStepFeeVnd"] },
+          { title: "Phạm vi và ưu đãi", keys: ["maxRoadMeters", "minSubtotalVnd", "freeDeliveryAtSubtotalVnd"] },
+        ] as { title: string; keys: NumericKey[] }[]).map(section => <View key={section.title} style={st.inputSection}>
+          <Text style={st.groupTitle}>{section.title}</Text>
+          <View style={st.inputGroupRow}>
+            {section.keys.map(key => <View key={key}
+              style={key === "freeDeliveryAtSubtotalVnd" ? st.fullColumn : st.inputColumn}>
+              <Field label={labels.find(item => item.key === key)!.label}
+                numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
+                placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
+                value={numbers[key]} onChangeText={v => { setNumbers(old => ({ ...old, [key]: v })); setSuccess(""); }} />
+            </View>)}
+          </View>
+        </View>)}
       </>}
       {mode === "orders" && !current && <Notice error text="Cần thiết lập Phí giao trước khi bật nhận đơn." />}
       {mode === "orders" && !active && <Notice text="Chi nhánh đang tạm dừng. Không thể bật nhận đơn đến khi kích hoạt chi nhánh." />}
@@ -145,6 +175,17 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
 }
 const st = StyleSheet.create({
   panel: { gap: 10 },
+  inputSection: { gap: 7, paddingTop: 9, borderTopWidth: 1, borderTopColor: c.line },
+  groupTitle: { fontSize: font.action, color: c.ink, fontWeight: "800" },
+  inputGroupRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8 },
+  inputColumn: { width: "48%", minWidth: 0 },
+  fullColumn: { width: "100%" },
+  savedPolicy: { gap: 6, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.line, paddingVertical: 10 },
+  savedHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  savedTitle: { fontSize: font.action, fontWeight: "800", color: c.ink },
+  version: { fontSize: font.note, color: c.secondary },
+  savedLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  savedValue: { fontSize: font.note, fontWeight: "700", color: c.ink, flexShrink: 1, textAlign: "right" },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 18, color: c.secondary },
   row: { minHeight: 52, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "space-between" },

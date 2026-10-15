@@ -729,8 +729,8 @@ function CustomerApp() {
       setCart(old => addCartLine(old, {
         productId: selectedProduct.id, variantId: selectedVariantId, modifierIds: selectedModifierIds,
       }, selectedQuantity));
-      setScreen("cart");
-      setNotice("Đã thêm món vào giỏ hàng.");
+      setScreen("menu");
+      setNotice("Đã thêm món vào giỏ. Bạn có thể chọn tiếp hoặc mở giỏ khi sẵn sàng.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không thể thêm món.");
     }
@@ -1010,6 +1010,7 @@ function CustomerApp() {
                   ))}
                 </ScrollView>
               ) : <Text style={styles.muted}>Chi nhánh đang được cập nhật.</Text>}
+              {menu && !menu.isActive && <Notice message="Quán hiện đã nghỉ. Bạn vẫn có thể xem món và thêm vào giỏ; đặt hàng sẽ mở lại khi quán hoạt động." />}
               <Field label="Tìm món ăn, trà sữa" value={search} onChangeText={setSearch}
                 placeholder="Nhập tên món bạn muốn tìm..." />
             </View>
@@ -1167,7 +1168,7 @@ function CustomerApp() {
                 </View>
                 {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
                 {!!principal && <CheckoutPanel accessToken={accessToken} userId={principal.id}
-                  branchId={branchId} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
+                  branchId={branchId} branchActive={menu?.isActive ?? false} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
               </>
             )}
           </View>
@@ -1487,7 +1488,7 @@ const styles = StyleSheet.create({
   sessionLoading: { flex: 1, padding: 24, justifyContent: "center", alignItems: "stretch", gap: 16 },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
   header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
-  logoBadge: { width: 44, height: 44, borderRadius: 13, backgroundColor: palette.white, borderColor: palette.line, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  logoBadge: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
   brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },

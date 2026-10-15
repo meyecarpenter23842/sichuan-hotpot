@@ -13,7 +13,7 @@ test("logo source is the approved raster, not the legacy icon",()=>{
     const config=JSON.parse(readFileSync(resolve(path,"app.json"),"utf8"));
     assert.match(generator,/brand-approved-20261015.png/);
     assert.doesNotMatch(generator,/const disc = radius/);
-    assert.match(generator,/icon-512-v20261015.png/);
+    assert.match(generator,/icon-512-v20261015b.png/);
     assert.equal(config.expo.android.adaptiveIcon.backgroundColor,"#FFFFFF");
   }
 });

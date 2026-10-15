@@ -50,7 +50,9 @@ export function watchOrderEvents(options: {
         if (stopped) return;
         retry = setTimeout(connect, Math.min(30000, 1000 * (2 ** Math.min(attempts++, 5))));
       };
-      socket.onerror = () => { socket?.close(); };
+      // Browser already emits onclose after a failed handshake; calling close() here
+      // while CONNECTING causes the misleading "closed before established" error.
+      socket.onerror = () => undefined;
     } catch {
       retry = setTimeout(connect, 5000);
     }
@@ -60,8 +62,14 @@ export function watchOrderEvents(options: {
     stopped = true;
     if (retry) clearTimeout(retry);
     if (socket) {
-      socket.onclose = null;
-      socket.close();
+      const pending = socket;
+      pending.onclose = null;
+      pending.onmessage = null;
+      if (pending.readyState === WebSocket.OPEN) pending.close();
+      else if (pending.readyState === WebSocket.CONNECTING) {
+        // Complete the handshake before closing instead of aborting it mid-flight.
+        pending.onopen = () => pending.close();
+      }
     }
   };
 }
