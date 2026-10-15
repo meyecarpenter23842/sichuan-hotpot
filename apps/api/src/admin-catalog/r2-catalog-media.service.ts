@@ -52,6 +52,15 @@ export class R2CatalogMediaService {
     :kind==="groups"?await tx.modifierGroup.findFirst({where:{id,branchId},select:{imageKey:true}})
     :await tx.modifierOption.findFirst({where:{id,group:{branchId}},select:{imageKey:true}});
    if(!previous)throw new NotFoundException("CATALOG_ITEM_NOT_FOUND");
+   // An image required for publication cannot be detached while the item is on sale.
+   if(key===null&&kind==="groups"){
+     const active=await tx.modifierGroup.findUnique({where:{id},select:{isAvailable:true}});
+     if(active?.isAvailable)throw new ConflictException("DISABLE_GROUP_BEFORE_IMAGE_REMOVAL");
+   }
+   if(key===null&&kind==="options"){
+     const active=await tx.modifierOption.findUnique({where:{id},select:{isAvailable:true}});
+     if(active?.isAvailable)throw new ConflictException("DISABLE_TOPPING_BEFORE_IMAGE_REMOVAL");
+   }
    if(previous.imageKey===key)return {id,imageKey:key};
    const changed=kind==="categories"?await tx.catalogCategory.updateMany({
     where:{id,branchId,imageKey:previous.imageKey},data:{imageKey:key}})
