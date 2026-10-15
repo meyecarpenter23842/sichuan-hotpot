@@ -63,6 +63,10 @@ try {
   await page.getByRole("radio", { name: /Khẩu phần 2 người/ }).click();
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-detail-390.png", fullPage: true });
   await page.getByRole("button", { name: /Thêm vào giỏ/ }).click();
+  // P4.6: adding a product returns to Menu to let guests continue shopping.
+  await page.getByRole("button", { name: "Xem món " + productName }).waitFor();
+  await page.getByText("Đã thêm món vào giỏ. Bạn có thể chọn tiếp", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Giỏ hàng", exact: true }).click();
   await page.getByText("Nấm kim châm · Cay vừa").waitFor({ timeout: 10000 }).catch(async () => {
     await page.getByText(/Nấm kim châm/).waitFor({ timeout: 1500 });
   });
