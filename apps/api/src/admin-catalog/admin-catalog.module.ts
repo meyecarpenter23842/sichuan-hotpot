@@ -7,10 +7,12 @@ import { AdminImagesController } from "./admin-images.controller";
 import { R2ProductImagesService } from "./r2-product-images.service";
 import { ModifierLibraryService } from "./modifier-library.service";
 import { ModifierLibraryController } from "./modifier-library.controller";
+import { AdminCatalogMediaController } from "./admin-catalog-media.controller";
+import { R2CatalogMediaService } from "./r2-catalog-media.service";
 
 @Module({
   imports: [AuthModule],
-  controllers: [AdminBranchesController, AdminCatalogController, AdminImagesController, ModifierLibraryController],
-  providers: [AdminCatalogService, AdminBranchSetupService, R2ProductImagesService, ModifierLibraryService],
+  controllers: [AdminBranchesController, AdminCatalogController, AdminImagesController, ModifierLibraryController, AdminCatalogMediaController],
+  providers: [AdminCatalogService, AdminBranchSetupService, R2ProductImagesService, ModifierLibraryService, R2CatalogMediaService],
 })
 export class AdminCatalogModule {}

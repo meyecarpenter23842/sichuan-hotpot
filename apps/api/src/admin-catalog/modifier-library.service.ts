@@ -102,10 +102,6 @@ export class ModifierLibraryService {
     if (input.isAvailable === true && !current.imageKey) {
       throw new ConflictException("TOPPING_IMAGE_REQUIRED");
     }
-    if (input.isAvailable === false && current.isAvailable && current.group.isAvailable
-      && current.group.assignments !== undefined) {
-      // Full group viability is checked transactionally below.
-    }
     return this.prisma.database.$transaction(async tx => {
       const group = await tx.modifierGroup.findUniqueOrThrow({ where: { id: current.groupId },
         include: { options: true } });
