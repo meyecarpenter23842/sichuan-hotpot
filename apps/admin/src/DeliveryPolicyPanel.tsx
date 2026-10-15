@@ -146,10 +146,22 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
         </View>
       </> : <>
         <Text style={st.note}>Nhập khoảng cách theo km; hệ thống lưu theo mét. Phí và điều kiện được lưu bằng VND nguyên.</Text>
-        {labels.map(({ key, label }) => <Field key={key} label={label}
-          numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
-          placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
-          value={numbers[key]} onChangeText={v => setNumbers(old => ({ ...old, [key]: v }))} />)}
+        {([
+          { title: "Cước giao cơ bản", keys: ["baseMeters", "baseFeeVnd"] },
+          { title: "Phụ thu theo quãng đường", keys: ["extraStepMeters", "extraStepFeeVnd"] },
+          { title: "Phạm vi và ưu đãi", keys: ["maxRoadMeters", "minSubtotalVnd", "freeDeliveryAtSubtotalVnd"] },
+        ] as { title: string; keys: NumericKey[] }[]).map(section => <View key={section.title} style={st.inputSection}>
+          <Text style={st.groupTitle}>{section.title}</Text>
+          <View style={st.inputGroupRow}>
+            {section.keys.map(key => <View key={key}
+              style={key === "freeDeliveryAtSubtotalVnd" ? st.fullColumn : st.inputColumn}>
+              <Field label={labels.find(item => item.key === key)!.label}
+                numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
+                placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
+                value={numbers[key]} onChangeText={v => { setNumbers(old => ({ ...old, [key]: v })); setSuccess(""); }} />
+            </View>)}
+          </View>
+        </View>)}
       </>}
       {mode === "orders" && !current && <Notice error text="Cần thiết lập Phí giao trước khi bật nhận đơn." />}
       {mode === "orders" && !active && <Notice text="Chi nhánh đang tạm dừng. Không thể bật nhận đơn đến khi kích hoạt chi nhánh." />}
@@ -163,6 +175,11 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
 }
 const st = StyleSheet.create({
   panel: { gap: 10 },
+  inputSection: { gap: 7, paddingTop: 9, borderTopWidth: 1, borderTopColor: c.line },
+  groupTitle: { fontSize: font.action, color: c.ink, fontWeight: "800" },
+  inputGroupRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8 },
+  inputColumn: { width: "48%", minWidth: 0 },
+  fullColumn: { width: "100%" },
   savedPolicy: { gap: 6, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.line, paddingVertical: 10 },
   savedHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   savedTitle: { fontSize: font.action, fontWeight: "800", color: c.ink },
