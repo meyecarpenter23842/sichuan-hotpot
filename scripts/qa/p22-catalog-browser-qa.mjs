@@ -23,6 +23,7 @@ try {
   } });
   const product = await db.product.create({ data: {
     categoryId: category.id, name: productName, priceVnd: 159000,
+    isFeatured: true, sortOrder: 0,
   } });
   await db.productVariant.create({ data: {
     productId: product.id, name: "Khẩu phần 2 người", priceDeltaVnd: 49000,
