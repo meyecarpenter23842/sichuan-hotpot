@@ -1,4 +1,4 @@
-name: Configure production R2 + Google Routes (owner command, no manual SSH)
+name: Configure production R2 only (owner command, no manual SSH)
 on:
   issue_comment:
     types: [created]
@@ -18,14 +18,13 @@ jobs:
       group: hotpot-production-vps-change
       cancel-in-progress: false
     env:
-      VPS_HOST: ${ vars.VPS_HOST }}
-      VPS_PORT: ${ vars.VPS_PORT }}
-      VPS_USER: ${ vars.VPS_USER }}
-      VPS_KNOWN_HOSTS: ${ secrets.VPS_KNOWN_HOSTS }}
-      VPS_DEPLOY_SSH_KEY: ${ secrets.VPS_DEPLOY_SSH_KEY }}
-      PRODUCT_R2_ACCESS: ${ secrets.HOTPOT_R2_ACCESS_KEY_ID }}
-      PRODUCT_R2_SECRET: ${ secrets.HOTPOT_R2_SECRET_ACCESS_KEY }}
-      GOOGLE_ROUTES_KEY: ${ secrets.HOTPOT_GOOGLE_ROUTES_API_KEY }}
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      PRODUCT_R2_ACCESS: ${{ secrets.HOTPOT_R2_ACCESS_KEY_ID }}
+      PRODUCT_R2_SECRET: ${{ secrets.HOTPOT_R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,7 +39,7 @@ jobs:
           [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
           (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
           test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
-          test -n "$PRODUCT_R2_ACCESS" && test -n "$PRODUCT_R2_SECRET" && test -n "$GOOGLE_ROUTES_KEY" || {
+          test -n "$PRODUCT_R2_ACCESS" && test -n "$PRODUCT_R2_SECRET" || {
             echo "::error::Missing protected production-api environment secrets; no VPS change."
             exit 1
           }
@@ -62,7 +61,6 @@ jobs:
               "R2_BUCKET": "hot-pot",
               "R2_ACCESS_KEY_ID": os.environ["PRODUCT_R2_ACCESS"],
               "R2_SECRET_ACCESS_KEY": os.environ["PRODUCT_R2_SECRET"],
-              "GOOGLE_ROUTES_API_KEY": os.environ["GOOGLE_ROUTES_KEY"],
           }
           path=sys.argv[1]
           fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
@@ -93,7 +91,7 @@ jobs:
           python3 - "$RUNNER_TEMP/service-results" <<'PY'
           import sys
           lines=[line.strip() for line in open(sys.argv[1],encoding="utf8")]
-          expected={"r2_product_upload_probe=PASS","google_routes_road_distance_probe=PASS"}
+          expected={"r2_product_upload_probe=PASS"}
           states={"configuration=APPLIED","configuration=ALREADY_APPLIED"}
           accepted=expected|states|{"health_live=PASS","health_ready=PASS"}
           if any(l not in accepted for l in lines) or not expected.issubset(set(lines)) or not (states & set(lines)):
@@ -102,7 +100,7 @@ jobs:
               raise SystemExit("Updated backend did not confirm health.")
           for line in lines: print(line)
           PY
-          echo "R2 signed upload, Google driving route and backend readiness: PASS"
+          echo "R2 signed upload and backend readiness: PASS"
       - name: Remove all temporary SSH, secret and root helper files
         if: always()
         shell: bash
