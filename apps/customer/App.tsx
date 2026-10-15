@@ -818,12 +818,24 @@ function CustomerApp() {
             <Pressable
               key={cat.id} onPress={() => setCategoryId(cat.id)}
               accessibilityRole="button" style={[styles.pill, categoryId === cat.id && styles.pillActive]}
-            ><Text style={[styles.pillText, categoryId === cat.id && styles.pillTextActive]}>{cat.name}</Text></Pressable>
+            >
+              {safeProductImageUrl(cat.imageKey)
+                ? <Image source={{uri:safeProductImageUrl(cat.imageKey)!}}
+                    style={{width:24,height:24,borderRadius:6,marginRight:5}} accessibilityLabel={"Ảnh danh mục "+cat.name}/>
+                : null}
+              <Text style={[styles.pillText, categoryId === cat.id && styles.pillTextActive]}>{cat.name}</Text>
+            </Pressable>
           ))}
         </ScrollView>
         {filteredCategories.map(cat => (
           <View key={cat.id} style={styles.categoryBlock}>
-            <Text style={styles.categoryTitle}>{cat.name}</Text>
+            <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
+               {safeProductImageUrl(cat.imageKey)
+                 ? <Image source={{uri:safeProductImageUrl(cat.imageKey)!}}
+                     style={{width:32,height:32,borderRadius:8}} accessibilityLabel={"Ảnh danh mục "+cat.name}/>
+                 : null}
+               <Text style={styles.categoryTitle}>{cat.name}</Text>
+             </View>
             {cat.products.length === 0
               ? <Text style={styles.muted}>Chưa có món phù hợp.</Text>
               : cat.products.map(showProduct)}
