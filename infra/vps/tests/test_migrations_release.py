@@ -114,7 +114,7 @@ class LiveP4SafetyTests(unittest.TestCase):
                   patch.object(p4.fcntl, "flock"),
                   patch.object(p4, "checked_source", return_value=({"mock": b"x"},
                       {name: "a" * 64 for name in self.migrations})),
-                  patch.object(p4, "checked_history", return_value=set(p4.PREVIOUS)),
+                  patch.object(p4, "checked_history", return_value=set(self.migrations[:1])),
                   patch.object(p4, "backup_config"),
                   patch.object(p4, "backup_restore", return_value=receipt),
                   patch.object(p4, "private_file", side_effect=lambda x: Path(x)),
