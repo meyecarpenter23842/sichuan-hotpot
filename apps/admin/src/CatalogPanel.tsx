@@ -480,7 +480,7 @@ const st = StyleSheet.create({
   toastError: { borderColor: "#F3C9CD", backgroundColor: "#FFF2F2" },
   toastText: { flex: 1, color: c.ink, fontSize: font.note, lineHeight: 17 },
   toastClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  toastCloseText: { color: c.secondary, fontSize: 24 },
+  toastCloseText: { color: c.secondary, fontSize: 20 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, minHeight: 42, paddingBottom: 4 },
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
