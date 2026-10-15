@@ -11,7 +11,7 @@ spec.loader.exec_module(p4)
 
 class LiveP4HistoryTests(unittest.TestCase):
     def setUp(self):
-        self.migrations = p4.PREVIOUS + p4.P4
+        self.migrations = p4.PREVIOUS + p4.UPDATES
         self.hashes = {name: "a" * 64 for name in self.migrations}
 
     def history(self, migrations):
@@ -22,11 +22,16 @@ class LiveP4HistoryTests(unittest.TestCase):
     def test_p42_accepts_existing_p4_history_and_existing_live_db(self):
         self.assertEqual(self.history(p4.PREVIOUS), set(p4.PREVIOUS))
         self.assertEqual(self.history(p4.PREVIOUS + (p4.P4[0],)), set(p4.PREVIOUS + (p4.P4[0],)))
+        self.assertEqual(self.history(p4.PREVIOUS + p4.P4), set(p4.PREVIOUS + p4.P4))
         self.assertEqual(self.history(self.migrations), set(self.migrations))
 
     def test_p42_out_of_order_or_bad_checksum_rejected(self):
         with self.assertRaises(p4.GateError):
             self.history(p4.PREVIOUS + (p4.P4[1],))
+        with self.assertRaises(p4.GateError):
+            self.history(p4.PREVIOUS + p4.L06)
+        with self.assertRaises(p4.GateError):
+            self.history(p4.PREVIOUS + (p4.P4[0],) + p4.L06)
         with self.assertRaises(p4.GateError):
             self.history(p4.PREVIOUS[:-1])
         with patch.object(p4, "sql", return_value=p4.PREVIOUS[0] + "|b" * 1):
@@ -67,7 +72,11 @@ class LiveP4SafetyTests(unittest.TestCase):
             return backup.call_count, migrate.call_count
 
     def test_already_applied_does_not_rebackup_or_migrate(self):
-        self.assertEqual(self.invoke(set(p4.PREVIOUS + p4.P4)), (0, 0))
+        self.assertEqual(self.invoke(set(p4.PREVIOUS + p4.UPDATES)), (0, 0))
+
+    def test_existing_p42_schema_requires_l06_backup_and_migration(self):
+        # Do not treat the existing P4.2 production schema as L06 ready.
+        self.assertEqual(self.invoke(set(p4.PREVIOUS + p4.P4)), (1, 1))
 
     def test_check_only_never_writes(self):
         self.assertEqual(self.invoke(set(p4.PREVIOUS), mode="--check"), (0, 0))
@@ -111,6 +120,8 @@ class LiveP4SafetyTests(unittest.TestCase):
         self.assertIn("isolated_restore(roundtrip)", source)
         self.assertIn("branch_address_missing", source)
         self.assertIn("20261014010000_p42_branch_address", source)
+        self.assertIn("20261015060000_p45_featured_order", source)
+        self.assertIn("l06_schema_missing", source)
 
     def test_invalid_arguments_rejected(self):
         with patch.object(p4.os, "geteuid", return_value=0):
