@@ -6,7 +6,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 
 export interface CategoryInput { name: string; sortOrder: number }
-export interface ProductInput { categoryId: string; name: string; priceVnd: number; isAvailable: boolean }
+export interface ProductInput { categoryId: string; name: string; priceVnd: number; isAvailable: boolean; isFeatured?: boolean }
 export interface VariantInput { name: string; priceDeltaVnd: number; isAvailable: boolean }
 export interface ModifierGroupInput { name: string; minSelect: number; maxSelect: number; sortOrder: number }
 export interface ModifierOptionInput { name: string; priceDeltaVnd: number; isAvailable: boolean }
@@ -51,10 +51,10 @@ export class AdminCatalogService {
 
   async catalogue(authorization: string | undefined, branchId: string) {
     await this.authorize(authorization, branchId);
-    return this.prisma.database.branch.findUniqueOrThrow({
+    const snapshot = await this.prisma.database.branch.findUniqueOrThrow({
       where: { id: branchId },
       select: {
-        id: true, name: true, code: true, isActive: true,
+        id: true, name: true, code: true, isActive: true, catalogRevision: true,
         openingHours: { orderBy: { weekday: "asc" },
           select: { weekday: true, opensAt: true, closesAt: true, isClosed: true } },
         categories: {
@@ -62,10 +62,10 @@ export class AdminCatalogService {
           select: {
             id: true, name: true, sortOrder: true,
             products: {
-              orderBy: { name: "asc" },
+              orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
                 id: true, categoryId: true, name: true, priceVnd: true,
-                isAvailable: true, imageKey: true,
+                isAvailable: true, isFeatured: true, sortOrder: true, imageKey: true,
                 variants: { orderBy: { name: "asc" },
                   select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
                 modifierGroups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -81,13 +81,26 @@ export class AdminCatalogService {
         },
       },
     });
+    const ids = snapshot.categories.flatMap(category => category.products.map(product => product.id));
+    if (!ids.length) return snapshot;
+    // Count delivered quantities, not the number of orders or cart additions.
+    const sold = await this.prisma.database.orderItem.groupBy({
+      by: ["productId"], where: { productId: { in: ids }, order: { branchId, status: "DELIVERED" } },
+      _sum: { quantity: true },
+    });
+    const soldById = new Map(sold.map(row => [row.productId, row._sum.quantity ?? 0]));
+    return { ...snapshot, categories: snapshot.categories.map(category => ({
+      ...category, products: category.products.map(product => ({
+        ...product, soldCount: soldById.get(product.id) ?? 0,
+      })),
+    })) };
   }
 
   private async change<T>(fn: () => Promise<T>): Promise<T> {
     try { return await fn(); }
     catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (["P2002", "P2003", "P2014"].includes(error.code)) {
+        if (["P2002", "P2003", "P2014", "P2034"].includes(error.code)) {
           throw new ConflictException("CATALOG_CONFLICT");
         }
         if (error.code === "P2025") throw new NotFoundException("CATALOG_ITEM_NOT_FOUND");
@@ -160,7 +173,8 @@ export class AdminCatalogService {
     await this.category(branchId, input.categoryId);
     return this.change(() => this.prisma.database.product.create({
       data: { categoryId: input.categoryId, name: input.name.trim(),
-        priceVnd: input.priceVnd, isAvailable: input.isAvailable },
+        priceVnd: input.priceVnd, isAvailable: input.isAvailable,
+        isFeatured: input.isFeatured ?? false },
     }));
   }
   async updateProduct(auth: string | undefined, branchId: string, id: string,
@@ -175,9 +189,35 @@ export class AdminCatalogService {
         ...(input.name === undefined ? {} : { name: input.name.trim() }),
         ...(input.priceVnd === undefined ? {} : { priceVnd: input.priceVnd }),
         ...(input.isAvailable === undefined ? {} : { isAvailable: input.isAvailable }),
+        ...(input.isFeatured === undefined ? {} : { isFeatured: input.isFeatured }),
       },
     }));
   }
+  async reorderProducts(auth: string | undefined, branchId: string,
+    ids: string[], revision: number) {
+    await this.authorize(auth, branchId);
+    if (new Set(ids).size !== ids.length) throw new ConflictException("ORDER_HAS_DUPLICATE_PRODUCTS");
+    return this.change(() => this.prisma.database.$transaction(async tx => {
+      const current = await tx.product.findMany({
+        where: { category: { branchId } }, select: { id: true },
+      });
+      if (current.length !== ids.length ||
+          current.some(item => !ids.includes(item.id))) {
+        throw new ConflictException("ORDER_SCOPE_CHANGED_RELOAD");
+      }
+      // Optimistic branch revision: concurrent sort operations cannot overwrite each other.
+      const locked = await tx.branch.updateMany({
+        where: { id: branchId, catalogRevision: revision },
+        data: { catalogRevision: { increment: 1 } },
+      });
+      if (locked.count !== 1) throw new ConflictException("ORDER_CHANGED_RELOAD");
+      for (let i = 0; i < ids.length; i++) {
+        await tx.product.update({ where: { id: ids[i]! }, data: { sortOrder: i } });
+      }
+      return { catalogRevision: revision + 1 };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  }
+
   async deleteProduct(auth: string | undefined, branchId: string, id: string) {
     await this.authorize(auth, branchId);
     await this.product(branchId, id);

@@ -66,6 +66,7 @@ model Branch {
   latitude          Decimal                 @db.Decimal(10, 7)
   longitude         Decimal                 @db.Decimal(10, 7)
   isActive          Boolean                 @default(true)
+  catalogRevision   Int                     @default(0)
   createdAt         DateTime                @default(now()) @db.Timestamptz(6)
   updatedAt         DateTime                @updatedAt @db.Timestamptz(6)
   memberships       BranchMember[]
@@ -147,6 +148,8 @@ model Product {
   name        String         @db.VarChar(200)
   priceVnd    Int
   isAvailable Boolean        @default(true)
+  isFeatured  Boolean        @default(false)
+  sortOrder   Int            @default(0)
   createdAt   DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
   category    CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -156,6 +159,8 @@ model Product {
   orderItems  OrderItem[]
 
   @@index([categoryId, isAvailable])
+  @@index([categoryId, sortOrder])
+  @@index([isFeatured])
 }
 
 model ProductVariant {

@@ -23,12 +23,22 @@ class ProductInput {
   @IsString() @MinLength(1) @MaxLength(200) name!: string;
   @IsInt() @Min(0) @Max(100000000) priceVnd!: number;
   @IsBoolean() isAvailable!: boolean;
+  @IsOptional() @IsBoolean() isFeatured?: boolean;
 }
 class ProductPatch {
   @IsOptional() @IsUUID("4") categoryId?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
   @IsOptional() @IsInt() @Min(0) @Max(100000000) priceVnd?: number;
   @IsOptional() @IsBoolean() isAvailable?: boolean;
+  @IsOptional() @IsBoolean() isFeatured?: boolean;
+}
+class ProductOrderInput {
+  @IsArray() @ArrayMaxSize(500) @IsUUID("4", { each: true })
+  ids!: string[];
+  @IsInt() @Min(0) revision!: number;
+}
+class BranchActivationInput {
+  @IsBoolean() isActive!: boolean;
 }
 class VariantInput {
   @IsString() @MinLength(1) @MaxLength(160) name!: string;
@@ -107,6 +117,12 @@ export class AdminBranchesController {
     @Param("branchId", uuid) branchId: string, @Body() input: BranchUpdateInput) {
     return this.setup.update(auth, branchId, input);
   }
+  @Patch("branches/:branchId/activation")
+  @Header("Cache-Control", "no-store")
+  activate(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", uuid) branchId: string, @Body() input: BranchActivationInput) {
+    return this.setup.activate(auth, branchId, input.isActive);
+  }
   @Get("branches")
   @Header("Cache-Control", "no-store")
   branches(@Headers("authorization") authorization?: string) {
@@ -140,6 +156,12 @@ export class AdminCatalogController {
   categoryDelete(@Headers("authorization") auth: string | undefined,
     @Param("branchId", uuid) branchId: string, @Param("id", uuid) id: string) {
     return this.catalogue.deleteCategory(auth, branchId, id);
+  }
+
+  @Put("products/order")
+  reorder(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", uuid) branchId: string, @Body() input: ProductOrderInput) {
+    return this.catalogue.reorderProducts(auth, branchId, input.ids, input.revision);
   }
 
   @Post("products")

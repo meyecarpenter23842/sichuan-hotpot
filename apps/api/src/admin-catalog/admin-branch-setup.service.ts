@@ -63,6 +63,28 @@ export class AdminBranchSetupService {
     }
   }
 
+  async activate(auth: string | undefined, branchId: string, isActive: boolean) {
+    await this.auth.adminAccess(auth, branchId);
+    const branch = await this.prisma.database.branch.findUnique({
+      where: { id: branchId }, select: { id: true },
+    });
+    if (!branch) throw new NotFoundException("BRANCH_NOT_FOUND");
+    if (isActive) {
+      const [hours, policy] = await Promise.all([
+        this.prisma.database.branchOpeningHour.count({ where: { branchId } }),
+        this.prisma.database.deliveryPolicyVersion.findFirst({
+          where: { branchId }, orderBy: { version: "desc" }, select: { id: true },
+        }),
+      ]);
+      if (hours !== 7 || !policy) throw new ConflictException("BRANCH_SETUP_INCOMPLETE");
+    }
+    return this.prisma.database.branch.update({
+      where: { id: branchId }, data: { isActive },
+      select: { id: true, code: true, name: true, address: true,
+        latitude: true, longitude: true, isActive: true },
+    });
+  }
+
   async update(auth: string | undefined, branchId: string, input: BranchUpdate) {
     await this.owner(auth);
     const branch = await this.prisma.database.branch.findUnique({

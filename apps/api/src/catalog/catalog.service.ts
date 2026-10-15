@@ -32,9 +32,10 @@ export class CatalogService {
             name: true,
             sortOrder: true,
             products: {
-              orderBy: [{ name: "asc" }, { id: "asc" }],
+              orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
-                id: true, name: true, priceVnd: true, isAvailable: true, imageKey: true,
+                id: true, name: true, priceVnd: true, isAvailable: true,
+                isFeatured: true, sortOrder: true, imageKey: true,
                 modifierGroups: {
                   orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: { id: true, name: true, minSelect: true, maxSelect: true,
