@@ -4,7 +4,7 @@ import type { LayoutChangeEvent } from "react-native";
 import type { AddressPinProps } from "./address-pin-types";
 import { validPin } from "./address-pin-types";
 
-// Platform-native OpenStreetMap raster tiles. No Google Maps SDK/API key,
+// Platform-native OpenStreetMap raster tiles. No paid map SDK/API key,
 // WebView or paid map services. A fixed pin anchors the delivery location.
 const TILE = 256;
 const HEIGHT = 248;
@@ -85,7 +85,7 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
       if (y < 0 || y >= count) continue;
       const tileX = ((x % count) + count) % count;
       tileViews.push(
-        <Image key={zoom + ":" + x + ":" + y}
+        <Image pointerEvents="none" key={zoom + ":" + x + ":" + y}
           source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
           onError={() => setTilesFailed(true)}
           style={{ position: "absolute", width: TILE, height: TILE,
