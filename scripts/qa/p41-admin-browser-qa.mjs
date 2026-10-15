@@ -118,62 +118,71 @@ try {
   await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
   await page.getByText("Phần hai người", { exact: false }).waitFor();
 
+  // L03: create one reusable library group and attach it to an existing product.
+  await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
+  await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "＋ Nhóm" }).click();
-  await page.getByRole("textbox", { name: "Tên", exact: true }).fill("Độ cay");
+  await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Độ cay");
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("1");
   await page.getByRole("textbox", { name: "Chọn tối đa" }).fill("1");
-  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
-  await page.getByText("Độ cay (1–1)").waitFor();
-  await page.getByRole("button", { name: "＋ Chọn" }).click();
-  await page.getByRole("textbox", { name: "Tên", exact: true }).fill("Cay vừa");
-  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
-  await page.getByText("Cay vừa", { exact: false }).waitFor();
-  await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
+  await page.getByRole("button", { name: "＋ Topping" }).click();
+  await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Cay vừa");
+  await page.getByRole("textbox", { name: "Giá topping (VND)" }).fill("5000");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  const savedGroup = await db.modifierGroup.findFirstOrThrow({
+    where: { name: "Độ cay", branchId: branch.id },
+  });
+  const savedOption = await db.modifierOption.findFirstOrThrow({
+    where: { name: "Cay vừa", groupId: savedGroup.id },
+  });
+  assert.equal(savedGroup.isAvailable, false, "Unpictured new group starts as a draft");
+  assert.equal(savedOption.isAvailable, false, "Unpictured new option starts as a draft");
+  await page.getByRole("button", { name: "Gắn nhóm cho Lẩu QA P4.1" }).click();
+  await page.getByRole("checkbox", { name: /Độ cay/ }).click();
+  await page.getByRole("button", { name: "Lưu nhóm gắn" }).click();
+  assert.equal(await db.productModifierGroupAssignment.count({
+    where: { productId: savedProduct.id, groupId: savedGroup.id },
+  }), 1);
 
+  // Fixture: previously verified image keys on disposable PostgreSQL ONLY. Actual
+  // R2 ticket + HEAD checks are covered by the API service, not this browser fixture.
+  await db.modifierGroup.update({ where: { id: savedGroup.id }, data: {
+    imageKey: "catalog-media/" + branch.id + "/groups/" + savedGroup.id + "/verified.png",
+    isAvailable: true,
+  } });
+  await db.modifierOption.update({ where: { id: savedOption.id }, data: {
+    imageKey: "catalog-media/" + branch.id + "/options/" + savedOption.id + "/verified.png",
+    isAvailable: true,
+  } });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Thực đơn" }).click();
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
-  await page.getByText("Các nhóm hiện được thiết lập riêng cho từng món.", { exact: false }).waitFor();
-  await page.getByRole("button", { name: "Khẩu phần của Lẩu QA P4.1" }).click();
-  const variantSwitch = page.getByRole("switch", { name: "Bán size Phần hai người của Lẩu QA P4.1" });
-  await variantSwitch.click();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[role="switch"][aria-label="Bán size Phần hai người của Lẩu QA P4.1"]');
-    return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
-  });
-  assert.equal((await db.productVariant.findFirstOrThrow({
-    where: { name: "Phần hai người", productId: savedProduct.id },
-  })).isAvailable, false);
-  await variantSwitch.click();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[role="switch"][aria-label="Bán size Phần hai người của Lẩu QA P4.1"]');
-    return el instanceof HTMLInputElement ? el.checked : el?.getAttribute("aria-checked") === "true";
-  });
-  await page.getByRole("button", { name: "Mở nhóm Độ cay của Lẩu QA P4.1" }).click();
-  const optionSwitch = page.getByRole("switch", { name: "Bán Cay vừa trong Độ cay" });
+  await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
+  const optionSwitch = page.getByRole("switch", { name: "Bán topping Cay vừa" });
   await optionSwitch.click();
-  await page.getByText("Nhóm “Độ cay” yêu cầu ít nhất 1 lựa chọn đang bán.", { exact: false }).waitFor();
-  assert.equal(await optionSwitch.isChecked(), true);
+  await page.getByText("GROUP_MIN_SELECTION_UNAVAILABLE", { exact: false }).waitFor();
+  assert.equal((await db.modifierOption.findUniqueOrThrow({ where: {
+    id: savedOption.id,
+  } })).isAvailable, true, "Required topping cannot be disabled");
+
   await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).click();
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("0");
-  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
-  await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).waitFor();
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
   await optionSwitch.click();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
-    return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
-  });
-  const savedGroup = await db.modifierGroup.findFirstOrThrow({
-    where: { name: "Độ cay", productId: savedProduct.id },
-  });
-  assert.equal((await db.modifierOption.findFirstOrThrow({
-    where: { name: "Cay vừa", groupId: savedGroup.id },
-  })).isAvailable, false, "Topping state must persist on the exact branch group");
+  await page.waitForFunction(() =>
+    document.querySelector('[role="switch"][aria-label="Bán topping Cay vừa"]')
+      ?.getAttribute("aria-checked") === "false");
+  assert.equal((await db.modifierOption.findUniqueOrThrow({ where: {
+    id: savedOption.id,
+  } })).isAvailable, false);
   await optionSwitch.click();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
-    return el instanceof HTMLInputElement ? el.checked : el?.getAttribute("aria-checked") === "true";
-  });
+  await page.waitForFunction(() =>
+    document.querySelector('[role="switch"][aria-label="Bán topping Cay vừa"]')
+      ?.getAttribute("aria-checked") === "true");
+  console.log("PASS L03: shared group, draft images, product attachment and option switch");
+
   await page.getByRole("button", { name: "Mở thiết lập" }).click();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("switch", { name: "Mở cửa Thứ hai" }).click();
