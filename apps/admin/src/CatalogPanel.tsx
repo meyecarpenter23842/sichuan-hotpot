@@ -376,7 +376,7 @@ export function CatalogPanel({ catalog, token, reload }: {
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel={"Chọn ảnh danh mục " + category.name}
             style={st.categoryAction} onPress={() => pickCatalogMedia("categories", category.id)}>
-            <Icon name="image" size={19} color={c.red} />
+            <Icon name="catalog" size={19} color={c.red} />
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={"Sửa danh mục " + category.name}
             style={st.categoryAction} onPress={() => open("category", category.id, undefined, category)}>
