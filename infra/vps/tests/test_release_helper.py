@@ -14,6 +14,8 @@ spec.loader.exec_module(release)
 def archive(extra=None):
     buffer = io.BytesIO()
     files = {path: b"{}" for path in release.REQUIRED}
+    files["apps/api/prisma/migrations/migration_lock.toml"] = b'provider = "postgresql"'
+    files["apps/api/prisma/migrations/20261012000000_init/migration.sql"] = b"SELECT 1;"
     files["apps/api/package.json"] = json.dumps({"name": "@hotpot/api", "scripts": {"start": "node dist/main.js"}}).encode()
     with tarfile.open(fileobj=buffer, mode="w:gz") as output:
         for name, data in files.items():
@@ -27,25 +29,27 @@ def archive(extra=None):
 
 class MigrationManifestTests(unittest.TestCase):
     def test_reviewed_migration_allowlist_matches_committed_sql(self):
-        # Safe fail-closed regression: new Prisma migrations must explicitly
-        # enter the immutable release archive allowlist before any release.
+        # Every committed migration is accepted from the reviewed main artifact
+        # without adding names to a Python constant.
         repo = Path(__file__).resolve().parents[3]
         migrations = repo / "apps/api/prisma/migrations"
         committed = {
             child.name for child in migrations.iterdir()
             if child.is_dir() and (child / "migration.sql").is_file()
         }
-        self.assertEqual(committed, release.MIGRATIONS,
-                         "Update reviewed MIGRATIONS when committing a schema migration")
-        self.assertEqual({
-            "apps/api/prisma/migrations/" + name + "/migration.sql"
-            for name in committed
-        }, {name for name in release.REQUIRED if name.endswith("/migration.sql")})
+        files = {path: b"{}" for path in release.REQUIRED}
+        files["apps/api/prisma/migrations/migration_lock.toml"] = b'provider = "postgresql"'
+        for name in committed:
+            files["apps/api/prisma/migrations/" + name + "/migration.sql"] = b"SELECT 1;"
+        self.assertEqual(set(release.migration_names(files)), committed)
+        files["apps/api/prisma/migrations/20270101000000_new_feature/migration.sql"] = b"SELECT 1;"
+        self.assertIn("20270101000000_new_feature", release.migration_names(files))
 
 
 class ArchiveTests(unittest.TestCase):
     def test_accepts_expected_runtime_only(self):
-        self.assertEqual(set(release.archive_files(archive())), release.REQUIRED)
+        self.assertEqual(set(release.archive_files(archive())),
+                         release.REQUIRED | {"apps/api/prisma/migrations/20261012000000_init/migration.sql"})
 
     def test_rejects_traversal_absolute_secret_dependency_and_duplicate(self):
         for name in ("../outside", "/outside", "apps/api/.env", "node_modules/code.js", "package.json"):

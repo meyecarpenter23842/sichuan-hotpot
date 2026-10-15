@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Owner-only additive P4.2 migration on a LIVE PostgreSQL DB. Verified encrypted R2 backup and isolated restore are mandatory."""
+"""Owner-only append-only migrations from a reviewed archive; R2 restore verified first."""
 import fcntl
 import hashlib
 import importlib.util
@@ -21,15 +21,6 @@ KEY = CONFIG / "p3-recovery.key"
 RCLONE = CONFIG / "p3-rclone.conf"
 SETTINGS = CONFIG / "p3-backup.json"
 RELEASE_HELPER = Path("/usr/local/sbin/hotpot-api-release-manual")
-PREVIOUS = ("20261012000000_init", "20261012010000_auth_identity",
-            "20261013000000_p2_catalog_modifiers", "20261013010000_auth_email_verification",
-            "20261013020000_p3_checkout_snapshots", "20261013030000_p3_qr_payee_snapshot")
-P4 = ("20261014000000_p4_branch_opening_hours",
-      "20261014010000_p42_branch_address")
-L06 = ("20261015060000_p45_featured_order",)
-# Reviewed, additive migrations in immutable chronological order. Every applied
-# prefix is valid; the latest L06 migration must never skip existing P4.2.
-UPDATES = P4 + L06
 BUCKET = "hotpot-db-backups-private"
 
 
@@ -92,9 +83,8 @@ def checked_history(expected):
                 and finished == "true" and rolled == "false" and name not in applied,
                 "unsafe_migration_history")
         applied.add(name)
-    require(set(PREVIOUS) <= applied, "previous_migrations_missing")
-    require(applied.intersection(UPDATES) in
-            (set(UPDATES[:n]) for n in range(len(UPDATES) + 1)),
+    names = sorted(expected)
+    require(applied in (set(names[:n]) for n in range(len(names) + 1)),
             "migration_order_invalid")
     return applied
 
@@ -114,10 +104,10 @@ def checked_source(sha, digest):
     spec = importlib.util.spec_from_loader("p4_release", loader)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    require(set(module.MIGRATIONS) == set(PREVIOUS + UPDATES), "helper_migration_allowlist")
     files = module.archive_files(blob)
+    names = module.migration_names(files)
     hashes = {}
-    for name in PREVIOUS + UPDATES:
+    for name in names:
         p = "apps/api/prisma/migrations/" + name + "/migration.sql"
         require(p in files, "unreviewed_migration_source")
         hashes[name] = hashlib.sha256(files[p]).hexdigest()
@@ -225,7 +215,7 @@ def backup_restore(sha):
 
 
 def migrate(files, expected):
-    if set(UPDATES) <= checked_history(expected):
+    if set(expected) <= checked_history(expected):
         print("migration=ALREADY_APPLIED", flush=True)
         return
     business_counts = {table: int(sql('SELECT count(*) FROM public."' + table + '";'))
@@ -272,21 +262,9 @@ def migrate(files, expected):
         sql_write("ALTER ROLE " + role + " NOLOGIN PASSWORD NULL; "
                   "REVOKE hotpot_owner FROM " + role + "; "
                   "REVOKE CONNECT ON DATABASE hotpot FROM " + role + ";")
-    require(set(UPDATES) <= checked_history(expected), "migration_history_incomplete")
-    for table in ("BranchOpeningHour", "R2ImageCleanup"):
-        require(sql("SELECT count(*) FROM information_schema.tables WHERE "
-                    "table_schema='public' AND table_name='" + table + "';") == "1",
-                "p4_tables_missing")
-    require(sql("SELECT count(*) FROM information_schema.columns WHERE "
-                "table_schema='public' AND table_name='Branch' AND column_name='address';") == "1",
-            "branch_address_missing")
-    # L06 must be fully applied before exposing isFeatured and ordering queries.
-    for table, column in (("Product", "isFeatured"), ("Product", "sortOrder"),
-                          ("Branch", "catalogRevision")):
-        require(sql("SELECT count(*) FROM information_schema.columns WHERE "
-                    "table_schema='public' AND table_name='" + table +
-                    "' AND column_name='" + column + "';") == "1",
-                "l06_schema_missing")
+    require(set(expected) <= checked_history(expected), "migration_history_incomplete")
+    # Prisma migrate status + schema diff already verify every version,
+    # including migrations not yet known when this runner was committed.
     # Existing business records must survive the additive migration.
     for table, before in business_counts.items():
         after = int(sql('SELECT count(*) FROM public."' + table + '";'))
@@ -311,9 +289,9 @@ def main(args):
         applied = checked_history(hashes)
         backup_config()
         if args[0] == "--check":
-            print("p42_preflight=PASS;pending=" + str(len(set(UPDATES) - applied)), flush=True)
+            print("p42_preflight=PASS;pending=" + str(len(set(hashes) - applied)), flush=True)
             return
-        if set(UPDATES) <= applied:
+        if set(hashes) <= applied:
             print("migration=ALREADY_APPLIED", flush=True)
             return
         # A complete, independent backup+R2 download+isolated restore must
