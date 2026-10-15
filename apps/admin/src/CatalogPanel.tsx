@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   StyleSheet, Text, View,
@@ -49,6 +49,23 @@ export function CatalogPanel({ catalog, token, reload }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState<{ id: number; text: string; error: boolean } | null>(null);
+  const toastId = useRef(0);
+  const announce = (text: string, error = false) =>
+    setToast({ id: ++toastId.current, text, error });
+  useEffect(() => {
+    if (!catalog.isActive) {
+      announce("Chi nhánh chưa mở. Kích hoạt tại Thiết lập → Hoạt động để khách nhìn thấy món.", true);
+    }
+  }, [catalog.id, catalog.isActive]);
+  useEffect(() => { if (error && !editor) announce(error, true); }, [error, editor]);
+  useEffect(() => { if (notice) announce(notice); }, [notice]);
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = setTimeout(() =>
+      setToast(current => current?.id === toast.id ? null : current), 4200);
+    return () => clearTimeout(timeout);
+  }, [toast]);
   const root = "/admin/branches/" + catalog.id + "/catalog";
 
   const counts = useMemo(() => {
@@ -230,26 +247,22 @@ export function CatalogPanel({ catalog, token, reload }: {
       </View>
       {tab === "products" && <Action label="＋ Danh mục" secondary onPress={() => open("category")} />}
     </View>
-    {!catalog.isActive && <View style={st.branchWarning}>
-      <Icon name="power" color={c.red} size={19} />
-      <Text style={st.warningText}>Chi nhánh chưa kích hoạt. Món có trạng thái “Đang bán”
-        vẫn không xuất hiện trong app khách. Mở Thiết lập → Hoạt động để kích hoạt.</Text>
-    </View>}
     <View style={st.menuTabs} accessibilityRole="tablist">
       <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "products" }}
         accessibilityLabel="Món" style={[st.menuTab, tab === "products" && st.menuTabActive]}
-        onPress={() => { setTab("products"); setExpandedId(null); setError(""); }}>
+        onPress={() => { setTab("products"); setExpandedId(null); setError(""); setToast(null); }}>
         <Text style={[st.menuTabText, tab === "products" && st.menuTabTextActive]}>Món</Text>
       </Pressable>
       <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "modifiers" }}
         accessibilityLabel="Nhóm tùy chọn"
         style={[st.menuTab, tab === "modifiers" && st.menuTabActive]}
-        onPress={() => { setTab("modifiers"); setExpandedId(null); setError(""); }}>
+        onPress={() => { setTab("modifiers"); setExpandedId(null); setError(""); setToast(null); }}>
         <Text style={[st.menuTabText, tab === "modifiers" && st.menuTabTextActive]}>Nhóm tùy chọn</Text>
       </Pressable>
     </View>
-    {!!notice && <Notice text={notice} />}
-    {!!error && !editor && <Notice text={error} error />}
+    <View style={st.body}>
+      <ScrollView key={tab} testID="catalog-body-scroll" style={st.contentScroll} contentContainerStyle={st.content}
+        keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
     {tab === "products" && <>
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
       placeholder="Tên lẩu, trà sữa, combo..." />
@@ -384,6 +397,18 @@ export function CatalogPanel({ catalog, token, reload }: {
       onToggleVariant={(variant, next) => void flipOption("variant", variant, next)}
       onToggleOption={(_group, option, next) => void flipOption("option", option, next)}
     />}
+      </ScrollView>
+      {toast && <View style={st.toastLayer} pointerEvents="box-none">
+        <View style={[st.toast, toast.error && st.toastError]} accessibilityRole="alert" pointerEvents="box-none">
+          <Icon name={toast.error ? "power" : "check"} color={toast.error ? c.red : "#167442"} size={18} />
+          <Text style={st.toastText} numberOfLines={3}>{toast.text}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo"
+            style={st.toastClose} onPress={() => setToast(null)}>
+            <Text style={st.toastCloseText}>×</Text>
+          </Pressable>
+        </View>
+      </View>}
+    </View>
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -442,16 +467,26 @@ export function CatalogPanel({ catalog, token, reload }: {
   </View>;
 }
 const st = StyleSheet.create({
-  container: { gap: 9, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 18 },
-  branchWarning: { flexDirection: "row", alignItems: "center", gap: 9,
-    borderBottomWidth: 1, borderColor: c.line, paddingVertical: 10 },
-  warningText: { flex: 1, fontSize: font.note, lineHeight: 19, color: c.red },
-  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  container: { flex: 1, minHeight: 0, paddingHorizontal: 12, paddingTop: 8 },
+  body: { flex: 1, minHeight: 0 },
+  contentScroll: { flex: 1, minHeight: 0 },
+  content: { gap: 9, paddingTop: 9, paddingBottom: 24 },
+  toastLayer: { position: "absolute", top: 7, left: 0, right: 0,
+    zIndex: 12, elevation: 12 },
+  toast: { minHeight: 44, borderRadius: 10, flexDirection: "row",
+    gap: 8, alignItems: "center", paddingLeft: 12, paddingRight: 5,
+    borderWidth: 1, borderColor: "#C7E3D1", backgroundColor: "#F1FAF4",
+    shadowColor: "#211616", shadowOpacity: 0.15, shadowRadius: 6, elevation: 8 },
+  toastError: { borderColor: "#F3C9CD", backgroundColor: "#FFF2F2" },
+  toastText: { flex: 1, color: c.ink, fontSize: font.note, lineHeight: 17 },
+  toastClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  toastCloseText: { color: c.secondary, fontSize: 20 },
+  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, height: 44, flexShrink: 0 },
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 7, paddingVertical: 2 },
   menuTabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.line,
-    gap: 15, minHeight: 46 },
+    gap: 15, minHeight: 46, backgroundColor: c.white },
   menuTab: { minHeight: 44, paddingHorizontal: 5, justifyContent: "center",
     borderBottomWidth: 2, borderBottomColor: "transparent" },
   menuTabActive: { borderBottomColor: c.red },

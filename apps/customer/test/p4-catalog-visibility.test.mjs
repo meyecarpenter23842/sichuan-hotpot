@@ -22,7 +22,10 @@ test("catalog refreshes on foreground, visibility and timer with HTTP as source"
 });
 test("admin differentiates branch activation from product availability", () => {
   assert.match(admin, /!catalog\.isActive/);
-  assert.match(admin, /Chi nhánh chưa kích hoạt/);
+  assert.match(admin, /Chi nhánh chưa mở\. Kích hoạt tại Thiết lập/);
+  assert.match(admin, /setToast\(\{ id: \+\+toastId\.current, text, error \}\)/);
+  assert.match(admin, /4200/);
+  assert.doesNotMatch(admin, /branchWarning:/);
   assert.match(admin, /prepareProductImage\(file\)/);
   assert.doesNotMatch(admin, /file\.size > 2097152/);
   assert.match(optimizer, /MAX_UPLOAD_BYTES = 2 \* 1024 \* 1024/);
