@@ -48,7 +48,7 @@ try {
   assert.equal(branch.isActive, false);
   await page.getByRole("button", { name: "Mở thiết lập" }).waitFor();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
-  await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
+  await page.getByRole("switch", { name: "Mở cửa Thứ hai" }).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
   assert.match(await page.getByRole("button", { name: "Giờ mở Thứ hai" }).innerText(), /08:00/);
@@ -60,7 +60,7 @@ try {
   await page.getByRole("button", { name: "Chọn phút 15" }).click();
   await page.getByRole("button", { name: "Áp dụng giờ" }).click();
   // A second opened day must not silently invalidate the entire weekly form.
-  await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
+  await page.getByRole("switch", { name: "Mở cửa Thứ ba" }).click();
   await page.getByRole("button", { name: "Giờ mở Thứ ba" }).waitFor();
   await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).waitFor();
   // Invalid time on a day above the viewport must identify that exact weekday.
@@ -101,16 +101,21 @@ try {
   await page.getByRole("button", { name: "Lưu phí giao" }).click();
   await page.getByText("Đã lưu phiên bản 1", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng popup" }).click();
-  await page.getByRole("button", { name: "Mở Nhận đơn" }).click();
-  await page.getByRole("button", { name: "Nhận đơn", exact: true }).click();
-  await page.getByRole("button", { name: "Lưu trạng thái nhận đơn" }).click();
-  await page.getByText("Đã lưu phiên bản 2", { exact: false }).waitFor();
-  await page.getByRole("button", { name: "Đóng popup" }).click();
+  // Activation requires a saved policy + hours, but does not silently opt in to accepting orders.
   await page.getByRole("button", { name: "Mở Hoạt động" }).click();
-  await page.getByRole("button", { name: "Kích hoạt chi nhánh" }).click();
+  await page.getByRole("switch", { name: "Kích hoạt chi nhánh" }).click();
+  assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, false,
+    "Switch confirmation must not mutate branch before consent");
   await page.getByRole("button", { name: "Xác nhận thay đổi" }).click();
   await page.getByRole("button", { name: "Mở Hoạt động" }).click();
   await page.getByText("Chi nhánh đã kích hoạt.", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Đóng popup" }).click();
+  await page.getByRole("button", { name: "Mở Nhận đơn" }).click();
+  await page.getByRole("switch", { name: "Cho phép nhận đơn" }).click();
+  assert.equal(await db.deliveryPolicyVersion.count({ where: { branchId: branch.id } }), 1,
+    "Acceptance must remain draft until user saves");
+  await page.getByRole("button", { name: "Lưu trạng thái nhận đơn" }).click();
+  await page.getByText("Đã lưu phiên bản 2", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng popup" }).click();
   assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, true);
   const policy = await db.deliveryPolicyVersion.findFirst({
@@ -125,7 +130,7 @@ try {
   }
   // Leave the disposable QA branch closed so customer tests see only their own stores.
   await page.getByRole("button", { name: "Mở Hoạt động" }).click();
-  await page.getByRole("button", { name: "Tạm dừng chi nhánh" }).click();
+  await page.getByRole("switch", { name: "Kích hoạt chi nhánh" }).click();
   await page.getByRole("button", { name: "Xác nhận thay đổi" }).click();
   await page.getByRole("button", { name: "Mở Hoạt động" }).click();
   await page.getByText("Chi nhánh đang tạm dừng.", { exact: false }).waitFor();
