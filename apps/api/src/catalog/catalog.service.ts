@@ -50,7 +50,7 @@ export class CatalogService {
                   orderBy: { sortOrder: "asc" },
                   select: { group: {
                     select: { id: true, name: true, minSelect: true, maxSelect: true,
-                      isAvailable: true, imageKey: true,
+                      isAvailable: true, imageKey: true, branchId: true,
                       options: { orderBy: [{ name: "asc" }, { id: "asc" }],
                         select: { id: true, name: true, priceDeltaVnd: true,
                           isAvailable: true, imageKey: true } },
