@@ -39,6 +39,8 @@ class OwnerReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('runtime_build_step=[a-z_]+:(START|PASS)', workflow)
         self.assertIn('release_status="${PIPESTATUS[0]}"', workflow)
         self.assertIn('tee "$outcome_file"', workflow)
+        # Long npm operations must not silently lose their SSH transport.
+        self.assertIn("-o ServerAliveInterval=20 -o ServerAliveCountMax=3", workflow)
         self.assertIn('release_status != 0', workflow)
         self.assertIn("git rev-parse origin/main", workflow)
 

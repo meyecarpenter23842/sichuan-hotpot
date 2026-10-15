@@ -129,7 +129,7 @@ jobs:
           ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null
           # Host must have an independently reviewed hotpot-api-release-manual helper.
           # The helper must validate artifact checksum, app path, service identity, health and rollback.
-          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3)
           ssh "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'test -x /usr/local/sbin/hotpot-api-release-manual && test -d /opt/sichuan-hotpot/incoming' \
             >/dev/null 2>/dev/null || { echo "::error::VPS manual release hook/inbox not provisioned."; exit 1; }
@@ -265,7 +265,7 @@ jobs:
           set -euo pipefail
           ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/deploy.key"
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=20 -o ServerAliveCountMax=3)
           result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" 'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-realtime-nginx.py)" || {
             if [[ "$result" =~ ^realtime_https_upgrade=BLOCKED\;reason=([a-z_]+)$ ]]; then
               echo "::error::Realtime proxy gate: ${BASH_REMATCH[1]}"
