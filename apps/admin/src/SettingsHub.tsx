@@ -24,11 +24,12 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
 ];
 
-export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, onChimeChange }: {
+export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, chimePending, chimeError, onChimeChange }: {
   token: string; branch: Branch; catalog: AdminCatalog; owner: boolean;
   reload: () => Promise<void>;
   onBranchSaved: (id: string, created: boolean) => Promise<void>;
-  chimeEnabled: boolean; onChimeChange: (enabled: boolean) => void;
+  chimeEnabled: boolean; chimePending: boolean; chimeError: string;
+  onChimeChange: (enabled: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Setting | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -88,12 +89,13 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
                   <Text style={s.toggleTitle}>Chuông báo đơn mới</Text>
                   <Text style={s.note}>{chimeEnabled ? "Đang bật trên thiết bị này" : "Đang tắt trên thiết bị này"}</Text>
                 </View>
-                <StatusSwitch value={chimeEnabled} label="Chuông báo đơn mới"
+                <StatusSwitch value={chimeEnabled} busy={chimePending} label="Chuông báo đơn mới"
                   onValueChange={next => {
                     onChimeChange(next);
                     if (next) playOrderChime();
                   }} />
               </View>
+              {!!chimeError && <Notice text={chimeError} error />}
               <Text style={s.note}>Đơn chờ lâu vẫn được đánh dấu khi bật lại ứng dụng.</Text>
             </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
