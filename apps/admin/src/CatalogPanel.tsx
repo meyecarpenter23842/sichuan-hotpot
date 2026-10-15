@@ -261,7 +261,7 @@ export function CatalogPanel({ catalog, token, reload }: {
       </Pressable>
     </View>
     <View style={st.body}>
-      <ScrollView key={tab} style={st.contentScroll} contentContainerStyle={st.content}
+      <ScrollView key={tab} testID="catalog-body-scroll" style={st.contentScroll} contentContainerStyle={st.content}
         keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
     {tab === "products" && <>
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
@@ -399,7 +399,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     />}
       </ScrollView>
       {toast && <View style={st.toastLayer} pointerEvents="box-none">
-        <View style={[st.toast, toast.error && st.toastError]} accessibilityRole="alert">
+        <View style={[st.toast, toast.error && st.toastError]} accessibilityRole="alert" pointerEvents="box-none">
           <Icon name={toast.error ? "power" : "check"} color={toast.error ? c.red : "#167442"} size={18} />
           <Text style={st.toastText} numberOfLines={3}>{toast.text}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo"
