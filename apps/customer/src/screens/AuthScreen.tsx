@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View,
 } from "react-native";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
@@ -79,6 +79,7 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [info, setInfo] = useState("");
   const [imageFailed, setImageFailed] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [rememberSaving, setRememberSaving] = useState(false);
   const [googleRequest, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
     webClientId: googleWebId || "unconfigured.apps.googleusercontent.com",
     androidClientId: googleAndroidId || "unconfigured.apps.googleusercontent.com",
@@ -92,6 +93,17 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
       .then(saved => { if (saved) setUsername(saved); })
       .catch(() => undefined);
   }, []);
+
+  function changeRemember(next: boolean) {
+    if (rememberSaving || busy) return;
+    setRemember(next);
+    if (!next) {
+      setRememberSaving(true);
+      void AsyncStorage.removeItem(REMEMBER_USERNAME)
+        .catch(() => { setRemember(true); setError("Không tắt được ghi nhớ tên đăng nhập. Vui lòng thử lại."); })
+        .finally(() => setRememberSaving(false));
+    }
+  }
 
   function switchMode(next: Mode) {
     setMode(next); setError(""); setInfo(""); setCode(""); setPassword("");
@@ -170,11 +182,14 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
     <Entry label="Mật khẩu" value={password} onChange={setPassword}
       placeholder="Mật khẩu" secret maxLength={8} autoComplete="current-password" compact prefix="♧" />
     <View style={s.loginAux}>
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }}
-        style={s.remember} onPress={() => setRemember(old => !old)}>
-        <Text style={s.rememberCheck}>{remember ? "☑" : "□"}</Text>
-        <Text style={s.rememberText}>Ghi nhớ tên đăng nhập</Text>
-      </Pressable>
+      <View style={s.remember}>
+        <Switch value={remember} onValueChange={changeRemember}
+          accessibilityLabel="Ghi nhớ tên đăng nhập"
+          disabled={busy || rememberSaving}
+          trackColor={{ false: "#B7B8BC", true: "#FA850F" }}
+          thumbColor="#FFFFFF" ios_backgroundColor="#B7B8BC" />
+        <Text style={s.rememberText}>{remember ? "Ghi nhớ: bật" : "Ghi nhớ: tắt"}</Text>
+      </View>
       <Pressable accessibilityRole="button" onPress={() => switchMode("forgot")}>
         <Text style={s.link}>Quên mật khẩu?</Text>
       </Pressable>
@@ -285,8 +300,7 @@ const s = StyleSheet.create({
   prefix: { color: palette.muted, fontSize: 18, paddingLeft: 11 },
   loginAux: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     minHeight: 27, flexWrap: "wrap" },
-  remember: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 27 },
-  rememberCheck: { color: palette.red, fontSize: 17 },
+  remember: { flexDirection: "row", alignItems: "center", gap: 3, minHeight: 44 },
   rememberText: { fontSize: 11, color: palette.muted },
   registerPrompt: { backgroundColor: palette.graySurface, minHeight: 35,
     borderRadius: 8, alignItems: "center", justifyContent: "center" },
