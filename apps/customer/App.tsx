@@ -27,7 +27,7 @@ import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCa
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
-  validateAdministrativeSelection } from "../../packages/shared/src/vietnam-admin";
+  validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 
@@ -1478,6 +1478,13 @@ function CustomerApp() {
             <Field label="Số nhà, tên đường và ghi chú giao" value={address.line1}
               onChangeText={text => { setAddress(old => ({ ...old, line1: text })); }}
               placeholder="Ví dụ: 25 Nguyễn Trãi, số nhà/tầng..." />
+            {(() => {
+              const gap = approximateWardDistanceKm(address,
+                Number(address.latitude), Number(address.longitude));
+              return gap !== null && gap > 30
+                ? <Text style={styles.muted}>Ghim có vẻ cách xa phường/xã đã chọn. Hãy kiểm tra vị trí trên bản đồ trước khi lưu; GPS không quyết định phí giao.</Text>
+                : null;
+            })()}
             <AddressPinMap latitude={address.latitude} longitude={address.longitude}
               onChange={(latitude, longitude) => {
                 setAddress(old => ({ ...old, latitude, longitude }));

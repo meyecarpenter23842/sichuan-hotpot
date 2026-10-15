@@ -1,15 +1,15 @@
 import { ADMIN_CATALOG_VERSION, PROVINCE_ROWS, WARD_ROWS } from "./vietnam-admin-data.js";
 export { ADMIN_CATALOG_VERSION };
 export interface AdministrativeArea { code: string; name: string; }
-export interface AdministrativeWard extends AdministrativeArea { provinceCode: string; }
+export interface AdministrativeWard extends AdministrativeArea { provinceCode: string; latitude: number; longitude: number; }
 export interface AdministrativeSelection {
   catalogVersion: string;
   provinceCode: string;
   wardCode: string;
 }
 export const provinces: readonly AdministrativeArea[] = PROVINCE_ROWS.map(([code, name]) => ({ code, name }));
-export const wards: readonly AdministrativeWard[] = WARD_ROWS.map(([code, name, provinceCode]) => ({
-  code, name, provinceCode,
+export const wards: readonly AdministrativeWard[] = WARD_ROWS.map(([code, name, provinceCode, latitude, longitude]) => ({
+  code, name, provinceCode, latitude, longitude,
 }));
 const provinceMap = new Map(provinces.map(p => [p.code, p]));
 const wardMap = new Map(wards.map(w => [w.code, w]));
@@ -46,4 +46,21 @@ export function searchAdministrativeAreas<T extends AdministrativeArea>(
   const wanted = plain(query);
   return values.filter(v => plain(v.name).includes(wanted) || v.code.includes(wanted))
     .slice(0, limit);
+}
+
+/** Approximate ward centroid ONLY for a non-blocking pin mismatch warning.
+ * Never use centroid/distance to select zone or price delivery. */
+export function approximateWardDistanceKm(selection: {
+  catalogVersion?: string | null; provinceCode?: string | null; wardCode?: string | null;
+}, latitude: number, longitude: number): number | null {
+  if (!validateAdministrativeSelection(selection) || !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  const ward = wardByCode(selection.wardCode);
+  if (!ward) return null;
+  const rad = (n: number) => n * Math.PI / 180;
+  const dLat = rad(latitude - ward.latitude);
+  const dLon = rad(longitude - ward.longitude);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(latitude)) * Math.cos(rad(ward.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }

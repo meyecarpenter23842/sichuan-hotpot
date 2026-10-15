@@ -6,7 +6,7 @@ import { Action, Field, Notice } from "./ui";
 import { c, font } from "./theme";
 import { StatusSwitch } from "./StatusSwitch";
 import { VietnamAdministrativeAreaPicker } from "../../../packages/ui/src/VietnamAdministrativeAreaPicker";
-import { ADMIN_CATALOG_VERSION, validateAdministrativeSelection } from "../../../packages/shared/src/vietnam-admin";
+import { ADMIN_CATALOG_VERSION, validateAdministrativeSelection, approximateWardDistanceKm } from "../../../packages/shared/src/vietnam-admin";
 
 const coordinate = /^-?\d+(?:\.\d{1,7})?$/;
 const branchCode = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
@@ -185,6 +185,14 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
       <View style={st.coordinate}><Field label="Kinh độ (longitude)" value={lng}
         onChangeText={setLng} placeholder="106.1234567" /></View>
     </View>
+    {(() => {
+      const gap = approximateWardDistanceKm({
+        catalogVersion: ADMIN_CATALOG_VERSION, provinceCode, wardCode,
+      }, Number(lat), Number(lng));
+      return gap !== null && gap > 30
+        ? <Notice text="GPS có vẻ xa khu vực đã chọn. Hãy xác minh ghim thủ công; cảnh báo này không thay đổi phí giao." />
+        : null;
+    })()}
     {!!error && <Notice error text={error} />}
     {!!feedback && <Notice text={feedback} />}
     <Action label={saving ? "Đang lưu..." : branch ? "Lưu thông tin chi nhánh" : "Tạo chi nhánh"}
