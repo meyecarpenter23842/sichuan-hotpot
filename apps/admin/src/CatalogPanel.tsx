@@ -267,8 +267,11 @@ export function CatalogPanel({ catalog, token, reload }: {
           Math.max(1, Math.round(prepared.blob.size / 1024)) + " KB.");
       } catch (e) {
         setError(e instanceof TypeError
-          ? "Không kết nối được R2. Kiểm tra CORS bucket và đường truyền."
-          : e instanceof Error ? e.message : "Không tải được ảnh lên R2.");
+          ? "Không kết nối trực tiếp được R2. Kiểm tra kết nối và quyền CORS từ Admin."
+          : e instanceof Error && (e.message.includes("R2_UPLOAD_NOT_CONFIGURED")
+              || e.message.includes("503"))
+            ? "Máy chủ API chưa sẵn sàng cấp quyền tải ảnh R2 (503). Cần kiểm tra cấu hình R2 trên VPS; CORS bucket không phải nguyên nhân của lỗi cấp vé."
+            : e instanceof Error ? e.message : "Không tải được ảnh lên R2.");
       } finally {
         setBusy(false);
         input.value = "";
