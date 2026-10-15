@@ -10,7 +10,7 @@ import socket
 
 API_ENV = Path("/etc/sichuan-hotpot/api.env")
 FIELDS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
-          "R2_BUCKET", "GOOGLE_ROUTES_API_KEY")
+          "R2_BUCKET")
 
 
 def statuses(contents: str) -> dict[str, str]:
@@ -55,8 +55,7 @@ def main() -> None:
     print("api_env=FOUND")
     for key, state in statuses(API_ENV.read_text()).items():
         print(key.lower() + "=" + state)
-    for label, hostname in (("r2_dns", "cloudflare.com"),
-                            ("routes_dns", "routes.googleapis.com")):
+    for label, hostname in (("r2_dns", "cloudflare.com"),):
         try:
             socket.getaddrinfo(hostname, 443)
             state = "RESOLVES"
