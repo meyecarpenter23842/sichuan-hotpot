@@ -47,9 +47,14 @@ export function ModifierGroupsPanel({ catalog, busy, onCreateGroup, onEditGroup,
           <Text style={s.productTitle} numberOfLines={2}>{product.name}</Text>
           <Text style={s.subtitle}>{product.modifierGroups.length} nhóm · {product.variants.length} size</Text>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={"Thêm size cho " + product.name}
+          style={s.compactAction} disabled={busy} onPress={() => onCreateVariant(product)}>
+          <Icon name="plus" size={18} color={c.red} />
+          <Text style={s.actionText}>Size</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={"Thêm nhóm cho " + product.name}
-          style={s.action} disabled={busy} onPress={() => onCreateGroup(product)}>
-          <Icon name="plus" size={17} color={c.red} />
+          style={s.compactAction} disabled={busy} onPress={() => onCreateGroup(product)}>
+          <Icon name="plus" size={18} color={c.red} />
           <Text style={s.actionText}>Nhóm</Text>
         </Pressable>
       </View>
@@ -143,7 +148,7 @@ const s = StyleSheet.create({
   productCopy: { flex: 1, minWidth: 0, gap: 2 },
   productTitle: { color: c.ink, fontSize: font.section, fontWeight: "800" },
   subtitle: { color: c.secondary, fontSize: font.caption },
-  action: { minHeight: 44, paddingHorizontal: 7, flexDirection: "row", gap: 3,
+  compactAction: { minHeight: 44, paddingHorizontal: 5, flexDirection: "row", gap: 2,
     alignItems: "center", borderRadius: 9, backgroundColor: c.soft },
   actionText: { color: c.red, fontSize: font.note, fontWeight: "700" },
   section: { backgroundColor: c.white, borderBottomWidth: 1, borderBottomColor: c.line },
