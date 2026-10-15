@@ -152,14 +152,30 @@ jobs:
           test "$actual" = "$digest" || {
             echo "::error::VPS staging checksum mismatch; API unchanged."; exit 1;
           }
-          # Update only an explicitly recognized reviewed release helper.
-          expected_previous="$(git show 86239ea349493bd3a5d2e7c1ef61ea16f3c5b8d9:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
-          expected_p42="$(git show 28d7ef62d0d1da4a8fd84f21f0f8c713488968a0:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
-          expected_helper="$(sha256sum infra/vps/hotpot-api-release-manual.py | awk '{print $1}')"
+          # The existing root-owned helper must match EXACTLY a reviewed
+          # version from the protected first-parent main history. This allows
+          # safe owner-approved upgrades without hand-maintaining a SHA list for
+          # every release. Never trust helper bytes solely because VPS supplied
+          # them; match their digest against code already reviewed on main.
+          helper_path="infra/vps/hotpot-api-release-manual.py"
+          expected_helper="$(sha256sum "$helper_path" | awk '{print $1}')"
           actual_helper="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'sudo -n sha256sum /usr/local/sbin/hotpot-api-release-manual' 2>/dev/null | awk '{print $1}')" || exit 1
-          if [[ "$actual_helper" != "$expected_previous" && "$actual_helper" != "$expected_p42" && "$actual_helper" != "$expected_helper" ]]; then
-            echo "::error::Unknown VPS release helper; stopping before migration."
+          [[ "$actual_helper" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "::error::Malformed VPS release helper digest; API unchanged."
+            exit 1
+          }
+          reviewed_helper=false
+          while IFS= read -r reviewed_commit; do
+            [[ "$reviewed_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            reviewed_digest="$(git show "$reviewed_commit:$helper_path" | sha256sum | awk '{print $1}')"
+            if [[ "$reviewed_digest" == "$actual_helper" ]]; then
+              reviewed_helper=true
+              break
+            fi
+          done < <(git log --first-parent --format=%H -- "$helper_path")
+          if [[ "$reviewed_helper" != true ]]; then
+            echo "::error::Unknown VPS release helper (not reviewed on main); stopping before migration."
             exit 1
           fi
           if [[ "$actual_helper" != "$expected_helper" ]]; then
