@@ -1,42 +1,44 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { request } from "./api";
 import { Action, Field, Notice } from "./ui";
 import { StatusSwitch } from "./StatusSwitch";
 import { c, font } from "./theme";
 
-interface Policy {
-  version: number; acceptingOrders: boolean;
-  baseMeters: number; baseFeeVnd: number;
-  extraStepMeters: number; extraStepFeeVnd: number;
-  maxRoadMeters: number; minSubtotalVnd: number;
-  freeDeliveryAtSubtotalVnd: number | null;
+interface Zone {
+  id?: string;
+  name: string;
+  provinceCode: string;
+  catalogVersion: string;
+  wardCodes: string[];
+  feeVnd: number;
+  isActive: boolean;
 }
-type NumericKey = "baseMeters" | "baseFeeVnd" | "extraStepMeters" |
-  "extraStepFeeVnd" | "maxRoadMeters" | "minSubtotalVnd" | "freeDeliveryAtSubtotalVnd";
-const labels: { key: NumericKey; label: string }[] = [
-  { key: "baseMeters", label: "Quãng đường cơ bản (km)" },
-  { key: "baseFeeVnd", label: "Phí giao cơ bản (đ)" },
-  { key: "extraStepMeters", label: "Mỗi bước phụ thu (km)" },
-  { key: "extraStepFeeVnd", label: "Phí mỗi bước (đ)" },
-  { key: "maxRoadMeters", label: "Phạm vi giao tối đa (km)" },
-  { key: "minSubtotalVnd", label: "Đơn hàng tối thiểu (đ)" },
-  { key: "freeDeliveryAtSubtotalVnd", label: "Miễn phí giao từ (đ, để trống nếu không áp dụng)" },
-];
-const bounds: Record<NumericKey, [number, number]> = {
-  baseMeters: [0, 100000], baseFeeVnd: [0, 10000000],
-  extraStepMeters: [1, 100000], extraStepFeeVnd: [0, 10000000],
-  maxRoadMeters: [1, 300000], minSubtotalVnd: [0, 1000000000],
-  freeDeliveryAtSubtotalVnd: [0, 1000000000],
-};
-const blank: Record<NumericKey, string> = {
-  baseMeters: "", baseFeeVnd: "", extraStepMeters: "", extraStepFeeVnd: "",
-  maxRoadMeters: "", minSubtotalVnd: "", freeDeliveryAtSubtotalVnd: "",
-};
-
-const metersKeys: NumericKey[] = ["baseMeters", "extraStepMeters", "maxRoadMeters"];
-const showNumber = (key: NumericKey, value: number | null) =>
-  value == null ? "" : String(metersKeys.includes(key) ? value / 1000 : value);
+interface Policy {
+  version: number;
+  pricingMode: "DISTANCE" | "ZONE";
+  acceptingOrders: boolean;
+  minSubtotalVnd: number;
+  freeDeliveryAtSubtotalVnd: number | null;
+  zones: Zone[];
+}
+type ZoneDraft = { name: string; provinceCode: string; catalogVersion: string;
+  wardCodes: string; feeVnd: string };
+const blankZone: ZoneDraft = { name: "", provinceCode: "", catalogVersion: "",
+  wardCodes: "", feeVnd: "" };
+const isVnd = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v))
+  && Number(v) >= 0 && Number(v) <= 1000000000;
+const normalize = (value: Policy) => ({
+  acceptingOrders: value.acceptingOrders,
+  minSubtotalVnd: String(value.minSubtotalVnd),
+  freeDeliveryAtSubtotalVnd: value.freeDeliveryAtSubtotalVnd === null ? "" :
+    String(value.freeDeliveryAtSubtotalVnd),
+  zones: value.zones.map(zone => ({
+    name: zone.name, provinceCode: zone.provinceCode,
+    catalogVersion: zone.catalogVersion, wardCodes: [...zone.wardCodes],
+    feeVnd: zone.feeVnd, isActive: zone.isActive,
+  })),
+});
 
 export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery", onDirtyChange }: {
   token: string; branchId: string; active: boolean;
@@ -45,150 +47,173 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [current, setCurrent] = useState<Policy | null>(null);
-  const [numbers, setNumbers] = useState<Record<NumericKey, string>>({ ...blank });
-  const [accepting, setAccepting] = useState(false);
+  const [acceptingOrders, setAcceptingOrders] = useState(false);
+  const [minimum, setMinimum] = useState("0");
+  const [freeFrom, setFreeFrom] = useState("");
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [draft, setDraft] = useState<ZoneDraft>({ ...blankZone });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  function applyPolicy(value: Policy | null) {
+    setCurrent(value);
+    setAcceptingOrders(value?.acceptingOrders ?? false);
+    setMinimum(String(value?.minSubtotalVnd ?? 0));
+    setFreeFrom(value?.freeDeliveryAtSubtotalVnd == null ? "" :
+      String(value.freeDeliveryAtSubtotalVnd));
+    setZones(value?.pricingMode === "ZONE" ? value.zones ?? [] : []);
+  }
   useEffect(() => {
     let live = true;
     setLoading(true); setError(""); setSuccess("");
     request<Policy | null>("/admin/branches/" + branchId + "/delivery-policy", token)
-      .then(value => {
-        if (!live) return;
-        setCurrent(value);
-        setAccepting(value?.acceptingOrders ?? false);
-        setNumbers(value ? Object.fromEntries(labels.map(({ key }) => [key,
-          showNumber(key, value[key])])) as Record<NumericKey, string>
-          : { ...blank });
-      })
+      .then(value => { if (live) applyPolicy(value); })
       .catch(e => { if (live) setError(e instanceof Error ? e.message : "Không tải được phí giao."); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [branchId, token]);
 
-  const hasChanges = accepting !== (current?.acceptingOrders ?? false) ||
-    labels.some(({ key }) => numbers[key] !== (current ? showNumber(key, current[key]) : ""));
-  useEffect(() => {
-    if (!loading) onDirtyChange?.(hasChanges);
-  }, [hasChanges, loading, onDirtyChange]);
+  const pending = { acceptingOrders, minSubtotalVnd: minimum,
+    freeDeliveryAtSubtotalVnd: freeFrom,
+    zones: zones.map(zone => ({ name: zone.name, provinceCode: zone.provinceCode,
+      catalogVersion: zone.catalogVersion, wardCodes: zone.wardCodes,
+      feeVnd: zone.feeVnd, isActive: zone.isActive })) };
+  const hasChanges = JSON.stringify(pending) !== JSON.stringify(current &&
+    current.pricingMode === "ZONE" ? normalize(current) : {
+      acceptingOrders: current?.acceptingOrders ?? false,
+      minSubtotalVnd: String(current?.minSubtotalVnd ?? 0),
+      freeDeliveryAtSubtotalVnd: current?.freeDeliveryAtSubtotalVnd == null ? "" :
+        String(current.freeDeliveryAtSubtotalVnd), zones: [],
+    });
+  useEffect(() => { if (!loading) onDirtyChange?.(hasChanges); },
+    [hasChanges, loading, onDirtyChange]);
+
+  function addZone() {
+    const wardCodes = draft.wardCodes.split(",").map(code => code.trim()).filter(Boolean);
+    if (!draft.name.trim() || draft.name.length > 160 ||
+      !/^[a-zA-Z0-9_-]{1,24}$/.test(draft.provinceCode) ||
+      !/^[a-zA-Z0-9_-]{2,40}$/.test(draft.catalogVersion) ||
+      wardCodes.some(code => !/^[a-zA-Z0-9_-]{1,24}$/.test(code)) ||
+      !isVnd(draft.feeVnd) || Number(draft.feeVnd) > 10000000) {
+      setError("Tên vùng, mã tỉnh/phường, phiên bản danh mục hoặc mức phí chưa hợp lệ.");
+      return;
+    }
+    const prefix = draft.catalogVersion + ":" + draft.provinceCode;
+    if (zones.some(zone => {
+      if (zone.catalogVersion + ":" + zone.provinceCode !== prefix) return false;
+      if (wardCodes.length === 0 || zone.wardCodes.length === 0)
+        return wardCodes.length === 0 && zone.wardCodes.length === 0;
+      return wardCodes.some(code => zone.wardCodes.includes(code));
+    }) || new Set(wardCodes).size !== wardCodes.length) {
+      setError("Trùng vùng/phường với mức phí đã thiết lập.");
+      return;
+    }
+    setZones(old => [...old, { name: draft.name.trim(), provinceCode: draft.provinceCode,
+      catalogVersion: draft.catalogVersion, wardCodes, feeVnd: Number(draft.feeVnd),
+      isActive: true }]);
+    setDraft({ ...blankZone }); setError(""); setSuccess("");
+  }
 
   async function save() {
     if (saving) return;
-    const payload: Record<string, number | boolean | null> = { acceptingOrders: accepting };
-    for (const { key } of labels) {
-      const raw = numbers[key].trim();
-      if (key === "freeDeliveryAtSubtotalVnd" && raw === "") { payload[key] = null; continue; }
-      const [min, max] = bounds[key];
-      const distance = metersKeys.includes(key);
-      const value = distance ? Math.round(Number(raw) * 1000) : Number(raw);
-      if (!(distance ? /^\d+(?:\.\d{1,3})?$/.test(raw) : /^\d+$/.test(raw)) ||
-        !Number.isSafeInteger(value) || value < min || value > max) {
-        setError("Giá trị không hợp lệ tại: " + labels.find(x => x.key === key)?.label);
-        return;
-      }
-      payload[key] = value;
-    }
-    if ((payload.baseMeters as number) > (payload.maxRoadMeters as number)) {
-      setError("Khoảng cách cơ bản không được lớn hơn khoảng cách tối đa.");
+    if (!isVnd(minimum) || (freeFrom !== "" && !isVnd(freeFrom)) ||
+      !zones.length || !zones.some(zone => zone.isActive)) {
+      setError("Cần ít nhất một vùng đang giao, mức đơn tối thiểu và mức miễn phí hợp lệ.");
       return;
     }
     setSaving(true); setError(""); setSuccess("");
     try {
-      const saved = await request<Policy>("/admin/branches/" + branchId + "/delivery-policy",
+      const payload = {
+        pricingMode: "ZONE", acceptingOrders, zones: zones.map(({ id: _id, ...zone }) => zone),
+        minSubtotalVnd: Number(minimum),
+        freeDeliveryAtSubtotalVnd: freeFrom === "" ? null : Number(freeFrom),
+      };
+      const value = await request<Policy>("/admin/branches/" + branchId + "/delivery-policy",
         token, "POST", payload);
-      setCurrent(saved);
-      setAccepting(saved.acceptingOrders);
-      setNumbers(Object.fromEntries(labels.map(({ key }) => [key,
-        showNumber(key, saved[key])])) as Record<NumericKey, string>);
-      setSuccess("Đã lưu phiên bản " + saved.version + " của chính sách giao hàng.");
-    } catch (e) { setError(e instanceof Error ? e.message : "Không lưu được phí giao."); }
+      applyPolicy(value);
+      setSuccess("Đã lưu chính sách phí vùng phiên bản " + value.version + ".");
+    } catch (e) { setError(e instanceof Error ? e.message : "Không lưu được chính sách."); }
     finally { setSaving(false); }
   }
-
   return <View style={st.panel}>
-    <Text style={st.title}>{mode === "delivery" ? "Chính sách giao hàng" : "Nhận đơn trực tuyến"}</Text>
+    <Text style={st.title}>{mode === "orders" ? "Nhận đơn trực tuyến" : "Phí giao theo khu vực"}</Text>
     {loading ? <ActivityIndicator color={c.red} /> : <>
-      {!current && <Notice text="Chưa cấu hình phí giao. Hệ thống không tự áp phí 0 đồng và chưa thể nhận đơn." />}
-      {current && <View style={st.savedPolicy}>
-        <View style={st.savedHeading}>
-          <Text style={st.savedTitle}>Phí giao đang áp dụng</Text>
-          <Text style={st.version}>Phiên bản {current.version}</Text>
-        </View>
-        <View style={st.savedLine}><Text style={st.note}>Km cơ bản</Text>
-          <Text style={st.savedValue}>{showNumber("baseMeters", current.baseMeters)} km · {current.baseFeeVnd.toLocaleString("vi-VN")} đ</Text></View>
-        <View style={st.savedLine}><Text style={st.note}>Phụ thu sau mỗi</Text>
-          <Text style={st.savedValue}>{showNumber("extraStepMeters", current.extraStepMeters)} km · +{current.extraStepFeeVnd.toLocaleString("vi-VN")} đ</Text></View>
-        <View style={st.savedLine}><Text style={st.note}>Giao tối đa</Text>
-          <Text style={st.savedValue}>{showNumber("maxRoadMeters", current.maxRoadMeters)} km</Text></View>
-        <View style={st.savedLine}><Text style={st.note}>Đơn tối thiểu</Text>
-          <Text style={st.savedValue}>{current.minSubtotalVnd.toLocaleString("vi-VN")} đ</Text></View>
-        <View style={st.savedLine}><Text style={st.note}>Miễn phí từ</Text>
-          <Text style={st.savedValue}>{current.freeDeliveryAtSubtotalVnd === null
-            ? "Không áp dụng" : current.freeDeliveryAtSubtotalVnd.toLocaleString("vi-VN") + " đ"}</Text></View>
-        <View style={st.savedLine}><Text style={st.note}>Nhận đơn</Text>
-          <Text style={st.savedValue}>{current.acceptingOrders ? "Đang bật" : "Đang tạm dừng"}</Text></View>
-      </View>}
-      {!active && <Notice text="Chi nhánh chưa kích hoạt. Bật Hoạt động sau khi hoàn tất cấu hình giờ bán và phí giao." />}
+      {current?.pricingMode === "DISTANCE" &&
+        <Notice text="Chính sách cũ vẫn lưu để đối soát. Thiết lập vùng giao mới trước khi chuyển sang phí theo khu vực." />}
+      {!current && <Notice text="Chưa cấu hình phí giao. Đơn sẽ không tự được tính phí 0đ." />}
+      {!active && <Notice text="Chi nhánh chưa hoạt động. Không thể nhận đơn mới." />}
+      {current?.pricingMode === "ZONE" &&
+        <Text style={st.note}>Chính sách hiện tại: phiên bản {current.version} · {current.zones.length} vùng · Không dùng định tuyến OSRM.</Text>}
       {mode === "orders" ? <>
-        <Text style={st.note}>Bật nhận đơn chỉ khi cửa hàng có thể xử lý đơn mới. Thao tác này được lưu thành phiên bản chính sách mới.</Text>
-        <View style={st.row}>
-          <View style={st.rowLabel}>
-            <Text style={st.switchTitle}>Cho phép nhận đơn</Text>
-            <Text style={st.note}>{accepting ? "Đang chọn nhận đơn" : "Đang chọn tạm dừng"}</Text>
-          </View>
-          <StatusSwitch value={accepting} label="Cho phép nhận đơn"
-            hint="Thay đổi chỉ có hiệu lực sau khi lưu chính sách"
-            busy={saving} disabled={!current || (!active && !accepting)}
-            onValueChange={next => {
-              setAccepting(next); setError(""); setSuccess("");
-            }} />
-        </View>
+        <Text style={st.note}>Bật/tắt nhận đơn sẽ tạo phiên bản chính sách mới, giữ nguyên phí vùng đang có.</Text>
+        <StatusSwitch value={acceptingOrders} busy={saving}
+          disabled={current?.pricingMode !== "ZONE" || (!active && !acceptingOrders)}
+          label="Cho phép nhận đơn" hint="Chỉ lưu khi vùng giao đã được thiết lập"
+          onValueChange={next => { setAcceptingOrders(next); setSuccess(""); }} />
       </> : <>
-        <Text style={st.note}>Nhập khoảng cách theo km; hệ thống lưu theo mét. Phí và điều kiện được lưu bằng VND nguyên.</Text>
-        {([
-          { title: "Cước giao cơ bản", keys: ["baseMeters", "baseFeeVnd"] },
-          { title: "Phụ thu theo quãng đường", keys: ["extraStepMeters", "extraStepFeeVnd"] },
-          { title: "Phạm vi và ưu đãi", keys: ["maxRoadMeters", "minSubtotalVnd", "freeDeliveryAtSubtotalVnd"] },
-        ] as { title: string; keys: NumericKey[] }[]).map(section => <View key={section.title} style={st.inputSection}>
-          <Text style={st.groupTitle}>{section.title}</Text>
-          <View style={st.inputGroupRow}>
-            {section.keys.map(key => <View key={key}
-              style={key === "freeDeliveryAtSubtotalVnd" ? st.fullColumn : st.inputColumn}>
-              <Field label={labels.find(item => item.key === key)!.label}
-                numeric={!metersKeys.includes(key)} decimal={metersKeys.includes(key)}
-                placeholder={key === "freeDeliveryAtSubtotalVnd" ? "Không áp dụng" : metersKeys.includes(key) ? "Ví dụ: 2.5" : "Nhập số nguyên"}
-                value={numbers[key]} onChangeText={v => { setNumbers(old => ({ ...old, [key]: v })); setSuccess(""); }} />
-            </View>)}
+        <Text style={st.note}>Tính phí bằng mã tỉnh/TP và mã phường/xã/đặc khu theo phiên bản danh mục. Danh sách phường trong cùng vùng dùng chung một mức phí. Để trống phường để làm mức dự phòng toàn tỉnh; mức phường cụ thể được ưu tiên.</Text>
+        <Field label="Giá trị đơn tối thiểu (VND)" numeric value={minimum}
+          onChangeText={setMinimum} placeholder="0" />
+        <Field label="Miễn phí giao từ (VND, để trống nếu không áp dụng)" numeric
+          value={freeFrom} onChangeText={setFreeFrom} placeholder="Không miễn phí" />
+        <Text style={st.section}>Các vùng giao</Text>
+        {zones.length === 0 && <Notice text="Chưa có vùng nào. Chỉ bật nhận đơn khi đã thiết lập và xác minh đầy đủ các mã hành chính." />}
+        {zones.map((zone, index) => <View key={index} style={st.zone}>
+          <View style={st.row}>
+            <View style={st.flex}>
+              <Text style={st.zoneName}>{zone.name} · {zone.feeVnd.toLocaleString("vi-VN")} đ</Text>
+              <Text style={st.note}>{zone.catalogVersion} / {zone.provinceCode} / {zone.wardCodes.length ? zone.wardCodes.join(", ") : "Toàn tỉnh"}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Xóa vùng " + zone.name}
+              onPress={() => setZones(old => old.filter((_, i) => i !== index))}>
+              <Text style={st.remove}>Xóa</Text>
+            </Pressable>
           </View>
+          <StatusSwitch label={"Phục vụ vùng " + zone.name} value={zone.isActive}
+            disabled={saving} busy={saving}
+            onValueChange={enabled => setZones(old => old.map((item, i) =>
+              i === index ? { ...item, isActive: enabled } : item))} />
         </View>)}
+        <Text style={st.section}>Thêm vùng</Text>
+        <Field label="Tên vùng thương mại" value={draft.name}
+          onChangeText={name => setDraft(old => ({...old, name}))} placeholder="Ví dụ: Trung tâm" />
+        <View style={st.row}>
+          <View style={st.flex}><Field label="Phiên bản danh mục" value={draft.catalogVersion}
+            onChangeText={catalogVersion => setDraft(old => ({...old, catalogVersion}))}
+            placeholder="Mã phiên bản" /></View>
+          <View style={st.flex}><Field label="Mã tỉnh/TP" value={draft.provinceCode}
+            onChangeText={provinceCode => setDraft(old => ({...old, provinceCode}))}
+            placeholder="Mã tỉnh" /></View>
+        </View>
+        <Field label="Mã phường/xã (phân cách bằng dấu phẩy; bỏ trống = toàn tỉnh)"
+          value={draft.wardCodes} onChangeText={wardCodes => setDraft(old => ({...old, wardCodes}))}
+          placeholder="Mã phường 1, mã phường 2" />
+        <Field label="Phí giao vùng (VND)" numeric value={draft.feeVnd}
+          onChangeText={feeVnd => setDraft(old => ({...old, feeVnd}))} placeholder="25000" />
+        <Action label="Thêm vùng vào danh sách" disabled={saving} onPress={addZone} />
+        <StatusSwitch value={acceptingOrders} label="Cho phép nhận đơn"
+          hint="Tắt trước khi cấu hình đủ vùng" disabled={saving || !active} busy={saving}
+          onValueChange={setAcceptingOrders} />
       </>}
-      {mode === "orders" && !current && <Notice error text="Cần thiết lập Phí giao trước khi bật nhận đơn." />}
-      {mode === "orders" && !active && <Notice text="Chi nhánh đang tạm dừng. Không thể bật nhận đơn đến khi kích hoạt chi nhánh." />}
-      {hasChanges && <Notice text="Thay đổi chưa lưu trên máy chủ. Trạng thái thực tế vẫn theo chính sách hiện tại." />}
-      {!!error && <Notice text={error} error />}
+      {hasChanges && <Notice text="Thay đổi chưa được lưu trên máy chủ." />}
+      {!!error && <Notice error text={error} />}
       {!!success && <Notice text={success} />}
-      <Action disabled={saving || (mode === "orders" && !current)} label={saving ? "Đang lưu..." : mode === "orders" ? "Lưu trạng thái nhận đơn" : "Lưu phí giao"}
+      <Action label={saving ? "Đang lưu..." : "Lưu chính sách phí vùng"}
+        disabled={saving || (mode === "orders" && current?.pricingMode !== "ZONE") ||
+          (mode === "orders" && !hasChanges)}
         onPress={() => void save()} />
     </>}
   </View>;
 }
+
 const st = StyleSheet.create({
-  panel: { gap: 10 },
-  inputSection: { gap: 7, paddingTop: 9, borderTopWidth: 1, borderTopColor: c.line },
-  groupTitle: { fontSize: font.action, color: c.ink, fontWeight: "800" },
-  inputGroupRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8 },
-  inputColumn: { width: "48%", minWidth: 0 },
-  fullColumn: { width: "100%" },
-  savedPolicy: { gap: 6, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.line, paddingVertical: 10 },
-  savedHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  savedTitle: { fontSize: font.action, fontWeight: "800", color: c.ink },
-  version: { fontSize: font.note, color: c.secondary },
-  savedLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  savedValue: { fontSize: font.note, fontWeight: "700", color: c.ink, flexShrink: 1, textAlign: "right" },
+  panel: { gap: 12 },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
-  note: { fontSize: font.note, lineHeight: 18, color: c.secondary },
-  row: { minHeight: 52, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "space-between" },
-  rowLabel: { flex: 1, gap: 3 },
-  switchTitle: { fontSize: font.action, fontWeight: "700", color: c.ink },
+  section: { fontSize: font.action, fontWeight: "800", color: c.ink, marginTop: 6 },
+  note: { fontSize: font.note, color: c.secondary, lineHeight: 18 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12 },
+  flex: { flex: 1, minWidth: 0 },
+  zone: { paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: c.line },
+  zoneName: { fontSize: font.action, fontWeight: "700", color: c.ink },
+  remove: { color: c.red, fontSize: font.note, fontWeight: "800", padding: 8 },
 });

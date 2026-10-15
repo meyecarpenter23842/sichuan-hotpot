@@ -52,8 +52,8 @@ export class DeliveryPolicyService {
 
   async create(authorization: string | undefined, branchId: string, input: DeliveryPolicyInput) {
     await this.requireOwner(authorization);
-    const integer = (n: number, min: number, max: number) =>
-      Number.isSafeInteger(n) && n >= min && n <= max;
+    const integer = (n: number | undefined, min: number, max: number) =>
+      typeof n === "number" && Number.isSafeInteger(n) && n >= min && n <= max;
     const mode = input.pricingMode ?? "DISTANCE";
     if (!["DISTANCE", "ZONE"].includes(mode)
       || typeof input.acceptingOrders !== "boolean"
