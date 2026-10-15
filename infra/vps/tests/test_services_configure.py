@@ -74,6 +74,29 @@ class HotpotServicesConfigTests(unittest.TestCase):
         self.assertEqual(q["X-Amz-SignedHeaders"], ["host"])
         self.assertEqual(len(q["X-Amz-Signature"][0]), 64)
 
+    def test_failure_codes_are_strictly_sanitized(self):
+        import io
+        from contextlib import redirect_stdout
+        from urllib.error import HTTPError
+        for error, stage, expected in [
+            (HTTPError("https://secret.example/key?token=must-not-log", 403, "sensitive body", {}, None),
+             "R2_PROBE", ["blocked_stage=R2_PROBE", "provider_http_status=403"]),
+            (ValueError("unexpected_service_bind"), "API_CONFIGURATION",
+             ["blocked_stage=API_CONFIGURATION", "block_reason=unexpected_service_bind"]),
+            (ValueError("private-key-content-never-print"), "VALIDATE",
+             ["blocked_stage=VALIDATE"]),
+        ]:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                mod.sanitized_failure(error, stage)
+            lines = out.getvalue().splitlines()
+            for fragment in expected:
+                self.assertIn(fragment, lines)
+            self.assertIn("configuration=BLOCKED", lines)
+            self.assertNotIn("token=must-not-log", out.getvalue())
+            self.assertNotIn("private-key-content", out.getvalue())
+            self.assertNotIn("sensitive body", out.getvalue())
+
     def test_png_probe_payload_is_small_and_has_png_magic(self):
         self.assertTrue(mod.PNG_1PX.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertLess(len(mod.PNG_1PX), 1024)
