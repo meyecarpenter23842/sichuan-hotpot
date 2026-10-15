@@ -25,6 +25,24 @@ def archive(extra=None):
     return buffer.getvalue()
 
 
+class MigrationManifestTests(unittest.TestCase):
+    def test_reviewed_migration_allowlist_matches_committed_sql(self):
+        # Safe fail-closed regression: new Prisma migrations must explicitly
+        # enter the immutable release archive allowlist before any release.
+        repo = Path(__file__).resolve().parents[3]
+        migrations = repo / "apps/api/prisma/migrations"
+        committed = {
+            child.name for child in migrations.iterdir()
+            if child.is_dir() and (child / "migration.sql").is_file()
+        }
+        self.assertEqual(committed, release.MIGRATIONS,
+                         "Update reviewed MIGRATIONS when committing a schema migration")
+        self.assertEqual({
+            "apps/api/prisma/migrations/" + name + "/migration.sql"
+            for name in committed
+        }, {name for name in release.REQUIRED if name.endswith("/migration.sql")})
+
+
 class ArchiveTests(unittest.TestCase):
     def test_accepts_expected_runtime_only(self):
         self.assertEqual(set(release.archive_files(archive())), release.REQUIRED)
