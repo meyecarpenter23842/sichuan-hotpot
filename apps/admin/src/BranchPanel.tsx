@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Modal, StyleSheet, Text, View } from "react-native";
 import * as Location from "expo-location";
 import { request, type Branch } from "./api";
 import { Action, Field, Notice } from "./ui";
 import { c, font } from "./theme";
+import { StatusSwitch } from "./StatusSwitch";
 
 const coordinate = /^-?\d+(?:\.\d{1,7})?$/;
 const branchCode = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
@@ -25,14 +26,14 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [confirmStatus, setConfirmStatus] = useState(false);
+  const [confirmStatus, setConfirmStatus] = useState<boolean | null>(null);
   useEffect(() => {
     setName(branch?.name ?? "");
     setCode(branch?.code ?? "");
     setAddress(branch?.address ?? "");
     setLat(branch?.latitude?.toString() ?? "");
     setLng(branch?.longitude?.toString() ?? "");
-    setError(""); setFeedback(""); setConfirmStatus(false);
+    setError(""); setFeedback(""); setConfirmStatus(null);
   }, [branch?.id]);
 
   useEffect(() => {
@@ -94,12 +95,12 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
   }
 
   async function updateStatus() {
-    if (!branch || saving) return;
+    if (!branch || saving || confirmStatus === null || confirmStatus === branch.isActive) return;
     setSaving(true); setError(""); setFeedback("");
     try {
       const updated = await request<Branch>("/admin/branches/" + branch.id, token,
-        "PATCH", { isActive: !branch.isActive });
-      setConfirmStatus(false);
+        "PATCH", { isActive: confirmStatus });
+      setConfirmStatus(null);
       await onSaved(updated.id, false);
       setFeedback(updated.isActive ? "Chi nhánh đã kích hoạt." : "Đã tạm dừng chi nhánh.");
     } catch (e) {
@@ -117,16 +118,33 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
       : "Chi nhánh đang tạm dừng. Khách không thể đặt đơn tại đây."} />
     {!!error && <Notice text={error} error />}
     {!!feedback && <Notice text={feedback} />}
-    {confirmStatus ? <>
-      <Text style={st.hint}>{branch.isActive
-        ? "Tạm dừng chi nhánh sẽ ngăn khách tạo đơn mới."
-        : "Chỉ kích hoạt khi đã có lịch bán và chính sách phí giao."}</Text>
-      <Action label={saving ? "Đang cập nhật..." : "Xác nhận thay đổi"} dangerous
-        disabled={saving} onPress={() => void updateStatus()} />
-      <Action label="Giữ nguyên" secondary disabled={saving}
-        onPress={() => setConfirmStatus(false)} />
-    </> : <Action label={branch.isActive ? "Tạm dừng chi nhánh" : "Kích hoạt chi nhánh"}
-      disabled={saving} onPress={() => setConfirmStatus(true)} />}
+    <View style={st.statusRow}>
+      <View style={st.statusCopy}>
+        <Text style={st.statusLabel}>Kích hoạt chi nhánh</Text>
+        <Text style={st.hint}>{branch.isActive ? "Đang bật" : "Đang tạm dừng"}</Text>
+      </View>
+      <StatusSwitch value={branch.isActive} busy={saving}
+        label="Kích hoạt chi nhánh"
+        onValueChange={next => { setError(""); setFeedback(""); setConfirmStatus(next); }} />
+    </View>
+    <Modal visible={confirmStatus !== null} transparent animationType="fade"
+      onRequestClose={() => { if (!saving) setConfirmStatus(null); }}>
+      <View style={st.confirmBackdrop}>
+        <View style={st.confirmDialog}>
+          <Text style={st.title}>Xác nhận trạng thái chi nhánh</Text>
+          <Text style={st.hint}>{confirmStatus
+            ? "Kích hoạt khi đã có lịch bán và chính sách phí giao hợp lệ. Nhận đơn còn phụ thuộc trạng thái chính sách."
+            : "Tạm dừng chi nhánh sẽ ngăn khách tạo đơn mới. Đơn đã đặt vẫn được giữ nguyên."}</Text>
+          {!!error && <Notice text={error} error />}
+          <View style={st.confirmActions}>
+            <Action label="Giữ nguyên" secondary disabled={saving}
+              onPress={() => setConfirmStatus(null)} />
+            <Action label={saving ? "Đang cập nhật..." : "Xác nhận thay đổi"}
+              dangerous disabled={saving} onPress={() => void updateStatus()} />
+          </View>
+        </View>
+      </View>
+    </Modal>
   </View>;
 
   return <View style={st.panel}>
@@ -160,6 +178,12 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
   </View>;
 }
 const st = StyleSheet.create({
+  statusRow: { minHeight: 54, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  statusCopy: { flex: 1, gap: 4 },
+  statusLabel: { color: c.ink, fontSize: font.action, fontWeight: "700" },
+  confirmBackdrop: { flex: 1, backgroundColor: "rgba(10,16,22,0.58)", justifyContent: "center", alignItems: "center", padding: 18 },
+  confirmDialog: { width: "100%", maxWidth: 390, backgroundColor: c.white, borderRadius: 16, padding: 20, gap: 14 },
+  confirmActions: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
   panel: { gap: 10, backgroundColor: c.white },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   hint: { fontSize: font.note, lineHeight: 19, color: c.secondary },
