@@ -9,6 +9,7 @@ export interface BranchSummary {
   id: string;
   code: string;
   name: string;
+  isActive: boolean;
 }
 export interface Variant {
   id: string;
@@ -101,7 +102,7 @@ const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ?? "";
 const localApi = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/;
 const validApi = /^https:\/\/[a-z\d.-]+(?::\d+)?(?:\/.*)?$/i;
 const customerBusinessErrors: Readonly<Record<string, string>> = {
-  STORE_CLOSED: "Cửa hàng đang tạm ngừng nhận đơn.",
+  STORE_CLOSED: "Hiện quán đã nghỉ. Giỏ hàng của bạn vẫn được giữ lại; vui lòng đặt khi quán mở cửa trở lại.",
   BELOW_MINIMUM: "Đơn hàng chưa đạt giá trị tối thiểu để giao.",
   OUT_OF_RANGE: "Địa chỉ ngoài phạm vi giao theo tuyến đường xe chạy.",
   INVALID_POLICY: "Cấu hình phí giao chưa hợp lệ. Cửa hàng cần kiểm tra lại.",
