@@ -12,7 +12,7 @@
       "package": "vn.sichuanhotpot.admin",
       "adaptiveIcon": {
         "foregroundImage": "./assets/app-icon.png",
-        "backgroundColor": "#B3262D"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "ios": {
@@ -25,7 +25,7 @@
       "output": "single",
       "themeColor": "#B3262D",
       "backgroundColor": "#FFFFFF",
-      "favicon": "./public/icon-192.png"
+      "favicon": "./public/icon-192-v20261015.png"
     },
     "plugins": [
       "expo-secure-store"
@@ -33,6 +33,11 @@
     "experiments": {
       "tsconfigPaths": true
     },
-    "icon": "./assets/app-icon.png"
+    "icon": "./assets/app-icon.png",
+    "splash": {
+      "image": "./assets/app-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    }
   }
 }

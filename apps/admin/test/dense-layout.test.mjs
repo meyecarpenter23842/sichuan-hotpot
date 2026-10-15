@@ -33,7 +33,8 @@ test("branch chooser overlays without changing page layout, and catalog tabs sta
   assert.match(app, /style=\{\[styles\.branchOverlay, \{ top: headerHeight \}\]\}/);
   assert.match(app, /position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 50/);
   assert.match(app, /tab === "catalog" && catalog && branches\.length > 0/);
-  assert.match(catalog, /<ScrollView key=\{tab\} testID="catalog-body-scroll" style=\{st\.contentScroll\}/);
+  assert.match(catalog, /<ScrollView testID="catalog-body-scroll" style=\{st\.contentScroll\}/);
+  assert.doesNotMatch(catalog, /<ScrollView key=\{tab\}/);
   assert.match(catalog, /minHeight: 0/);
   assert.doesNotMatch(catalog, /branchWarning:/);
   assert.match(catalog, /heading: \{[^\n]*height: 44, flexShrink: 0/);
