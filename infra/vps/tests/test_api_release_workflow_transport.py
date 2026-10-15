@@ -24,6 +24,13 @@ class OwnerReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn('scp -P "$VPS_PORT"', workflow)
         self.assertIn('test "$actual" = "$digest"', workflow)
         self.assertIn('test "$expected_helper" = "$actual_helper"', workflow)
+        # Main-provenance gate, not a hand-maintained per-version allowlist.
+        self.assertIn('git log --first-parent --format=%H -- "$helper_path"', workflow)
+        self.assertIn('git show "$reviewed_commit:$helper_path"', workflow)
+        self.assertIn('[[ "$reviewed_digest" == "$actual_helper" ]]', workflow)
+        self.assertIn('[[ "$reviewed_helper" != true ]]', workflow)
+        self.assertNotIn('expected_p42=', workflow)
+        self.assertNotIn('expected_previous=', workflow)
         self.assertIn('sudo -n install -o root -g root -m 0600', workflow)
         self.assertIn('--verify-archive', workflow)
         self.assertIn("archive_validation=PASS", workflow)
