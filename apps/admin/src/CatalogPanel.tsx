@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import { prepareProductImage } from "./prepare-product-image";
 import { SharedModifierLibraryPanel, ProductGroupAssignmentModal } from "./SharedModifierLibraryPanel";
 import { StatusSwitch } from "./StatusSwitch";
+import * as ImagePicker from "expo-image-picker";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
@@ -291,32 +292,56 @@ export function CatalogPanel({ catalog, token, reload }: {
     finally{busyRef.current=false;setBusy(false);}
   }
 
-  function pickCatalogMedia(kind: "categories" | "groups" | "options", itemId: string) {
-    if (busy) return;
-    if (Platform.OS !== "web") {
-      setError("Chọn ảnh hiện hỗ trợ trên Admin PWA; cần kiểm thử picker Android riêng.");
+  async function uploadCatalogMedia(
+    kind:"categories"|"groups"|"options", itemId:string, blob:Blob, contentType:string,
+  ) {
+    if (busyRef.current) return;
+    busyRef.current=true;setBusy(true);setError("");setNotice("");
+    try {
+      if(!["image/jpeg","image/png","image/webp"].includes(contentType) ||
+        blob.size<1 || blob.size>2097152) {
+        throw Error("Ảnh phải là JPEG/PNG/WebP và sau tối ưu không quá 2MB.");
+      }
+      const endpoint=root+"/media/"+kind+"/"+itemId;
+      const ticket=await request<{key:string;uploadUrl:string;contentType:string}>(
+        endpoint+"/ticket",token,"POST",{contentType,byteSize:blob.size});
+      const response=await fetch(ticket.uploadUrl,{
+        method:"PUT",headers:{"Content-Type":ticket.contentType},body:blob});
+      if(!response.ok)throw Error("R2 từ chối ảnh. Hãy kiểm tra mạng hoặc CORS bucket media.");
+      await request(endpoint+"/attach",token,"POST",{key:ticket.key});
+      await reload();
+      setNotice("Đã lưu ảnh "+(kind==="categories"?"danh mục":kind==="groups"?"nhóm":"topping")+".");
+    }catch(e){
+      setError(e instanceof Error?e.message:"Không thể tải ảnh R2.");
+    }finally{busyRef.current=false;setBusy(false);}
+  }
+  function pickCatalogMedia(kind:"categories"|"groups"|"options",itemId:string) {
+    if(busyRef.current)return;
+    if(Platform.OS!=="web"){
+      // Native Android gallery selector. No arbitrary path/key can reach the backend.
+      void (async()=>{
+        const chosen=await ImagePicker.launchImageLibraryAsync({
+          mediaTypes:["images"],allowsEditing:true,quality:0.6,
+        });
+        if(chosen.canceled||!chosen.assets[0])return;
+        const asset=chosen.assets[0];
+        const mime=(asset.mimeType??"image/jpeg").toLowerCase();
+        if(!["image/png","image/jpeg","image/webp"].includes(mime)){
+          setError("Ảnh được chọn không hỗ trợ. Hãy chọn PNG hoặc JPEG.");return;
+        }
+        const raw=await fetch(asset.uri);
+        if(!raw.ok)throw Error("Không đọc được ảnh trong thư viện thiết bị.");
+        await uploadCatalogMedia(kind,itemId,await raw.blob(),mime);
+      })().catch(e=>setError(e instanceof Error?e.message:"Không thể chọn ảnh trên Android."));
       return;
     }
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = "image/png,image/jpeg,image/webp";
-    input.onchange = async () => {
-      const file = input.files?.[0]; if (!file || busyRef.current) return;
-      busyRef.current = true; setBusy(true); setError(""); setNotice("");
-      try {
-        const prepared = await prepareProductImage(file);
-        const endpoint = root + "/media/" + kind + "/" + itemId;
-        const ticket = await request<{key:string;uploadUrl:string;contentType:string}>(
-          endpoint + "/ticket", token, "POST",
-          {contentType:prepared.contentType,byteSize:prepared.blob.size});
-        const sent = await fetch(ticket.uploadUrl, {
-          method:"PUT",headers:{"Content-Type":ticket.contentType},body:prepared.blob});
-        if (!sent.ok) throw Error("R2 không nhận ảnh. Kiểm tra CORS và quyền media.");
-        await request(endpoint + "/attach", token, "POST", {key:ticket.key});
-        await reload();
-        setNotice("Đã cập nhật ảnh " + (kind === "categories" ? "danh mục" :
-          kind === "groups" ? "nhóm" : "topping") + ".");
-      } catch (e) {setError(e instanceof Error ? e.message : "Không tải ảnh lên R2.");}
-      finally { busyRef.current = false; setBusy(false); }
+    const input=document.createElement("input");
+    input.type="file";input.accept="image/png,image/jpeg,image/webp";
+    input.onchange=()=>{
+      const file=input.files?.[0];if(!file)return;
+      void prepareProductImage(file)
+        .then(prepared=>uploadCatalogMedia(kind,itemId,prepared.blob,prepared.contentType))
+        .catch(e=>setError(e instanceof Error?e.message:"Không thể tối ưu ảnh."));
     };
     input.click();
   }
