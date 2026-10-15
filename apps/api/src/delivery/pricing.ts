@@ -7,7 +7,7 @@ export const productSelect = {
   variants: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
   modifierGroups: {
     select: {
-      name: true, minSelect: true, maxSelect: true, isAvailable: true,
+      name: true, minSelect: true, maxSelect: true, isAvailable: true, branchId: true,
       options: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
     },
   },
@@ -68,7 +68,8 @@ export function priceCart(
     const known = new Set<string>();
     const modifiers: { name: string; priceVnd: number }[] = [];
     const groups = [...new Map([
-      ...product.modifierGroups.map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
+      ...product.modifierGroups.filter(group => group.branchId === null)
+        .map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
       ...product.modifierAssignments.map(assignment => {
         const group = assignment.group;
         return [group.name + ":" + group.options.map(o => o.id).join(","), group] as const;

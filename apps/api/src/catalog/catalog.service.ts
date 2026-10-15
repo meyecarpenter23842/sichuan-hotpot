@@ -40,7 +40,7 @@ export class CatalogService {
                 modifierGroups: {
                   orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: { id: true, name: true, minSelect: true, maxSelect: true,
-                    isAvailable: true, imageKey: true,
+                    isAvailable: true, imageKey: true, branchId: true,
                     options: { orderBy: [{ name: "asc" }, { id: "asc" }],
                       select: { id: true, name: true, priceDeltaVnd: true,
                         isAvailable: true, imageKey: true } },
@@ -70,7 +70,8 @@ export class CatalogService {
     if (!branch) throw new NotFoundException("Store branch unavailable");
     return { ...branch, categories: branch.categories.map(category => ({
       ...category, products: category.products.map(product => {
-        const combined = new Map(product.modifierGroups.map(g => [g.id, g] as const));
+        const combined = new Map(product.modifierGroups.filter(g => g.branchId === null)
+          .map(g => [g.id, g] as const));
         for (const a of product.modifierAssignments) combined.set(a.group.id, a.group);
         return { ...product,
           modifierGroups: [...combined.values()].filter(g => g.isAvailable),

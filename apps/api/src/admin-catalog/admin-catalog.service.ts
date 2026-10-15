@@ -84,7 +84,7 @@ export class AdminCatalogService {
                 modifierGroups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: {
                     id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
-                    isAvailable: true, imageKey: true,
+                    isAvailable: true, imageKey: true, branchId: true,
                     options: { orderBy: { name: "asc" },
                       select: { id: true, name: true, priceDeltaVnd: true,
                         isAvailable: true, imageKey: true } },
@@ -119,7 +119,7 @@ export class AdminCatalogService {
       ...category, products: category.products.map(product => ({
         ...product, soldCount: soldById.get(product.id) ?? 0,
         modifierGroups: [...new Map([
-          ...product.modifierGroups.map(g => [g.id, g] as const),
+          ...product.modifierGroups.filter(g => g.branchId === null).map(g => [g.id, g] as const),
           ...product.modifierAssignments.map(a => [a.group.id, a.group] as const),
         ]).values()].sort((a, b) => a.sortOrder - b.sortOrder),
         modifierAssignments: undefined,
