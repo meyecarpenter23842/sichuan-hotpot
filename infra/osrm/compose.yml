@@ -26,9 +26,3 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "2", "http://127.0.0.1:5000/route/v1/driving/106.6900000,10.7720000;106.6950000,10.7750000?overview=false"]
-      interval: 60s
-      timeout: 4s
-      retries: 3
-      start_period: 30s
