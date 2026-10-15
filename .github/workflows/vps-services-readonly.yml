@@ -1,4 +1,4 @@
-name: Production R2 and road-routing config audit (owner read-only)
+name: Production R2 config audit (owner read-only)
 on:
   issue_comment:
     types: [created]
@@ -51,8 +51,7 @@ jobs:
           python3 - "$RUNNER_TEMP/status.txt" <<'PY'
           import re,sys
           expected = ("api_env", "r2_account_id", "r2_access_key_id",
-                      "r2_secret_access_key", "r2_bucket", "google_routes_api_key",
-                      "r2_dns", "routes_dns")
+                      "r2_secret_access_key", "r2_bucket", "r2_dns")
           statuses = {}
           for line in open(sys.argv[1], encoding="utf8"):
               key,sep,value = line.strip().partition("=")
