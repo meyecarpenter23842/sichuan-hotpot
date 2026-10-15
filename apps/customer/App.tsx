@@ -729,8 +729,8 @@ function CustomerApp() {
       setCart(old => addCartLine(old, {
         productId: selectedProduct.id, variantId: selectedVariantId, modifierIds: selectedModifierIds,
       }, selectedQuantity));
-      setScreen("cart");
-      setNotice("Đã thêm món vào giỏ hàng.");
+      setScreen("menu");
+      setNotice("Đã thêm món vào giỏ. Bạn có thể chọn tiếp hoặc mở giỏ khi sẵn sàng.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Không thể thêm món.");
     }
