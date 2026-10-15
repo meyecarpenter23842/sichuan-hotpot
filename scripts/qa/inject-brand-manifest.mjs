@@ -1,11 +1,13 @@
 // Installable PWA metadata is injected only into the exact exported bundle.
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 const app = process.argv[2];
 if (!["admin", "customer"].includes(app)) throw Error("Invalid PWA app");
-const dir = resolve("apps", app, "dist");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const dir = resolve(repoRoot, "apps", app, "dist");
 const html = resolve(dir, "index.html");
-const publicDir = resolve("apps", app, "public");
+const publicDir = resolve(repoRoot, "apps", app, "public");
 // Expo export bundles referenced assets but does not guarantee unreferenced
 // installable-PWA manifest and icons are copied from public.
 for (const file of [
