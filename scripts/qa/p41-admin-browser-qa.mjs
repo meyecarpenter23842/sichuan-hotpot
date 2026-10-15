@@ -226,8 +226,18 @@ try {
         "Branch selector should not be oversized at " + width);
       if (tab === "Tổng quan") {
         const metric = await page.getByRole("button", { name: /^Đơn mới:/ }).boundingBox();
-        assert.ok(metric && metric.height <= 101 && metric.height >= 44,
-          "Dashboard KPI card should match its text density at " + width);
+        assert.ok(metric && metric.height <= 80 && metric.height >= 44,
+          "Dashboard KPI card is too tall at " + width);
+        // The branch dropdown is a layer, never another flex child of the header.
+        const kpiY = metric.y;
+        await page.getByRole("button", { name: "Đổi chi nhánh" }).click();
+        await page.getByRole("button", { name: /^Chọn chi nhánh / }).first().waitFor();
+        const overlayKpi = await page.getByRole("button", { name: /^Đơn mới:/ }).boundingBox();
+        assert.ok(overlayKpi && Math.abs(overlayKpi.y - kpiY) <= 1,
+          "Opening branch dropdown must not push content down at " + width);
+        const backdrop = page.getByRole("button", { name: "Đóng danh sách chi nhánh" });
+        await backdrop.click({ position: { x: width - 18, y: 260 } });
+        await page.getByRole("button", { name: /^Chọn chi nhánh / }).first().waitFor({ state: "hidden" });
       }
       if (tab === "Thiết lập") {
         const tile = await page.getByRole("button", { name: "Mở Thông báo" }).boundingBox();
@@ -235,11 +245,19 @@ try {
           "Settings shortcut tile is too tall at " + width);
       }
       if (tab === "Thực đơn") {
+        const tabs = page.getByRole("tablist");
+        const y1 = (await tabs.boundingBox())?.y;
         await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
+        const y2 = (await tabs.boundingBox())?.y;
+        assert.ok(y1 !== undefined && y2 !== undefined && Math.abs(y1 - y2) <= 1,
+          "Switching menu sub-tabs must not move the tab bar at " + width);
+        const contentScroll = page.getByTestId("catalog-body-scroll");
+        assert.equal(await contentScroll.evaluate(el => el.contains(document.querySelector('[role="tablist"]'))),
+          false, "Subtabs must be outside the scrollable list");
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           true, "L05 modifier list overflow at " + width);
         await page.screenshot({ path: "apps/admin/qa-artifacts/p45-l05-modifiers-" + width + ".png" });
-        await page.getByRole("tablist").getByRole("tab", { name: "Món", exact: true }).click();
+        await tabs.getByRole("tab", { name: "Món", exact: true }).click();
       }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });

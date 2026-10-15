@@ -212,6 +212,7 @@ export default function AdminApp() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [chooseBranch, setChooseBranch] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(0);
   const [createBranch, setCreateBranch] = useState(false);
   const [catalog, setCatalog] = useState<AdminCatalog | null>(null);
   const [loading, setLoading] = useState(false);
@@ -471,7 +472,7 @@ export default function AdminApp() {
       </KeyboardAvoidingView> : <View style={styles.shell}>
         {branchId && <OrderAlertWatcher token={token} branchId={branchId}
           role={branchRole} chimeEnabled={chimeEnabled} />}
-        <View style={styles.header}>
+        <View style={styles.header} onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)}>
           <View style={styles.headerTop}>
             <Image source={require("./assets/app-icon.png")} style={styles.headerLogo}
               accessibilityLabel="Biểu tượng Lẩu Tứ Xuyên" />
@@ -520,20 +521,11 @@ export default function AdminApp() {
                 { backgroundColor: selectedBranch?.isActive ? "#0FA463" : c.red }]} />
             </Pressable>
           </View>
-          {chooseBranch && <View style={styles.branchMenu}>
-            {branches.map(branch => <Pressable key={branch.id} accessibilityRole="button"
-              accessibilityLabel={"Chọn chi nhánh " + branch.name}
-              style={styles.branchItem} onPress={() => {
-                setBranchId(branch.id); setChooseBranch(false);
-                setTab(branch.staffRole === "KITCHEN" ? "kitchen" : "overview");
-              }}>
-              <Text style={styles.branchItemText}>{branch.name}</Text>
-              {branch.id === branchId && <Text style={styles.selectedMark}>✓</Text>}
-            </Pressable>)}
-          </View>}
         </View>
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {tab === "catalog" && catalog && branches.length > 0 && !loadError ?
+          <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
+          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
           {branches.length === 0 ? <View style={styles.bootstrap}>
             {principal?.role === "OWNER" ? <>
@@ -560,7 +552,6 @@ export default function AdminApp() {
           </View> : (
             <>
               {tab === "overview" && <Overview catalog={catalog} token={token} branchId={branchId!} onChangeTab={setTab} />}
-              {tab === "catalog" && <CatalogPanel catalog={catalog} token={token} reload={reload} />}
               {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
@@ -568,7 +559,7 @@ export default function AdminApp() {
                 onChimeChange={changeChime} />}
             </>
           )}
-        </ScrollView>
+          </ScrollView>}
         <View style={styles.bottomTabs}>
           {visibleTabs.map(item => <Pressable key={item.id}
             accessibilityRole="tab" accessibilityLabel={item.label}
@@ -579,6 +570,25 @@ export default function AdminApp() {
             <Text style={[styles.tabLabel, tab === item.id && styles.tabActive]}>{item.shortLabel}</Text>
           </Pressable>)}
         </View>
+        {chooseBranch && branches.length > 0 && <View
+          style={[styles.branchOverlay, { top: headerHeight }]} pointerEvents="box-none">
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng danh sách chi nhánh"
+            style={StyleSheet.absoluteFillObject} onPress={() => setChooseBranch(false)} />
+          <View style={styles.branchMenu}>
+            <ScrollView keyboardShouldPersistTaps="always"
+              style={styles.branchMenuScroll} nestedScrollEnabled>
+              {branches.map(branch => <Pressable key={branch.id} accessibilityRole="button"
+                accessibilityLabel={"Chọn chi nhánh " + branch.name}
+                style={styles.branchItem} onPress={() => {
+                  setBranchId(branch.id); setChooseBranch(false);
+                  setTab(branch.staffRole === "KITCHEN" ? "kitchen" : "overview");
+                }}>
+                <Text style={styles.branchItemText} numberOfLines={2}>{branch.name}</Text>
+                {branch.id === branchId && <Text style={styles.selectedMark}>✓</Text>}
+              </Pressable>)}
+            </ScrollView>
+          </View>
+        </View>}
       </View>}
     </SafeAreaView>
   </SafeAreaProvider>;
@@ -616,9 +626,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#7C201E", gap: 6 },
   branchText: { flexShrink: 1, fontSize: 12, color: c.white, fontWeight: "800", marginTop: 1 },
   branchArrow: { fontSize: 21, color: c.white },
-  branchMenu: { borderTopWidth: 1, borderTopColor: "#A84B49", paddingHorizontal: 14 },
+  branchOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 50,
+    elevation: 18, alignItems: "flex-start" },
+  branchMenu: { marginTop: 4, marginLeft: 12, width: "76%", minWidth: 232, maxWidth: 360,
+    borderWidth: 1, borderColor: "#A84B49", backgroundColor: "#72181B",
+    borderRadius: 12, shadowColor: "#1C0808", shadowOpacity: 0.25, shadowRadius: 9,
+    elevation: 18, overflow: "hidden" },
+  branchMenuScroll: { maxHeight: 260 },
   branchItem: { minHeight: 44, flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#A84B49" },
+    alignItems: "center", paddingHorizontal: 12, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: "#A84B49" },
   branchItemText: { fontSize: font.body, color: c.white },
   selectedMark: { color: "#FFD58A", fontSize: font.body, fontWeight: "800" },
   scroll: { flex: 1, minHeight: 0 },
@@ -632,7 +649,7 @@ const styles = StyleSheet.create({
   tabSelected: { backgroundColor: "#6E351B" },
   tabLabel: { color: "#FAF1E6", fontSize: 10, fontWeight: "700" },
   tabActive: { color: "#FFD58A" },
-  overview: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 16, gap: 9 },
+  overview: { paddingHorizontal: 10, paddingTop: 6, paddingBottom: 14, gap: 7 },
   stats: { flexDirection: "row", gap: 8, marginVertical: 6 },
   stat: { flex: 1, minHeight: 73, paddingHorizontal: 10,
     borderRightWidth: 1, borderRightColor: c.line, justifyContent: "center", gap: 5 },
@@ -649,10 +666,10 @@ const styles = StyleSheet.create({
   brandHeading: { color: "#FFF8EE", fontSize: 17, lineHeight: 21, fontWeight: "800" },
   brandTagline: { color: "#F5CFC6", fontSize: 10, lineHeight: 13, marginTop: 1 },
   headerLogo: { width: adminDensity.headerLogo, height: adminDensity.headerLogo,
-    borderRadius: 23, borderWidth: 1.5, borderColor: "#EAC17C", backgroundColor: "#7E1317" },
+    borderRadius: 21, borderWidth: 1.5, borderColor: "#EAC17C", backgroundColor: "#7E1317" },
   heroAction: { height: 44, width: 44, alignItems: "center", justifyContent: "center" },
-  headerBottom: { flexDirection: "row", paddingHorizontal: 12,
-    paddingBottom: 9, gap: 7, alignItems: "stretch" },
+  headerBottom: { flexDirection: "row", paddingHorizontal: 10,
+    paddingBottom: 7, gap: 7, alignItems: "stretch" },
   branchCopy: { flex: 1, minWidth: 0 },
   branchHint: { color: "#F7C9BD", fontSize: 10 },
   operationPill: { flex: 1, minHeight: adminDensity.branchSelector, paddingHorizontal: 8, gap: 5,
@@ -668,17 +685,17 @@ const styles = StyleSheet.create({
   dashboardRefresh: { minHeight: 44, justifyContent: "center", paddingLeft: 6 },
   refreshText: { color: c.secondary, fontSize: 10 },
   dashboardGrid: { flexDirection: "row", flexWrap: "wrap",
-    justifyContent: "space-between", rowGap: 8, columnGap: 8 },
-  dashboardMetric: { width: "48.5%", minHeight: adminDensity.dashboardMetric, borderRadius: 12,
-    flexDirection: "row", alignItems: "center", padding: 8, gap: 6 },
+    justifyContent: "space-between", rowGap: 6, columnGap: 8 },
+  dashboardMetric: { width: "48.5%", minHeight: adminDensity.dashboardMetric, borderRadius: 11,
+    flexDirection: "row", alignItems: "center", padding: 6, gap: 5 },
   metricIcon: { width: adminDensity.dashboardIcon, height: adminDensity.dashboardIcon,
     borderRadius: 10, backgroundColor: "rgba(255,255,255,0.5)",
     alignItems: "center", justifyContent: "center" },
   metricCopy: { flex: 1, gap: 2, minWidth: 0 },
   metricLabel: { fontSize: 11, lineHeight: 14, color: "#3D3333" },
-  metricValue: { fontSize: 17, lineHeight: 21, fontWeight: "900" },
+  metricValue: { fontSize: 16, lineHeight: 20, fontWeight: "900" },
   metricArrow: { fontSize: 17, fontWeight: "600" },
-  dashboardSectionHead: { marginTop: 4, minHeight: 36,
+  dashboardSectionHead: { marginTop: 2, minHeight: 33,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   dashboardSectionTitle: { color: c.ink, fontSize: 15, fontWeight: "900",
     borderLeftColor: c.red, borderLeftWidth: 4, paddingLeft: 10, flexShrink: 1 },
