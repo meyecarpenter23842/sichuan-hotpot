@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch, mock_open
 
-spec = importlib.util.spec_from_file_location("p42", Path(__file__).parents[1] / "hotpot-p42-operations.py")
+spec = importlib.util.spec_from_file_location("p42", Path(__file__).parents[1] / "hotpot-migrations-release.py")
 p4 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p4)
 
@@ -21,11 +21,13 @@ class LiveP4HistoryTests(unittest.TestCase):
             return p4.checked_history(self.hashes)
 
     def test_migration_history_accepts_every_valid_prefix(self):
-        for n in range(len(self.migrations) + 1):
+        for n in range(1, len(self.migrations) + 1):
             prefix = self.migrations[:n]
             self.assertEqual(self.history(prefix), set(prefix))
 
     def test_out_of_order_or_bad_checksum_rejected(self):
+        with self.assertRaises(p4.GateError):
+            self.history(())
         with self.assertRaises(p4.GateError):
             self.history(self.migrations[:1] + self.migrations[2:3])
         with self.assertRaises(p4.GateError):
@@ -123,7 +125,7 @@ class LiveP4SafetyTests(unittest.TestCase):
             self.assertTrue(json.loads(receipt.read_text())["consumed"])
 
     def test_live_migrator_never_uses_empty_database_helper(self):
-        source = (Path(__file__).parents[1] / "hotpot-p42-operations.py").read_text()
+        source = (Path(__file__).parents[1] / "hotpot-migrations-release.py").read_text()
         self.assertNotIn("offline_empty", source)
         self.assertNotIn("initial_empty_database_required", source)
         self.assertIn("business_data_reconciliation_failed", source)

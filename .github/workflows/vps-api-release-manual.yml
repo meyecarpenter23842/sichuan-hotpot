@@ -190,24 +190,24 @@ jobs:
             }
           grep -Fqx 'archive_validation=PASS' <<< "$verify" || exit 1
           # Any pending reviewed migration requires encrypted R2 backup and isolated restore.
-          p42_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+          migration_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/bin/python3 - --check '$REQUESTED_SHA' '$digest'" \
-            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
-              reason="$(printf '%s\n' "$p42_check" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+            < infra/vps/hotpot-migrations-release.py 2>&1)" || {
+              reason="$(printf '%s\n' "$migration_check" | sed -n 's/^migration_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
               echo "::error::Migration preflight blocked: $reason"
               exit 1
             }
-          grep -Fq 'p42_preflight=PASS;' <<< "$p42_check" || exit 1
-          p42_result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+          grep -Fq 'migration_preflight=PASS;' <<< "$migration_check" || exit 1
+          migration_result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/bin/python3 - --release '$REQUESTED_SHA' '$digest'" \
-            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
-              reason="$(printf '%s\n' "$p42_result" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+            < infra/vps/hotpot-migrations-release.py 2>&1)" || {
+              reason="$(printf '%s\n' "$migration_result" | sed -n 's/^migration_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
               echo "::error::Migration R2 backup/restore blocked: $reason; API unchanged."
               exit 1
             }
-          if grep -Fqx 'p42_database_ready=PASS' <<< "$p42_result"; then
+          if grep -Fqx 'migration_database_ready=PASS' <<< "$migration_result"; then
             echo "R2 encrypted backup, isolated restore, live migration: PASS"
-          elif grep -Fqx 'migration=ALREADY_APPLIED' <<< "$p42_result"; then
+          elif grep -Fqx 'migration=ALREADY_APPLIED' <<< "$migration_result"; then
             echo "Verified schema already applied: PASS"
           else
             echo "::error::No verified migration result."

@@ -84,7 +84,8 @@ def checked_history(expected):
                 "unsafe_migration_history")
         applied.add(name)
     names = sorted(expected)
-    require(applied in (set(names[:n]) for n in range(len(names) + 1)),
+    require(names and names[0] in applied, "base_migration_missing")
+    require(applied in (set(names[:n]) for n in range(1, len(names) + 1)),
             "migration_order_invalid")
     return applied
 
@@ -100,8 +101,8 @@ def checked_source(sha, digest):
     st = RELEASE_HELPER.lstat()
     require(RELEASE_HELPER.is_file() and not RELEASE_HELPER.is_symlink()
             and st.st_uid == 0 and st.st_mode & 0o022 == 0, "unsafe_release_helper")
-    loader = SourceFileLoader("p4_release", str(RELEASE_HELPER))
-    spec = importlib.util.spec_from_loader("p4_release", loader)
+    loader = SourceFileLoader("hotpot_release", str(RELEASE_HELPER))
+    spec = importlib.util.spec_from_loader("hotpot_release", loader)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     files = module.archive_files(blob)
@@ -224,7 +225,7 @@ def migrate(files, expected):
     work.mkdir(mode=0o711, parents=True, exist_ok=True)
     require(not work.is_symlink() and work.stat().st_uid == 0, "work_directory_permissions")
     os.chmod(work, 0o711)
-    path = Path(tempfile.mkdtemp(prefix="p4-migrate-", dir=work))
+    path = Path(tempfile.mkdtemp(prefix="hotpot-migrate-", dir=work))
     for name, contents in files.items():
         file = path / name
         file.parent.mkdir(parents=True, exist_ok=True)
@@ -289,7 +290,7 @@ def main(args):
         applied = checked_history(hashes)
         backup_config()
         if args[0] == "--check":
-            print("p42_preflight=PASS;pending=" + str(len(set(hashes) - applied)), flush=True)
+            print("migration_preflight=PASS;pending=" + str(len(set(hashes) - applied)), flush=True)
             return
         if set(hashes) <= applied:
             print("migration=ALREADY_APPLIED", flush=True)
@@ -309,15 +310,15 @@ def main(args):
             handle.flush()
             os.fsync(handle.fileno())
         migrate(files, hashes)
-        print("p42_database_ready=PASS", flush=True)
+        print("migration_database_ready=PASS", flush=True)
 
 
 if __name__ == "__main__":
     try:
         main(sys.argv[1:])
     except GateError as exc:
-        print("p42_operation=BLOCKED;reason=" + str(exc), file=sys.stderr)
+        print("migration_operation=BLOCKED;reason=" + str(exc), file=sys.stderr)
         sys.exit(2)
     except Exception:
-        print("p42_operation=BLOCKED;reason=operation_failed", file=sys.stderr)
+        print("migration_operation=BLOCKED;reason=operation_failed", file=sys.stderr)
         sys.exit(2)
