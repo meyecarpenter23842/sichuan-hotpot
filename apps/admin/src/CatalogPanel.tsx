@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   StyleSheet, Text, View,
@@ -11,6 +11,8 @@ import {
 import { c, font } from "./theme";
 import { Icon } from "./Icon";
 import { prepareProductImage } from "./prepare-product-image";
+import { ModifierGroupsPanel } from "./ModifierGroupsPanel";
+import { StatusSwitch } from "./StatusSwitch";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
@@ -38,6 +40,8 @@ export function CatalogPanel({ catalog, token, reload }: {
   catalog: AdminCatalog; token: string; reload: () => Promise<void>;
 }) {
   const [filter, setFilter] = useState("");
+  const [tab, setTab] = useState<"products" | "modifiers">("products");
+  const busyRef = useRef(false);
   const [stockOnly, setStockOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -85,7 +89,8 @@ export function CatalogPanel({ catalog, token, reload }: {
   }
 
   async function mutate(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true); setError(""); setNotice("");
     try {
       await request(root + path, token, method, body);
@@ -95,7 +100,7 @@ export function CatalogPanel({ catalog, token, reload }: {
       setNotice("Đã cập nhật dữ liệu cửa hàng.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không lưu được thay đổi.");
-    } finally { setBusy(false); }
+    } finally { busyRef.current = false; setBusy(false); }
   }
   function save() {
     if (!editor || busy) return;
@@ -144,12 +149,33 @@ export function CatalogPanel({ catalog, token, reload }: {
       group: "groups", option: "options" }[editor.kind];
     void mutate("/" + section + "/" + editor.id, "DELETE");
   }
-  async function flipProduct(product: CatalogProduct) {
-    await mutate("/products/" + product.id, "PATCH", { isAvailable: !product.isAvailable });
+  async function flipProduct(product: CatalogProduct, next: boolean) {
+    if (next === product.isAvailable) return;
+    await mutate("/products/" + product.id, "PATCH", { isAvailable: next });
   }
-  async function flipOption(kind: "variant" | "option", value: CatalogVariant | CatalogOption) {
+  function validateGroupAvailability(optionId: string, next: boolean): boolean {
+    if (next) return true;
+    for (const product of catalog.categories.flatMap(category => category.products)) {
+      const group = product.modifierGroups.find(item =>
+        item.options.some(option => option.id === optionId));
+      if (!group) continue;
+      const remaining = group.options.filter(option =>
+        option.id !== optionId && option.isAvailable).length;
+      if (remaining < group.minSelect) {
+        setError("Nhóm “" + group.name + "” yêu cầu ít nhất " + group.minSelect +
+          " lựa chọn đang bán. Hãy chỉnh số chọn tối thiểu trước khi tắt.");
+        return false;
+      }
+      break;
+    }
+    return true;
+  }
+  async function flipOption(kind: "variant" | "option",
+    value: CatalogVariant | CatalogOption, next: boolean) {
+    if (next === value.isAvailable) return;
+    if (kind === "option" && !validateGroupAvailability(value.id, next)) return;
     await mutate("/" + (kind === "variant" ? "variants" : "options") + "/" + value.id,
-      "PATCH", { isAvailable: !value.isAvailable });
+      "PATCH", { isAvailable: next });
   }
 
   function pickImage(productId: string) {
@@ -202,13 +228,27 @@ export function CatalogPanel({ catalog, token, reload }: {
         <Text style={st.title}>Thực đơn</Text>
         <Text style={st.sub}>{counts.all} món · {counts.off} tạm hết</Text>
       </View>
-      <Action label="＋ Danh mục" secondary onPress={() => open("category")} />
+      {tab === "products" && <Action label="＋ Danh mục" secondary onPress={() => open("category")} />}
     </View>
     {!catalog.isActive && <View style={st.branchWarning}>
       <Icon name="power" color={c.red} size={19} />
       <Text style={st.warningText}>Chi nhánh chưa kích hoạt. Món có trạng thái “Đang bán”
         vẫn không xuất hiện trong app khách. Mở Thiết lập → Hoạt động để kích hoạt.</Text>
     </View>}
+    <View style={st.menuTabs} accessibilityRole="tablist">
+      <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "products" }}
+        accessibilityLabel="Món" style={[st.menuTab, tab === "products" && st.menuTabActive]}
+        onPress={() => { setTab("products"); setExpandedId(null); setError(""); }}>
+        <Text style={[st.menuTabText, tab === "products" && st.menuTabTextActive]}>Món</Text>
+      </Pressable>
+      <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === "modifiers" }}
+        accessibilityLabel="Nhóm tùy chọn"
+        style={[st.menuTab, tab === "modifiers" && st.menuTabActive]}
+        onPress={() => { setTab("modifiers"); setExpandedId(null); setError(""); }}>
+        <Text style={[st.menuTabText, tab === "modifiers" && st.menuTabTextActive]}>Nhóm tùy chọn</Text>
+      </Pressable>
+    </View>
+    {tab === "products" && <>
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
       placeholder="Tên lẩu, trà sữa, combo..." />
     <View style={st.pills}>
@@ -250,15 +290,9 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <Text style={st.price}>{toPrice(product.priceVnd)}</Text>
                 </View>
               </Pressable>
-              <Pressable accessibilityRole="button"
-                accessibilityLabel={(product.isAvailable ? "Tạm hết " : "Bật bán ") + product.name}
-                accessibilityState={{ disabled: busy }}
-                onPress={() => void flipProduct(product)}
-                disabled={busy} style={[st.stock, product.isAvailable ? st.stockOn : st.stockOff]}>
-                <Text style={[st.stockLabel, product.isAvailable ? st.stockTextOn : st.stockTextOff]}>
-                  {product.isAvailable ? "Đang bán" : "Hết hàng"}
-                </Text>
-              </Pressable>
+              <StatusSwitch value={product.isAvailable} busy={busy}
+                label={"Bán món " + product.name}
+                onValueChange={next => void flipProduct(product, next)} />
               <Pressable accessibilityRole="button" accessibilityLabel={"Sửa món " + product.name}
                 style={st.miniEdit} onPress={() => open("product", product.id, undefined, product)}>
                 <Icon name="edit" size={19} color={c.red} />
@@ -291,11 +325,9 @@ export function CatalogPanel({ catalog, token, reload }: {
               {product.variants.length === 0 && <Text style={st.emptyNote}>Chưa có size riêng.</Text>}
               {product.variants.map(variant => <View key={variant.id} style={st.optionRow}>
                 <Text style={st.optionName}>{variant.name} · +{toPrice(variant.priceDeltaVnd)}</Text>
-                <Pressable accessibilityRole="button" disabled={busy}
-                  accessibilityLabel={(variant.isAvailable ? "Ẩn " : "Hiện ") + variant.name}
-                  style={st.optionAction} onPress={() => void flipOption("variant", variant)}>
-                  <Text style={st.miniEditText}>{variant.isAvailable ? "Ẩn" : "Hiện"}</Text>
-                </Pressable>
+                <StatusSwitch value={variant.isAvailable} busy={busy}
+                  label={"Bán size " + variant.name}
+                  onValueChange={next => void flipOption("variant", variant, next)} />
                 <Pressable accessibilityRole="button" style={st.optionAction}
                   accessibilityLabel={"Sửa size " + variant.name}
                   onPress={() => open("variant", variant.id, product.id, variant)}>
@@ -317,11 +349,9 @@ export function CatalogPanel({ catalog, token, reload }: {
                 </View>
                 {group.options.map(option => <View key={option.id} style={st.optionRow}>
                   <Text style={st.optionName}>{option.name} · +{toPrice(option.priceDeltaVnd)}</Text>
-                  <Pressable accessibilityRole="button" disabled={busy}
-                    accessibilityLabel={(option.isAvailable ? "Ẩn " : "Hiện ") + option.name}
-                    style={st.optionAction} onPress={() => void flipOption("option", option)}>
-                    <Text style={st.miniEditText}>{option.isAvailable ? "Ẩn" : "Hiện"}</Text>
-                  </Pressable>
+                  <StatusSwitch value={option.isAvailable} busy={busy}
+                    label={"Bán " + option.name}
+                    onValueChange={next => void flipOption("option", option, next)} />
                   <Pressable accessibilityRole="button"
                     accessibilityLabel={"Sửa tùy chọn " + option.name}
                     style={st.optionAction} onPress={() => open("option", option.id, group.id, option)}>
@@ -343,6 +373,17 @@ export function CatalogPanel({ catalog, token, reload }: {
         })}
       </View>
     ))}
+    </>}
+    {tab === "modifiers" && <ModifierGroupsPanel catalog={catalog} busy={busy}
+      onCreateGroup={product => open("group", undefined, product.id)}
+      onEditGroup={(product, group) => open("group", group.id, product.id, group)}
+      onCreateOption={group => open("option", undefined, group.id)}
+      onEditOption={(group, option) => open("option", option.id, group.id, option)}
+      onCreateVariant={product => open("variant", undefined, product.id)}
+      onEditVariant={(product, variant) => open("variant", variant.id, product.id, variant)}
+      onToggleVariant={(variant, next) => void flipOption("variant", variant, next)}
+      onToggleOption={(_group, option, next) => void flipOption("option", option, next)}
+    />}
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -382,9 +423,8 @@ export function CatalogPanel({ catalog, token, reload }: {
             {["product", "variant", "option"].includes(editor.kind) &&
               <View style={st.toggleRow}>
                 <Text style={st.smallLabel}>Tình trạng</Text>
-                <Pill label={editor.values.isAvailable ? "Đang bán" : "Tạm hết"}
-                  active={editor.values.isAvailable}
-                  onPress={() => change("isAvailable", !editor.values.isAvailable)} />
+                <StatusSwitch value={editor.values.isAvailable} busy={busy}
+                  label="Cho phép bán" onValueChange={next => change("isAvailable", next)} />
               </View>}
             {!!error && <Notice text={error} error />}
             {confirmDelete && <Notice text="Xác nhận xóa? Món đã có lịch sử đơn không thể xóa; hãy chuyển sang tạm hết." error />}
@@ -410,6 +450,13 @@ const st = StyleSheet.create({
   headingText: { flex: 1, gap: 3 }, title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   sub: { color: c.secondary, fontSize: font.caption },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 7, paddingVertical: 2 },
+  menuTabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.line,
+    gap: 15, minHeight: 46 },
+  menuTab: { minHeight: 44, paddingHorizontal: 5, justifyContent: "center",
+    borderBottomWidth: 2, borderBottomColor: "transparent" },
+  menuTabActive: { borderBottomColor: c.red },
+  menuTabText: { color: c.secondary, fontWeight: "700", fontSize: font.body },
+  menuTabTextActive: { color: c.red },
   categoryBlock: { borderTopWidth: 1, borderTopColor: c.line, marginHorizontal: -12,
     backgroundColor: c.white },
   categoryHeading: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12,
