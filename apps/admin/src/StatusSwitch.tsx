@@ -1,10 +1,10 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, Switch, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
 /**
- * Scoped first consumer for #94. Use real API values; never advance the visual
- * state until the server has accepted the change and AdminCatalog has reloaded.
- * UI touch target is 56×44; native/web Switch retains screen reader support.
+ * Single semantic switch for Android & Web/PWA. Native Switch plus a web
+ * wrapper creates duplicate role=switch nodes, so expose ONE Pressable.
+ * Server data remains authoritative; caller locks pending writes/reloads.
  */
 export function StatusSwitch({ value, onValueChange, label, hint, disabled = false, busy = false }: {
   value: boolean;
@@ -15,26 +15,35 @@ export function StatusSwitch({ value, onValueChange, label, hint, disabled = fal
   busy?: boolean;
 }) {
   const locked = disabled || busy;
-  return <View style={st.target}>
-    <Switch
-      value={value}
-      onValueChange={next => { if (!locked && next !== value) onValueChange(next); }}
-      disabled={locked}
-      accessibilityRole="switch"
-      accessibilityLabel={label}
-      accessibilityHint={hint ?? (value ? "Đang bật" : "Đang tắt")}
-      accessibilityState={{ checked: value, disabled: locked, busy }}
-      trackColor={{ false: "#B7B8BC", true: "#FA850F" }}
-      thumbColor="#FFFFFF"
-      ios_backgroundColor="#B7B8BC"
-    />
+  return <Pressable
+    accessibilityRole="switch"
+    accessibilityLabel={label}
+    accessibilityHint={hint ?? (value ? "Đang bật" : "Đang tắt")}
+    accessibilityState={{ checked: value, disabled: locked, busy }}
+    disabled={locked}
+    onPress={() => { if (!locked) onValueChange(!value); }}
+    style={({ pressed }) => [st.touch, pressed && !locked && st.pressed,
+      locked && st.disabled]}
+  >
+    <View pointerEvents="none" style={[st.track, value && st.on]}>
+      <View style={[st.thumb, value && st.thumbOn]} />
+    </View>
     {busy && <View pointerEvents="none" style={st.loader}>
       <ActivityIndicator size="small" color="#B3262D" />
     </View>}
-  </View>;
+  </Pressable>;
 }
 const st = StyleSheet.create({
-  target: { minHeight: 44, minWidth: 56, alignItems: "center", justifyContent: "center" },
-  loader: { position: "absolute", top: 8, right: 3, borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.85)", padding: 3 },
+  touch: { minHeight: 44, minWidth: 56, alignItems: "center",
+    justifyContent: "center", borderRadius: 24 },
+  track: { width: 52, height: 30, padding: 3, borderRadius: 20,
+    backgroundColor: "#B7B8BC", justifyContent: "center" },
+  on: { backgroundColor: "#FA850F" },
+  thumb: { width: 24, height: 24, backgroundColor: "#FFFFFF", borderRadius: 12,
+    shadowColor: "#000000", shadowOpacity: 0.13, shadowRadius: 2, elevation: 2 },
+  thumbOn: { transform: [{ translateX: 22 }] },
+  loader: { position: "absolute", right: 2, top: 7, backgroundColor: "#FFFFFF",
+    borderRadius: 15, padding: 2 },
+  pressed: { opacity: 0.8 },
+  disabled: { opacity: 0.55 },
 });
