@@ -165,14 +165,16 @@ export class AdminCatalogService {
   }
   private async group(branchId: string, groupId: string) {
     const record = await this.prisma.database.modifierGroup.findFirst({
-      where: { id: groupId, OR: [{ branchId }, { product: { category: { branchId } } }] },
+      where: { id: groupId, OR: [{ branchId },
+        { branchId: null, product: { category: { branchId } } }] },
       select: { id: true },
     });
     if (!record) throw new NotFoundException("MODIFIER_GROUP_NOT_FOUND");
   }
   private async option(branchId: string, optionId: string) {
     const record = await this.prisma.database.modifierOption.findFirst({
-      where: { id: optionId, group: { OR: [{ branchId }, { product: { category: { branchId } } }] } },
+      where: { id: optionId, group: { OR: [{ branchId },
+        { branchId: null, product: { category: { branchId } } }] } },
       select: { id: true },
     });
     if (!record) throw new NotFoundException("MODIFIER_OPTION_NOT_FOUND");
