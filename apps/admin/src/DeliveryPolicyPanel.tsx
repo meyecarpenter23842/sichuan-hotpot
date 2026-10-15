@@ -124,7 +124,11 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     setSaving(true); setError(""); setSuccess("");
     try {
       const payload = {
-        pricingMode: "ZONE", acceptingOrders, zones: zones.map(({ id: _id, ...zone }) => zone),
+        pricingMode: "ZONE", acceptingOrders, zones: zones.map(zone => ({
+          name: zone.name, provinceCode: zone.provinceCode,
+          catalogVersion: zone.catalogVersion, wardCodes: [...zone.wardCodes],
+          feeVnd: zone.feeVnd, isActive: zone.isActive,
+        })),
         minSubtotalVnd: Number(minimum),
         freeDeliveryAtSubtotalVnd: freeFrom === "" ? null : Number(freeFrom),
       };
