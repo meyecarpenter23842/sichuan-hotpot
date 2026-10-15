@@ -8,7 +8,9 @@ export interface AuthTokens {
   accessToken: string; refreshToken: string; accessTokenExpiresInSeconds: number;
 }
 export interface Branch { id: string; code: string; name: string; address: string | null;
-  latitude: string | number; longitude: string | number; isActive: boolean; staffRole?: StaffRole }
+  latitude: string | number; longitude: string | number; isActive: boolean;
+  catalogVersion?: string | null; provinceCode?: string | null; wardCode?: string | null;
+  staffRole?: StaffRole }
 export interface CatalogOption { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean }
 export type CatalogVariant = CatalogOption;
 export interface CatalogGroup {
