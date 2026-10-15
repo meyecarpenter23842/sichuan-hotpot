@@ -7,6 +7,7 @@ import { HoursPanel } from "./HoursPanel";
 import { DeliveryPolicyPanel } from "./DeliveryPolicyPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
+import { StatusSwitch } from "./StatusSwitch";
 import { Action, Notice } from "./ui";
 import { playOrderChime } from "./order-notifications";
 import { c, font } from "./theme";
@@ -23,11 +24,12 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
 ];
 
-export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, onChimeChange }: {
+export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, chimePending, chimeError, onChimeChange }: {
   token: string; branch: Branch; catalog: AdminCatalog; owner: boolean;
   reload: () => Promise<void>;
   onBranchSaved: (id: string, created: boolean) => Promise<void>;
-  chimeEnabled: boolean; onChimeChange: (enabled: boolean) => void;
+  chimeEnabled: boolean; chimePending: boolean; chimeError: string;
+  onChimeChange: (enabled: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Setting | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -82,11 +84,18 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
             {selected === "alerts" && <View style={{ gap: 12 }}>
               <Text style={s.note}>Chuông báo đơn mới trên thiết bị này. Trình duyệt cần anh bật
                 âm thanh bằng thao tác chạm; khi ứng dụng đóng, thông báo nền cần Web Push.</Text>
-              <Action label={chimeEnabled ? "Tắt chuông báo đơn" : "Bật chuông báo đơn"}
-                secondary={!chimeEnabled} onPress={() => {
-                  onChimeChange(!chimeEnabled);
-                  if (!chimeEnabled) playOrderChime();
-                }} />
+              <View style={s.toggleRow}>
+                <View style={s.toggleCopy}>
+                  <Text style={s.toggleTitle}>Chuông báo đơn mới</Text>
+                  <Text style={s.note}>{chimeEnabled ? "Đang bật trên thiết bị này" : "Đang tắt trên thiết bị này"}</Text>
+                </View>
+                <StatusSwitch value={chimeEnabled} busy={chimePending} label="Chuông báo đơn mới"
+                  onValueChange={next => {
+                    onChimeChange(next);
+                    if (next) playOrderChime();
+                  }} />
+              </View>
+              {!!chimeError && <Notice text={chimeError} error />}
               <Text style={s.note}>Đơn chờ lâu vẫn được đánh dấu khi bật lại ứng dụng.</Text>
             </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
@@ -137,6 +146,9 @@ const s = StyleSheet.create({
   page: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 18, gap: 6 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 17, color: c.secondary },
+  toggleRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  toggleCopy: { flex: 1, gap: 3 },
+  toggleTitle: { fontSize: font.action, fontWeight: "700", color: c.ink },
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4, marginTop: 5 },
   tile: { width: "33.3333%", minHeight: adminDensity.settingTile,
     paddingHorizontal: 4, paddingVertical: 5,

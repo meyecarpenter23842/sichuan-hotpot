@@ -176,7 +176,7 @@ try {
   });
   await page.getByRole("button", { name: "Mở thiết lập" }).click();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
-  await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
+  await page.getByRole("switch", { name: "Mở cửa Thứ hai" }).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
   await page.getByRole("button", { name: "Giờ mở Thứ hai" }).waitFor();
   assert.match(await page.getByRole("button", { name: "Giờ mở Thứ hai" }).innerText(), /08:00/);
@@ -188,7 +188,7 @@ try {
   await page.getByRole("button", { name: "Chọn phút 15" }).click();
   await page.getByRole("button", { name: "Áp dụng giờ" }).click();
   // A second opened day must not silently invalidate the entire weekly form.
-  await page.getByRole("button", { name: "Nghỉ" }).nth(1).click();
+  await page.getByRole("switch", { name: "Mở cửa Thứ ba" }).click();
   await page.getByRole("button", { name: "Giờ mở Thứ ba" }).waitFor();
   await page.getByRole("button", { name: "Giờ đóng Thứ ba" }).waitFor();
   await page.getByRole("button", { name: "Lưu lịch cửa hàng" }).click();
