@@ -1080,7 +1080,15 @@ function CustomerApp() {
             )}
             {(item.modifierGroups ?? []).map((group: ModifierGroup) => (
               <View key={group.id} style={styles.group}>
-                <Text style={styles.sectionTitle}>{group.name}</Text>
+                <View style={{flexDirection:"row",alignItems:"center",gap:9}}>
+                  {safeProductImageUrl(group.imageKey)
+                    ? <Image source={{uri:safeProductImageUrl(group.imageKey)!}}
+                        style={{width:38,height:38,borderRadius:7}} accessibilityLabel={"Ảnh nhóm "+group.name}/>
+                    : <View style={{width:38,height:38,borderRadius:7,
+                        backgroundColor:"#EFF0F3",justifyContent:"center",alignItems:"center"}}>
+                        <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
+                  <Text style={styles.sectionTitle}>{group.name}</Text>
+                </View>
                 <Text style={styles.muted}>{group.minSelect > 0 ? "Bắt buộc chọn tối thiểu " + group.minSelect : "Tùy chọn"} · Tối đa {group.maxSelect}</Text>
                 {group.options.map(option => {
                   const selected = selectedModifierIds.includes(option.id);
@@ -1101,6 +1109,13 @@ function CustomerApp() {
                         return [...current, option.id];
                       });
                     }}>
+                    {safeProductImageUrl(option.imageKey)
+                      ? <Image source={{uri:safeProductImageUrl(option.imageKey)!}}
+                          style={{width:40,height:40,borderRadius:8,marginRight:5}}
+                          accessibilityLabel={"Ảnh topping "+option.name}/>
+                      : <View style={{width:40,height:40,borderRadius:8,marginRight:5,
+                          backgroundColor:"#F1F2F4",alignItems:"center",justifyContent:"center"}}>
+                          <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
                     <Text style={styles.optionText}>{selected ? "◉" : "◯"} {option.name}{option.isAvailable ? "" : " · Hết"}</Text>
                     <Text style={styles.optionPrice}>{option.priceDeltaVnd ? "+ " + vnd(option.priceDeltaVnd) : "0 ₫"}</Text>
                   </Pressable>;
