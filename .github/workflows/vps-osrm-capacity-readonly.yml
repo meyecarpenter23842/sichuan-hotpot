@@ -1,0 +1,64 @@
+name: OSRM VPS capacity read-only (owner)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/audit-hotpot-osrm-capacity' &&
+      github.actor == 'meyecarpenter23842'
+    runs-on: ubuntu-latest
+    environment: production-api
+    timeout-minutes: 5
+    env:
+      VPS_HOST: ${ vars.VPS_HOST }}
+      VPS_PORT: ${ vars.VPS_PORT }}
+      VPS_USER: ${ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Read bounded resource and service summary only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
+          echo "::add-mask::$VPS_HOST"
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/hosts"
+          chmod 600 "$RUNNER_TEMP/key" "$RUNNER_TEMP/hosts"
+          ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/key" -o IdentitiesOnly=yes \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/hosts" -o ConnectTimeout=10 \
+            "$VPS_USER@$VPS_HOST" 'sudo -n /usr/bin/python3 -' \
+            < infra/vps/hotpot-osrm-capacity.py > "$RUNNER_TEMP/result" 2>/dev/null
+          python3 - "$RUNNER_TEMP/result" <<'PY'
+          import re,sys
+          rows=open(sys.argv[1]).read().splitlines()
+          allowed={"architecture","cpu_count","memtotal_mib","memavailable_mib","swaptotal_mib",
+                   "swapfree_mib","osrm_volume_free_mib","root_volume_free_mib",
+                   "hotpot_api","postgresql","docker","containerd","api_port","postgres_port",
+                   "osrm_port","full_vietnam_on_vps_preprocess_gate","assessment"}
+          data={}
+          for row in rows:
+              name, sep, value = row.partition("=")
+              if not sep or name not in allowed or name in data or not re.fullmatch(r"[A-Za-z0-9_]+",value):
+                  raise SystemExit("Invalid capacity response (withheld)")
+              data[name]=value
+          if set(data)!=allowed or data["assessment"]!="READ_ONLY":
+              raise SystemExit("Incomplete capacity response (withheld)")
+          for name in sorted(data): print(name+"="+data[name])
+          PY
+      - name: Remove temporary SSH files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/key" "$RUNNER_TEMP/hosts" "$RUNNER_TEMP/result"
