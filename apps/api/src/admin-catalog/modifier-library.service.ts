@@ -61,7 +61,7 @@ export class ModifierLibraryService {
       sortOrder: input.sortOrder ?? current.sortOrder };
     this.bounds(merged);
     if (input.isAvailable === true) {
-      if (!current.imageKey || current.options.length < merged.minSelect
+      if (!current.imageKey || current.options.length === 0 || current.options.length < merged.minSelect
         || current.options.filter(o => o.isAvailable).length < merged.minSelect
         || current.options.some(o => o.isAvailable && !o.imageKey)) {
         throw new ConflictException("GROUP_REQUIRES_IMAGES_AND_VALID_OPTIONS");

@@ -14,6 +14,7 @@ import { prepareProductImage } from "./prepare-product-image";
 import { SharedModifierLibraryPanel, ProductGroupAssignmentModal } from "./SharedModifierLibraryPanel";
 import { StatusSwitch } from "./StatusSwitch";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
@@ -329,9 +330,25 @@ export function CatalogPanel({ catalog, token, reload }: {
         if(!["image/png","image/jpeg","image/webp"].includes(mime)){
           setError("Ảnh được chọn không hỗ trợ. Hãy chọn PNG hoặc JPEG.");return;
         }
-        const raw=await fetch(asset.uri);
-        if(!raw.ok)throw Error("Không đọc được ảnh trong thư viện thiết bị.");
-        await uploadCatalogMedia(kind,itemId,await raw.blob(),mime);
+        const info=await FileSystem.getInfoAsync(asset.uri);
+        const byteSize=info.exists?info.size:undefined;
+        if(!byteSize||byteSize>2097152){
+          setError("Ảnh trên thiết bị phải nhỏ hơn 2MB. Hãy chọn ảnh khác.");return;
+        }
+        if(busyRef.current)return;
+        busyRef.current=true;setBusy(true);setError("");setNotice("");
+        try{
+          const endpoint=root+"/media/"+kind+"/"+itemId;
+          const ticket=await request<{key:string;uploadUrl:string;contentType:string}>(
+            endpoint+"/ticket",token,"POST",{contentType:mime,byteSize});
+          const sent=await FileSystem.uploadAsync(ticket.uploadUrl,asset.uri,{
+            httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
+            headers:{"Content-Type":ticket.contentType},
+          });
+          if(sent.status<200||sent.status>=300)throw Error("R2 từ chối ảnh. Kiểm tra kết nối.");
+          await request(endpoint+"/attach",token,"POST",{key:ticket.key});
+          await reload();setNotice("Đã lưu ảnh từ thư viện Android.");
+        }finally{busyRef.current=false;setBusy(false);}
       })().catch(e=>setError(e instanceof Error?e.message:"Không thể chọn ảnh trên Android."));
       return;
     }
