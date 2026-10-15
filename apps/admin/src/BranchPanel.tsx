@@ -186,9 +186,9 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
         onChangeText={setLng} placeholder="106.1234567" /></View>
     </View>
     {(() => {
-      const gap = approximateWardDistanceKm({
+      const gap = lat && lng ? approximateWardDistanceKm({
         catalogVersion: ADMIN_CATALOG_VERSION, provinceCode, wardCode,
-      }, Number(lat), Number(lng));
+      }, Number(lat), Number(lng)) : null;
       return gap !== null && gap > 30
         ? <Notice text="GPS có vẻ xa khu vực đã chọn. Hãy xác minh ghim thủ công; cảnh báo này không thay đổi phí giao." />
         : null;
