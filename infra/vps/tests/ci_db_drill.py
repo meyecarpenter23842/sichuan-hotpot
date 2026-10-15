@@ -112,6 +112,10 @@ with tempfile.TemporaryDirectory(prefix='hotpot-ci-drill-') as directory:
         with tarfile.open(archive, 'w:gz') as output:
             for name in sorted(release.REQUIRED):
                 output.add(root / name, arcname=name, recursive=False)
+            # Release manifest discovers reviewed SQL files from the archive.
+            # Include all actual migrations; don't add a hardcoded allowlist.
+            for sql_file in sorted((root / 'apps/api/prisma/migrations').glob('*/migration.sql')):
+                output.add(sql_file, arcname=str(sql_file.relative_to(root)), recursive=False)
             output.add(root / 'packages/shared/dist', arcname='packages/shared/dist')
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         db.stage('a' * 40, digest)
@@ -132,5 +136,7 @@ with tempfile.TemporaryDirectory(prefix='hotpot-ci-drill-') as directory:
         assert not (db.CONFIG / 'migration-approval.json').exists()
         assert db.quiet_sql("SELECT count(*) FROM pg_roles WHERE rolname LIKE 'hotpot_migrate_%' AND rolcanlogin;")[-1] == '0'
         assert db.quiet_sql("SELECT count(*) FROM pg_tables WHERE schemaname='public';", proof['restore_database'])[-1] == '0'
-        assert release.db_schema_ready({'DATABASE_URL': 'postgresql://hotpot_app:ci_app_only@127.0.0.1:5432/hotpot'})
+        assert release.db_schema_ready(
+            {'DATABASE_URL': 'postgresql://hotpot_app:ci_app_only@127.0.0.1:5432/hotpot'},
+            release.migration_names(release.archive_files(archive.read_bytes())))
         print('disposable_CI_encrypted_backup_restore_migration=PASS;production_touched=no')

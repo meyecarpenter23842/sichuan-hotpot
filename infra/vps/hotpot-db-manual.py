@@ -222,7 +222,7 @@ def workflow_authorize(sha, digest, run_id):
     files = frozen_source(sha, digest, release)
     require({name for name in files if name.endswith('/migration.sql')} == {
         'apps/api/prisma/migrations/' + name + '/migration.sql'
-        for name in release.MIGRATIONS}, 'unreviewed_migration_source')
+        for name in release.migration_names(files)}, 'unreviewed_migration_source')
     require(not (CONFIG / 'migration-approval.json').exists(), 'existing_migration_approval')
     candidates = []
     for path in BACKUPS.glob('*.json'):
@@ -256,7 +256,7 @@ def migration(sha, digest, backup_id, apply=False):
     release = release_module()
     files = frozen_source(sha, digest, release)
     require({name for name in files if name.endswith('/migration.sql')} == {
-        'apps/api/prisma/migrations/' + name + '/migration.sql' for name in release.MIGRATIONS},
+        'apps/api/prisma/migrations/' + name + '/migration.sql' for name in release.migration_names(files)},
         'only_reviewed_initial_migrations_allowed')
     if not apply:
         print('migration_preflight=PASS;production_migration_run=no')
@@ -308,7 +308,7 @@ def migration(sha, digest, backup_id, apply=False):
         call(base + ['status', '--schema', schema], env=env, cwd=temporary)
         call(base + ['diff', '--from-schema-datasource', schema,
                      '--to-schema-datamodel', schema, '--exit-code'], env=env, cwd=temporary)
-        require(release.db_schema_ready(release.environment()), 'post_migration_history_failed')
+        require(release.db_schema_ready(release.environment(), release.migration_names(files)), 'post_migration_history_failed')
         require(quiet_sql('SELECT count(*) FROM public."User";', 'hotpot')[-1] == '0'
                 and quiet_sql('SELECT count(*) FROM public."Order";', 'hotpot')[-1] == '0',
                 'initial_data_reconciliation_failed')
