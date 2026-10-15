@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { request } from "./api";
-import { Action, Field, Notice, Pill } from "./ui";
+import { Action, Field, Notice } from "./ui";
+import { StatusSwitch } from "./StatusSwitch";
 import { c, font } from "./theme";
 
 interface Policy {
@@ -66,12 +67,11 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     return () => { live = false; };
   }, [branchId, token]);
 
+  const hasChanges = accepting !== (current?.acceptingOrders ?? false) ||
+    labels.some(({ key }) => numbers[key] !== (current ? showNumber(key, current[key]) : ""));
   useEffect(() => {
-    if (loading) return;
-    const changed = accepting !== (current?.acceptingOrders ?? false) ||
-      labels.some(({ key }) => numbers[key] !== (current ? showNumber(key, current[key]) : ""));
-    onDirtyChange?.(changed);
-  }, [numbers, accepting, loading, current, onDirtyChange]);
+    if (!loading) onDirtyChange?.(hasChanges);
+  }, [hasChanges, loading, onDirtyChange]);
 
   async function save() {
     if (saving) return;
@@ -98,6 +98,9 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
       const saved = await request<Policy>("/admin/branches/" + branchId + "/delivery-policy",
         token, "POST", payload);
       setCurrent(saved);
+      setAccepting(saved.acceptingOrders);
+      setNumbers(Object.fromEntries(labels.map(({ key }) => [key,
+        showNumber(key, saved[key])])) as Record<NumericKey, string>);
       setSuccess("Đã lưu phiên bản " + saved.version + " của chính sách giao hàng.");
     } catch (e) { setError(e instanceof Error ? e.message : "Không lưu được phí giao."); }
     finally { setSaving(false); }
@@ -112,8 +115,16 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
       {mode === "orders" ? <>
         <Text style={st.note}>Bật nhận đơn chỉ khi cửa hàng có thể xử lý đơn mới. Thao tác này được lưu thành phiên bản chính sách mới.</Text>
         <View style={st.row}>
-          <Pill label="Tạm dừng" active={!accepting} onPress={() => setAccepting(false)} />
-          <Pill label="Nhận đơn" active={accepting} onPress={() => setAccepting(true)} />
+          <View style={st.rowLabel}>
+            <Text style={st.switchTitle}>Cho phép nhận đơn</Text>
+            <Text style={st.note}>{accepting ? "Đang chọn nhận đơn" : "Đang chọn tạm dừng"}</Text>
+          </View>
+          <StatusSwitch value={accepting} label="Cho phép nhận đơn"
+            hint="Thay đổi chỉ có hiệu lực sau khi lưu chính sách"
+            busy={saving} disabled={!current || (!active && !accepting)}
+            onValueChange={next => {
+              setAccepting(next); setError(""); setSuccess("");
+            }} />
         </View>
       </> : <>
         <Text style={st.note}>Nhập khoảng cách theo km; hệ thống lưu theo mét. Phí và điều kiện được lưu bằng VND nguyên.</Text>
@@ -123,6 +134,8 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
           value={numbers[key]} onChangeText={v => setNumbers(old => ({ ...old, [key]: v }))} />)}
       </>}
       {mode === "orders" && !current && <Notice error text="Cần thiết lập Phí giao trước khi bật nhận đơn." />}
+      {mode === "orders" && !active && <Notice text="Chi nhánh đang tạm dừng. Không thể bật nhận đơn đến khi kích hoạt chi nhánh." />}
+      {hasChanges && <Notice text="Thay đổi chưa lưu trên máy chủ. Trạng thái thực tế vẫn theo chính sách hiện tại." />}
       {!!error && <Notice text={error} error />}
       {!!success && <Notice text={success} />}
       <Action disabled={saving || (mode === "orders" && !current)} label={saving ? "Đang lưu..." : mode === "orders" ? "Lưu trạng thái nhận đơn" : "Lưu phí giao"}
@@ -134,5 +147,7 @@ const st = StyleSheet.create({
   panel: { gap: 10 },
   title: { fontSize: font.section, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 18, color: c.secondary },
-  row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  row: { minHeight: 52, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "space-between" },
+  rowLabel: { flex: 1, gap: 3 },
+  switchTitle: { fontSize: font.action, fontWeight: "700", color: c.ink },
 });
