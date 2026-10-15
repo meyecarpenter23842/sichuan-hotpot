@@ -2,7 +2,7 @@ import {
   BadRequestException, ForbiddenException, Injectable, NotFoundException,
   ServiceUnavailableException, UnprocessableEntityException,
 } from "@nestjs/common";
-import { quoteDelivery, DeliveryQuoteError } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { RoadRoutingService } from "./road-routing.service";
@@ -49,7 +49,8 @@ export class DeliveryQuoteService {
       }),
       db.address.findFirst({
         where: { id: input.addressId, userId: principal.id },
-        select: { id: true, latitude: true, longitude: true },
+        select: { id: true, latitude: true, longitude: true,
+          catalogVersion: true, provinceCode: true, wardCode: true },
       }),
       db.deliveryPolicyVersion.findFirst({
         where: { branchId: input.branchId }, orderBy: { version: "desc" },
@@ -69,6 +70,23 @@ export class DeliveryQuoteService {
     if (!policy.acceptingOrders) throw new UnprocessableEntityException({ code: "STORE_CLOSED" });
 
     const { subtotalVnd: subtotal } = priceCart(input.items, products);
+    if (policy.pricingMode === "ZONE") {
+      try {
+        const zones = await db.deliveryZone.findMany({ where: { policyVersionId: policy.id } });
+        const priced = quoteZoneDelivery(subtotal, address, zones, {
+          versionId: policy.id, acceptingOrders: policy.acceptingOrders,
+          minSubtotalVnd: policy.minSubtotalVnd,
+          freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
+        });
+        return { branchId: branch.id, addressId: address.id, ...priced,
+          quoteExpiresAt: new Date(Date.now() + 120_000).toISOString() };
+      } catch (error) {
+        if (error instanceof DeliveryQuoteError) {
+          throw new UnprocessableEntityException({ code: error.code });
+        }
+        throw error;
+      }
+    }
     const location = (p: { latitude: { toString(): string }; longitude: { toString(): string } }) => ({
       latitude: Number(p.latitude.toString()), longitude: Number(p.longitude.toString()),
     });
@@ -77,13 +95,15 @@ export class DeliveryQuoteService {
     try {
       const quote = quoteDelivery(subtotal, roadDistanceMeters, {
         versionId: policy.id, acceptingOrders: policy.acceptingOrders,
-        baseMeters: policy.baseMeters, baseFeeVnd: policy.baseFeeVnd,
-        extraStepMeters: policy.extraStepMeters, extraStepFeeVnd: policy.extraStepFeeVnd,
-        maxRoadMeters: policy.maxRoadMeters, minSubtotalVnd: policy.minSubtotalVnd,
+        baseMeters: policy.baseMeters ?? -1, baseFeeVnd: policy.baseFeeVnd ?? -1,
+        extraStepMeters: policy.extraStepMeters ?? -1, extraStepFeeVnd: policy.extraStepFeeVnd ?? -1,
+        maxRoadMeters: policy.maxRoadMeters ?? -1, minSubtotalVnd: policy.minSubtotalVnd,
         freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
       });
       return {
         branchId: branch.id, addressId: address.id, ...quote,
+        pricingMode: "DISTANCE" as const,
+        zoneId: null, zoneName: null, provinceCode: null, wardCode: null, catalogVersion: null,
         quoteExpiresAt: new Date(Date.now() + 120_000).toISOString(),
       };
     } catch (error) {
