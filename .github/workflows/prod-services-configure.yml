@@ -85,7 +85,36 @@ jobs:
           if ! ssh "${ssh_args[@]}" "$VPS_USER@$VPS_HOST" \
               'sudo -n /usr/bin/python3 /run/hotpot-services-configure.py --apply' \
               < "$RUNNER_TEMP/hotpot-config.json" > "$RUNNER_TEMP/service-results" 2>/dev/null; then
-            echo "::error::Provider or health check failed; no secret values logged. Production env unchanged or rolled back."
+            # Print ONLY allowlisted remote codes. Never echo stdout, signed URLs,
+            # SSH stderr, HTTP bodies, exception messages or secret values.
+            python3 - "$RUNNER_TEMP/service-results" <<'PY'
+          import re,sys
+          stages={"VALIDATE","R2_PROBE","API_CONFIGURATION"}
+          reasons={
+            "unauthorized_execution","invalid_payload","incorrect_r2_account",
+            "incorrect_r2_bucket","invalid_secret_field","control_in_secret_field",
+            "invalid_r2_access_id","invalid_r2_secret","unsafe_environment_file",
+            "invalid_existing_environment","unexpected_service_bind",
+            "r2_provider_unavailable","r2_cleanup_unavailable","api_not_ready",
+            "rolled_back_after_failed_health",
+          }
+          permitted={"r2_product_upload_probe=PASS","configuration=BLOCKED"}
+          output=[]
+          for line in open(sys.argv[1],encoding="utf8",errors="ignore"):
+              item=line.strip()
+              key,sep,value=item.partition("=")
+              if item in permitted:
+                  output.append(item)
+              elif sep and key=="blocked_stage" and value in stages:
+                  output.append(item)
+              elif sep and key=="provider_http_status" and re.fullmatch(r"4[0-9][0-9]|5[0-9][0-9]",value):
+                  output.append(item)
+              elif sep and key=="block_reason" and value in reasons:
+                  output.append(item)
+          for item in output[:8]:
+              print(item)
+          PY
+            echo "::error::R2 provider or API configuration blocked. Production env unchanged or rolled back."
             exit 1
           fi
           python3 - "$RUNNER_TEMP/service-results" <<'PY'
