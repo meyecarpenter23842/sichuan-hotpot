@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
@@ -141,6 +141,7 @@ export class OrdersService {
           let currentFee;
           try {
             if (policy.pricingMode === "ZONE") {
+              if (!validateAdministrativeSelection(address)) throw new ConflictException("QUOTE_STALE_RETRY");
               const zones = await tx.deliveryZone.findMany({
                 where: { policyVersionId: policy.id },
               });

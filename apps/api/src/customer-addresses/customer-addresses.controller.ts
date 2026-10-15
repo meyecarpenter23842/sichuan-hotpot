@@ -5,6 +5,7 @@ import {
 import { IsOptional, IsString, Length, Matches } from "class-validator";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { validateAdministrativeSelection } from "@hotpot/shared";
 
 export class CreateAddressInput {
   @IsString() @Length(1, 100)
@@ -64,7 +65,7 @@ export class CustomerAddressesController {
     }
     const phone = input.phone.startsWith("0") ? "+84" + input.phone.slice(1) : input.phone;
     if ([input.catalogVersion, input.provinceCode, input.wardCode].some(Boolean)
-      && ![input.catalogVersion, input.provinceCode, input.wardCode].every(Boolean)) {
+      && !validateAdministrativeSelection(input)) {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
     }
     // Atomic profile phone + address save; only verified JWT owner can create.
@@ -101,7 +102,7 @@ export class CustomerAddressesController {
     if (!label || line1.length < 8) throw new BadRequestException("Invalid address label or street");
     const phone = input.phone.startsWith("0") ? "+84" + input.phone.slice(1) : input.phone;
     if ([input.catalogVersion, input.provinceCode, input.wardCode].some(Boolean)
-      && ![input.catalogVersion, input.provinceCode, input.wardCode].every(Boolean)) {
+      && !validateAdministrativeSelection(input)) {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
     }
     // Update only this customer's existing record. Never create a duplicate during edit.

@@ -2,7 +2,7 @@ import {
   BadRequestException, ForbiddenException, Injectable, NotFoundException,
   ServiceUnavailableException, UnprocessableEntityException,
 } from "@nestjs/common";
-import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { RoadRoutingService } from "./road-routing.service";
@@ -71,6 +71,9 @@ export class DeliveryQuoteService {
 
     const { subtotalVnd: subtotal } = priceCart(input.items, products);
     if (policy.pricingMode === "ZONE") {
+      if (!validateAdministrativeSelection(address)) {
+        throw new UnprocessableEntityException({ code: "ADDRESS_REGION_UNCONFIRMED" });
+      }
       try {
         const zones = await db.deliveryZone.findMany({ where: { policyVersionId: policy.id } });
         const priced = quoteZoneDelivery(subtotal, address, zones, {

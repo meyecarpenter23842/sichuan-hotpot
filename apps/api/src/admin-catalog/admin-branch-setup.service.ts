@@ -4,17 +4,24 @@ import {
 import { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { validateAdministrativeSelection } from "@hotpot/shared";
 
 interface BranchDetails {
   name: string;
   code: string;
   address: string;
+  catalogVersion?: string | null;
+  provinceCode?: string | null;
+  wardCode?: string | null;
   latitude: number;
   longitude: number;
 }
 interface BranchUpdate {
   name?: string;
   address?: string;
+  catalogVersion?: string | null;
+  provinceCode?: string | null;
+  wardCode?: string | null;
   latitude?: number;
   longitude?: number;
   isActive?: boolean;
@@ -31,6 +38,8 @@ export class AdminBranchSetupService {
   }
 
   private details(input: Partial<BranchDetails>): Partial<BranchDetails> {
+    if ([input.catalogVersion, input.provinceCode, input.wardCode].some(Boolean)
+      && !validateAdministrativeSelection(input)) throw new BadRequestException("BRANCH_REGION_INVALID");
     if ((input.name !== undefined && input.name.trim().length < 2) ||
         (input.address !== undefined && input.address.trim().length < 10)) {
       throw new BadRequestException("BRANCH_NAME_OR_ADDRESS_INVALID");
@@ -39,6 +48,9 @@ export class AdminBranchSetupService {
       ...(input.name === undefined ? {} : { name: input.name.trim() }),
       ...(input.code === undefined ? {} : { code: input.code.trim() }),
       ...(input.address === undefined ? {} : { address: input.address.trim() }),
+      ...(input.catalogVersion === undefined ? {} : { catalogVersion: input.catalogVersion }),
+      ...(input.provinceCode === undefined ? {} : { provinceCode: input.provinceCode }),
+      ...(input.wardCode === undefined ? {} : { wardCode: input.wardCode }),
       ...(input.latitude === undefined ? {} : { latitude: input.latitude }),
       ...(input.longitude === undefined ? {} : { longitude: input.longitude }),
     };
@@ -53,6 +65,7 @@ export class AdminBranchSetupService {
         data: { ...details, isActive: false,
           memberships: { create: { userId, role: "OWNER" } } },
         select: { id: true, code: true, name: true, address: true,
+          catalogVersion: true, provinceCode: true, wardCode: true,
           latitude: true, longitude: true, isActive: true },
       });
     } catch (error) {
@@ -81,6 +94,7 @@ export class AdminBranchSetupService {
     return this.prisma.database.branch.update({
       where: { id: branchId }, data: { isActive },
       select: { id: true, code: true, name: true, address: true,
+        catalogVersion: true, provinceCode: true, wardCode: true,
         latitude: true, longitude: true, isActive: true },
     });
   }
@@ -106,6 +120,7 @@ export class AdminBranchSetupService {
         data: { ...this.details(input), ...(input.isActive === undefined ? {} :
           { isActive: input.isActive }) },
         select: { id: true, code: true, name: true, address: true,
+          catalogVersion: true, provinceCode: true, wardCode: true,
           latitude: true, longitude: true, isActive: true },
       });
     } catch (error) {
