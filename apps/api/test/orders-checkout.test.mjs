@@ -171,3 +171,71 @@ test("QR is refused when payee not configured, and COD remains available", async
     assert.equal(cod.body.paymentMethod, "COD");
   } finally { process.env.VIETQR_BANK_BIN = saved; }
 });
+
+test("L08 rejects unavailable products and reprices new orders without changing history", async () => {
+  const original = await db.order.findFirstOrThrow({
+    where: { customerId: userId, idempotencyKey: key },
+    include: { items: true },
+  });
+  assert.equal(original.subtotalVnd, 100000);
+  assert.equal(original.items[0].unitPriceVnd, 50000);
+  await db.product.update({ where: { id: productId }, data: {
+    isAvailable: false, priceVnd: 65000,
+  } });
+  const refusedKey = randomUUID();
+  try {
+    await request(orderBody(refusedKey)).expect(422);
+    assert.equal(await db.order.count({ where: { idempotencyKey: refusedKey } }), 0);
+    await db.product.update({ where: { id: productId }, data: { isAvailable: true } });
+    const newKey = randomUUID();
+    const updated = await request(orderBody(newKey)).expect(201);
+    assert.equal(updated.body.totalVnd, 145000, "New server price 2 x 65000 plus 15000 road fee");
+    const newer = await db.order.findFirstOrThrow({
+      where: { customerId: userId, idempotencyKey: newKey },
+      include: { items: true },
+    });
+    assert.equal(newer.subtotalVnd, 130000);
+    assert.equal(newer.items[0].unitPriceVnd, 65000);
+    const historical = await db.order.findUniqueOrThrow({
+      where: { id: original.id }, include: { items: true },
+    });
+    assert.equal(historical.totalVnd, original.totalVnd);
+    assert.equal(historical.subtotalVnd, 100000);
+    assert.equal(historical.items[0].unitPriceVnd, 50000);
+  } finally {
+    await db.product.update({ where: { id: productId }, data: {
+      isAvailable: true, priceVnd: 50000,
+    } });
+  }
+});
+
+test("L08 rejects an option or size turned off before checkout, without inserting an order", async () => {
+  const variant = await db.productVariant.create({ data: {
+    productId, name: "L08 large portion", priceDeltaVnd: 15000, isAvailable: true,
+  } });
+  const group = await db.modifierGroup.create({ data: {
+    productId, name: "L08 toppings", minSelect: 0, maxSelect: 1,
+  } });
+  const option = await db.modifierOption.create({ data: {
+    groupId: group.id, name: "L08 mushroom", priceDeltaVnd: 8000, isAvailable: true,
+  } });
+  const cart = (idempotencyKey, modifierIds = [option.id], variantId = variant.id) => ({
+    ...orderBody(idempotencyKey),
+    items: [{ productId, variantId, modifierIds, quantity: 2 }],
+  });
+  const accepted = await request(cart(randomUUID())).expect(201);
+  assert.equal(accepted.body.totalVnd, 161000, "2 x (50000 + 15000 + 8000) + 15000");
+  await db.modifierOption.update({ where: { id: option.id }, data: { isAvailable: false } });
+  try {
+    const blockedKey = randomUUID();
+    await request(cart(blockedKey)).expect(422);
+    assert.equal(await db.order.count({ where: { idempotencyKey: blockedKey } }), 0);
+    await db.productVariant.update({ where: { id: variant.id }, data: { isAvailable: false } });
+    const variantKey = randomUUID();
+    await request(cart(variantKey, [])).expect(422);
+    assert.equal(await db.order.count({ where: { idempotencyKey: variantKey } }), 0);
+  } finally {
+    await db.modifierOption.update({ where: { id: option.id }, data: { isAvailable: true } });
+    await db.productVariant.update({ where: { id: variant.id }, data: { isAvailable: true } });
+  }
+});
