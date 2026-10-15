@@ -154,14 +154,15 @@ jobs:
           }
           # Update only an explicitly recognized reviewed helper to support P4.2.
           expected_previous="$(git show 86239ea349493bd3a5d2e7c1ef61ea16f3c5b8d9:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
+          expected_p42="$(git show 28d7ef62d0d1da4a8fd84f21f0f8c713488968a0:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
           expected_helper="$(sha256sum infra/vps/hotpot-api-release-manual.py | awk '{print $1}')"
           actual_helper="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             'sudo -n sha256sum /usr/local/sbin/hotpot-api-release-manual' 2>/dev/null | awk '{print $1}')" || exit 1
-          if [[ "$actual_helper" != "$expected_previous" && "$actual_helper" != "$expected_helper" ]]; then
+          if [[ "$actual_helper" != "$expected_previous" && "$actual_helper" != "$expected_p42" && "$actual_helper" != "$expected_helper" ]]; then
             echo "::error::Unknown VPS release helper; stopping before migration."
             exit 1
           fi
-          if [[ "$actual_helper" == "$expected_previous" && "$actual_helper" != "$expected_helper" ]]; then
+          if [[ "$actual_helper" != "$expected_helper" ]]; then
             helper_tmp="/home/ubuntu/.hotpot-helper-$REQUESTED_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.py"
             ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
               "umask 077 && test ! -e '$helper_tmp' && cat > '$helper_tmp'" \
@@ -188,7 +189,7 @@ jobs:
               echo "::error::Protected release archive validation failed; API unchanged."; exit 1;
             }
           grep -Fqx 'archive_validation=PASS' <<< "$verify" || exit 1
-          # Live P4.2 migration requires R2 encrypted backup and isolated restore.
+          # Live L06 migration requires R2 encrypted backup and isolated restore.
           p42_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/bin/python3 - --check '$REQUESTED_SHA' '$digest'" \
             < infra/vps/hotpot-p42-operations.py 2>&1)" || {
