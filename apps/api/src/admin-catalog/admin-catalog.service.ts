@@ -115,7 +115,11 @@ export class AdminCatalogService {
       _sum: { quantity: true },
     });
     const soldById = new Map(sold.map(row => [row.productId, row._sum.quantity ?? 0]));
-    return { ...snapshot, categories: snapshot.categories.map(category => ({
+    return { ...snapshot,
+      modifierLibrary: snapshot.modifierLibrary.map(group => ({
+        ...group, usedByProductIds: group.assignments.map(assignment => assignment.productId),
+      })),
+      categories: snapshot.categories.map(category => ({
       ...category, products: category.products.map(product => ({
         ...product, soldCount: soldById.get(product.id) ?? 0,
         modifierGroups: [...new Map([

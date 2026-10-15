@@ -11,10 +11,12 @@ export interface Branch { id: string; code: string; name: string; address: strin
   latitude: string | number; longitude: string | number; isActive: boolean;
   catalogVersion?: string | null; provinceCode?: string | null; wardCode?: string | null;
   staffRole?: StaffRole }
-export interface CatalogOption { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean }
+export interface CatalogOption { id: string; name: string; priceDeltaVnd: number;
+  isAvailable: boolean; imageKey?: string | null }
 export type CatalogVariant = CatalogOption;
 export interface CatalogGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
+  isAvailable: boolean; imageKey?: string | null; usedByProductIds?: string[];
   options: CatalogOption[];
 }
 export interface CatalogProduct {
@@ -23,13 +25,15 @@ export interface CatalogProduct {
   imageKey: string | null; variants: CatalogVariant[]; modifierGroups: CatalogGroup[];
 }
 export interface CatalogCategory {
-  id: string; name: string; sortOrder: number; products: CatalogProduct[];
+  id: string; name: string; sortOrder: number; imageKey?: string | null;
+  products: CatalogProduct[];
 }
 export interface OpeningHour {
   weekday: number; opensAt: string; closesAt: string; isClosed: boolean;
 }
 export interface AdminCatalog extends Branch {
-  categories: CatalogCategory[]; openingHours: OpeningHour[]; catalogRevision: number;
+  categories: CatalogCategory[]; modifierLibrary?: CatalogGroup[];
+  openingHours: OpeningHour[]; catalogRevision: number;
 }
 const REFRESH_KEY = "sichuan.admin.refresh.v1";
 const WEB_SESSION_MARKER = "sichuan.admin.pwa.session-present.v1";
@@ -125,7 +129,7 @@ export async function forgetSession(token: string | null): Promise<void> {
   }
 }
 export function imageUrl(key: string | null): string | null {
-  if (!key || !/^products-image\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key)
+  if (!key || !(/^(?:products-image|catalog-media)\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key))
     || key.includes("..")) return null;
   return "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/" + key;
 }
