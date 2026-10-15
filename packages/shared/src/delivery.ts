@@ -165,6 +165,7 @@ export function quoteZoneDelivery(
   if (!found.length) throw new DeliveryQuoteError("ZONE_NOT_SERVED");
   if (found.length !== 1) throw new DeliveryQuoteError("INVALID_POLICY");
   const zone = found[0];
+  if (!zone) throw new DeliveryQuoteError("ZONE_NOT_SERVED");
   if (!validVnd(zone.feeVnd)) throw new DeliveryQuoteError("ZONE_RATE_MISSING");
   const freeDeliveryApplied = policy.freeDeliveryAtSubtotalVnd !== null
     && subtotalVnd >= policy.freeDeliveryAtSubtotalVnd;
