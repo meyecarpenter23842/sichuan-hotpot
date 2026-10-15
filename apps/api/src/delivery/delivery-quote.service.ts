@@ -44,8 +44,8 @@ export class DeliveryQuoteService {
     const db = this.prisma.database;
     const [branch, address, policy, products] = await Promise.all([
       db.branch.findFirst({
-        where: { id: input.branchId, isActive: true },
-        select: { id: true, latitude: true, longitude: true },
+        where: { id: input.branchId },
+        select: { id: true, isActive: true, latitude: true, longitude: true },
       }),
       db.address.findFirst({
         where: { id: input.addressId, userId: principal.id },
@@ -63,8 +63,10 @@ export class DeliveryQuoteService {
       }),
     ]);
     if (!branch) throw new NotFoundException("STORE_UNAVAILABLE");
+    if (!branch.isActive) throw new UnprocessableEntityException({ code: "STORE_CLOSED" });
     if (!address) throw new NotFoundException("ADDRESS_UNAVAILABLE");
     if (!policy) throw new ServiceUnavailableException("DELIVERY_POLICY_NOT_CONFIGURED");
+    if (!policy.acceptingOrders) throw new UnprocessableEntityException({ code: "STORE_CLOSED" });
 
     const { subtotalVnd: subtotal } = priceCart(input.items, products);
     const location = (p: { latitude: { toString(): string }; longitude: { toString(): string } }) => ({
