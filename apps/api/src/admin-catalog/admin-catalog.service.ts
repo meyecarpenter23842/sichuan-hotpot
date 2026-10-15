@@ -310,8 +310,7 @@ export class AdminCatalogService {
     await this.authorize(auth, branchId);
     await this.product(branchId, productId);
     return this.change(() => this.prisma.database.productVariant.create({
-      data: { ...input, name: input.name.trim(), productId, branchId,
-        assignments: { create: { productId, sortOrder: input.sortOrder } } },
+      data: { ...input, name: input.name.trim(), productId },
     }));
   }
   async updateVariant(auth: string | undefined, branchId: string, id: string,
@@ -336,7 +335,8 @@ export class AdminCatalogService {
     await this.product(branchId, productId);
     if (input.minSelect > input.maxSelect) throw new BadRequestException("INVALID_SELECTION_LIMIT");
     return this.change(() => this.prisma.database.modifierGroup.create({
-      data: { ...input, name: input.name.trim(), productId },
+      data: { ...input, name: input.name.trim(), productId, branchId,
+        assignments: { create: { productId, sortOrder: input.sortOrder } } },
     }));
   }
   async updateGroup(auth: string | undefined, branchId: string, id: string,
