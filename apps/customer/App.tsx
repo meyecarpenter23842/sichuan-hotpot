@@ -1010,6 +1010,7 @@ function CustomerApp() {
                   ))}
                 </ScrollView>
               ) : <Text style={styles.muted}>Chi nhánh đang được cập nhật.</Text>}
+              {menu && !menu.isActive && <Notice message="Quán hiện đã nghỉ. Bạn vẫn có thể xem món và thêm vào giỏ; đặt hàng sẽ mở lại khi quán hoạt động." />}
               <Field label="Tìm món ăn, trà sữa" value={search} onChangeText={setSearch}
                 placeholder="Nhập tên món bạn muốn tìm..." />
             </View>
