@@ -68,13 +68,13 @@ export function priceCart(
     const known = new Set<string>();
     const modifiers: { name: string; priceVnd: number }[] = [];
     const groups = [...new Map([
-      ...product.modifierGroups.filter(group => group.branchId === null)
+      ...product.modifierGroups.filter(group => group.branchId == null)
         .map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
-      ...product.modifierAssignments.map(assignment => {
+      ...(product.modifierAssignments ?? []).map(assignment => {
         const group = assignment.group;
         return [group.name + ":" + group.options.map(o => o.id).join(","), group] as const;
       }),
-    ]).values()].filter(group => group.isAvailable);
+    ]).values()].filter(group => group.isAvailable !== false);
     for (const group of groups) {
       const chosen = group.options.filter(option => selected.has(option.id));
       for (const option of group.options) known.add(option.id);
