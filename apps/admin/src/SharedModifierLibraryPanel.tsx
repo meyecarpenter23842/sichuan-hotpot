@@ -15,9 +15,10 @@ function Photo({ imageKey, label }: {imageKey:string|null|undefined;label:string
  return uri?<Image source={{uri}} accessibilityLabel={label} style={s.photo}/>
   :<View style={s.placeholder}><Text style={s.placeholderText}>Ảnh</Text></View>;
 }
-export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onAssign}:{
+export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onAssign}:{
  catalog:AdminCatalog;token:string;root:string;reload:()=>Promise<void>;
  onPickImage:(kind:"categories"|"groups"|"options",id:string)=>void;
+ onRemoveImage:(kind:"categories"|"groups"|"options",id:string)=>void;
  onAssign:(product:CatalogProduct)=>void;
 }) {
  const [expanded,setExpanded]=useState<string|null>(null);
@@ -27,6 +28,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const [notice,setNotice]=useState("");
  const [query,setQuery]=useState("");
  const [confirmImpact,setConfirmImpact]=useState(false);
+ const [pendingToggle,setPendingToggle]=useState<{kind:"group"|"option";id:string;enabled:boolean;usedBy:number}|null>(null);
  const products=catalog.categories.flatMap(cat=>cat.products);
  const groups=catalog.modifierLibrary??[];
  const visible=groups.filter(g=>(g.name+" "+g.options.map(o=>o.name).join(" "))
@@ -70,7 +72,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  }
  async function toggle(kind:"group"|"option",id:string,enabled:boolean,linked:number){
   if(busy)return;
-  if(enabled&&linked>1&&!confirmImpact){setEditing(null);setError("Xác nhận ảnh hưởng nhiều món: mở sửa nhóm trước, tích xác nhận và lưu.");return;}
+  if(linked>1){setPendingToggle({kind,id,enabled,usedBy:linked});return;}
   await call(kind==="group"?"/library/groups/"+id:"/library/options/"+id,
     "PATCH",{isAvailable:enabled});
  }
@@ -104,6 +106,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
     {open&&<View style={s.expanded}>
       <View style={s.actions}>
        <Action label="Ảnh nhóm" secondary onPress={()=>onPickImage("groups",group.id)}/>
+       {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>onRemoveImage("groups",group.id)}/>}
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
       <StatusSwitch label={"Hiển thị nhóm "+group.name} value={group.isAvailable}
@@ -119,6 +122,8 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
         <Pressable accessibilityRole="button" accessibilityLabel={"Ảnh topping "+option.name}
           style={s.iconAction} onPress={()=>onPickImage("options",option.id)}>
           <Text style={s.edit}>▧</Text></Pressable>
+        {!!option.imageKey&&<Pressable accessibilityRole="button" accessibilityLabel={"Gỡ ảnh topping "+option.name}
+          style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
         <StatusSwitch value={option.isAvailable} busy={busy}
           label={"Bán topping "+option.name}
           onValueChange={value=>void toggle("option",option.id,value,group.usedByProductIds?.length??0)}/>
@@ -133,6 +138,22 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
     <Text style={s.productName} numberOfLines={2}>{product.name}</Text>
     <Text style={s.edit}>{product.modifierGroups.length} nhóm ›</Text>
   </Pressable>)}
+  <Modal visible={pendingToggle!==null} transparent animationType="fade"
+    onRequestClose={()=>setPendingToggle(null)}>
+    <View style={s.backdrop}><View style={s.modal}>
+      <Text style={s.title}>Xác nhận thay đổi nhiều món</Text>
+      <Text style={s.hint}>Thay đổi này áp dụng cùng lúc cho {pendingToggle?.usedBy} món.
+        Khách có thể cần chọn lại topping khi đặt hàng; đơn cũ được giữ nguyên.</Text>
+      <View style={s.actions}>
+        <Action label="Hủy" secondary onPress={()=>setPendingToggle(null)}/>
+        <Action label="Xác nhận" disabled={busy} onPress={()=>{
+          const decision=pendingToggle;setPendingToggle(null);
+          if(decision)void call(decision.kind==="group"?"/library/groups/"+decision.id
+            :"/library/options/"+decision.id,"PATCH",{isAvailable:decision.enabled});
+        }}/>
+      </View>
+    </View></View>
+  </Modal>
   <Modal visible={editing!==null} transparent animationType="slide"
     onRequestClose={()=>{if(!busy)setEditing(null);}}>
     <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS==="ios"?"padding":undefined}>
