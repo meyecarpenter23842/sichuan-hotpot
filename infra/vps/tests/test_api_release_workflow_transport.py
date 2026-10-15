@@ -36,6 +36,10 @@ class OwnerReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("archive_validation=PASS", workflow)
         self.assertIn("health_live=PASS;health_ready=PASS", workflow)
         self.assertIn("release_sha=$REQUESTED_SHA", workflow)
+        self.assertIn('runtime_build_step=[a-z_]+:(START|PASS)', workflow)
+        self.assertIn('release_status="${PIPESTATUS[0]}"', workflow)
+        self.assertIn('tee "$outcome_file"', workflow)
+        self.assertIn('release_status != 0', workflow)
         self.assertIn("git rev-parse origin/main", workflow)
 
     def test_does_not_auto_release_or_migrate(self):
