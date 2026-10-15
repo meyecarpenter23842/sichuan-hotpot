@@ -25,4 +25,5 @@ test("icon cleanup removes outer white only and preserves white central art", ()
   assert.equal(icon.height, 192);
   const adaptive = PNG.sync.read(renderIcon(cleaned, 192, true));
   assert.equal(adaptive.data[3], 0);
+  assert.equal(icon.data[3], 0, "PWA icon must not repaint a square white background");
 });
