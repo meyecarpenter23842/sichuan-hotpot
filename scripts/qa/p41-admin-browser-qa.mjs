@@ -92,7 +92,9 @@ try {
   await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).waitFor();
   const productSwitch = page.getByRole("switch", { name: "Bán món Lẩu QA P4.1" });
   await productSwitch.waitFor();
-  const savedProduct = await db.product.findFirstOrThrow({ where: { name: "Lẩu QA P4.1" } });
+  const savedProduct = await db.product.findFirstOrThrow({
+    where: { name: "Lẩu QA P4.1", category: { branchId: branch.id } },
+  });
   assert.equal(savedProduct.isAvailable, true, "Product must be available when created");
   assert.equal(await productSwitch.getAttribute("aria-checked"), "true",
     "Switch ARIA state must match real product availability");
@@ -140,7 +142,7 @@ try {
     return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
   });
   assert.equal((await db.productVariant.findFirstOrThrow({
-    where: { name: "Phần hai người", product: { name: "Lẩu QA P4.1" } },
+    where: { name: "Phần hai người", productId: savedProduct.id },
   })).isAvailable, false);
   await variantSwitch.click();
   await page.waitForFunction(() => {
@@ -161,9 +163,12 @@ try {
     const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
     return el instanceof HTMLInputElement ? !el.checked : el?.getAttribute("aria-checked") === "false";
   });
+  const savedGroup = await db.modifierGroup.findFirstOrThrow({
+    where: { name: "Độ cay", productId: savedProduct.id },
+  });
   assert.equal((await db.modifierOption.findFirstOrThrow({
-    where: { name: "Cay vừa", group: { name: "Độ cay" } },
-  })).isAvailable, false);
+    where: { name: "Cay vừa", groupId: savedGroup.id },
+  })).isAvailable, false, "Topping state must persist on the exact branch group");
   await optionSwitch.click();
   await page.waitForFunction(() => {
     const el = document.querySelector('[role="switch"][aria-label="Bán Cay vừa trong Độ cay"]');
