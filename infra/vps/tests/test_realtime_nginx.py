@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 path = Path(__file__).resolve().parents[1] / "hotpot-realtime-nginx.py"
 spec = importlib.util.spec_from_file_location("hotpot_realtime_nginx", path)
@@ -47,3 +48,17 @@ server {
 """
         with self.assertRaises(module.RealtimeConfigError):
             module.upgraded(conf)
+
+
+class RealtimeRouteTests(unittest.TestCase):
+    def test_three_stage_check_and_no_public_bypass(self):
+        with patch.object(module, "check_upgrade") as check:
+            module.verify_route("https://api.example.test")
+        self.assertEqual(check.call_count, 3)
+        self.assertEqual(check.call_args_list[0].kwargs["stage"], "backend")
+        self.assertEqual(check.call_args_list[1].kwargs["stage"], "nginx_local")
+        self.assertEqual(check.call_args_list[2].kwargs["stage"], "public")
+
+    def test_rejects_non_https_origin(self):
+        with self.assertRaises(module.RealtimeConfigError):
+            module.check_upgrade("http://example.test")

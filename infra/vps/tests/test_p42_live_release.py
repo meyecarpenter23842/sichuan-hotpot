@@ -20,12 +20,12 @@ class LiveP4HistoryTests(unittest.TestCase):
         with patch.object(p4, "sql", return_value=rows):
             return p4.checked_history(self.hashes)
 
-    def test_p42_accepts_existing_p4_history_and_existing_live_db(self):
+    def test_migration_history_accepts_every_valid_prefix(self):
         for n in range(len(self.migrations) + 1):
             prefix = self.migrations[:n]
             self.assertEqual(self.history(prefix), set(prefix))
 
-    def test_p42_out_of_order_or_bad_checksum_rejected(self):
+    def test_out_of_order_or_bad_checksum_rejected(self):
         with self.assertRaises(p4.GateError):
             self.history(self.migrations[:1] + self.migrations[2:3])
         with self.assertRaises(p4.GateError):
@@ -51,6 +51,10 @@ class LiveP4HistoryTests(unittest.TestCase):
 
 
 class LiveP4SafetyTests(unittest.TestCase):
+    def setUp(self):
+        self.migrations = ("20261012000000_init", "20261013000000_feature_a",
+                           "20261014000000_feature_b", "20261015000000_feature_c")
+
     def invoke(self, applied, failed_backup=None, mode="--release"):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / "restore-receipt.json"
@@ -58,7 +62,8 @@ class LiveP4SafetyTests(unittest.TestCase):
             with (patch.object(p4.os, "geteuid", return_value=0),
                   patch("builtins.open", mock_open()),
                   patch.object(p4.fcntl, "flock"),
-                  patch.object(p4, "checked_source", return_value=({"mock": b"x"}, {})),
+                  patch.object(p4, "checked_source", return_value=({"mock": b"x"},
+                      {name: "a" * 64 for name in self.migrations})),
                   patch.object(p4, "checked_history", return_value=applied),
                   patch.object(p4, "backup_config"),
                   patch.object(p4, "private_file", side_effect=lambda path: Path(path)),
@@ -78,7 +83,7 @@ class LiveP4SafetyTests(unittest.TestCase):
     def test_already_applied_does_not_rebackup_or_migrate(self):
         self.assertEqual(self.invoke(set(self.migrations)), (0, 0))
 
-    def test_existing_p42_schema_requires_l06_backup_and_migration(self):
+    def test_pending_version_requires_backup_and_migration(self):
         # A pending migration needs a fresh backup even after older versions completed.
         self.assertEqual(self.invoke(set(self.migrations[:-1])), (1, 1))
 
@@ -88,7 +93,7 @@ class LiveP4SafetyTests(unittest.TestCase):
     def test_backup_or_isolated_restore_failure_blocks_migration(self):
         for reason in ("backup_encryption_failed", "offsite_download_checksum_mismatch",
                        "isolated_restore_failed"):
-            self.assertEqual(self.invoke(set(p4.PREVIOUS), p4.GateError(reason)), (1, 0))
+            self.assertEqual(self.invoke(set(self.migrations[:1]), p4.GateError(reason)), (1, 0))
 
     def test_checksum_streams_large_encrypted_backups(self):
         import hashlib
@@ -105,7 +110,8 @@ class LiveP4SafetyTests(unittest.TestCase):
             with (patch.object(p4.os, "geteuid", return_value=0),
                   patch("builtins.open", mock_open()),
                   patch.object(p4.fcntl, "flock"),
-                  patch.object(p4, "checked_source", return_value=({"mock": b"x"}, {})),
+                  patch.object(p4, "checked_source", return_value=({"mock": b"x"},
+                      {name: "a" * 64 for name in self.migrations})),
                   patch.object(p4, "checked_history", return_value=set(p4.PREVIOUS)),
                   patch.object(p4, "backup_config"),
                   patch.object(p4, "backup_restore", return_value=receipt),
@@ -116,7 +122,7 @@ class LiveP4SafetyTests(unittest.TestCase):
             import json
             self.assertTrue(json.loads(receipt.read_text())["consumed"])
 
-    def test_live_p42_never_uses_empty_database_helper(self):
+    def test_live_migrator_never_uses_empty_database_helper(self):
         source = (Path(__file__).parents[1] / "hotpot-p42-operations.py").read_text()
         self.assertNotIn("offline_empty", source)
         self.assertNotIn("initial_empty_database_required", source)
