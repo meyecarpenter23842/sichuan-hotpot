@@ -28,6 +28,8 @@ export interface Product {
   name: string;
   priceVnd: number;
   isAvailable: boolean;
+  isFeatured: boolean;
+  sortOrder: number;
   variants: Variant[];
   modifierGroups: ModifierGroup[];
   imageKey: string | null;

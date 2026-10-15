@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test test/*.test.mjs",
-    "build": "expo export --platform web --output-dir dist",
+    "build": "expo export --platform web --output-dir dist && node ../../scripts/qa/inject-brand-manifest.mjs admin",
     "icons:generate": "node scripts/generate-icons.mjs",
     "prebuild": "npm run icons:generate",
     "prestart": "npm run icons:generate",

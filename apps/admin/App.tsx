@@ -9,6 +9,7 @@ import {
   type AdminCatalog, type AuthTokens, type Branch, type Principal,
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
+import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
 import { OrderQueuePanel, type StaffOrder } from "./src/OrderQueuePanel";
@@ -220,6 +221,8 @@ export default function AdminApp() {
   const [tab, setTab] = useState<Tab>("overview");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
+  const [headerBusy, setHeaderBusy] = useState(false);
+  const [headerToast, setHeaderToast] = useState("");
   const sessionGeneration = useRef(0);
   const renewing = useRef(false);
   const retryCount = useRef(0);
@@ -398,6 +401,30 @@ export default function AdminApp() {
       if (savedId === branchId) await reload();
     }
   };
+  useEffect(() => {
+    if (!headerToast) return;
+    const timer = setTimeout(() => setHeaderToast(""), 4200);
+    return () => clearTimeout(timer);
+  }, [headerToast]);
+
+  async function toggleBranchActive(next: boolean) {
+    if (!branchId || !token || headerBusy) return;
+    const current = branches.find(item => item.id === branchId);
+    const role = current?.staffRole ?? principal?.role;
+    if (role !== "OWNER" && role !== "MANAGER") return;
+    setHeaderBusy(true);
+    setHeaderToast("");
+    try {
+      const updated = await request<Branch>(
+        "/admin/branches/" + branchId + "/activation", token, "PATCH", { isActive: next });
+      setBranches(prev => prev.map(item => item.id === updated.id
+        ? { ...item, isActive: updated.isActive } : item));
+      await reload();
+    } catch (error) {
+      setHeaderToast(error instanceof Error ? error.message : "Không thay đổi được trạng thái cửa hàng.");
+    } finally { setHeaderBusy(false); }
+  }
+
   const selectedBranch = branches.find(b => b.id === branchId);
   const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
   const kitchenOnly = branchRole === "KITCHEN";
@@ -425,7 +452,8 @@ export default function AdminApp() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.loginPanel}>
           <View style={styles.loginBrand}>
-            <View style={styles.loginLogo}><Text style={styles.loginLogoText}>S</Text></View>
+            <Image source={require("./assets/app-icon.png")} style={styles.loginLogo}
+              accessibilityLabel="Logo Sichuan Hotpot" />
             <View style={styles.loginBrandText}>
               <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
               <Text style={styles.brandSub}>Quản trị cửa hàng</Text>
@@ -507,21 +535,24 @@ export default function AdminApp() {
               </View>
               <Text style={styles.branchArrow}>⌄</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Thiết lập hoạt động cửa hàng"
-              onPress={() => { setChooseBranch(false); setTab("settings"); }}
-              style={styles.operationPill}>
+            <View style={styles.operationPill}>
               <Icon name="store" color={selectedBranch?.isActive ? "#116837" : c.red} size={19} />
               <View style={styles.operationCopy}>
-                <Text style={styles.operationText} numberOfLines={2}>
+                <Text style={styles.operationText} numberOfLines={1}>
                   {selectedBranch?.isActive ? "Đang mở" : "Chưa mở"}
                 </Text>
                 <Text style={styles.operationSub}>Chi nhánh</Text>
               </View>
-              <View style={[styles.operationDot,
-                { backgroundColor: selectedBranch?.isActive ? "#0FA463" : c.red }]} />
-            </Pressable>
+              <StatusSwitch label="Mở hoặc tắt chi nhánh" value={!!selectedBranch?.isActive}
+                busy={headerBusy} disabled={!selectedBranch || kitchenOnly ||
+                  (branchRole !== "OWNER" && branchRole !== "MANAGER")}
+                hint="Chỉ bật tắt chi nhánh, không thay đổi chính sách nhận đơn và phí giao"
+                onValueChange={next => { setChooseBranch(false); void toggleBranchActive(next); }} />
+            </View>
           </View>
         </View>
+        {!!headerToast && <View pointerEvents="none" style={[styles.headerToastLayer,
+          { top: headerHeight + 4 }]}><Notice text={headerToast} error /></View>}
         {tab === "catalog" && catalog && branches.length > 0 && !loadError ?
           <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
@@ -672,6 +703,8 @@ const styles = StyleSheet.create({
     paddingBottom: 7, gap: 7, alignItems: "stretch" },
   branchCopy: { flex: 1, minWidth: 0 },
   branchHint: { color: "#F7C9BD", fontSize: 10 },
+  headerToastLayer: { position: "absolute", zIndex: 90, elevation: 90,
+    left: 12, right: 12, backgroundColor: c.white, borderRadius: 8 },
   operationPill: { flex: 1, minHeight: adminDensity.branchSelector, paddingHorizontal: 8, gap: 5,
     flexDirection: "row", borderRadius: 11, backgroundColor: "#FFF2DD",
     alignItems: "center" },

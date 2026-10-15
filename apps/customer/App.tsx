@@ -863,7 +863,9 @@ function CustomerApp() {
 
       case "home": {
         // Use live catalogue data; product photography, prices and stock come from API.
-        const available = products.filter(item => item.isAvailable).slice(0, 8);
+        const available = products.filter(item => item.isFeatured && item.isAvailable)
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "vi"))
+          .slice(0, 8);
         const quick: readonly { name: string; icon: HomeCategoryName; terms: readonly string[] }[] = [
           { name: "Lẩu", icon: "hotpot", terms: ["lẩu", "hotpot"] },
           { name: "Trà sữa", icon: "milkTea", terms: ["trà", "sữa", "drink"] },
@@ -940,7 +942,8 @@ function CustomerApp() {
                   <Text style={styles.emptyTitle}>Thực đơn đang cập nhật</Text>
                   <Text style={styles.muted}>
                     {catalogError ? "Chưa kết nối API thực đơn. Kiểm tra kết nối rồi thử lại." :
-                      catalogLoading ? "Đang tải thực đơn từ cửa hàng..." : "Chi nhánh chưa mở bán hoặc chưa có món công khai."}
+                      catalogLoading ? "Đang tải thực đơn từ cửa hàng..." :
+                        "Chưa có món nổi bật đang bán. Xem thực đơn để chọn món khác."}
                   </Text>
                   {!!catalogError && <Button label="Thử kết nối lại" alternate onPress={() => void refreshCatalogue()} />}
                   {!catalogError && <Button label="Xem thực đơn" alternate onPress={() => setScreen("menu")} />}
@@ -1354,7 +1357,10 @@ function CustomerApp() {
               </View>
             ) : (
               <View style={styles.header}>
-                <View style={styles.logoBadge}><HotpotNavIcon name="hotpot" active size={29} /></View>
+                <View style={styles.logoBadge}>
+                  <Image source={require("./assets/app-icon.png")} style={{ width: 38, height: 38 }}
+                    accessibilityLabel="Logo Lẩu Tứ Xuyên" />
+                </View>
                 <View style={styles.headerText}>
                   <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>

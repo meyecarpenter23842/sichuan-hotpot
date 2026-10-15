@@ -57,16 +57,14 @@ export function cleanLogo(source) {
 export function renderIcon(logo, size, adaptive = false) {
   const png = new PNG({ width: size, height: size, colorType: 6 });
   const d = png.data;
-  const red = [179, 38, 45, 255], white = [255, 255, 255, 255];
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const i = (y * size + x) * 4;
-    const radius = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2);
-    const disc = radius < size * (adaptive ? 0.33 : 0.425);
-    const color = disc ? white : (adaptive ? [0, 0, 0, 0] : red);
-    for (let c = 0; c < 4; c++) d[i + c] = color[c];
+  // Keep the exact owner artwork without superimposing the former red disc.
+  // Android adaptive foreground is transparent, and the system supplies white background.
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+    d[i + 3] = adaptive ? 0 : 255;
   }
   const { bbox, width, data } = logo;
-  const extent = size * (adaptive ? 0.48 : 0.64);
+  const extent = size * (adaptive ? 0.60 : 0.82);
   const scale = Math.min(extent / bbox.width, extent / bbox.height);
   const dw = bbox.width * scale, dh = bbox.height * scale;
   const left = (size - dw) / 2, top = (size - dh) / 2;
@@ -90,11 +88,11 @@ export function renderIcon(logo, size, adaptive = false) {
 }
 
 export function generate() {
-  const logo = cleanLogo(readFileSync(resolve(root, "icon-ltx.png")));
+  const logo = cleanLogo(readFileSync(resolve(root, "assets/brand-approved-20261015.png")));
   const outputs = [
-    ["public/icon-192.png", 192, false],
-    ["public/icon-512.png", 512, false],
-    ["public/apple-touch-icon.png", 180, false],
+    ["public/icon-192-v20261015.png", 192, false],
+    ["public/icon-512-v20261015.png", 512, false],
+    ["public/apple-touch-icon-v20261015.png", 180, false],
     ["assets/app-icon.png", 1024, false],
     ["assets/adaptive-icon.png", 1024, true],
   ];
@@ -103,7 +101,19 @@ export function generate() {
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, renderIcon(logo, size, adaptive));
   }
-  console.log("Admin icons generated from approved logo: " + outputs.map(x => x[0]).join(", "));
+  const manifest = {
+    name: "Sichuan Hotpot Admin",
+    short_name: "Hotpot Admin",
+    id: "/", start_url: "/", scope: "/", display: "standalone",
+    theme_color: "#B3262D", background_color: "#FFFFFF",
+    icons: [
+      { src: "/icon-192-v20261015.png", sizes: "192x192", type: "image/png" },
+      { src: "/icon-512-v20261015.png", sizes: "512x512", type: "image/png" },
+    ],
+  };
+  writeFileSync(resolve(adminDir, "public/site.webmanifest"),
+    JSON.stringify(manifest, null, 2) + "\n");
+  console.log("Admin icons generated from new approved brand source: " + outputs.map(x => x[0]).join(", "));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === file) generate();
