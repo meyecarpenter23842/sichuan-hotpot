@@ -1366,7 +1366,7 @@ function CustomerApp() {
                     onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
                     <Text style={styles.deliveryLocationTitle}>Giao đến  ⌄</Text>
                     <Text style={styles.deliveryLocationValue} numberOfLines={1}>
-                      {address.line1 || "Chọn địa chỉ giao hàng"}
+                      {address.line1 ? address.line1 + (displayAdministrativeSelection(address) ? ", " + displayAdministrativeSelection(address) : "") : "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
                   <View style={styles.homeHeaderActions}>
