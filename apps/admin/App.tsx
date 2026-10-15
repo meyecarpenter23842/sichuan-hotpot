@@ -208,6 +208,8 @@ export default function AdminApp() {
   const [recoveryInfo, setRecoveryInfo] = useState("");
   const [token, setToken] = useState<string | null>(null);
   const [chimeEnabled, setChimeEnabled] = useState(false);
+  const [chimePending, setChimePending] = useState(true);
+  const [chimeError, setChimeError] = useState("");
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -228,10 +230,23 @@ export default function AdminApp() {
   const retryCount = useRef(0);
   const [retryAt, setRetryAt] = useState(0);
 
-  useEffect(() => { void loadOrderChime().then(setChimeEnabled).catch(() => undefined); }, []);
+  const chimeLock = useRef(false);
+  useEffect(() => {
+    let mounted = true;
+    void loadOrderChime()
+      .then(value => { if (mounted) setChimeEnabled(value); })
+      .catch(() => { if (mounted) setChimeError("Không đọc được thiết lập chuông trên thiết bị."); })
+      .finally(() => { if (mounted) setChimePending(false); });
+    return () => { mounted = false; };
+  }, []);
   const changeChime = (enabled: boolean) => {
-    setChimeEnabled(enabled);
-    void saveOrderChime(enabled).catch(() => setChimeEnabled(!enabled));
+    if (chimeLock.current || chimePending) return;
+    chimeLock.current = true;
+    setChimePending(true); setChimeError("");
+    void saveOrderChime(enabled)
+      .then(() => setChimeEnabled(enabled))
+      .catch(() => setChimeError("Không lưu được thiết lập chuông trên thiết bị. Vui lòng thử lại."))
+      .finally(() => { chimeLock.current = false; setChimePending(false); });
   };
 
   const loadIdentity = useCallback(async (access: string) => {
@@ -587,6 +602,7 @@ export default function AdminApp() {
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
                 onBranchSaved={branchSaved} chimeEnabled={chimeEnabled}
+                chimePending={chimePending} chimeError={chimeError}
                 onChimeChange={changeChime} />}
             </>
           )}
