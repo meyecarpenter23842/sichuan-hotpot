@@ -84,7 +84,7 @@ def atomic_replace(path, source, mode, uid, gid):
         Path(name).unlink(missing_ok=True)
 
 
-def check_upgrade(origin):
+def check_upgrade(origin, *, host_override=None, port=443, tls=True, stage="public"):
     parsed = urlparse(origin)
     require(parsed.scheme == "https" and parsed.port is None
             and parsed.hostname and parsed.path in ("", "/")
@@ -98,27 +98,41 @@ def check_upgrade(origin):
                + "\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="
                + "\r\n\r\n").encode()
     try:
-        with socket.create_connection((hostname, 443), timeout=6) as raw:
-            with ssl.create_default_context().wrap_socket(raw, server_hostname=hostname) as secure:
-                secure.settimeout(6)
-                secure.sendall(request)
-                response = secure.recv(2048)
+        with socket.create_connection((host_override or hostname, port), timeout=6) as raw:
+            if tls:
+                with ssl.create_default_context().wrap_socket(raw, server_hostname=hostname) as secure:
+                    secure.settimeout(6)
+                    secure.sendall(request)
+                    response = secure.recv(2048)
+            else:
+                raw.settimeout(6)
+                raw.sendall(request)
+                response = raw.recv(2048)
     except ssl.SSLError as exc:
-        raise RealtimeConfigError("websocket_tls_verification_failed") from exc
+        raise RealtimeConfigError(stage + "_tls_verification_failed") from exc
     except OSError as exc:
-        raise RealtimeConfigError("websocket_connection_unavailable") from exc
+        raise RealtimeConfigError(stage + "_connection_unavailable") from exc
     # Never print remote response bodies or certificates.
     if not response.startswith(b"HTTP/1.1 101 "):
         code = response.split(b" ", 2)[1:2]
         if code == [b"404"]:
-            raise RealtimeConfigError("websocket_nginx_route_missing")
+            raise RealtimeConfigError(stage + "_route_missing")
         if code == [b"400"]:
-            raise RealtimeConfigError("websocket_handshake_rejected")
+            raise RealtimeConfigError(stage + "_handshake_rejected")
         if code == [b"403"]:
-            raise RealtimeConfigError("websocket_handshake_forbidden")
+            raise RealtimeConfigError(stage + "_handshake_forbidden")
         if code == [b"502"]:
-            raise RealtimeConfigError("websocket_backend_unreachable")
-        raise RealtimeConfigError("websocket_upgrade_not_reachable")
+            raise RealtimeConfigError(stage + "_backend_unreachable")
+        raise RealtimeConfigError(stage + "_upgrade_unavailable")
+
+
+def verify_route(origin):
+    # Local backend -> local TLS Nginx -> public HTTPS. This distinguishes
+    # an API handler bug from a wrong Nginx vhost and an edge/DNS route issue.
+    check_upgrade(origin, host_override="127.0.0.1", port=3000,
+                  tls=False, stage="backend")
+    check_upgrade(origin, host_override="127.0.0.1", stage="nginx_local")
+    check_upgrade(origin, stage="public")
 
 
 def main():
@@ -147,14 +161,14 @@ def main():
     require(stat.S_ISREG(mode.st_mode) and mode.st_uid == 0
             and not (mode.st_mode & stat.S_IWOTH), "unsafe_nginx_file")
     if updated == original:
-        check_upgrade(origin)
+        verify_route(origin)
         print("realtime_https_upgrade=ALREADY_READY")
         return
     atomic_replace(path, updated.encode(), stat.S_IMODE(mode.st_mode), mode.st_uid, mode.st_gid)
     try:
         run_command("/usr/sbin/nginx", "-t")
         run_command("/usr/bin/systemctl", "reload", "nginx")
-        check_upgrade(origin)
+        verify_route(origin)
     except Exception:
         atomic_replace(path, original.encode(), stat.S_IMODE(mode.st_mode), mode.st_uid, mode.st_gid)
         run_command("/usr/sbin/nginx", "-t")

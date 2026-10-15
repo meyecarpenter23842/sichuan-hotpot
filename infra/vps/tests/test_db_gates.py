@@ -118,7 +118,7 @@ class WorkflowCommandTests(unittest.TestCase):
               patch.object(db, 'frozen_source',
                            return_value={name: b'-- SQL' for name in expected}),
               patch.object(db, 'fingerprint', return_value='fingerprint')):
-            release.return_value.MIGRATIONS = ('20261012000000_init', '20261012010000_auth_identity')
+            release.return_value.migration_names.return_value = ('20261012000000_init', '20261012010000_auth_identity')
             db.workflow_authorize(self.sha, self.digest, '123456')
 
     def proof(self, **changes):

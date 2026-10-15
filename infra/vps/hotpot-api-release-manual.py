@@ -18,20 +18,14 @@ import pwd
 ROOT = Path("/opt/sichuan-hotpot")
 CONFIG = Path("/etc/sichuan-hotpot")
 SERVICE = "hotpot-api.service"
-MIGRATIONS = {"20261012000000_init", "20261012010000_auth_identity",
-              "20261013000000_p2_catalog_modifiers",
-              "20261013010000_auth_email_verification",
-              "20261013020000_p3_checkout_snapshots",
-              "20261013030000_p3_qr_payee_snapshot",
-              "20261014000000_p4_branch_opening_hours",
-              "20261014010000_p42_branch_address",
-              "20261015060000_p45_featured_order"}
+# Only migration SQL from the pinned, reviewed main archive is deployable.
+# Names are discovered from that archive; no per-version Python allowlist.
+MIGRATION_SQL = re.compile(r"apps/api/prisma/migrations/([0-9]{14}_[a-z0-9_]+)/migration[.]sql\Z")
 MANIFESTS = {"package.json", "package-lock.json", "apps/api/package.json",
              "apps/customer/package.json", "apps/admin/package.json",
              "packages/shared/package.json", "packages/ui/package.json"}
 REQUIRED = MANIFESTS | {"apps/api/dist/main.js", "apps/api/prisma/schema.prisma",
-                        "apps/api/prisma/migrations/migration_lock.toml"} | {
-    "apps/api/prisma/migrations/" + name + "/migration.sql" for name in MIGRATIONS}
+                        "apps/api/prisma/migrations/migration_lock.toml"}
 
 
 class ReleaseError(Exception):
@@ -64,16 +58,44 @@ def archive_files(data):
             name = str(path)
             permitted = name in REQUIRED or (
                 name.startswith(("apps/api/dist/", "packages/shared/dist/"))
-                and name.endswith((".js", ".d.ts", ".js.map", ".d.ts.map")))
+                and name.endswith((".js", ".d.ts", ".js.map", ".d.ts.map"))) or bool(MIGRATION_SQL.fullmatch(name))
             require(permitted and name not in result, "unexpected_archive_file")
             total += member.size
             require(total <= 128 * 1024 * 1024 and len(result) < 2000, "archive_limits")
             result[name] = archive.extractfile(member).read()
     require(REQUIRED <= set(result), "incomplete_archive")
+    migration_names(result)
     api = json.loads(result["apps/api/package.json"])
     require(api.get("name") == "@hotpot/api" and api.get("scripts", {}).get("start")
             == "node dist/main.js", "unexpected_api_manifest")
     return result
+
+
+def migration_names(files):
+    names = sorted(match.group(1) for name in files
+                   if (match := MIGRATION_SQL.fullmatch(name)))
+    require(len(names) > 0 and names[0].endswith("_init") and
+            len(names) == len(set(names)), "invalid_migration_manifest")
+    for name in names:
+        require(bool(files["apps/api/prisma/migrations/" + name + "/migration.sql"].strip()),
+                "empty_migration_sql")
+    require(b'provider = "postgresql"' in
+            files["apps/api/prisma/migrations/migration_lock.toml"],
+            "invalid_migration_lock")
+    return tuple(names)
+
+
+def active_migration_names():
+    root = ROOT / "current" / "apps/api/prisma/migrations"
+    require(root.is_dir() and not root.is_symlink(), "active_migrations_missing")
+    files = {"apps/api/prisma/migrations/migration_lock.toml":
+             (root / "migration_lock.toml").read_bytes()}
+    for directory in root.iterdir():
+        if directory.is_dir() and not directory.is_symlink():
+            sql_file = directory / "migration.sql"
+            require(sql_file.is_file() and not sql_file.is_symlink(), "active_migration_invalid")
+            files["apps/api/prisma/migrations/" + directory.name + "/migration.sql"] = sql_file.read_bytes()
+    return migration_names(files)
 
 
 def read_archive(sha, digest):
@@ -112,14 +134,14 @@ def environment():
     return result
 
 
-def db_schema_ready(env):
+def db_schema_ready(env, required):
     url = urllib.parse.urlsplit(env["DATABASE_URL"])
     child_env = {"PATH": "/usr/bin:/bin", "PGPASSWORD": urllib.parse.unquote(url.password)}
     sql = "SELECT migration_name FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;"
     check = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-h", "127.0.0.1",
                             "-U", "hotpot_app", "-d", "hotpot", "-v", "ON_ERROR_STOP=1",
                             "-c", sql], env=child_env, capture_output=True, timeout=15)
-    if check.returncode != 0 or not MIGRATIONS <= set(check.stdout.decode().splitlines()):
+    if check.returncode != 0 or not set(required) <= set(check.stdout.decode().splitlines()):
         return False
     failed = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-h", "127.0.0.1",
                              "-U", "hotpot_app", "-d", "hotpot", "-v", "ON_ERROR_STOP=1",
@@ -245,7 +267,7 @@ def main(args):
             try:
                 env = environment()
                 results["backend_environment"] = True
-                results["migration_ready"] = db_schema_ready(env)
+                results["migration_ready"] = db_schema_ready(env, active_migration_names())
             except ReleaseError as error:
                 results[error.args[0]] = False
             try:
@@ -272,14 +294,14 @@ def main(args):
                 return 0
             if mode == "deploy":
                 env = environment()
-                require(db_schema_ready(env), "migration_not_ready")
+                require(db_schema_ready(env, migration_names(files)), "migration_not_ready")
                 release_settings()
             target = prepare(sha, args[1], files)
             if mode == "--prepare-only":
                 print("release_preparation=PASS;service_unchanged=yes;migration_run=no")
                 return 0
         base = release_settings()
-        require(db_schema_ready(environment()), "migration_not_ready")
+        require(db_schema_ready(environment(), active_migration_names() if mode == "--rollback" else migration_names(files)), "migration_not_ready")
         previous = activate(ROOT / "current", target,
                             lambda: run(["systemctl", "restart", SERVICE]),
                             lambda: run(["systemctl", "stop", SERVICE]),

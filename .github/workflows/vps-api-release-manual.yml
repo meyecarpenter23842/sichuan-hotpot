@@ -117,7 +117,7 @@ jobs:
             apps/customer/package.json apps/admin/package.json \
             packages/shared/package.json packages/shared/dist packages/ui/package.json
           sha256sum "$RUNNER_TEMP/hotpot-api-$REQUESTED_SHA.tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
-      - name: Verified artifact, live P4.2 backup/migration, then API activation
+      - name: Verified artifact, live generic backup/migration, then API activation
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +152,7 @@ jobs:
           test "$actual" = "$digest" || {
             echo "::error::VPS staging checksum mismatch; API unchanged."; exit 1;
           }
-          # Update only an explicitly recognized reviewed helper to support P4.2.
+          # Update only an explicitly recognized reviewed release helper.
           expected_previous="$(git show 86239ea349493bd3a5d2e7c1ef61ea16f3c5b8d9:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
           expected_p42="$(git show 28d7ef62d0d1da4a8fd84f21f0f8c713488968a0:infra/vps/hotpot-api-release-manual.py | sha256sum | awk '{print $1}')"
           expected_helper="$(sha256sum infra/vps/hotpot-api-release-manual.py | awk '{print $1}')"
@@ -189,28 +189,28 @@ jobs:
               echo "::error::Protected release archive validation failed; API unchanged."; exit 1;
             }
           grep -Fqx 'archive_validation=PASS' <<< "$verify" || exit 1
-          # Live L06 migration requires R2 encrypted backup and isolated restore.
-          p42_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+          # Any pending reviewed migration requires encrypted R2 backup and isolated restore.
+          migration_check="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/bin/python3 - --check '$REQUESTED_SHA' '$digest'" \
-            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
-              reason="$(printf '%s\n' "$p42_check" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
-              echo "::error::P4.2 preflight blocked: $reason"
+            < infra/vps/hotpot-migrations-release.py 2>&1)" || {
+              reason="$(printf '%s\n' "$migration_check" | sed -n 's/^migration_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+              echo "::error::Migration preflight blocked: $reason"
               exit 1
             }
-          grep -Fq 'p42_preflight=PASS;' <<< "$p42_check" || exit 1
-          p42_result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
+          grep -Fq 'migration_preflight=PASS;' <<< "$migration_check" || exit 1
+          migration_result="$(ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST" \
             "sudo -n /usr/bin/python3 - --release '$REQUESTED_SHA' '$digest'" \
-            < infra/vps/hotpot-p42-operations.py 2>&1)" || {
-              reason="$(printf '%s\n' "$p42_result" | sed -n 's/^p42_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
-              echo "::error::P4.2 R2 backup/restore/migration blocked: $reason; API unchanged."
+            < infra/vps/hotpot-migrations-release.py 2>&1)" || {
+              reason="$(printf '%s\n' "$migration_result" | sed -n 's/^migration_operation=BLOCKED;reason=\([a-z_]*\)$/\1/p' | tail -n 1)"
+              echo "::error::Migration R2 backup/restore blocked: $reason; API unchanged."
               exit 1
             }
-          if grep -Fqx 'p42_database_ready=PASS' <<< "$p42_result"; then
-            echo "R2 encrypted backup, isolated restore, live P4.2 migration: PASS"
-          elif grep -Fqx 'migration=ALREADY_APPLIED' <<< "$p42_result"; then
-            echo "Verified P4.2 schema already applied: PASS"
+          if grep -Fqx 'migration_database_ready=PASS' <<< "$migration_result"; then
+            echo "R2 encrypted backup, isolated restore, live migration: PASS"
+          elif grep -Fqx 'migration=ALREADY_APPLIED' <<< "$migration_result"; then
+            echo "Verified schema already applied: PASS"
           else
-            echo "::error::No verified P4.2 migration result."
+            echo "::error::No verified migration result."
             exit 1
           fi
           git fetch -q origin main
