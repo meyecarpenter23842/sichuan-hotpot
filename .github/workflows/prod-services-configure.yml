@@ -23,8 +23,8 @@ jobs:
       VPS_USER: ${{ vars.VPS_USER }}
       VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
       VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
-      PRODUCT_R2_ACCESS: ${{ secrets.HOTPOT_R2_ACCESS_KEY_ID }}
-      PRODUCT_R2_SECRET: ${{ secrets.HOTPOT_R2_SECRET_ACCESS_KEY }}
+      PRODUCT_R2_ACCESS: ${{ secrets.HOTPOT_R2_ACCESS_KEY_ID || secrets.R2_ACCESS_KEY_ID || secrets.CLOUDFLARE_R2_ACCESS_KEY_ID || secrets.HOT_POT_R2_ACCESS_KEY_ID || secrets.R2_ACCESS_KEY || secrets.R2_KEY_ID }}
+      PRODUCT_R2_SECRET: ${{ secrets.HOTPOT_R2_SECRET_ACCESS_KEY || secrets.R2_SECRET_ACCESS_KEY || secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY || secrets.HOT_POT_R2_SECRET_ACCESS_KEY || secrets.R2_SECRET_KEY || secrets.R2_ACCESS_KEY_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,7 +40,7 @@ jobs:
           (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
           test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
           test -n "$PRODUCT_R2_ACCESS" && test -n "$PRODUCT_R2_SECRET" || {
-            echo "::error::Missing protected production-api environment secrets; no VPS change."
+            echo "::error::No R2 secret names matched in protected production-api; expected HOTPOT_R2_ACCESS_KEY_ID and HOTPOT_R2_SECRET_ACCESS_KEY or supported aliases. No VPS change."
             exit 1
           }
           echo "::add-mask::$VPS_HOST"
