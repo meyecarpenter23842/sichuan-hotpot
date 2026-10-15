@@ -59,10 +59,21 @@ export class AdminCatalogService {
         id: true, name: true, code: true, isActive: true, catalogRevision: true,
         openingHours: { orderBy: { weekday: "asc" },
           select: { weekday: true, opensAt: true, closesAt: true, isClosed: true } },
+        modifierLibrary: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
+            isAvailable: true, imageKey: true, branchId: true,
+            assignments: { select: { productId: true, sortOrder: true } },
+            options: { orderBy: [{ name: "asc" }, { id: "asc" }],
+              select: { id: true, name: true, priceDeltaVnd: true,
+                isAvailable: true, imageKey: true } },
+          },
+        },
         categories: {
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           select: {
-            id: true, name: true, sortOrder: true,
+            id: true, name: true, sortOrder: true, imageKey: true,
             products: {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
@@ -73,8 +84,22 @@ export class AdminCatalogService {
                 modifierGroups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: {
                     id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
+                    isAvailable: true, imageKey: true,
                     options: { orderBy: { name: "asc" },
-                      select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
+                      select: { id: true, name: true, priceDeltaVnd: true,
+                        isAvailable: true, imageKey: true } },
+                  },
+                },
+                modifierAssignments: {
+                  orderBy: { sortOrder: "asc" },
+                  select: { sortOrder: true, group: {
+                    select: { id: true, name: true, minSelect: true, maxSelect: true,
+                      sortOrder: true, isAvailable: true, imageKey: true,
+                      options: { orderBy: { name: "asc" }, select: {
+                        id: true, name: true, priceDeltaVnd: true,
+                        isAvailable: true, imageKey: true,
+                      } },
+                    } },
                   },
                 },
               },
@@ -84,7 +109,6 @@ export class AdminCatalogService {
       },
     });
     const ids = snapshot.categories.flatMap(category => category.products.map(product => product.id));
-    if (!ids.length) return snapshot;
     // Count delivered quantities, not the number of orders or cart additions.
     const sold = await this.prisma.database.orderItem.groupBy({
       by: ["productId"], where: { productId: { in: ids }, order: { branchId, status: "DELIVERED" } },
@@ -94,6 +118,11 @@ export class AdminCatalogService {
     return { ...snapshot, categories: snapshot.categories.map(category => ({
       ...category, products: category.products.map(product => ({
         ...product, soldCount: soldById.get(product.id) ?? 0,
+        modifierGroups: [...new Map([
+          ...product.modifierGroups.map(g => [g.id, g] as const),
+          ...product.modifierAssignments.map(a => [a.group.id, a.group] as const),
+        ]).values()].sort((a, b) => a.sortOrder - b.sortOrder),
+        modifierAssignments: undefined,
       })),
     })) };
   }
@@ -132,14 +161,14 @@ export class AdminCatalogService {
   }
   private async group(branchId: string, groupId: string) {
     const record = await this.prisma.database.modifierGroup.findFirst({
-      where: { id: groupId, product: { category: { branchId } } },
+      where: { id: groupId, OR: [{ branchId }, { product: { category: { branchId } } }] },
       select: { id: true },
     });
     if (!record) throw new NotFoundException("MODIFIER_GROUP_NOT_FOUND");
   }
   private async option(branchId: string, optionId: string) {
     const record = await this.prisma.database.modifierOption.findFirst({
-      where: { id: optionId, group: { product: { category: { branchId } } } },
+      where: { id: optionId, group: { OR: [{ branchId }, { product: { category: { branchId } } }] } },
       select: { id: true },
     });
     if (!record) throw new NotFoundException("MODIFIER_OPTION_NOT_FOUND");
@@ -281,7 +310,8 @@ export class AdminCatalogService {
     await this.authorize(auth, branchId);
     await this.product(branchId, productId);
     return this.change(() => this.prisma.database.productVariant.create({
-      data: { ...input, name: input.name.trim(), productId },
+      data: { ...input, name: input.name.trim(), productId, branchId,
+        assignments: { create: { productId, sortOrder: input.sortOrder } } },
     }));
   }
   async updateVariant(auth: string | undefined, branchId: string, id: string,
