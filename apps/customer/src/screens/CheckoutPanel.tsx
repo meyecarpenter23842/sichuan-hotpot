@@ -183,7 +183,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
             </Pressable>
           </View>
         </View>
-      </Modal>}
+      </Modal>
     </View>
   );
 }
