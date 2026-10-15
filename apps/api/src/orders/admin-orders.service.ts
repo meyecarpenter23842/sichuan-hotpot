@@ -86,6 +86,9 @@ export class AdminOrdersService {
           select: { fromStatus: true, toStatus: true, reason: true, createdAt: true } },
         ...(staff.role === "KITCHEN" ? {} : {
           phoneSnapshot: true, addressLineSnapshot: true, roadDistanceMeters: true,
+          pricingMode: true, zoneNameSnapshot: true,
+          provinceCodeSnapshot: true, wardCodeSnapshot: true,
+          catalogVersionSnapshot: true,
         }),
       },
     });

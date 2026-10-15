@@ -279,6 +279,7 @@ model Order {
   @@unique([customerId, idempotencyKey])
   @@index([branchId, status, createdAt])
   @@index([customerId, createdAt])
+  @@index([zoneId])
 }
 
 model OrderItem {
