@@ -17,7 +17,7 @@ function fixture(meters = 2100) {
   const db = {
     branch: { findFirst: async q => {
       captured.push(["branch", q]);
-      return { id: branchId, latitude: decimals(10.77), longitude: decimals(106.67) };
+      return { id: branchId, isActive: true, latitude: decimals(10.77), longitude: decimals(106.67) };
     } },
     address: { findFirst: async q => {
       captured.push(["address", q]);
@@ -135,4 +135,23 @@ test("Google Routes: provider request format, cache and invalid response", async
     if (original === undefined) delete process.env.GOOGLE_ROUTES_API_KEY;
     else process.env.GOOGLE_ROUTES_API_KEY = original;
   }
+});
+
+test("P4.6 closed branch denies new quote before routing but retains a public menu", async () => {
+  const f = fixture();
+  f.db.branch.findFirst = async () => ({
+    id: branchId, isActive: false, latitude: decimals(10.77), longitude: decimals(106.67),
+  });
+  await assert.rejects(f.service.calculate("Bearer valid", f.input),
+    e => e.getStatus?.() === 422 && e.getResponse?.().code === "STORE_CLOSED");
+  assert.equal(f.captured.filter(x => x[0] === "routing").length, 0);
+});
+test("P4.6 acceptingOrders off denies quote before expensive routing", async () => {
+  const f = fixture();
+  f.db.deliveryPolicyVersion.findFirst = async () => ({
+    id: "v1", acceptingOrders: false,
+  });
+  await assert.rejects(f.service.calculate("Bearer valid", f.input),
+    e => e.getStatus?.() === 422 && e.getResponse?.().code === "STORE_CLOSED");
+  assert.equal(f.captured.filter(x => x[0] === "routing").length, 0);
 });
