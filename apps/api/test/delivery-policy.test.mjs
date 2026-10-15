@@ -80,3 +80,20 @@ test("current policy displays latest persisted version without modifications", a
   assert.deepEqual(row, { version: 3 });
   assert.equal(f.trace.length, 0);
 });
+
+test("OWNER zone policy rejects overlapping ward and accepts immutable group rates", async () => {
+  const f = setup();
+  const zone = { name: "Trung tâm", provinceCode: "79", catalogVersion: "vn-2025-07",
+    wardCodes: ["26734"], feeVnd: 15000, isActive: true };
+  const valid = { pricingMode: "ZONE", acceptingOrders: true,
+    minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null, zones: [zone] };
+  const saved = await f.service.create("Bearer owner", branchId, valid);
+  assert.equal(saved.pricingMode,"ZONE");
+  assert.equal(saved.zones.create[0].feeVnd,15000);
+  await assert.rejects(f.service.create("Bearer owner", branchId,
+    {...valid,zones:[zone,{...zone,name:"Trùng",feeVnd:25000}]}),
+    e=>e.getStatus?.()===400);
+  await assert.rejects(f.service.create("Bearer owner", branchId,
+    {...valid,zones:[{...zone,feeVnd:-1}]}),
+    e=>e.getStatus?.()===400);
+});

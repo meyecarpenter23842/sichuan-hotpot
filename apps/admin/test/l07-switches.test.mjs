@@ -14,7 +14,7 @@ test("L07 real settings use semantic switches; selectors and actions remain acti
   assert.match(hub, /<StatusSwitch value=\{chimeEnabled\}/);
   assert.doesNotMatch(hub, /<Action label=\{chimeEnabled \?/);
   assert.match(branch, /<StatusSwitch value=\{branch\.isActive\}/);
-  assert.match(policy, /<StatusSwitch value=\{accepting\}/);
+  assert.match(policy, /<StatusSwitch value=\{acceptingOrders\}/);
   assert.match(hours, /<StatusSwitch value=\{!day\.isClosed\}/);
   assert.doesNotMatch(hours, /<Pill label=\{day\.isClosed/);
   assert.doesNotMatch(policy, /<Pill label="Tạm dừng"/);
@@ -34,12 +34,12 @@ test("L07 branch status stays server-owned and requires explicit confirmation", 
 });
 
 test("L07 acceptance toggle is only draft, cannot enable inactive/unconfigured branch", () => {
-  assert.match(policy, /disabled=\{!current \|\| \(!active && !accepting\)\}/);
-  assert.match(policy, /setAccepting\(next\)/);
-  assert.match(policy, /Thay đổi chưa lưu trên máy chủ/);
+  assert.match(policy, /disabled=\{current\?\.pricingMode !== "ZONE" \|\| \(!active && !acceptingOrders\)\}/);
+  assert.match(policy, /setAcceptingOrders\(next\)/);
+  assert.match(policy, /Thay đổi chưa được lưu trên máy chủ/);
   assert.match(policy, /"POST", payload/);
-  assert.match(policy, /setCurrent\(saved\)/);
-  assert.match(policy, /setAccepting\(saved\.acceptingOrders\)/);
+  assert.match(policy, /applyPolicy\(value\)/);
+  assert.match(policy, /setAcceptingOrders\(value\?\.acceptingOrders \?\? false\)/);
 });
 
 test("L07 unsaved weekly hours remain local until API PUT", () => {

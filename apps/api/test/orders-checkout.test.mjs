@@ -239,3 +239,67 @@ test("L08 rejects an option or size turned off before checkout, without insertin
     await db.productVariant.update({ where: { id: variant.id }, data: { isAvailable: true } });
   }
 });
+
+test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency", async () => {
+  const route = app.get(RoadRoutingService);
+  const old = route.drivingMeters;
+  let called = 0;
+  route.drivingMeters = async () => { called++; throw Error("OSRM MUST NOT BE CALLED FOR ZONE"); };
+  try {
+    await db.address.update({ where: { id: addressId }, data: {
+      catalogVersion: "vn-2025-07", provinceCode: "79", wardCode: "26734",
+    } });
+    const second = await db.deliveryPolicyVersion.create({ data: {
+      branchId, version: 2, pricingMode: "ZONE", acceptingOrders: true,
+      minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null,
+      zones: { create: [
+        { name: "Nhóm trung tâm", catalogVersion: "vn-2025-07",
+          provinceCode: "79", wardCodes: ["26734"], feeVnd: 12000, isActive: true },
+        { name: "Còn lại", catalogVersion: "vn-2025-07",
+          provinceCode: "79", wardCodes: [], feeVnd: 25000, isActive: true },
+      ] },
+    } });
+    const estimate = await client.post("/customer/delivery/quote")
+      .set("Authorization", "Bearer " + token)
+      .send({ branchId, addressId, items: orderBody().items }).expect(201);
+    assert.equal(estimate.body.pricingMode, "ZONE");
+    assert.equal(estimate.body.feeVnd, 12000);
+    assert.equal(estimate.body.routeDistanceMeters, null);
+    const codKey = randomUUID();
+    const [a,b] = await Promise.all([request(orderBody(codKey)),request(orderBody(codKey))]);
+    assert.equal(a.status,201); assert.equal(b.status,201);
+    assert.equal(a.body.orderId,b.body.orderId);
+    assert.equal(a.body.totalVnd,112000);
+    const saved = await db.order.findUniqueOrThrow({where:{id:a.body.orderId}});
+    assert.equal(saved.pricingMode, "ZONE");
+    assert.equal(saved.roadDistanceMeters,null);
+    assert.equal(saved.zoneNameSnapshot,"Nhóm trung tâm");
+    assert.equal(saved.provinceCodeSnapshot,"79");
+    assert.equal(saved.wardCodeSnapshot,"26734");
+    assert.equal(saved.catalogVersionSnapshot,"vn-2025-07");
+    assert.equal(saved.deliveryPolicyVersionId,second.id);
+    const detail = await client.get("/customer/orders/"+saved.id)
+      .set("Authorization","Bearer "+token).expect(200);
+    assert.equal(detail.body.zoneNameSnapshot,"Nhóm trung tâm");
+    const qr = await request({ ...orderBody(randomUUID()), paymentMethod: "QR" }).expect(201);
+    assert.equal(qr.body.totalVnd,112000);
+    assert.equal(qr.body.paymentStatus,"PENDING");
+    await db.deliveryPolicyVersion.create({ data: {
+      branchId, version: 3, pricingMode: "ZONE", acceptingOrders: true,
+      minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null,
+      zones: { create: [{ name: "Cước mới", catalogVersion: "vn-2025-07",
+        provinceCode: "79", wardCodes: ["26734"], feeVnd: 20000, isActive: true }] },
+    } });
+    const repriced = await request(orderBody(randomUUID())).expect(201);
+    assert.equal(repriced.body.totalVnd,120000);
+    const oldOrder = await db.order.findUniqueOrThrow({ where: { id: saved.id } });
+    assert.equal(oldOrder.totalVnd,112000);
+    assert.equal(oldOrder.deliveryFeeVnd,12000);
+    assert.equal(called,0,"zone checkout must not invoke OSRM");
+    await db.address.update({ where: { id: addressId }, data: {wardCode:"99999"} });
+    const outsideKey = randomUUID();
+    const outside = await request(orderBody(outsideKey)).expect(422);
+    assert.match(JSON.stringify(outside.body), /ZONE_NOT_SERVED/, JSON.stringify(outside.body));
+    assert.equal(await db.order.count({where:{customerId:userId,idempotencyKey:outsideKey}}),0);
+  } finally { route.drivingMeters = old; }
+});

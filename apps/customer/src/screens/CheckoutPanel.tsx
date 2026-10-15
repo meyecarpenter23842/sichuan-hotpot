@@ -155,12 +155,13 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
       <Pressable accessibilityRole="button" style={[styles.action, (busy || !addressId || !items) && styles.disabled]}
         disabled={busy || !addressId || !items} onPress={() => void requestQuote()}>
         {busy ? <ActivityIndicator color={palette.white} /> :
-          <Text style={styles.actionText}>{quote ? "Tính lại phí giao" : "Tính phí giao theo đường xe chạy"}</Text>}
+          <Text style={styles.actionText}>{quote ? "Tính lại phí giao" : "Tính phí giao theo khu vực"}</Text>}
       </Pressable>
       {!!quote && (
         <View style={styles.summary}>
           <View style={styles.row}><Text style={styles.subtle}>Tạm tính từ máy chủ</Text><Text style={styles.value}>{vnd(quote.subtotalVnd)}</Text></View>
-          <View style={styles.row}><Text style={styles.subtle}>Đường xe chạy</Text><Text style={styles.value}>{(quote.routeDistanceMeters / 1000).toFixed(2)} km</Text></View>
+          <View style={styles.row}><Text style={styles.subtle}>{quote.pricingMode === "ZONE" ? "Khu vực giao" : "Đường xe chạy"}</Text>
+            <Text style={styles.value}>{quote.pricingMode === "ZONE" ? quote.zoneName : quote.routeDistanceMeters !== null ? (quote.routeDistanceMeters / 1000).toFixed(2) + " km" : "Không xác định"}</Text></View>
           <View style={styles.row}><Text style={styles.subtle}>Phí giao</Text><Text style={styles.value}>{vnd(quote.feeVnd)}</Text></View>
           <View style={styles.row}><Text style={styles.totalLabel}>Tổng thanh toán</Text><Text style={styles.total}>{vnd(quote.totalVnd)}</Text></View>
           <Text style={styles.subtle}>Báo phí có hạn. Máy chủ sẽ tính và kiểm tra lại khi tạo đơn.</Text>

@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { quoteDelivery, DeliveryQuoteError } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
@@ -91,8 +91,8 @@ export class OrdersService {
       throw new UnprocessableEntityException("QR_NOT_CONFIGURED");
     }
 
-    // Quotes are not trusted: this recalculates pricing, active policy, road route
-    // and address ownership for each NEW request.
+    // Quotes are not trusted: reprice from DB for each NEW request; in zone mode
+    // routing is never invoked and a changed address/policy blocks checkout.
     const quote = await this.quote.calculate(authorization, input);
     // Serializable isolation can abort overlapping first-time checkouts; retry the
     // full transaction after checking whether another request already committed.
@@ -111,7 +111,8 @@ export class OrdersService {
             }),
             tx.address.findFirst({
               where: { id: input.addressId, userId: customerId },
-              select: { id: true, line1: true, latitude: true, longitude: true },
+              select: { id: true, line1: true, latitude: true, longitude: true,
+                catalogVersion: true, provinceCode: true, wardCode: true },
             }),
             tx.user.findUnique({
               where: { id: customerId }, select: { phoneE164: true },
@@ -139,13 +140,30 @@ export class OrdersService {
           }
           let currentFee;
           try {
-            currentFee = quoteDelivery(priced.subtotalVnd, quote.routeDistanceMeters, {
-              versionId: policy.id, acceptingOrders: policy.acceptingOrders,
-              baseMeters: policy.baseMeters, baseFeeVnd: policy.baseFeeVnd,
-              extraStepMeters: policy.extraStepMeters, extraStepFeeVnd: policy.extraStepFeeVnd,
-              maxRoadMeters: policy.maxRoadMeters, minSubtotalVnd: policy.minSubtotalVnd,
-              freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
-            });
+            if (policy.pricingMode === "ZONE") {
+              const zones = await tx.deliveryZone.findMany({
+                where: { policyVersionId: policy.id },
+              });
+              currentFee = quoteZoneDelivery(priced.subtotalVnd, address, zones, {
+                versionId: policy.id, acceptingOrders: policy.acceptingOrders,
+                minSubtotalVnd: policy.minSubtotalVnd,
+                freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
+              });
+              if (currentFee.zoneId !== quote.zoneId || quote.pricingMode !== "ZONE") {
+                throw new ConflictException("QUOTE_STALE_RETRY");
+              }
+            } else {
+              if (quote.pricingMode !== "DISTANCE") throw new ConflictException("QUOTE_STALE_RETRY");
+              currentFee = quoteDelivery(priced.subtotalVnd, quote.routeDistanceMeters, {
+                versionId: policy.id, acceptingOrders: policy.acceptingOrders,
+                baseMeters: policy.baseMeters ?? -1, baseFeeVnd: policy.baseFeeVnd ?? -1,
+                extraStepMeters: policy.extraStepMeters ?? -1,
+                extraStepFeeVnd: policy.extraStepFeeVnd ?? -1,
+                maxRoadMeters: policy.maxRoadMeters ?? -1,
+                minSubtotalVnd: policy.minSubtotalVnd,
+                freeDeliveryAtSubtotalVnd: policy.freeDeliveryAtSubtotalVnd,
+              });
+            }
           } catch (error) {
             if (error instanceof DeliveryQuoteError) throw new ConflictException("QUOTE_STALE_RETRY");
             throw error;
@@ -163,7 +181,14 @@ export class OrdersService {
               idempotencyKey: input.idempotencyKey, requestHash: hash,
               phoneSnapshot: user.phoneE164, status: "PENDING",
               subtotalVnd: priced.subtotalVnd, deliveryFeeVnd: currentFee.feeVnd,
-              totalVnd: currentFee.totalVnd, roadDistanceMeters: quote.routeDistanceMeters,
+              totalVnd: currentFee.totalVnd,
+              pricingMode: policy.pricingMode,
+              roadDistanceMeters: policy.pricingMode === "ZONE" ? null : quote.routeDistanceMeters,
+              zoneId: policy.pricingMode === "ZONE" ? quote.zoneId : null,
+              zoneNameSnapshot: policy.pricingMode === "ZONE" ? quote.zoneName : null,
+              provinceCodeSnapshot: policy.pricingMode === "ZONE" ? quote.provinceCode : null,
+              wardCodeSnapshot: policy.pricingMode === "ZONE" ? quote.wardCode : null,
+              catalogVersionSnapshot: policy.pricingMode === "ZONE" ? quote.catalogVersion : null,
               addressLineSnapshot: address.line1,
               latitudeSnapshot: address.latitude, longitudeSnapshot: address.longitude,
               items: {
@@ -242,6 +267,8 @@ export class OrdersService {
         id: true, branchId: true, status: true, createdAt: true,
         subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
         roadDistanceMeters: true, addressLineSnapshot: true,
+        pricingMode: true, zoneNameSnapshot: true, provinceCodeSnapshot: true,
+        wardCodeSnapshot: true, catalogVersionSnapshot: true,
         payment: { select: { method: true, status: true, amountVnd: true,
           qrBankBin: true, qrAccountNo: true, qrAccountName: true } },
         items: { select: {

@@ -89,17 +89,19 @@ try {
   await page.getByRole("button", { name: "Đóng popup" }).click();
   await page.getByRole("button", { name: "Mở Phí giao" }).click();
   await page.getByText("Chưa cấu hình phí giao.", { exact: false }).waitFor();
-  const fees = [
-    ["Quãng đường cơ bản (km)", "3"], ["Phí giao cơ bản (đ)", "15000"],
-    ["Mỗi bước phụ thu (km)", "1"], ["Phí mỗi bước (đ)", "5000"],
-    ["Phạm vi giao tối đa (km)", "12"],
-    ["Đơn hàng tối thiểu (đ)", "50000"],
-  ];
-  for (const [name, value] of fees) {
-    await page.getByRole("textbox", { name }).fill(value);
-  }
-  await page.getByRole("button", { name: "Lưu phí giao" }).click();
-  await page.getByText("Đã lưu phiên bản 1", { exact: false }).waitFor();
+  // Configure an immutable administrative-zone rate instead of a road-km tier.
+  for (const [name, value] of [
+    ["Giá trị đơn tối thiểu (VND)", "50000"],
+    ["Tên vùng thương mại", "Trung tâm"],
+    ["Phiên bản danh mục", "vn-2025-07"],
+    ["Mã tỉnh/TP", "79"],
+    ["Phí giao vùng (VND)", "15000"],
+  ]) await page.getByRole("textbox", { name }).fill(value);
+  await page.getByRole("textbox", { name: /Mã phường\/xã/ }).fill("26734, 26737");
+  await page.getByRole("button", { name: "Thêm vùng vào danh sách" }).click();
+  await page.getByText("Trung tâm · 15.000 đ").waitFor();
+  await page.getByRole("button", { name: "Lưu chính sách phí vùng" }).click();
+  await page.getByText("Đã lưu chính sách phí vùng phiên bản 1", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng popup" }).click();
   // Activation requires a saved policy + hours, but does not silently opt in to accepting orders.
   await page.getByRole("button", { name: "Mở Hoạt động" }).click();
@@ -114,16 +116,20 @@ try {
   await page.getByRole("switch", { name: "Cho phép nhận đơn" }).click();
   assert.equal(await db.deliveryPolicyVersion.count({ where: { branchId: branch.id } }), 1,
     "Acceptance must remain draft until user saves");
-  await page.getByRole("button", { name: "Lưu trạng thái nhận đơn" }).click();
-  await page.getByText("Đã lưu phiên bản 2", { exact: false }).waitFor();
+  await page.getByRole("button", { name: "Lưu chính sách phí vùng" }).click();
+  await page.getByText("Đã lưu chính sách phí vùng phiên bản 2", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Đóng popup" }).click();
   assert.equal((await db.branch.findUniqueOrThrow({ where: { id: branch.id } })).isActive, true);
   const policy = await db.deliveryPolicyVersion.findFirst({
     where: { branchId: branch.id }, orderBy: { version: "desc" },
+    include: { zones: true },
   });
   assert.equal(policy?.acceptingOrders, true);
-  assert.equal(policy?.baseMeters, 3000, "UI km must persist as road meters");
-  assert.equal(policy?.maxRoadMeters, 12000, "Max km must persist as meters");
+  assert.equal(policy?.pricingMode, "ZONE");
+  assert.equal(policy?.baseMeters, null, "Zone rate never writes fake road meters");
+  assert.equal(policy?.zones.length, 1);
+  assert.equal(policy?.zones[0].feeVnd, 15000);
+  assert.deepEqual(policy?.zones[0].wardCodes, ["26734", "26737"]);
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 780 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));

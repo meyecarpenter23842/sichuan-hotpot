@@ -51,6 +51,7 @@ export interface AuthTokens {
 }
 export interface SavedAddress {
   id: string; label: string; line1: string; latitude: string; longitude: string;
+  catalogVersion: string | null; provinceCode: string | null; wardCode: string | null;
 }
 export interface SavedAddresses { phone: string | null; addresses: SavedAddress[]; }
 
@@ -61,8 +62,11 @@ export function safeProductImageUrl(key: string | null | undefined): string | nu
 }
 export interface DeliveryQuote {
   branchId: string; addressId: string; policyVersionId: string;
-  routeDistanceMeters: number; subtotalVnd: number; feeVnd: number;
-  extraSteps: number; totalVnd: number; freeDeliveryApplied: boolean;
+  pricingMode: "ZONE" | "DISTANCE";
+  routeDistanceMeters: number | null; subtotalVnd: number; feeVnd: number;
+  zoneId: string | null; zoneName: string | null;
+  provinceCode: string | null; wardCode: string | null; catalogVersion: string | null;
+  extraSteps: number | null; totalVnd: number; freeDeliveryApplied: boolean;
   quoteExpiresAt: string;
 }
 export interface QrPaymentInstructions {
@@ -81,7 +85,10 @@ export interface CustomerOrderSummary {
   payment: { method: "COD" | "QR"; status: string } | null;
 }
 export interface CustomerOrderDetail extends CustomerOrderSummary {
-  roadDistanceMeters: number; addressLineSnapshot: string;
+  roadDistanceMeters: number | null; pricingMode: "ZONE" | "DISTANCE";
+  zoneNameSnapshot: string | null; provinceCodeSnapshot: string | null;
+  wardCodeSnapshot: string | null; catalogVersionSnapshot: string | null;
+  addressLineSnapshot: string;
   payment: { method: "COD" | "QR"; status: string; amountVnd: number;
     qr: QrPaymentInstructions | null } | null;
   items: {
@@ -104,7 +111,10 @@ const validApi = /^https:\/\/[a-z\d.-]+(?::\d+)?(?:\/.*)?$/i;
 const customerBusinessErrors: Readonly<Record<string, string>> = {
   STORE_CLOSED: "Hiện quán đã nghỉ. Giỏ hàng của bạn vẫn được giữ lại; vui lòng đặt khi quán mở cửa trở lại.",
   BELOW_MINIMUM: "Đơn hàng chưa đạt giá trị tối thiểu để giao.",
-  OUT_OF_RANGE: "Địa chỉ ngoài phạm vi giao theo tuyến đường xe chạy.",
+  OUT_OF_RANGE: "Địa chỉ ngoài phạm vi giao.",
+  ADDRESS_REGION_UNCONFIRMED: "Địa chỉ chưa chọn tỉnh/phường theo danh mục. Vui lòng cập nhật địa chỉ trước khi đặt.",
+  ZONE_NOT_SERVED: "Cửa hàng chưa giao đến khu vực hành chính của địa chỉ này.",
+  ZONE_RATE_MISSING: "Khu vực chưa được thiết lập phí giao. Không thể đặt đơn lúc này.",
   INVALID_POLICY: "Cấu hình phí giao chưa hợp lệ. Cửa hàng cần kiểm tra lại.",
   INVALID_SUBTOTAL: "Giá trị giỏ hàng không hợp lệ, vui lòng kiểm tra món.",
   ROUTE_UNAVAILABLE: "Không tìm được tuyến đường giao hợp lệ. Hãy chọn lại ghim.",
@@ -154,7 +164,7 @@ export async function apiRequest<T>(
       if (response.status === 503 && path.startsWith("/auth/"))
         throw new Error("Email xác minh hoặc dịch vụ đăng nhập chưa được cấu hình trên máy chủ.");
       if (response.status === 503 && path.startsWith("/customer/"))
-        throw new Error("Chưa thể tính tuyến đường thực tế. Không nhận đơn khi chưa có phí giao hợp lệ.");
+        throw new Error("Chưa cấu hình chính sách phí giao hợp lệ. Cửa hàng chưa thể nhận đơn.");
       if (response.status >= 500) throw new Error("Máy chủ đang gặp sự cố. Vui lòng thử lại.");
       if (response.status === 422 && path.startsWith("/customer/")) {
         const errorPayload = data && typeof data === "object" && "error" in data
@@ -164,7 +174,7 @@ export async function apiRequest<T>(
         if (typeof businessCode === "string" && customerBusinessErrors[businessCode]) {
           throw new Error(customerBusinessErrors[businessCode]);
         }
-        throw new Error("Món, giá trị đơn hoặc khoảng cách giao không hợp lệ. Kiểm tra lại trước khi đặt.");
+        throw new Error("Món, giá trị đơn hoặc khu vực giao chưa hợp lệ. Kiểm tra lại trước khi đặt.");
       }
       if (response.status === 400 && (path.endsWith("confirm-code") || path.endsWith("/reset")))
         throw new Error("Mã xác minh không đúng, hết hạn hoặc mật khẩu chưa hợp lệ.");
