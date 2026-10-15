@@ -32,6 +32,11 @@ class ProductPatch {
   @IsOptional() @IsBoolean() isAvailable?: boolean;
   @IsOptional() @IsBoolean() isFeatured?: boolean;
 }
+class FeaturedProductsInput {
+  @IsArray() @ArrayMaxSize(500) @IsUUID("4", { each: true })
+  ids!: string[];
+  @IsInt() @Min(0) revision!: number;
+}
 class ProductOrderInput {
   @IsArray() @ArrayMaxSize(500) @IsUUID("4", { each: true })
   ids!: string[];
@@ -156,6 +161,12 @@ export class AdminCatalogController {
   categoryDelete(@Headers("authorization") auth: string | undefined,
     @Param("branchId", uuid) branchId: string, @Param("id", uuid) id: string) {
     return this.catalogue.deleteCategory(auth, branchId, id);
+  }
+
+  @Put("products/featured")
+  setFeatured(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", uuid) branchId: string, @Body() input: FeaturedProductsInput) {
+    return this.catalogue.setFeaturedProducts(auth, branchId, input.ids, input.revision);
   }
 
   @Put("products/order")

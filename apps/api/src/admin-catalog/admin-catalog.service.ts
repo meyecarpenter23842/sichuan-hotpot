@@ -193,6 +193,33 @@ export class AdminCatalogService {
       },
     }));
   }
+  async setFeaturedProducts(auth: string | undefined, branchId: string,
+    ids: string[], revision: number) {
+    await this.authorize(auth, branchId);
+    if (new Set(ids).size !== ids.length) throw new ConflictException("FEATURED_DUPLICATE_PRODUCTS");
+    return this.change(() => this.prisma.database.$transaction(async tx => {
+      const available = await tx.product.findMany({
+        where: { category: { branchId } }, select: { id: true },
+      });
+      const allowed = new Set(available.map(product => product.id));
+      if (ids.some(id => !allowed.has(id))) {
+        throw new ConflictException("FEATURED_CROSS_BRANCH_OR_REMOVED");
+      }
+      const locked = await tx.branch.updateMany({
+        where: { id: branchId, catalogRevision: revision },
+        data: { catalogRevision: { increment: 1 } },
+      });
+      if (locked.count !== 1) throw new ConflictException("FEATURED_CHANGED_RELOAD");
+      await tx.product.updateMany({
+        where: { category: { branchId } }, data: { isFeatured: false },
+      });
+      if (ids.length) await tx.product.updateMany({
+        where: { id: { in: ids }, category: { branchId } }, data: { isFeatured: true },
+      });
+      return { catalogRevision: revision + 1, featuredCount: ids.length };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  }
+
   async reorderProducts(auth: string | undefined, branchId: string,
     ids: string[], revision: number) {
     await this.authorize(auth, branchId);
