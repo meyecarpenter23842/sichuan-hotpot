@@ -14,6 +14,7 @@ import ssl
 import stat
 import subprocess
 import tempfile
+import time
 from urllib.parse import urlparse
 
 CONFIG = Path("/etc/sichuan-hotpot/release.json")
@@ -126,13 +127,54 @@ def check_upgrade(origin, *, host_override=None, port=443, tls=True, stage="publ
         raise RealtimeConfigError(stage + "_upgrade_unavailable")
 
 
+def effective_nginx_route(origin):
+    # Inspect the effective Nginx include tree, not merely the edited site.
+    # This guards against editing a file that is not used by the live config.
+    hostname = urlparse(origin).hostname
+    result = subprocess.run(["/usr/sbin/nginx", "-T"], capture_output=True,
+                            timeout=20)
+    require(result.returncode == 0 and len(result.stdout) < 2 * 1024 * 1024,
+            "nginx_effective_config_unavailable")
+    source = result.stdout.decode("utf8", errors="replace")
+    hosts = []
+    for m in re.finditer(r"(?m)^\s*server\s*\{", source):
+        start, depth, i = m.start(), 1, m.end()
+        while i < len(source) and depth:
+            if source[i] == "{":
+                depth += 1
+            elif source[i] == "}":
+                depth -= 1
+            i += 1
+        if depth != 0:
+            continue
+        block = source[start:i]
+        if (re.search(r"(?m)^\s*listen\s+[^;]*\b443\b[^;]*\bssl\b", block)
+                and any(hostname in entry.split() for entry in
+                        re.findall(r"(?m)^\s*server_name\s+([^;]+);", block))):
+            hosts.append(block)
+    require(len(hosts) == 1, "nginx_configured_host_ambiguous")
+    require(re.search(r"\blocation\s+/realtime\s*\{", hosts[0])
+            and re.search(r"\bproxy_pass\s+http://127\.0\.0\.1:3000\s*;", hosts[0]),
+            "nginx_realtime_location_not_effective")
+
+
 def verify_route(origin):
-    # Local backend -> local TLS Nginx -> public HTTPS. This distinguishes
-    # an API handler bug from a wrong Nginx vhost and an edge/DNS route issue.
+    # Local backend -> effective Nginx config -> local TLS -> public HTTPS.
+    # systemctl reload is asynchronous: bounded retries avoid racing old workers.
     check_upgrade(origin, host_override="127.0.0.1", port=3000,
                   tls=False, stage="backend")
-    check_upgrade(origin, host_override="127.0.0.1", stage="nginx_local")
-    check_upgrade(origin, stage="public")
+    effective_nginx_route(origin)
+    for attempt in range(15):
+        try:
+            check_upgrade(origin, host_override="127.0.0.1", stage="nginx_local")
+            check_upgrade(origin, stage="public")
+            return
+        except RealtimeConfigError as exc:
+            retryable = ("nginx_local_route_missing", "nginx_local_backend_unreachable",
+                         "public_route_missing", "public_backend_unreachable")
+            if str(exc) not in retryable or attempt == 14:
+                raise
+            time.sleep(1)
 
 
 def main():

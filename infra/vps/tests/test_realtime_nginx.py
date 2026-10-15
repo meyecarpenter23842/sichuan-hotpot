@@ -52,12 +52,30 @@ server {
 
 class RealtimeRouteTests(unittest.TestCase):
     def test_three_stage_check_and_no_public_bypass(self):
-        with patch.object(module, "check_upgrade") as check:
+        with (patch.object(module, "check_upgrade") as check,
+              patch.object(module, "effective_nginx_route")):
             module.verify_route("https://api.example.test")
         self.assertEqual(check.call_count, 3)
         self.assertEqual(check.call_args_list[0].kwargs["stage"], "backend")
         self.assertEqual(check.call_args_list[1].kwargs["stage"], "nginx_local")
         self.assertEqual(check.call_args_list[2].kwargs["stage"], "public")
+
+    def test_verify_route_waits_for_nginx_worker_reload(self):
+        seen = []
+        def handshake(origin, *, stage="public", **kwargs):
+            seen.append(stage)
+            if stage == "nginx_local" and seen.count("nginx_local") == 1:
+                raise module.RealtimeConfigError("nginx_local_route_missing")
+        with (patch.object(module, "check_upgrade", side_effect=handshake),
+              patch.object(module, "effective_nginx_route"),
+              patch.object(module.time, "sleep") as sleep):
+            module.verify_route("https://api.example.test")
+        self.assertEqual(seen, ["backend", "nginx_local", "nginx_local", "public"])
+        sleep.assert_called_once_with(1)
+
+    def test_invalid_origin_never_bypasses_tls_validation(self):
+        with self.assertRaises(module.RealtimeConfigError):
+            module.check_upgrade("http://example.test")
 
     def test_rejects_non_https_origin(self):
         with self.assertRaises(module.RealtimeConfigError):
