@@ -112,8 +112,8 @@ export function generate() {
     ],
   };
   writeFileSync(resolve(adminDir, "public/site.webmanifest"),
-    JSON.stringify(manifest, null, 2) + "\\n");
-  console.log("Admin icons generated from approved logo: " + outputs.map(x => x[0]).join(", "));
+    JSON.stringify(manifest, null, 2) + "\n");
+  console.log("Admin icons generated from new approved brand source: " + outputs.map(x => x[0]).join(", "));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === file) generate();
