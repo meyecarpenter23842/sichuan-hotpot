@@ -13,8 +13,13 @@ function nearWhite(data, index) {
   const alpha = data[index + 3];
   if (alpha < 16) return true;
   const red = data[index], green = data[index + 1], blue = data[index + 2];
-  return red >= 228 && green >= 228 && blue >= 228
+  // The approved image uses white AND warm ivory backgrounds. Only erase
+  // background connected to the OUTER edge; enclosed pot details are preserved.
+  const neutral = red >= 228 && green >= 228 && blue >= 228
     && Math.max(red, green, blue) - Math.min(red, green, blue) < 19;
+  const warmIvory = red >= 232 && green >= 220 && blue >= 207
+    && red >= green && green >= blue && red - blue <= 53;
+  return neutral || warmIvory;
 }
 
 /**
