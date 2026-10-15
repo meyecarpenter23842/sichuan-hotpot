@@ -1,3 +1,4 @@
+import { displayAdministrativeSelection } from "../../../packages/shared/src/vietnam-admin";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, AppState, Modal, Pressable, ScrollView, StyleSheet,
@@ -29,7 +30,9 @@ export interface StaffOrder {
 }
 interface OrderDetail extends StaffOrder {
   phoneSnapshot?: string | null; addressLineSnapshot?: string | null;
-  roadDistanceMeters?: number;
+  roadDistanceMeters?: number | null;
+  zoneNameSnapshot?: string | null; provinceCodeSnapshot?: string | null;
+  wardCodeSnapshot?: string | null; catalogVersionSnapshot?: string | null;
   statusHistory: {
     fromStatus: OrderStatus | null; toStatus: OrderStatus;
     createdAt: string; reason: string | null;
@@ -361,7 +364,15 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                 </View>}
               {!!selected.addressLineSnapshot && <>
                 <Text style={s.itemName}>Giao tới</Text>
-                <Text style={s.products}>{selected.addressLineSnapshot}</Text>
+                <Text style={s.products}>{selected.addressLineSnapshot}{displayAdministrativeSelection({
+                  catalogVersion: selected.catalogVersionSnapshot,
+                  provinceCode: selected.provinceCodeSnapshot,
+                  wardCode: selected.wardCodeSnapshot,
+                }) ? ", " + displayAdministrativeSelection({
+                  catalogVersion: selected.catalogVersionSnapshot,
+                  provinceCode: selected.provinceCodeSnapshot,
+                  wardCode: selected.wardCodeSnapshot,
+                }) : ""}</Text>
                 {!!selected.phoneSnapshot && <Text style={s.note}>{selected.phoneSnapshot}</Text>}
               </>}
               <Text style={s.detailSectionTitle}>Lịch sử trạng thái</Text>
