@@ -37,7 +37,7 @@ export function ModifierGroupsPanel({ catalog, busy, onCreateGroup, onEditGroup,
   const money = (value: number) => value.toLocaleString("vi-VN") + "đ";
 
   return <View style={s.container}>
-    <Notice text="Nhóm hiện được lưu riêng theo từng món. Chức năng dùng chung nhiều món sẽ được bổ sung sau khi hoàn thành API #97." />
+    <Notice text="Các nhóm hiện được thiết lập riêng cho từng món. Chạm tên nhóm để xem và chỉnh tùy chọn." />
     <Field label="Tìm món, nhóm hoặc topping" value={query}
       onChangeText={setQuery} placeholder="Tìm nhóm tùy chọn..." />
     {products.length === 0 && <Text style={s.empty}>Không có nhóm hoặc món phù hợp.</Text>}

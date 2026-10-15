@@ -12,7 +12,7 @@ test("L05 uses real product-scoped groups and accessible switches", () => {
   assert.match(groups, /product\.modifierGroups\.map\(group =>/);
   assert.match(groups, /group\.options\.map\(option =>/);
   assert.match(groups, /product\.variants\.map\(variant =>/);
-  assert.match(groups, /Chức năng dùng chung nhiều món sẽ được bổ sung/);
+  assert.match(groups, /Các nhóm hiện được thiết lập riêng cho từng món/);
   assert.match(sw, /accessibilityRole="switch"/);
   assert.match(sw, /minHeight: 44, minWidth: 56/);
 });

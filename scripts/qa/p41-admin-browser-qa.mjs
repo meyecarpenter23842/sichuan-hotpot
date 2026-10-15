@@ -127,7 +127,7 @@ try {
   await page.getByRole("button", { name: "Đóng chi tiết món" }).click();
 
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
-  await page.getByText("Nhóm hiện được lưu riêng theo từng món.", { exact: false }).waitFor();
+  await page.getByText("Các nhóm hiện được thiết lập riêng cho từng món.", { exact: false }).waitFor();
   await page.getByRole("button", { name: "Khẩu phần của Lẩu QA P4.1" }).click();
   const variantSwitch = page.getByRole("switch", { name: "Bán size Phần hai người của Lẩu QA P4.1" });
   await variantSwitch.click();
