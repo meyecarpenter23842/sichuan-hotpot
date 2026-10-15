@@ -234,7 +234,7 @@ try {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           true, "L05 modifier list overflow at " + width);
         await page.screenshot({ path: "apps/admin/qa-artifacts/p45-l05-modifiers-" + width + ".png" });
-        await page.getByRole("tab", { name: "Món", exact: true }).click();
+        await page.getByRole("tablist").getByRole("tab", { name: "Món", exact: true }).click();
       }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
