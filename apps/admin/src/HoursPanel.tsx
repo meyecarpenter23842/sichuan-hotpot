@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request, type AdminCatalog, type OpeningHour } from "./api";
-import { Action, Notice, Pill } from "./ui";
+import { Action, Notice } from "./ui";
+import { StatusSwitch } from "./StatusSwitch";
 import { c, font } from "./theme";
 import { Icon } from "./Icon";
 
@@ -46,8 +47,8 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
 
   useEffect(() => { setDays(draft(catalog.openingHours)); }, [catalog.id, catalog.openingHours]);
   useEffect(() => { setError(""); setNotice(""); setPicker(null); }, [catalog.id]);
-  useEffect(() => { onDirtyChange?.(JSON.stringify(days) !== JSON.stringify(draft(catalog.openingHours))); },
-    [days, catalog.openingHours, onDirtyChange]);
+  const hasChanges = JSON.stringify(days) !== JSON.stringify(draft(catalog.openingHours));
+  useEffect(() => { onDirtyChange?.(hasChanges); }, [hasChanges, onDirtyChange]);
 
   function edit(weekday: number, patch: Partial<OpeningHour>) {
     setDays(items => items.map(x => x.weekday === weekday ? { ...x, ...patch } : x));
@@ -111,8 +112,11 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
       return <View key={day.weekday} style={st.row}>
         <View style={st.rowTop}>
           <Text style={st.weekday}>{weekdays[day.weekday]}</Text>
-          <Pill label={day.isClosed ? "Nghỉ" : "Mở cửa"} active={!day.isClosed}
-            onPress={() => toggleDay(day)} />
+          <View style={st.statusRow}>
+            <Text style={st.statusText}>{day.isClosed ? "Nghỉ" : "Mở cửa"}</Text>
+            <StatusSwitch value={!day.isClosed} busy={saving}
+              label={"Mở cửa " + weekdays[day.weekday]} onValueChange={() => toggleDay(day)} />
+          </View>
         </View>
         {!day.isClosed && <View style={st.times}>
           <View style={st.time}>
@@ -196,6 +200,7 @@ export function HoursPanel({ catalog, token, reload, onDirtyChange }: {
     </View>}
       </View>;
     })}
+    {hasChanges && <Notice text="Lịch bán có thay đổi chưa lưu. Nhấn Lưu lịch cửa hàng để áp dụng." />}
     {!!error && <Notice text={error} error />}
     {!!notice && <Notice text={notice} />}
     <Action label={saving ? "Đang lưu..." : "Lưu lịch cửa hàng"} onPress={() => void save()} disabled={saving} />
@@ -207,6 +212,8 @@ const st = StyleSheet.create({
   root: { paddingBottom: 8, gap: 9 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 19, color: c.secondary },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  statusText: { fontSize: font.note, color: c.secondary },
   row: { borderBottomWidth: 1, borderBottomColor: c.line,
     paddingBottom: 7, paddingTop: 2, gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
