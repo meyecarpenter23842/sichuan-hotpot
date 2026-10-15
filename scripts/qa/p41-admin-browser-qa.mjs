@@ -202,7 +202,17 @@ try {
   assert.equal(savedHours[1].closesAt, "22:15");
   assert.equal(savedHours[2].opensAt, "08:00");
   assert.equal(savedHours[2].closesAt, "21:00");
-
+ 
+  // L08: use a real persisted featured product in all three screenshot tabs.
+  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await page.getByRole("tab", { name: "Món gợi ý" }).click();
+  await page.getByRole("button", { name: "＋ Gợi ý" }).click();
+  await page.getByRole("switch", { name: "Gợi ý món Lẩu QA P4.1" }).click();
+  await page.getByRole("button", { name: "Lưu món gợi ý" }).click();
+  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).waitFor();
+  assert.equal((await db.product.findUniqueOrThrow({
+    where: { id: savedProduct.id },
+  })).isFeatured, true, "L08 screenshots require a saved featured product");
 
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 844 });
@@ -257,7 +267,14 @@ try {
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
           true, "L05 modifier list overflow at " + width);
         await page.screenshot({ path: "apps/admin/qa-artifacts/p45-l05-modifiers-" + width + ".png" });
+        await page.screenshot({ path: "apps/admin/qa-artifacts/l08-modifiers-" + width + ".png" });
+        await tabs.getByRole("tab", { name: "Món gợi ý" }).click();
+        await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).waitFor();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+          true, "L08 featured tab overflow at " + width);
+        await page.screenshot({ path: "apps/admin/qa-artifacts/l08-featured-" + width + ".png" });
         await tabs.getByRole("tab", { name: "Món", exact: true }).click();
+        await page.screenshot({ path: "apps/admin/qa-artifacts/l08-products-" + width + ".png" });
       }
       await page.screenshot({ path: "apps/admin/qa-artifacts/p41-" +
         tab.replace(/\s/g, "-") + "-" + width + ".png" });
@@ -265,7 +282,25 @@ try {
     const headings = await page.locator("h1, h2").count();
     assert.equal(headings, 0, "Admin uses compact RN typography, not browser default headings");
   }
+  // L08 tablet/desktop matrix; all screenshots come from the real CI API and DB.
+  // Browser screenshots are evidence of layout only, never visual reference approval.
+  for (const width of [768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole("tab", { name: "Thực đơn" }).click();
+    const menuTabs = page.getByRole("tablist");
+    const tabY = (await menuTabs.boundingBox())?.y;
+    for (const [tab, slug] of [["Món", "products"], ["Nhóm tùy chọn", "modifiers"], ["Món gợi ý", "featured"]]) {
+      await menuTabs.getByRole("tab", { name: tab, exact: true }).click();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+        true, "L08 admin horizontal overflow in " + tab + " at " + width);
+      const nextTabY = (await menuTabs.boundingBox())?.y;
+      assert.ok(tabY !== undefined && nextTabY !== undefined && Math.abs(tabY - nextTabY) <= 1,
+        "L08 sub-tabs must not jump on " + width + " / " + tab);
+      await page.screenshot({ path: "apps/admin/qa-artifacts/l08-" + slug + "-" + width + ".png" });
+    }
+  }
   assert.deepEqual(errors, []);
+  console.log("PASS L08: three real Admin menu tabs at 320/360/390/428/768/1280/1440, 21 screenshots");
   console.log("PASS: Admin role-based sign-in, flat catalog detail modal, size, topping, settings hours, 320/360/390/428");
 
   // Exercise real OWNER and branch-scoped MANAGER permissions on disposable CI DB only.
@@ -289,6 +324,60 @@ try {
   const deniedOtherBranch = await fetch(api + "/admin/branches/" + otherBranch.id + "/catalog",
     { headers: managerHeaders });
   assert.equal(deniedOtherBranch.status, 403);
+
+  // L08: a valid manager branch and valid foreign UUID must never allow
+  // cross-branch product/variant/group/option writes or category reassignment.
+  const foreignCategory = await db.catalogCategory.create({
+    data: { branchId: otherBranch.id, name: "Foreign branch menu" },
+  });
+  const foreignProduct = await db.product.create({
+    data: { categoryId: foreignCategory.id, name: "Foreign product", priceVnd: 57000 },
+  });
+  const foreignVariant = await db.productVariant.create({
+    data: { productId: foreignProduct.id, name: "Foreign size", priceDeltaVnd: 12000 },
+  });
+  const foreignGroup = await db.modifierGroup.create({
+    data: { productId: foreignProduct.id, name: "Foreign toppings", minSelect: 0, maxSelect: 1 },
+  });
+  const foreignOption = await db.modifierOption.create({
+    data: { groupId: foreignGroup.id, name: "Foreign chili", priceDeltaVnd: 3000 },
+  });
+  const baseCatalog = api + "/admin/branches/" + branch.id + "/catalog";
+  async function scopedWrite(path, method, data, expected) {
+    const response = await fetch(baseCatalog + path, {
+      method, headers: { ...managerHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    assert.equal(response.status, expected, method + " " + path +
+      " must return " + expected + ", got " + response.status);
+  }
+  await scopedWrite("/products", "POST", {
+    categoryId: foreignCategory.id, name: "Cross-branch injection",
+    priceVnd: 24000, isAvailable: true,
+  }, 404);
+  await scopedWrite("/products/" + foreignProduct.id, "PATCH", { priceVnd: 1 }, 404);
+  await scopedWrite("/categories/" + foreignCategory.id, "PATCH", { name: "Tampered" }, 404);
+  await scopedWrite("/variants/" + foreignVariant.id, "PATCH", { priceDeltaVnd: 1 }, 404);
+  await scopedWrite("/groups/" + foreignGroup.id, "PATCH", { minSelect: 1 }, 404);
+  await scopedWrite("/options/" + foreignOption.id, "PATCH", { isAvailable: false }, 404);
+  await scopedWrite("/products/" + savedProduct.id, "PATCH",
+    { categoryId: foreignCategory.id }, 404);
+  await scopedWrite("/products/" + savedProduct.id, "PATCH",
+    { priceVnd: 1.5 }, 400);
+  await scopedWrite("/products/" + savedProduct.id, "PATCH",
+    { name: "<script>" + "X".repeat(210) + "</script>" }, 400);
+  assert.equal((await db.product.findUniqueOrThrow({ where: { id: foreignProduct.id } })).priceVnd, 57000);
+  assert.equal((await db.product.findUniqueOrThrow({ where: { id: savedProduct.id } })).categoryId,
+    savedProduct.categoryId);
+  assert.equal((await db.modifierOption.findUniqueOrThrow({
+    where: { id: foreignOption.id },
+  })).isAvailable, true);
+  assert.equal(await db.product.count({ where: { name: "Cross-branch injection" } }), 0);
+  const customerWithoutAdmin = await fetch(baseCatalog, {
+    headers: { Authorization: "Bearer broken-token" },
+  });
+  assert.equal(customerWithoutAdmin.status, 401);
+  console.log("PASS L08: manager foreign UUID isolation, invalid price/name, denied auth; original DB rows unchanged");
 
   const ownerUsername = "owner" + randomUUID().replaceAll("-", "").slice(0, 15);
   const ownerPassword = "owner9!xZ"; // CI-only nine-character fixture, never a production credential.
