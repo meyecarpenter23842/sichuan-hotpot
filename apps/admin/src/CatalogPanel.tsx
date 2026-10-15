@@ -248,6 +248,8 @@ export function CatalogPanel({ catalog, token, reload }: {
         <Text style={[st.menuTabText, tab === "modifiers" && st.menuTabTextActive]}>Nhóm tùy chọn</Text>
       </Pressable>
     </View>
+    {!!notice && <Notice text={notice} />}
+    {!!error && !editor && <Notice text={error} error />}
     {tab === "products" && <>
     <Field label="Tìm món" value={filter} onChangeText={setFilter}
       placeholder="Tên lẩu, trà sữa, combo..." />
@@ -255,8 +257,6 @@ export function CatalogPanel({ catalog, token, reload }: {
       <Pill label="Tất cả" active={!stockOnly} onPress={() => setStockOnly(false)} />
       <Pill label="Tạm hết" active={stockOnly} onPress={() => setStockOnly(true)} />
     </View>
-    {!!notice && <Notice text={notice} />}
-    {!!error && !editor && <Notice text={error} error />}
     {categories.length === 0 && <Notice text="Không có món phù hợp trong chi nhánh này." />}
     {categories.map(category => (
       <View key={category.id} style={st.categoryBlock}>

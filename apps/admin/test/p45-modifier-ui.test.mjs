@@ -23,3 +23,11 @@ test("L05 does not present product-scoped groups as a reusable library", () => {
   assert.match(catalog, /busyRef\.current = true/);
   assert.match(catalog, /request\(root \+ path, token, method, body\)/);
 });
+
+test("L05 displays server and selection errors in both tabs", () => {
+  const alert = '{!!error && !editor && <Notice text={error} error />}';
+  const boundary = '{tab === "products" && <>';
+  assert.ok(catalog.indexOf(alert) >= 0 && catalog.indexOf(alert) < catalog.indexOf(boundary),
+    "Errors cannot be scoped to only the products tab");
+  assert.match(catalog, /remaining < group\.minSelect/);
+});
