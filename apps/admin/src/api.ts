@@ -17,6 +17,7 @@ export interface CatalogGroup {
 }
 export interface CatalogProduct {
   id: string; categoryId: string; name: string; priceVnd: number; isAvailable: boolean;
+  isFeatured: boolean; sortOrder: number; soldCount: number;
   imageKey: string | null; variants: CatalogVariant[]; modifierGroups: CatalogGroup[];
 }
 export interface CatalogCategory {
@@ -26,7 +27,7 @@ export interface OpeningHour {
   weekday: number; opensAt: string; closesAt: string; isClosed: boolean;
 }
 export interface AdminCatalog extends Branch {
-  categories: CatalogCategory[]; openingHours: OpeningHour[];
+  categories: CatalogCategory[]; openingHours: OpeningHour[]; catalogRevision: number;
 }
 const REFRESH_KEY = "sichuan.admin.refresh.v1";
 const WEB_SESSION_MARKER = "sichuan.admin.pwa.session-present.v1";
