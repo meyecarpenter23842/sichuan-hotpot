@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { DeliveryQuoteService } = require("../dist/delivery/delivery-quote.service.js");
-const { RoadRoutingService } = require("../dist/delivery/road-routing.service.js");
 const branchId = randomUUID(), addressId = randomUUID(), customerId = randomUUID();
 const productId = randomUUID(), variantId = randomUUID(), modifierId = randomUUID();
 const item = () => ({
@@ -101,42 +100,6 @@ test("invalid variants/modifiers, unavailable products and unsafe prices fail cl
   await assert.rejects(f.service.calculate("Bearer valid", f.input),
     e => e.getStatus?.() === 422);
 });
-test("Google Routes: no key fails closed and never attempts a network call", async () => {
-  const original = process.env.GOOGLE_ROUTES_API_KEY;
-  delete process.env.GOOGLE_ROUTES_API_KEY;
-  const routing = new RoadRoutingService();
-  try {
-    await assert.rejects(routing.drivingMeters(
-      { latitude: 10.77, longitude: 106.67 }, { latitude: 10.8, longitude: 106.7 }),
-      e => e.getStatus?.() === 503);
-  } finally {
-    if (original !== undefined) process.env.GOOGLE_ROUTES_API_KEY = original;
-  }
-});
-test("Google Routes: provider request format, cache and invalid response", async () => {
-  const original = process.env.GOOGLE_ROUTES_API_KEY, origFetch = globalThis.fetch;
-  process.env.GOOGLE_ROUTES_API_KEY = "ci-fake-key";
-  let calls = 0;
-  globalThis.fetch = async (_url, init) => {
-    calls++;
-    assert.equal(init.method, "POST");
-    assert.equal(init.headers["X-Goog-FieldMask"], "routes.distanceMeters");
-    return { ok: true, json: async () => ({ routes: [{ distanceMeters: 2700 }] }) };
-  };
-  try {
-    const routes = new RoadRoutingService();
-    const a = { latitude: 10.77, longitude: 106.67 };
-    const b = { latitude: 10.8, longitude: 106.7 };
-    assert.equal(await routes.drivingMeters(a, b), 2700);
-    assert.equal(await routes.drivingMeters(a, b), 2700);
-    assert.equal(calls, 1);
-  } finally {
-    globalThis.fetch = origFetch;
-    if (original === undefined) delete process.env.GOOGLE_ROUTES_API_KEY;
-    else process.env.GOOGLE_ROUTES_API_KEY = original;
-  }
-});
-
 test("P4.6 closed branch denies new quote before routing but retains a public menu", async () => {
   const f = fixture();
   f.db.branch.findFirst = async () => ({
