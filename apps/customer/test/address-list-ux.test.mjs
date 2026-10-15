@@ -30,7 +30,8 @@ test("three quick add actions initialize the actual validation and map modal", (
   assert.match(app, /item\.title === "Thêm Nhà riêng"/);
   assert.match(app, /Lưu địa chỉ thường dùng/);
   assert.match(app, /onPress=\{\(\) => openAddressEditor\(addressReturnTo, item\.label\)\}/);
-  assert.match(app, /setAddress\(\{ label, phone: address\.phone, line1: "", latitude: "", longitude: "" \}\)/);
+  assert.match(app, /catalogVersion: ADMIN_CATALOG_VERSION, provinceCode: null, wardCode: null/);
+  assert.match(app, /VietnamAdministrativeAreaPicker/);
   assert.match(app, /<AddressPinMap latitude=\{address\.latitude\}/);
   assert.match(app, /addressError\(address\.line1, address\.latitude, address\.longitude\)/);
   assert.match(app, /setSelectedAddressId\(saved\.id\)/);
