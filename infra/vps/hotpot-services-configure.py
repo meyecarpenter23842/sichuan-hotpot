@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""One-time production service credentials installer.
+"""One-time production R2 credentials installer (routing uses local OSRM).
 
 Only accepts secrets through SSH stdin under sudo from the owner-only,
 environment-protected GitHub Actions workflow. Never logs credentials.
@@ -26,7 +26,7 @@ import uuid
 ENV_FILE = Path("/etc/sichuan-hotpot/api.env")
 API_SERVICE = "hotpot-api.service"
 KEYS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
-        "R2_BUCKET", "GOOGLE_ROUTES_API_KEY")
+        "R2_BUCKET")
 PNG_1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/2SAAAAAASUVORK5CYII="
 )
@@ -62,8 +62,6 @@ def validate(payload):
         raise ValueError("invalid_r2_access_id")
     if len(payload["R2_SECRET_ACCESS_KEY"]) < 20:
         raise ValueError("invalid_r2_secret")
-    if len(payload["GOOGLE_ROUTES_API_KEY"]) < 20:
-        raise ValueError("invalid_google_key")
     return payload
 
 
@@ -136,31 +134,6 @@ def probe_r2(settings):
             with urllib.request.urlopen(request, timeout=12) as response:
                 if response.status not in (200, 202, 204):
                     raise ValueError("r2_cleanup_unavailable")
-
-
-def probe_routes(settings):
-    points = [(10.7700, 106.6900), (10.7750, 106.6950)]
-    def waypoint(coord):
-        return {"location": {"latLng": {"latitude": coord[0], "longitude": coord[1]}}}
-    body = json.dumps({
-        "origin": waypoint(points[0]), "destination": waypoint(points[1]),
-        "travelMode": "DRIVE", "routingPreference": "TRAFFIC_UNAWARE",
-    }).encode()
-    request = urllib.request.Request(
-        "https://routes.googleapis.com/directions/v2:computeRoutes",
-        method="POST", data=body, headers={
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": settings["GOOGLE_ROUTES_API_KEY"],
-            "X-Goog-FieldMask": "routes.distanceMeters",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=12) as response:
-        obj = json.load(response)
-    distances = obj.get("routes") if isinstance(obj, dict) else None
-    if not isinstance(distances, list) or not distances or not isinstance(
-        distances[0].get("distanceMeters"), int
-    ) or distances[0]["distanceMeters"] < 1:
-        raise ValueError("google_routes_provider_unavailable")
 
 
 def atomic_file(path, data):
@@ -251,8 +224,6 @@ def main():
     # Provider checks happen BEFORE touching production env or restarting anything.
     probe_r2(settings)
     print("r2_product_upload_probe=PASS")
-    probe_routes(settings)
-    print("google_routes_road_distance_probe=PASS")
     configure(settings)
 
 

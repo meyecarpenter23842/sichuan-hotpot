@@ -8,9 +8,10 @@ test("PWA and Android use real draggable pins with manual coordinate fallback", 
   assert.match(web, /L\.tileLayer/);
   assert.match(web, /map\.on\("click"/);
   assert.match(web, /mapPin\.on\("dragend"/);
-  assert.match(native, /<MapView/);
-  assert.match(native, /<Marker coordinate=\{pin\} draggable/);
-  assert.match(native, /onDragEnd=/);
+  assert.match(native, /tile.openstreetmap.org/);
+  assert.match(native, /PanResponder.create/);
+  assert.match(native, /Chạm hoặc kéo bản đồ/);
+  assert.doesNotMatch(native, /react-native-maps|Google Maps SDK/);
   assert.match(address, /<AddressPinMap latitude=\{address\.latitude\}/);
   assert.match(address, /Vĩ độ \(latitude\)/);
   assert.match(address, /Kinh độ \(longitude\)/);
