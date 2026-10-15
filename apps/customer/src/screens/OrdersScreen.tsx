@@ -1,3 +1,4 @@
+import { displayAdministrativeSelection } from "../../../../packages/shared/src/vietnam-admin";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
@@ -127,7 +128,15 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
             <View style={styles.group}>
               <Text style={styles.headingSmall}>Đơn #{detail.id.slice(0, 8).toUpperCase()}</Text>
               <Text style={styles.status}>{statusName(detail.status)}</Text>
-              <Text style={styles.muted}>Địa chỉ giao: {detail.addressLineSnapshot}</Text>
+              <Text style={styles.muted}>Địa chỉ giao: {detail.addressLineSnapshot}{displayAdministrativeSelection({
+                catalogVersion: detail.catalogVersionSnapshot,
+                provinceCode: detail.provinceCodeSnapshot,
+                wardCode: detail.wardCodeSnapshot,
+              }) ? ", " + displayAdministrativeSelection({
+                catalogVersion: detail.catalogVersionSnapshot,
+                provinceCode: detail.provinceCodeSnapshot,
+                wardCode: detail.wardCodeSnapshot,
+              }) : ""}</Text>
               {detail.items.map((item, index) => (
                 <View key={index} style={styles.line}>
                   <View style={styles.fill}>
