@@ -296,7 +296,7 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
     assert.equal(oldOrder.totalVnd,112000);
     assert.equal(oldOrder.deliveryFeeVnd,12000);
     assert.equal(called,0,"zone checkout must not invoke OSRM");
-    await db.address.update({ where: { id: addressId }, data: {wardCode:"99999"} });
+    await db.address.update({ where: { id: addressId }, data: {wardCode:"25760"} });
     const outsideKey = randomUUID();
     const outside = await request(orderBody(outsideKey)).expect(422);
     assert.match(JSON.stringify(outside.body), /ZONE_NOT_SERVED/, JSON.stringify(outside.body));
