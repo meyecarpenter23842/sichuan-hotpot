@@ -15,7 +15,6 @@ def valid():
         "R2_ACCESS_KEY_ID": "dummyaccesskey1234567890",
         "R2_SECRET_ACCESS_KEY": "dummy_secret_1234567890_testing_only",
         "R2_BUCKET": "hot-pot",
-        "GOOGLE_ROUTES_API_KEY": "dummy-google-routes-key-1234567890",
     }
 
 
@@ -29,7 +28,7 @@ class HotpotServicesConfigTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 mod.validate(broken)
         broken = dict(settings)
-        broken["GOOGLE_ROUTES_API_KEY"] += "\nINJECTED=1"
+        broken["R2_SECRET_ACCESS_KEY"] += "\nINJECTED=1"
         with self.assertRaises(ValueError):
             mod.validate(broken)
         broken = dict(settings)
@@ -48,7 +47,6 @@ class HotpotServicesConfigTests(unittest.TestCase):
         after = mod.render_env(prev, valid())
         result = mod.parse_env(after.splitlines())
         self.assertEqual(result["R2_ACCESS_KEY_ID"], valid()["R2_ACCESS_KEY_ID"])
-        self.assertEqual(result["GOOGLE_ROUTES_API_KEY"], valid()["GOOGLE_ROUTES_API_KEY"])
         self.assertEqual(result["DATABASE_URL"], "postgresql://test-only@localhost:5432/test")
         self.assertEqual(after, mod.render_env(after.splitlines(), valid()))
         self.assertEqual(sum(line.startswith("R2_BUCKET=") for line in after.splitlines()), 1)
