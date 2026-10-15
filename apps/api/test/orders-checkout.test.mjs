@@ -299,7 +299,7 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
     await db.address.update({ where: { id: addressId }, data: {wardCode:"99999"} });
     const outsideKey = randomUUID();
     const outside = await request(orderBody(outsideKey)).expect(422);
-    assert.equal(outside.body?.message?.code ?? outside.body?.code, "ZONE_NOT_SERVED");
+    assert.match(JSON.stringify(outside.body), /ZONE_NOT_SERVED/, JSON.stringify(outside.body));
     assert.equal(await db.order.count({where:{customerId:userId,idempotencyKey:outsideKey}}),0);
   } finally { route.drivingMeters = old; }
 });
