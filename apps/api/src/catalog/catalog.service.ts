@@ -68,13 +68,14 @@ export class CatalogService {
       },
     });
     if (!branch) throw new NotFoundException("Store branch unavailable");
+    if (!branch.categories.length) return branch;
     return { ...branch, categories: branch.categories.map(category => ({
       ...category, products: category.products.map(product => {
-        const combined = new Map(product.modifierGroups.filter(g => g.branchId === null)
+        const combined = new Map(product.modifierGroups.filter(g => g.branchId == null)
           .map(g => [g.id, g] as const));
-        for (const a of product.modifierAssignments) combined.set(a.group.id, a.group);
+        for (const a of product.modifierAssignments ?? []) combined.set(a.group.id, a.group);
         return { ...product,
-          modifierGroups: [...combined.values()].filter(g => g.isAvailable),
+          modifierGroups: [...combined.values()].filter(g => g.isAvailable !== false),
           modifierAssignments: undefined };
       }),
     })) };
