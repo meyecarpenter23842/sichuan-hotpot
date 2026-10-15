@@ -429,12 +429,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
-                    {editor.id && ["category","group","option"].includes(editor.kind) && <>
-               <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
-                 onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"
-                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
-               <Text style={st.sub}>Ảnh mới được lưu độc lập với tên và giá. Mục mới lưu nháp trước để có mã tải ảnh.</Text>
-             </>}
+                    
              {!!error && <Notice text={error} error />}
                     {busy && <Text style={st.emptyNote}>Đang xử lý và tải ảnh. Vui lòng đợi...</Text>}
               <View style={st.detailHead}>
@@ -555,6 +550,12 @@ export function CatalogPanel({ catalog, token, reload }: {
                   label="Cho phép bán" onValueChange={next => change("isAvailable", next)} />
               </View>}
             {!!error && <Notice text={error} error />}
+            {editor.id && ["category","group","option"].includes(editor.kind) && <>
+               <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
+                 onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"
+                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
+               <Text style={st.sub}>Ảnh mới được lưu độc lập với tên và giá. Mục mới lưu nháp trước để có mã tải ảnh.</Text>
+             </>}
             {confirmDelete && <Notice text="Xác nhận xóa? Món đã có lịch sử đơn không thể xóa; hãy chuyển sang tạm hết." error />}
             <View style={st.modalActions}>
               {editor.id && <Action label={confirmDelete ? "Xác nhận xóa" : "Xóa"}
