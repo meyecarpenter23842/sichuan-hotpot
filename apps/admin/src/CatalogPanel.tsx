@@ -76,6 +76,9 @@ export function CatalogPanel({ catalog, token, reload }: {
     return { all: products.length, off: products.filter(product => !product.isAvailable).length };
   }, [catalog]);
   const allProducts = useMemo(() => catalog.categories.flatMap(category => category.products), [catalog]);
+  const orderedProducts = useMemo(() => [...allProducts].sort((a, b) =>
+    a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "vi") || a.id.localeCompare(b.id)),
+    [allProducts]);
   const featuredCount = allProducts.filter(product => product.isFeatured).length;
   const categories = useMemo(() =>
     catalog.categories.map(category => ({
@@ -222,9 +225,8 @@ export function CatalogPanel({ catalog, token, reload }: {
   function shiftOrder(index: number, by: number) {
     setSortDraft(old => {
       if (!old || index + by < 0 || index + by >= old.length) return old;
-      const source = allProducts.find(product => product.id === old[index]);
-      const target = allProducts.find(product => product.id === old[index + by]);
-      if (!source || !target || source.categoryId !== target.categoryId) return old;
+      if (!allProducts.some(product => product.id === old[index]) ||
+          !allProducts.some(product => product.id === old[index + by])) return old;
       const next = [...old];
       [next[index], next[index + by]] = [next[index + by]!, next[index]!];
       return next;
@@ -288,7 +290,7 @@ export function CatalogPanel({ catalog, token, reload }: {
           setFeaturedDraft(allProducts.filter(product => product.isFeatured).map(product => product.id));
         }} />}
         {tab !== "modifiers" && <Action label="↕ Thứ tự" secondary onPress={() => {
-          setError(""); setSortDraft(allProducts.map(product => product.id));
+          setError(""); setSortDraft(orderedProducts.map(product => product.id));
         }} />}
       </View>
     </View>
@@ -566,7 +568,7 @@ export function CatalogPanel({ catalog, token, reload }: {
             <View style={st.modalHeading}>
               <View style={st.modalName}>
                 <Text style={st.title}>Sắp xếp thứ tự món</Text>
-                <Text style={st.sub}>Dùng mũi tên để đổi vị trí trong từng danh mục.</Text>
+                <Text style={st.sub}>Dùng mũi tên để đổi vị trí món, kể cả gợi ý từ danh mục khác.</Text>
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="Đóng sắp xếp"
                 style={st.close} disabled={busy} onPress={() => setSortDraft(null)}>
@@ -578,17 +580,16 @@ export function CatalogPanel({ catalog, token, reload }: {
               {sortDraft?.map((id, index) => {
                 const product = allProducts.find(item => item.id === id);
                 if (!product) return null;
-                const previous = allProducts.find(item => item.id === sortDraft[index - 1]);
-                const next = allProducts.find(item => item.id === sortDraft[index + 1]);
+                const category = catalog.categories.find(cat => cat.id === product.categoryId);
                 return <View key={id} style={st.optionRow}>
-                  <Text style={st.optionName} numberOfLines={2}>{product.name}</Text>
+                  <Text style={st.optionName} numberOfLines={2}>{product.name}{category ? " · " + category.name : ""}</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel={"Đưa " + product.name + " lên"}
-                    disabled={busy || previous?.categoryId !== product.categoryId}
+                    disabled={busy || index === 0}
                     style={st.optionAction} onPress={() => shiftOrder(index, -1)}>
                     <Text style={st.miniEditText}>↑</Text>
                   </Pressable>
                   <Pressable accessibilityRole="button" accessibilityLabel={"Đưa " + product.name + " xuống"}
-                    disabled={busy || next?.categoryId !== product.categoryId}
+                    disabled={busy || index === sortDraft.length - 1}
                     style={st.optionAction} onPress={() => shiftOrder(index, 1)}>
                     <Text style={st.miniEditText}>↓</Text>
                   </Pressable>
