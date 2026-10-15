@@ -11,7 +11,7 @@
     "android": {
       "package": "vn.sichuanhotpot.admin",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/app-icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     },
