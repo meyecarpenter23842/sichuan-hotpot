@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -214,23 +215,48 @@ def configure(settings, env_file=ENV_FILE):
             os.close(backup_fd)
 
 
+SAFE_REASONS = frozenset({
+    "unauthorized_execution", "invalid_payload", "incorrect_r2_account",
+    "incorrect_r2_bucket", "invalid_secret_field", "control_in_secret_field",
+    "invalid_r2_access_id", "invalid_r2_secret", "unsafe_environment_file",
+    "invalid_existing_environment", "unexpected_service_bind",
+    "r2_provider_unavailable", "r2_cleanup_unavailable",
+    "api_not_ready", "rolled_back_after_failed_health",
+})
+
+
+def sanitized_failure(exc, stage):
+    """Print strictly preapproved error codes, NEVER the exception or URL."""
+    print("blocked_stage=" + stage)
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code
+        if isinstance(code, int) and 400 <= code <= 599:
+            print("provider_http_status=" + str(code))
+    elif isinstance(exc, ValueError):
+        reason = str(exc)
+        if reason in SAFE_REASONS:
+            print("block_reason=" + reason)
+    print("configuration=BLOCKED")
+
+
 def main():
-    if os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] != "--apply":
-        raise ValueError("unauthorized_execution")
-    # Secrets arrive over pinned SSH stdin, not arguments, source, env output or logs.
-    settings = validate(json.load(sys.stdin))
-    if ENV_FILE.is_symlink():
-        raise ValueError("unsafe_environment_file")
-    # Provider checks happen BEFORE touching production env or restarting anything.
-    probe_r2(settings)
-    print("r2_product_upload_probe=PASS")
-    configure(settings)
+    stage = "VALIDATE"
+    try:
+        if os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] != "--apply":
+            raise ValueError("unauthorized_execution")
+        settings = validate(json.load(sys.stdin))
+        if ENV_FILE.is_symlink():
+            raise ValueError("unsafe_environment_file")
+        stage = "R2_PROBE"
+        # Provider checks occur before writing production env or restarting API.
+        probe_r2(settings)
+        print("r2_product_upload_probe=PASS")
+        stage = "API_CONFIGURATION"
+        configure(settings)
+    except Exception as exc:
+        sanitized_failure(exc, stage)
+        raise SystemExit(2) from None
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        # Never dump Python tracebacks, presigned URLs, provider responses or keys.
-        print("configuration=BLOCKED")
-        raise SystemExit(2)
+    main()
