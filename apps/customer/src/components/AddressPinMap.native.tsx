@@ -39,6 +39,7 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
   const [width, setWidth] = useState(320);
   const [drag, setDrag] = useState({ dx: 0, dy: 0 });
   const [tilesFailed, setTilesFailed] = useState(false);
+  const lastInternal = useRef<string | null>(null);
   const state = useRef({ pin, zoom, width, onChange });
   state.current = { pin, zoom, width, onChange };
 
@@ -46,13 +47,17 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
     if (!validPin(latitude, longitude)) return;
     const next = { latitude: Number(latitude), longitude: Number(longitude) };
     setPin(next);
-    setZoom(old => Math.max(old, 16));
+    const internallyChosen = lastInternal.current === latitude + "," + longitude;
+    lastInternal.current = null;
+    if (!internallyChosen) setZoom(17);
   }, [latitude, longitude]);
 
   const choose = (newPin: Pin) => {
     if (!Number.isFinite(newPin.latitude) || !Number.isFinite(newPin.longitude)) return;
     setPin(newPin);
-    state.current.onChange(newPin.latitude.toFixed(7), newPin.longitude.toFixed(7));
+    const latText = newPin.latitude.toFixed(7), lngText = newPin.longitude.toFixed(7);
+    lastInternal.current = latText + "," + lngText;
+    state.current.onChange(latText, lngText);
   };
   const gesture = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -88,6 +93,7 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
         <Image pointerEvents="none" key={zoom + ":" + x + ":" + y}
           source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
           onError={() => setTilesFailed(true)}
+          onLoad={() => setTilesFailed(false)}
           style={{ position: "absolute", width: TILE, height: TILE,
             left: x * TILE - center.x + width / 2 + drag.dx,
             top: y * TILE - center.y + HEIGHT / 2 + drag.dy }} />,
