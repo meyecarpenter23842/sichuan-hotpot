@@ -11,7 +11,7 @@ import {
 import { c, font } from "./theme";
 import { Icon } from "./Icon";
 import { prepareProductImage } from "./prepare-product-image";
-import { ModifierGroupsPanel } from "./ModifierGroupsPanel";
+import { SharedModifierLibraryPanel, ProductGroupAssignmentModal } from "./SharedModifierLibraryPanel";
 import { StatusSwitch } from "./StatusSwitch";
 
 type Kind = "category" | "product" | "variant" | "group" | "option";
@@ -48,6 +48,7 @@ export function CatalogPanel({ catalog, token, reload }: {
   const [stockOnly, setStockOnly] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [assignProductId, setAssignProductId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -280,6 +281,36 @@ export function CatalogPanel({ catalog, token, reload }: {
     input.click();
   }
 
+  function pickCatalogMedia(kind: "categories" | "groups" | "options", itemId: string) {
+    if (busy) return;
+    if (Platform.OS !== "web") {
+      setError("Chọn ảnh hiện hỗ trợ trên Admin PWA; cần kiểm thử picker Android riêng.");
+      return;
+    }
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/png,image/jpeg,image/webp";
+    input.onchange = async () => {
+      const file = input.files?.[0]; if (!file || busyRef.current) return;
+      busyRef.current = true; setBusy(true); setError(""); setNotice("");
+      try {
+        const prepared = await prepareProductImage(file);
+        const endpoint = root + "/media/" + kind + "/" + itemId;
+        const ticket = await request<{key:string;uploadUrl:string;contentType:string}>(
+          endpoint + "/ticket", token, "POST",
+          {contentType:prepared.contentType,byteSize:prepared.blob.size});
+        const sent = await fetch(ticket.uploadUrl, {
+          method:"PUT",headers:{"Content-Type":ticket.contentType},body:prepared.blob});
+        if (!sent.ok) throw Error("R2 không nhận ảnh. Kiểm tra CORS và quyền media.");
+        await request(endpoint + "/attach", token, "POST", {key:ticket.key});
+        await reload();
+        setNotice("Đã cập nhật ảnh " + (kind === "categories" ? "danh mục" :
+          kind === "groups" ? "nhóm" : "topping") + ".");
+      } catch (e) {setError(e instanceof Error ? e.message : "Không tải ảnh lên R2.");}
+      finally { busyRef.current = false; setBusy(false); }
+    };
+    input.click();
+  }
+
   return <View style={st.container}>
     <View style={st.heading}>
       <View style={st.headingText}>
@@ -332,9 +363,21 @@ export function CatalogPanel({ catalog, token, reload }: {
       <View key={category.id} style={st.categoryBlock}>
         <View style={st.categoryHeading}>
           <View style={st.categoryTitle}>
-            <Text style={st.categoryName}>{category.name}</Text>
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              {imageUrl(category.imageKey ?? null)
+                ? <Image source={{ uri: imageUrl(category.imageKey ?? null)! }}
+                    style={{ width: 36, height: 36, borderRadius: 8 }} />
+                : <View style={{ width: 36, height: 36, borderRadius: 8,
+                    backgroundColor: "#F1F2F4", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 10, color: c.secondary }}>Ảnh</Text></View>}
+              <Text style={st.categoryName}>{category.name}</Text>
+            </View>
             <Text style={st.sub}>{category.products.length} món</Text>
           </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={"Chọn ảnh danh mục " + category.name}
+            style={st.categoryAction} onPress={() => pickCatalogMedia("categories", category.id)}>
+            <Icon name="image" size={19} color={c.red} />
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={"Sửa danh mục " + category.name}
             style={st.categoryAction} onPress={() => open("category", category.id, undefined, category)}>
             <Icon name="edit" size={19} color={c.secondary} />
@@ -386,7 +429,13 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
-                    {!!error && <Notice text={error} error />}
+                    {editor.id && ["category","group","option"].includes(editor.kind) && <>
+               <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
+                 onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"
+                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
+               <Text style={st.sub}>Ảnh mới được lưu độc lập với tên và giá. Mục mới lưu nháp trước để có mã tải ảnh.</Text>
+             </>}
+             {!!error && <Notice text={error} error />}
                     {busy && <Text style={st.emptyNote}>Đang xử lý và tải ảnh. Vui lòng đợi...</Text>}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Khẩu phần / size</Text>
@@ -406,7 +455,8 @@ export function CatalogPanel({ catalog, token, reload }: {
               </View>)}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Topping / tùy chọn</Text>
-                <Action label="＋ Nhóm" secondary onPress={() => open("group", undefined, product.id)} />
+                <Action label="＋ Gắn nhóm đã có" secondary
+                  onPress={() => setAssignProductId(product.id)} />
               </View>
               {product.modifierGroups.length === 0 && <Text style={st.emptyNote}>Chưa có nhóm tùy chọn.</Text>}
               {product.modifierGroups.map(group => <View key={group.id} style={st.group}>
@@ -444,16 +494,9 @@ export function CatalogPanel({ catalog, token, reload }: {
       </View>
     ))}
     </>}
-    {tab === "modifiers" && <ModifierGroupsPanel catalog={catalog} busy={busy}
-      onCreateGroup={product => open("group", undefined, product.id)}
-      onEditGroup={(product, group) => open("group", group.id, product.id, group)}
-      onCreateOption={group => open("option", undefined, group.id)}
-      onEditOption={(group, option) => open("option", option.id, group.id, option)}
-      onCreateVariant={product => open("variant", undefined, product.id)}
-      onEditVariant={(product, variant) => open("variant", variant.id, product.id, variant)}
-      onToggleVariant={(variant, next) => void flipOption("variant", variant, next)}
-      onToggleOption={(_group, option, next) => void flipOption("option", option, next)}
-    />}
+    {tab === "modifiers" && <SharedModifierLibraryPanel catalog={catalog} token={token}
+      root={root} reload={reload} onPickImage={pickCatalogMedia}
+      onAssign={product => setAssignProductId(product.id)} />}
       </ScrollView>
       {toast && <View style={st.toastLayer} pointerEvents="box-none">
         <View style={[st.toast, toast.error && st.toastError]} accessibilityRole="alert" pointerEvents="box-none">
@@ -466,6 +509,9 @@ export function CatalogPanel({ catalog, token, reload }: {
         </View>
       </View>}
     </View>
+    <ProductGroupAssignmentModal catalog={catalog}
+      product={allProducts.find(p => p.id === assignProductId) ?? null}
+      token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)} />
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
