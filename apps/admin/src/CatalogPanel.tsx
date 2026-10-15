@@ -281,6 +281,16 @@ export function CatalogPanel({ catalog, token, reload }: {
     input.click();
   }
 
+  async function removeCatalogMedia(kind:"categories"|"groups"|"options",itemId:string) {
+    if(busyRef.current)return;
+    busyRef.current=true;setBusy(true);setError("");setNotice("");
+    try{
+      await request(root+"/media/"+kind+"/"+itemId,token,"DELETE");
+      await reload();setNotice("Đã gỡ ảnh. Mục đã bán sẽ cần ảnh khi bật lại.");
+    }catch(e){setError(e instanceof Error?e.message:"Không gỡ được ảnh.");}
+    finally{busyRef.current=false;setBusy(false);}
+  }
+
   function pickCatalogMedia(kind: "categories" | "groups" | "options", itemId: string) {
     if (busy) return;
     if (Platform.OS !== "web") {
@@ -490,7 +500,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     ))}
     </>}
     {tab === "modifiers" && <SharedModifierLibraryPanel catalog={catalog} token={token}
-      root={root} reload={reload} onPickImage={pickCatalogMedia}
+      root={root} reload={reload} onPickImage={pickCatalogMedia} onRemoveImage={(kind,id)=>void removeCatalogMedia(kind,id)}
       onAssign={product => setAssignProductId(product.id)} />}
       </ScrollView>
       {toast && <View style={st.toastLayer} pointerEvents="box-none">
@@ -553,6 +563,9 @@ export function CatalogPanel({ catalog, token, reload }: {
             {editor.id && ["category","group","option"].includes(editor.kind) && <>
                <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
                  onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"
+                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
+               <Action label="Gỡ ảnh" secondary disabled={busy}
+                 onPress={() => void removeCatalogMedia(editor.kind === "category" ? "categories"
                    : editor.kind === "group" ? "groups" : "options", editor.id!)} />
                <Text style={st.sub}>Ảnh mới được lưu độc lập với tên và giá. Mục mới lưu nháp trước để có mã tải ảnh.</Text>
              </>}
