@@ -1167,7 +1167,7 @@ function CustomerApp() {
                 </View>
                 {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
                 {!!principal && <CheckoutPanel accessToken={accessToken} userId={principal.id}
-                  branchId={branchId} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
+                  branchId={branchId} branchActive={menu?.isActive ?? false} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
               </>
             )}
           </View>
