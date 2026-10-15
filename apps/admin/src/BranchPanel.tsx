@@ -5,6 +5,8 @@ import { request, type Branch } from "./api";
 import { Action, Field, Notice } from "./ui";
 import { c, font } from "./theme";
 import { StatusSwitch } from "./StatusSwitch";
+import { VietnamAdministrativeAreaPicker } from "../../../packages/ui/src/VietnamAdministrativeAreaPicker";
+import { ADMIN_CATALOG_VERSION, validateAdministrativeSelection, approximateWardDistanceKm } from "../../../packages/shared/src/vietnam-admin";
 
 const coordinate = /^-?\d+(?:\.\d{1,7})?$/;
 const branchCode = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
@@ -20,6 +22,8 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
   const [name, setName] = useState(branch?.name ?? "");
   const [code, setCode] = useState(branch?.code ?? "");
   const [address, setAddress] = useState(branch?.address ?? "");
+  const [provinceCode, setProvinceCode] = useState<string | null>(branch?.provinceCode ?? null);
+  const [wardCode, setWardCode] = useState<string | null>(branch?.wardCode ?? null);
   const [lat, setLat] = useState(branch?.latitude?.toString() ?? "");
   const [lng, setLng] = useState(branch?.longitude?.toString() ?? "");
   const [saving, setSaving] = useState(false);
@@ -31,6 +35,7 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
     setName(branch?.name ?? "");
     setCode(branch?.code ?? "");
     setAddress(branch?.address ?? "");
+    setProvinceCode(branch?.provinceCode ?? null); setWardCode(branch?.wardCode ?? null);
     setLat(branch?.latitude?.toString() ?? "");
     setLng(branch?.longitude?.toString() ?? "");
     setError(""); setFeedback(""); setConfirmStatus(null);
@@ -40,9 +45,11 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
     onDirtyChange?.(mode === "details" && (
       name !== (branch?.name ?? "") || code !== (branch?.code ?? "") ||
       address !== (branch?.address ?? "") ||
+      provinceCode !== (branch?.provinceCode ?? null) ||
+      wardCode !== (branch?.wardCode ?? null) ||
       lat !== (branch?.latitude?.toString() ?? "") ||
       lng !== (branch?.longitude?.toString() ?? "")));
-  }, [mode, name, code, address, lat, lng, branch, onDirtyChange]);
+  }, [mode, name, code, address, provinceCode, wardCode, lat, lng, branch, onDirtyChange]);
 
   async function locateStore() {
     if (locating || saving) return;
@@ -71,6 +78,9 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
 
   async function save() {
     if (saving || locating) return;
+    if (!validateAdministrativeSelection({ catalogVersion: ADMIN_CATALOG_VERSION, provinceCode, wardCode })) {
+      setError("Cần chọn tỉnh/thành và phường/xã từ danh mục trước khi lưu."); return;
+    }
     if (name.trim().length < 2 || name.trim().length > 200 ||
       address.trim().length < 10 || address.trim().length > 500 ||
       (!branch && !branchCode.test(code.trim())) ||
@@ -82,6 +92,7 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
     setSaving(true); setError(""); setFeedback("");
     try {
       const payload = { name: name.trim(), address: address.trim(),
+        catalogVersion: ADMIN_CATALOG_VERSION, provinceCode, wardCode,
         latitude: Number(lat), longitude: Number(lng),
         ...(branch ? {} : { code: code.trim() }) };
       const result = await request<Branch>(branch
@@ -159,6 +170,10 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
       placeholder="Tên hiển thị cho khách" />
     {!branch && <Field label="Mã chi nhánh (không dấu, chữ thường)" value={code}
       onChangeText={setCode} placeholder="vi-du-quan-1" />}
+    <VietnamAdministrativeAreaPicker provinceCode={provinceCode} wardCode={wardCode}
+      onChange={(p, w) => { setProvinceCode(p); setWardCode(w); setFeedback(""); }} />
+    {!!branch && !validateAdministrativeSelection(branch) &&
+      <Notice text="Chi nhánh cũ: cần chọn lại tỉnh/phường trước khi sửa thông tin." />}
     <Field label="Địa chỉ cửa hàng" value={address} onChangeText={setAddress}
       placeholder="Số nhà, đường, phường, tỉnh/thành" multiline />
     <Text style={st.hint}>Chỉ dùng GPS khi đang đứng tại cửa hàng. Vị trí thiết bị có thể khác địa chỉ kinh doanh.</Text>
@@ -170,6 +185,14 @@ export function BranchPanel({ token, branch, onSaved, onCancel, mode = "details"
       <View style={st.coordinate}><Field label="Kinh độ (longitude)" value={lng}
         onChangeText={setLng} placeholder="106.1234567" /></View>
     </View>
+    {(() => {
+      const gap = lat && lng ? approximateWardDistanceKm({
+        catalogVersion: ADMIN_CATALOG_VERSION, provinceCode, wardCode,
+      }, Number(lat), Number(lng)) : null;
+      return gap !== null && gap > 30
+        ? <Notice text="GPS có vẻ xa khu vực đã chọn. Hãy xác minh ghim thủ công; cảnh báo này không thay đổi phí giao." />
+        : null;
+    })()}
     {!!error && <Notice error text={error} />}
     {!!feedback && <Notice text={feedback} />}
     <Action label={saving ? "Đang lưu..." : branch ? "Lưu thông tin chi nhánh" : "Tạo chi nhánh"}

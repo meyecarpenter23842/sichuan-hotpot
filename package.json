@@ -15,7 +15,7 @@
     "lint": "node scripts/check-source.mjs && node scripts/check-ui-references.mjs",
     "ui:reference:check": "node scripts/check-ui-references.mjs",
     "typecheck": "tsc -p packages/shared/tsconfig.json && tsc --noEmit -p apps/api/tsconfig.json",
-    "test": "npm run build && node --test packages/shared/test/*.test.mjs apps/api/test/*.test.mjs scripts/test/*.test.mjs",
+    "test": "npm run build && node --test packages/shared/test/*.test.mjs packages/ui/test/*.test.mjs apps/api/test/*.test.mjs scripts/test/*.test.mjs",
     "build": "tsc -p packages/shared/tsconfig.json && tsc -p apps/api/tsconfig.json",
     "check": "npm run lint && npm run typecheck && npm test",
     "prisma:validate": "prisma validate --schema apps/api/prisma/schema.prisma",

@@ -25,12 +25,16 @@ import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { AddressPinMap } from "./src/components/AddressPinMap";
+import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
+import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
+  validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
   label: string; phone: string; line1: string; latitude: string; longitude: string;
+  catalogVersion?: string | null; provinceCode?: string | null; wardCode?: string | null;
 };
 const CART_KEY = "hotpot.cart.v1";
 const BRANCH_KEY = "hotpot.branch.v1";
@@ -331,6 +335,9 @@ function CustomerApp() {
               line1: typeof candidate.line1 === "string" ? candidate.line1 : "",
               latitude: typeof candidate.latitude === "string" ? candidate.latitude : "",
               longitude: typeof candidate.longitude === "string" ? candidate.longitude : "",
+              catalogVersion: typeof candidate.catalogVersion === "string" ? candidate.catalogVersion : null,
+              provinceCode: typeof candidate.provinceCode === "string" ? candidate.provinceCode : null,
+              wardCode: typeof candidate.wardCode === "string" ? candidate.wardCode : null,
             });
           }
         }
@@ -502,7 +509,8 @@ function CustomerApp() {
           return saved
             ? { ...old, label: saved.label, line1: saved.line1,
                 latitude: saved.latitude, longitude: saved.longitude,
-                phone: old.phone || result.phone || "" }
+                catalogVersion: saved.catalogVersion, provinceCode: saved.provinceCode,
+                wardCode: saved.wardCode, phone: old.phone || result.phone || "" }
             : { ...old, phone: old.phone || result.phone || "" };
         });
       })
@@ -539,6 +547,10 @@ function CustomerApp() {
     const error = phoneError(address.phone)
       || addressError(address.line1, address.latitude, address.longitude);
     if (error) { setAddressErrorText(error); return; }
+    if (!validateAdministrativeSelection(address)) {
+      setAddressErrorText("Vui lòng chọn lại Tỉnh/TP và Phường/Xã từ danh mục hiện hành.");
+      return;
+    }
     if (!address.label.trim() || address.label.trim().length > 100) {
       setAddressErrorText("Đặt tên gợi nhớ địa chỉ (tối đa 100 ký tự).");
       return;
@@ -553,7 +565,9 @@ function CustomerApp() {
           method: editingAddressId ? "PATCH" : "POST", accessToken,
           body: { label: address.label, line1: address.line1,
             phone: address.phone.replace(/[\s.-]/g, ""),
-            latitude: address.latitude, longitude: address.longitude },
+            latitude: address.latitude, longitude: address.longitude,
+            catalogVersion: address.catalogVersion, provinceCode: address.provinceCode,
+            wardCode: address.wardCode },
         });
         if (editingAddressId) {
           setSavedAddresses(old => old.map(item => item.id === saved.id ? saved : item));
@@ -587,7 +601,9 @@ function CustomerApp() {
   function selectSavedAddress(saved: SavedAddress, returnTo = addressReturnTo) {
     setSelectedAddressId(saved.id);
     setAddress(old => ({ ...old, label: saved.label, line1: saved.line1,
-      latitude: saved.latitude, longitude: saved.longitude }));
+      latitude: saved.latitude, longitude: saved.longitude,
+      catalogVersion: saved.catalogVersion, provinceCode: saved.provinceCode,
+      wardCode: saved.wardCode }));
     setAddressErrorText("");
     setNotice("Đã chọn địa chỉ " + saved.label + ". Phí giao sẽ được tính lại khi đặt hàng.");
     setScreen(returnTo);
@@ -601,7 +617,8 @@ function CustomerApp() {
     addressBeforeModal.current = address;
     addressEditorOrigin.current = screen;
     setEditingAddressId(null);
-    setAddress({ label, phone: address.phone, line1: "", latitude: "", longitude: "" });
+    setAddress({ label, phone: address.phone, line1: "", latitude: "", longitude: "",
+      catalogVersion: ADMIN_CATALOG_VERSION, provinceCode: null, wardCode: null });
     setAddressReturnTo(returnTo);
     setAddressErrorText("");
     setAddressModalOpen(true);
@@ -613,7 +630,9 @@ function CustomerApp() {
     addressEditorOrigin.current = screen;
     setEditingAddressId(saved.id);
     setAddress({ label: saved.label, phone: address.phone, line1: saved.line1,
-      latitude: saved.latitude, longitude: saved.longitude });
+      latitude: saved.latitude, longitude: saved.longitude,
+      catalogVersion: saved.catalogVersion, provinceCode: saved.provinceCode,
+      wardCode: saved.wardCode });
     setAddressReturnTo(returnTo);
     setAddressErrorText("");
     setAddressModalOpen(true);
@@ -663,6 +682,7 @@ function CustomerApp() {
               {isSelected && <Text style={styles.addressCurrentBadge}>Đang dùng</Text>}
             </View>
             <Text style={styles.addressCardLine} numberOfLines={2}>{saved.line1}</Text>
+            <Text style={styles.muted} numberOfLines={1}>{displayAdministrativeSelection(saved) ?? "Cần chọn lại tỉnh/phường để đặt hàng"}</Text>
           </Pressable>
           <View style={styles.addressRowActions}>
             <Pressable accessibilityRole="button" accessibilityLabel={"Xem ghim " + saved.label}
@@ -700,8 +720,11 @@ function CustomerApp() {
       if (selectedAddressId === saved.id) {
         const replacement = savedAddresses.find(x => x.id !== saved.id);
         setAddress(old => replacement ? { ...old, label: replacement.label, line1: replacement.line1,
-          latitude: replacement.latitude, longitude: replacement.longitude }
-          : { ...old, line1: "", latitude: "", longitude: "" });
+          latitude: replacement.latitude, longitude: replacement.longitude,
+          catalogVersion: replacement.catalogVersion, provinceCode: replacement.provinceCode,
+          wardCode: replacement.wardCode }
+          : { ...old, line1: "", latitude: "", longitude: "",
+            catalogVersion: ADMIN_CATALOG_VERSION, provinceCode: null, wardCode: null });
       }
       setPendingDeleteAddress(null);
       setNotice("Đã xóa địa chỉ đã lưu.");
@@ -1168,7 +1191,10 @@ function CustomerApp() {
                 </View>
                 {!principal && <Button label="Đăng nhập để tiếp tục" onPress={() => { setLoginReturnTo("cart"); setScreen("login"); }} />}
                 {!!principal && <CheckoutPanel accessToken={accessToken} userId={principal.id}
-                  branchId={branchId} branchActive={menu?.isActive ?? false} addressId={selectedAddressId} cart={cart} onPlaced={orderPlaced} />}
+                  branchId={branchId} branchActive={menu?.isActive ?? false} addressId={selectedAddressId}
+                  addressRevision={JSON.stringify(savedAddresses.find(a => a.id === selectedAddressId) ?? null)}
+                  addressRegionConfirmed={!!savedAddresses.find(a => a.id === selectedAddressId && validateAdministrativeSelection(a))}
+                  cart={cart} onPlaced={orderPlaced} />}
               </>
             )}
           </View>
@@ -1340,7 +1366,7 @@ function CustomerApp() {
                     onPress={() => { setAddressReturnTo("account"); setScreen("address"); }}>
                     <Text style={styles.deliveryLocationTitle}>Giao đến  ⌄</Text>
                     <Text style={styles.deliveryLocationValue} numberOfLines={1}>
-                      {address.line1 || "Chọn địa chỉ giao hàng"}
+                      {address.line1 ? address.line1 + (displayAdministrativeSelection(address) ? ", " + displayAdministrativeSelection(address) : "") : "Chọn địa chỉ giao hàng"}
                     </Text>
                   </Pressable>
                   <View style={styles.homeHeaderActions}>
@@ -1443,9 +1469,23 @@ function CustomerApp() {
             <Field label="Số điện thoại" value={address.phone}
               onChangeText={text => { setAddress(old => ({ ...old, phone: text })); }}
               keyboardType="phone-pad" placeholder="09..." />
-            <Field label="Số nhà, đường, phường/xã" value={address.line1}
+            <VietnamAdministrativeAreaPicker provinceCode={address.provinceCode ?? null}
+              wardCode={address.wardCode ?? null}
+              onChange={(provinceCode, wardCode) => {
+                setAddress(old => ({ ...old, catalogVersion: ADMIN_CATALOG_VERSION,
+                  provinceCode, wardCode })); setAddressErrorText("");
+              }} />
+            <Field label="Số nhà, tên đường và ghi chú giao" value={address.line1}
               onChangeText={text => { setAddress(old => ({ ...old, line1: text })); }}
-              placeholder="Ví dụ: 25 Nguyễn Trãi, Phường ..." />
+              placeholder="Ví dụ: 25 Nguyễn Trãi, số nhà/tầng..." />
+            {(() => {
+              const gap = address.latitude && address.longitude
+                ? approximateWardDistanceKm(address, Number(address.latitude), Number(address.longitude))
+                : null;
+              return gap !== null && gap > 30
+                ? <Text style={styles.muted}>Ghim có vẻ cách xa phường/xã đã chọn. Hãy kiểm tra vị trí trên bản đồ trước khi lưu; GPS không quyết định phí giao.</Text>
+                : null;
+            })()}
             <AddressPinMap latitude={address.latitude} longitude={address.longitude}
               onChange={(latitude, longitude) => {
                 setAddress(old => ({ ...old, latitude, longitude }));

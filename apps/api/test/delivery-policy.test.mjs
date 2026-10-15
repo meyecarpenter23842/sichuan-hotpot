@@ -83,8 +83,8 @@ test("current policy displays latest persisted version without modifications", a
 
 test("OWNER zone policy rejects overlapping ward and accepts immutable group rates", async () => {
   const f = setup();
-  const zone = { name: "Trung tâm", provinceCode: "79", catalogVersion: "vn-2025-07",
-    wardCodes: ["26734"], feeVnd: 15000, isActive: true };
+  const zone = { name: "Trung tâm", provinceCode: "79", catalogVersion: "vn-2026-09-08",
+    wardCodes: ["25747"], feeVnd: 15000, isActive: true };
   const valid = { pricingMode: "ZONE", acceptingOrders: true,
     minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null, zones: [zone] };
   const saved = await f.service.create("Bearer owner", branchId, valid);

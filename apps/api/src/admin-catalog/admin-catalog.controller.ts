@@ -93,12 +93,18 @@ class BranchDetailsInput {
   @IsString() @Matches(/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/)
   code!: string;
   @IsString() @MinLength(10) @MaxLength(500) address!: string;
+  @IsOptional() @IsString() catalogVersion?: string;
+  @IsOptional() @IsString() provinceCode?: string;
+  @IsOptional() @IsString() wardCode?: string;
   @IsNumber({ maxDecimalPlaces: 7 }) @Min(-90) @Max(90) latitude!: number;
   @IsNumber({ maxDecimalPlaces: 7 }) @Min(-180) @Max(180) longitude!: number;
 }
 class BranchUpdateInput {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(200) name?: string;
   @IsOptional() @IsString() @MinLength(10) @MaxLength(500) address?: string;
+  @IsOptional() @IsString() catalogVersion?: string;
+  @IsOptional() @IsString() provinceCode?: string;
+  @IsOptional() @IsString() wardCode?: string;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 7 }) @Min(-90) @Max(90) latitude?: number;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 7 }) @Min(-180) @Max(180) longitude?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;

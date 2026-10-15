@@ -115,7 +115,11 @@ try {
   await page.getByRole("button", { name: "Thêm địa chỉ Nhà" }).click();
   await page.getByRole("button", { name: "Đóng thêm địa chỉ" }).waitFor();
   await page.getByRole("textbox", { name: "Số điện thoại" }).fill("0912345678");
-  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("12 Nguyễn Trãi, Quận 1, TP HCM");
+  await page.getByRole("button", { name: "Chọn Tỉnh/Thành phố" }).click();
+  await page.getByRole("radio", { name: /Hồ Chí Minh/ }).click();
+  await page.getByRole("button", { name: "Chọn Phường/Xã/Đặc khu" }).click();
+  await page.getByRole("radio", { name: /Thủ Dầu Một/ }).click();
+  await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" }).fill("12 Nguyễn Trãi, Quận 1, TP HCM");
   await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).fill("10.1234567");
   await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).fill("106.7654321");
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();
@@ -127,14 +131,18 @@ try {
 
   // A draft can be canceled without silently changing the current address.
   await page.getByRole("button", { name: "＋ Thêm địa chỉ" }).click();
-  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("Bản nháp hủy");
+  await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" }).fill("Bản nháp hủy");
   await page.getByRole("button", { name: "Hủy", exact: true }).click();
   await page.getByRole("button", { name: "Xem ghim Nhà" }).waitFor();
   assert.equal(await page.getByText("Bản nháp hủy").count(), 0);
 
   await page.getByRole("button", { name: "＋ Thêm địa chỉ" }).click();
   await page.getByRole("textbox", { name: "Tên gợi nhớ (Nhà, Công ty...)" }).fill("Công ty");
-  await page.getByRole("textbox", { name: "Số nhà, đường, phường/xã" }).fill("43 Lê Lợi, Quận 1, TP HCM");
+  await page.getByRole("button", { name: "Chọn Tỉnh/Thành phố" }).click();
+  await page.getByRole("radio", { name: /Hồ Chí Minh/ }).click();
+  await page.getByRole("button", { name: "Chọn Phường/Xã/Đặc khu" }).click();
+  await page.getByRole("radio", { name: /Thủ Dầu Một/ }).click();
+  await page.getByRole("textbox", { name: "Số nhà, tên đường và ghi chú giao" }).fill("43 Lê Lợi, Quận 1, TP HCM");
   await page.getByRole("textbox", { name: "Vĩ độ (latitude)" }).fill("10.2234567");
   await page.getByRole("textbox", { name: "Kinh độ (longitude)" }).fill("106.8654321");
   await page.getByRole("button", { name: "Lưu địa chỉ vào tài khoản" }).click();

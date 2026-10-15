@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { request } from "./api";
 import { Action, Field, Notice } from "./ui";
 import { StatusSwitch } from "./StatusSwitch";
+import { VietnamAdministrativeAreaPicker, VietnamWardMultiPicker } from "../../../packages/ui/src/VietnamAdministrativeAreaPicker";
+import { ADMIN_CATALOG_VERSION, provinceByCode, wardByCode } from "../../../packages/shared/src/vietnam-admin";
 import { c, font } from "./theme";
 
 interface Zone {
@@ -23,9 +25,9 @@ interface Policy {
   zones: Zone[];
 }
 type ZoneDraft = { name: string; provinceCode: string; catalogVersion: string;
-  wardCodes: string; feeVnd: string };
-const blankZone: ZoneDraft = { name: "", provinceCode: "", catalogVersion: "",
-  wardCodes: "", feeVnd: "" };
+  wardCodes: string[]; feeVnd: string };
+const blankZone: ZoneDraft = { name: "", provinceCode: "", catalogVersion: ADMIN_CATALOG_VERSION,
+  wardCodes: [], feeVnd: "" };
 const isVnd = (v: string) => /^\d+$/.test(v) && Number.isSafeInteger(Number(v))
   && Number(v) >= 0 && Number(v) <= 1000000000;
 const normalize = (value: Policy) => ({
@@ -89,13 +91,13 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     [hasChanges, loading, onDirtyChange]);
 
   function addZone() {
-    const wardCodes = draft.wardCodes.split(",").map(code => code.trim()).filter(Boolean);
+    const wardCodes = draft.wardCodes;
     if (!draft.name.trim() || draft.name.length > 160 ||
-      !/^[a-zA-Z0-9_-]{1,24}$/.test(draft.provinceCode) ||
-      !/^[a-zA-Z0-9_-]{2,40}$/.test(draft.catalogVersion) ||
-      wardCodes.some(code => !/^[a-zA-Z0-9_-]{1,24}$/.test(code)) ||
+      !provinceByCode(draft.provinceCode) ||
+      draft.catalogVersion !== ADMIN_CATALOG_VERSION ||
+      wardCodes.some(code => wardByCode(code)?.provinceCode !== draft.provinceCode) ||
       !isVnd(draft.feeVnd) || Number(draft.feeVnd) > 10000000) {
-      setError("Tên vùng, mã tỉnh/phường, phiên bản danh mục hoặc mức phí chưa hợp lệ.");
+      setError("Tên vùng, tỉnh/phường trong danh mục hoặc mức phí chưa hợp lệ.");
       return;
     }
     const prefix = draft.catalogVersion + ":" + draft.provinceCode;
@@ -166,7 +168,7 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
           <View style={st.row}>
             <View style={st.flex}>
               <Text style={st.zoneName}>{zone.name} · {zone.feeVnd.toLocaleString("vi-VN")} đ</Text>
-              <Text style={st.note}>{zone.catalogVersion} / {zone.provinceCode} / {zone.wardCodes.length ? zone.wardCodes.join(", ") : "Toàn tỉnh"}</Text>
+              <Text style={st.note}>{provinceByCode(zone.provinceCode)?.name ?? "Mã tỉnh cũ " + zone.provinceCode} · {zone.wardCodes.length ? zone.wardCodes.map(code => wardByCode(code)?.name ?? code).join(", ") : "Toàn tỉnh"} · {zone.catalogVersion}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel={"Xóa vùng " + zone.name}
               onPress={() => setZones(old => old.filter((_, i) => i !== index))}>
@@ -181,17 +183,14 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
         <Text style={st.section}>Thêm vùng</Text>
         <Field label="Tên vùng thương mại" value={draft.name}
           onChangeText={name => setDraft(old => ({...old, name}))} placeholder="Ví dụ: Trung tâm" />
-        <View style={st.row}>
-          <View style={st.flex}><Field label="Phiên bản danh mục" value={draft.catalogVersion}
-            onChangeText={catalogVersion => setDraft(old => ({...old, catalogVersion}))}
-            placeholder="Mã phiên bản" /></View>
-          <View style={st.flex}><Field label="Mã tỉnh/TP" value={draft.provinceCode}
-            onChangeText={provinceCode => setDraft(old => ({...old, provinceCode}))}
-            placeholder="Mã tỉnh" /></View>
-        </View>
-        <Field label="Mã phường/xã (phân cách bằng dấu phẩy; bỏ trống = toàn tỉnh)"
-          value={draft.wardCodes} onChangeText={wardCodes => setDraft(old => ({...old, wardCodes}))}
-          placeholder="Mã phường 1, mã phường 2" />
+        <VietnamAdministrativeAreaPicker provinceCode={draft.provinceCode || null} wardCode={null}
+          showWardSelect={false}
+          onChange={(provinceCode) => setDraft(old => ({ ...old,
+            provinceCode: provinceCode ?? "", wardCodes: [],
+            catalogVersion: ADMIN_CATALOG_VERSION }))} />
+        <VietnamWardMultiPicker provinceCode={draft.provinceCode || null}
+          selected={draft.wardCodes}
+          onChange={wardCodes => setDraft(old => ({ ...old, wardCodes }))} />
         <Field label="Phí giao vùng (VND)" numeric value={draft.feeVnd}
           onChangeText={feeVnd => setDraft(old => ({...old, feeVnd}))} placeholder="25000" />
         <Action label="Thêm vùng vào danh sách" disabled={saving} onPress={addZone} />

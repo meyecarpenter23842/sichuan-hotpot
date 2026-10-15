@@ -19,11 +19,13 @@ type Props = {
   branchId: string;
   branchActive: boolean;
   addressId: string | null;
+  addressRevision: string;
+  addressRegionConfirmed: boolean;
   cart: readonly CartLine[];
   onPlaced: (receipt: CheckoutReceipt) => void;
 };
 
-export function CheckoutPanel({ accessToken, userId, branchId, branchActive, addressId, cart, onPlaced }: Props) {
+export function CheckoutPanel({ accessToken, userId, branchId, branchActive, addressId, addressRevision, addressRegionConfirmed, cart, onPlaced }: Props) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
   const [qrAvailable, setQrAvailable] = useState(false);
   const [quote, setQuote] = useState<DeliveryQuote | null>(null);
@@ -35,8 +37,8 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
     try { return checkoutCartItems(cart); } catch { return null; }
   }, [cart]);
   const fingerprint = useMemo(() => JSON.stringify({
-    userId, branchId, addressId, paymentMethod, items,
-  }), [userId, branchId, addressId, paymentMethod, items]);
+    userId, branchId, addressId, addressRevision, paymentMethod, items,
+  }), [userId, branchId, addressId, addressRevision, paymentMethod, items]);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +55,9 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
 
   async function requestQuote() {
     if (!branchActive) { setClosedPopup(true); return; }
+    if (!addressRegionConfirmed) {
+      setProblem("Địa chỉ cần chọn lại Tỉnh/TP và Phường/Xã trước khi tính phí."); return;
+    }
     if (lock.current || !addressId || !branchId || !items) return;
     lock.current = true;
     setBusy(true);
@@ -75,7 +80,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
 
   async function placeOrder() {
     if (!branchActive) { setClosedPopup(true); return; }
-    if (lock.current || !addressId || !branchId || !items || !quote
+    if (lock.current || !addressRegionConfirmed || !addressId || !branchId || !items || !quote
         || (paymentMethod === "QR" && !qrAvailable)) return;
     if (quote.addressId !== addressId || quote.branchId !== branchId
         || Date.parse(quote.quoteExpiresAt) <= Date.now()) {
@@ -133,6 +138,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
       <Text style={styles.heading}>Thanh toán & phí giao</Text>
       {!branchActive && <Text style={styles.warning}>Quán đã nghỉ. Bạn vẫn có thể xem món và giữ giỏ hàng.</Text>}
       {!addressId && <Text style={styles.warning}>Lưu và chọn địa chỉ giao hàng trong tài khoản trước khi đặt.</Text>}
+      {!!addressId && !addressRegionConfirmed && <Text style={styles.warning}>Địa chỉ cũ cần chọn lại tỉnh/phường trước khi tính phí giao.</Text>}
       <Text style={styles.label}>Phương thức thanh toán</Text>
       <View style={styles.methods}>
         {(["COD", "QR"] as const).map(method => (
@@ -153,7 +159,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
         <Text style={styles.subtle}>Chuyển khoản cần mã QR/tài khoản của cửa hàng. Đơn ở trạng thái chờ xác nhận, không tự đánh dấu đã thanh toán.</Text>
       )}
       <Pressable accessibilityRole="button" style={[styles.action, (busy || !addressId || !items) && styles.disabled]}
-        disabled={busy || !addressId || !items} onPress={() => void requestQuote()}>
+        disabled={busy || !addressId || !items || !addressRegionConfirmed} onPress={() => void requestQuote()}>
         {busy ? <ActivityIndicator color={palette.white} /> :
           <Text style={styles.actionText}>{quote ? "Tính lại phí giao" : "Tính phí giao theo khu vực"}</Text>}
       </Pressable>

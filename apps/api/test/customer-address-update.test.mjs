@@ -64,3 +64,18 @@ test("PATCH rejects invalid GPS coordinates and non-customer roles", async () =>
   await assert.rejects(owner.update("Bearer test", "addr1", payload),
     error => error.getStatus?.() === 403);
 });
+
+test("server rejects forged, version-stale and cross-province address codes", async () => {
+  const { controller } = fixture();
+  for (const area of [
+    {catalogVersion:"vn-2026-09-08",provinceCode:"01",wardCode:"25747"},
+    {catalogVersion:"old",provinceCode:"79",wardCode:"25747"},
+    {catalogVersion:"vn-2026-09-08",provinceCode:"79",wardCode:"99999"},
+  ]) {
+    await assert.rejects(controller.update("Bearer test", "addr1", {...payload,...area}),
+      error => error.getStatus?.()===400);
+  }
+  const value=await controller.update("Bearer test","addr1",{...payload,
+    catalogVersion:"vn-2026-09-08",provinceCode:"79",wardCode:"25747"});
+  assert.equal(value.wardCode,"25747");
+});

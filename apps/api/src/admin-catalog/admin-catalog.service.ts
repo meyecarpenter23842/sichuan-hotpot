@@ -33,6 +33,7 @@ export class AdminCatalogService {
     if (principal.role === "OWNER") {
       return this.prisma.database.branch.findMany({
         select: { id: true, name: true, code: true, address: true,
+          catalogVersion: true, provinceCode: true, wardCode: true,
           latitude: true, longitude: true, isActive: true },
         orderBy: { name: "asc" },
       });
@@ -40,6 +41,7 @@ export class AdminCatalogService {
     const branches = await this.prisma.database.branch.findMany({
       where: { memberships: { some: { userId: principal.id, role: { in: ["OWNER", "MANAGER"] } } } },
       select: { id: true, name: true, code: true, address: true,
+          catalogVersion: true, provinceCode: true, wardCode: true,
           latitude: true, longitude: true, isActive: true },
       orderBy: { name: "asc" },
     });

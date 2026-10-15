@@ -4,6 +4,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { ADMIN_CATALOG_VERSION, provinceByCode, wardByCode } from "@hotpot/shared";
 
 export interface DeliveryZoneInput {
   name: string;
@@ -69,12 +70,12 @@ export class DeliveryPolicyService {
       const wardKeys = new Set<string>(), provinceDefaults = new Set<string>();
       for (const zone of input.zones) {
         if (!zone || typeof zone.name !== "string" || !zone.name.trim()
-          || zone.name.length > 160 || !/^[a-zA-Z0-9_-]{2,40}$/.test(zone.catalogVersion)
-          || !/^[a-zA-Z0-9_-]{1,24}$/.test(zone.provinceCode)
+          || zone.name.length > 160 || zone.catalogVersion !== ADMIN_CATALOG_VERSION
+          || !provinceByCode(zone.provinceCode)
           || !integer(zone.feeVnd, 0, 10000000) || typeof zone.isActive !== "boolean"
           || !Array.isArray(zone.wardCodes) || zone.wardCodes.length > 300
           || zone.wardCodes.some(code => typeof code !== "string"
-            || !/^[a-zA-Z0-9_-]{1,24}$/.test(code))) {
+            || wardByCode(code)?.provinceCode !== zone.provinceCode)) {
           throw new BadRequestException("INVALID_DELIVERY_ZONE");
         }
         const prefix = zone.catalogVersion + ":" + zone.provinceCode + ":";
