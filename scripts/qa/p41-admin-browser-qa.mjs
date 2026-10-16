@@ -126,11 +126,13 @@ try {
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("1");
   await page.getByRole("textbox", { name: "Chọn tối đa" }).fill("1");
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
   await page.getByRole("button", { name: "＋ Topping" }).click();
   await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Cay vừa");
   await page.getByRole("textbox", { name: "Giá topping (VND)" }).fill("5000");
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
   const savedGroup = await db.modifierGroup.findFirstOrThrow({
     where: { name: "Độ cay", branchId: branch.id },
   });
@@ -170,6 +172,7 @@ try {
   await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).click();
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("0");
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
   await optionSwitch.click();
   await page.waitForFunction(() =>
     document.querySelector('[role="switch"][aria-label="Bán topping Cay vừa"]')
