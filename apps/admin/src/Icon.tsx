@@ -5,7 +5,7 @@ import { c } from "./theme";
 /** Consistent line icons drawn with React Native primitives (web and Android, no font glyphs). */
 export type IconName = "dashboard" | "catalog" | "settings" | "account" | "store" |
   "clock" | "delivery" | "power" | "bell" | "users" | "plus" | "chevron" |
-  "edit" | "pin" | "check" | "close" | "orders" | "kitchen" | "banner";
+  "edit" | "pin" | "check" | "close" | "orders" | "kitchen" | "banner" | "popup";
 
 export function Icon({ name, size = 24, color = c.ink }: {
   name: IconName; size?: number; color?: string;
@@ -93,6 +93,8 @@ export function Icon({ name, size = 24, color = c.ink }: {
       {outline(5, 7, 5, 5, 5)}
       {part(5, 16, 6, 2, { backgroundColor: color, transform: [{ rotate: "-35deg" }], borderRadius: stroke })}
       {part(10, 14, 9, 2, { backgroundColor: color, transform: [{ rotate: "28deg" }], borderRadius: stroke })}</>; break;
+    case "popup": shape = <>{outline(2, 3, 20, 18, 3)}{outline(6, 7, 12, 10, 2)}
+      {line(8, 10, 8)}{line(8, 14, 5)}</>; break;
   }
   return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
     style={{ width: size, height: size, flexShrink: 0 }}>
