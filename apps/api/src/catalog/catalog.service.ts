@@ -120,7 +120,7 @@ export class CatalogService {
             const productAvailable = group.options.some(option =>
               option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
               && (option.variant == null || option.variant.isAvailable));
-            const toppingAvailable = group.modifierOptions.some(option =>
+            const toppingAvailable = (group.modifierOptions ?? []).some(option =>
               option.modifierOption.isAvailable && option.modifierOption.group.isAvailable);
             return group.maxSelect >= group.minSelect
               && (group.minSelect === 0 || productAvailable || toppingAvailable);
