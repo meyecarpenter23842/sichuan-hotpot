@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { Type } from "class-transformer";
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString,
   IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested,
 } from "class-validator";
 import { AdminCatalogService } from "./admin-catalog.service";
@@ -20,6 +20,7 @@ class CategoryPatch {
 }
 class ProductInput {
   @IsUUID("4") categoryId!: string;
+  @IsOptional() @IsIn(["STANDARD", "COMBO"]) kind?: "STANDARD" | "COMBO";
   @IsString() @MinLength(1) @MaxLength(200) name!: string;
   @IsOptional() @IsString() @MaxLength(1200) description?: string | null;
   @IsOptional() @IsString() @MaxLength(1200) ingredients?: string | null;
@@ -31,6 +32,7 @@ class ProductInput {
 }
 class ProductPatch {
   @IsOptional() @IsUUID("4") categoryId?: string;
+  @IsOptional() @IsIn(["STANDARD", "COMBO"]) kind?: "STANDARD" | "COMBO";
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
   @IsOptional() @IsString() @MaxLength(1200) description?: string | null;
   @IsOptional() @IsString() @MaxLength(1200) ingredients?: string | null;
@@ -40,6 +42,35 @@ class ProductPatch {
   @IsOptional() @IsBoolean() isAvailable?: boolean;
   @IsOptional() @IsBoolean() isFeatured?: boolean;
 }
+class ComboFixedItemInput {
+  @IsUUID("4") productId!: string;
+  @IsInt() @Min(1) @Max(99) quantity!: number;
+  @IsInt() @Min(-1000) @Max(1000) sortOrder!: number;
+}
+class ComboOptionInput {
+  @IsUUID("4") productId!: string;
+  @IsInt() @Min(1) @Max(99) quantity!: number;
+  @IsInt() @Min(0) @Max(100000000) priceDeltaVnd!: number;
+  @IsInt() @Min(-1000) @Max(1000) sortOrder!: number;
+}
+class ComboGroupInput {
+  @IsString() @MinLength(1) @MaxLength(160) name!: string;
+  @IsInt() @Min(0) @Max(30) minSelect!: number;
+  @IsInt() @Min(1) @Max(30) maxSelect!: number;
+  @IsInt() @Min(-1000) @Max(1000) sortOrder!: number;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30)
+  @ValidateNested({ each: true }) @Type(() => ComboOptionInput)
+  options!: ComboOptionInput[];
+}
+class ComboConfigInput {
+  @IsArray() @ArrayMaxSize(30)
+  @ValidateNested({ each: true }) @Type(() => ComboFixedItemInput)
+  fixedItems!: ComboFixedItemInput[];
+  @IsArray() @ArrayMaxSize(20)
+  @ValidateNested({ each: true }) @Type(() => ComboGroupInput)
+  groups!: ComboGroupInput[];
+}
+
 class FeaturedProductsInput {
   @IsArray() @ArrayMaxSize(500) @IsUUID("4", { each: true })
   ids!: string[];
@@ -204,6 +235,14 @@ export class AdminCatalogController {
   productDelete(@Headers("authorization") auth: string | undefined,
     @Param("branchId", uuid) branchId: string, @Param("id", uuid) id: string) {
     return this.catalogue.deleteProduct(auth, branchId, id);
+  }
+
+  @Put("products/:productId/combo")
+  comboSave(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", uuid) branchId: string,
+    @Param("productId", uuid) productId: string,
+    @Body() input: ComboConfigInput) {
+    return this.catalogue.saveCombo(auth, branchId, productId, input);
   }
 
   @Post("products/:productId/variants")
