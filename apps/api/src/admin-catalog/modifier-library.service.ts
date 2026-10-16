@@ -120,6 +120,51 @@ export class ModifierLibraryService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
+  /** Update every product using this group in one serializable transaction. */
+  async setGroupProducts(auth: string | undefined, branchId: string, groupId: string,
+    productIds: string[], revision: number) {
+    await this.access(auth, branchId);
+    if (!Array.isArray(productIds) || productIds.length > 200
+      || new Set(productIds).size !== productIds.length
+      || productIds.some(id => typeof id !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+      || !Number.isSafeInteger(revision) || revision < 0) {
+      throw new BadRequestException("INVALID_GROUP_PRODUCT_SELECTION");
+    }
+    try {
+      return await this.prisma.database.$transaction(async tx => {
+        const group = await tx.modifierGroup.findFirst({
+          where: { id: groupId, branchId }, select: { id: true, sortOrder: true },
+        });
+        if (!group) throw new NotFoundException("GROUP_NOT_FOUND");
+        const products = await tx.product.findMany({
+          where: { id: { in: productIds }, category: { branchId } }, select: { id: true },
+        });
+        if (products.length !== productIds.length) {
+          throw new ForbiddenException("CROSS_BRANCH_PRODUCT_FORBIDDEN");
+        }
+        const changed = await tx.branch.updateMany({
+          where: { id: branchId, catalogRevision: revision },
+          data: { catalogRevision: { increment: 1 } },
+        });
+        if (changed.count !== 1) throw new ConflictException("CATALOG_REVISION_STALE");
+        await tx.productModifierGroupAssignment.deleteMany({ where: { groupId } });
+        if (productIds.length) await tx.productModifierGroupAssignment.createMany({
+          data: productIds.map(productId => ({
+            productId, groupId, sortOrder: group.sortOrder,
+          })),
+        });
+        return { groupId, productIds, revision: revision + 1 };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError
+        && ["P2002", "P2034"].includes(error.code)) {
+        throw new ConflictException("CATALOG_REVISION_STALE");
+      }
+      throw error;
+    }
+  }
+
   async attach(auth: string | undefined, branchId: string, productId: string,
     groupIds: string[], revision: number) {
     await this.access(auth, branchId);
