@@ -5,10 +5,17 @@ import { Type } from "class-transformer";
 import { Body, Controller, Header, Headers, Post } from "@nestjs/common";
 import { DeliveryQuoteService } from "./delivery-quote.service";
 
+class ModifierQuantityInput {
+  @IsUUID("4") id!: string;
+  @IsInt() @Min(2) @Max(20) quantity!: number;
+}
 class QuoteCartLineInput {
   @IsUUID("4") productId!: string;
   @IsOptional() @IsUUID("4") variantId!: string | null;
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) modifierIds!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30)
+  @ValidateNested({each:true}) @Type(() => ModifierQuantityInput)
+  modifierQuantities?: ModifierQuantityInput[];
   @IsInt() @Min(1) @Max(99) quantity!: number;
 }
 export class DeliveryQuoteInput {
@@ -31,7 +38,8 @@ export class DeliveryQuoteController {
       addressId: input.addressId,
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
-        modifierIds: item.modifierIds, quantity: item.quantity,
+        modifierIds: item.modifierIds,
+        modifierQuantities: item.modifierQuantities, quantity: item.quantity,
       })),
     });
   }
