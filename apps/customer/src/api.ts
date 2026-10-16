@@ -97,7 +97,7 @@ export interface CustomerOrderDetail extends CustomerOrderSummary {
   items: {
     productId: string | null; productName: string; variantName: string | null;
     quantity: number; unitPriceVnd: number; lineTotalVnd: number;
-    modifiers: { name: string; priceVnd: number }[];
+    modifiers: { name: string; priceVnd: number; quantity?: number }[];
   }[];
   statusHistory: {
     fromStatus: string | null; toStatus: string; createdAt: string; reason: string | null;
