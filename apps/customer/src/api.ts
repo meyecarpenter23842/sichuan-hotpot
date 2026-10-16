@@ -32,6 +32,10 @@ export interface Product {
   priceVnd: number;
   isAvailable: boolean;
   isFeatured: boolean;
+  description: string | null;
+  ingredients: string | null;
+  productNotes: string | null;
+  allergenNotice: string | null;
   sortOrder: number;
   variants: Variant[];
   modifierGroups: ModifierGroup[];
