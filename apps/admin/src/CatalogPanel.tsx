@@ -334,6 +334,18 @@ export function CatalogPanel({ catalog, token, reload }: {
     input.click();
   }
 
+  async function removeProductImage(productId: string) {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(""); setNotice("");
+    try {
+      await request(root + "/products/" + productId + "/images", token, "DELETE");
+      await reload();
+      setNotice("Đã gỡ ảnh món / combo.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không gỡ được ảnh món / combo.");
+    } finally { busyRef.current = false; setBusy(false); }
+  }
+
   async function removeCatalogMedia(kind:"categories"|"groups"|"options",itemId:string) {
     if(busyRef.current)return;
     busyRef.current=true;setBusy(true);setError("");setNotice("");
@@ -609,8 +621,7 @@ export function CatalogPanel({ catalog, token, reload }: {
               <Action label="Chọn / thay ảnh món" secondary
                 disabled={busy} onPress={() => pickImage(product.id)} />
               {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
-                disabled={busy} onPress={() => void mutate(
-                  "/products/" + product.id + "/images", "DELETE")} />}
+                disabled={busy} onPress={() => void removeProductImage(product.id)} />}
                     </View>
                   </ScrollView>
                 </View>
@@ -644,7 +655,9 @@ export function CatalogPanel({ catalog, token, reload }: {
     <ComboEditorModal catalog={catalog}
       product={allProducts.find(p => p.id === comboProductId) ?? null}
       token={token} root={root} reload={reload} onClose={() => setComboProductId(null)}
-      onFeedback={(message,failed)=>announce(message,failed)} />
+      onFeedback={(message,failed)=>announce(message,failed)}
+      onPickImage={pickImage} onRemoveImage={productId => void removeProductImage(productId)}
+      mediaBusy={busy} />
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
