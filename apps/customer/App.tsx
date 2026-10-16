@@ -18,7 +18,7 @@ import {
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
-import { comboSelectionDeltaVnd, comboSelectionError } from "./src/combo";
+import { comboGroupChoices, comboSelectionDeltaVnd, comboSelectionError } from "./src/combo";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CheckoutPanel } from "./src/screens/CheckoutPanel";
 import { OrdersScreen } from "./src/screens/OrdersScreen";
@@ -833,8 +833,9 @@ function CustomerApp() {
   }
 
   function changeDetailCombo(group: ComboGroup, optionId: string, delta: number) {
+    const choices = comboGroupChoices(group);
     const current = selectedComboOptionIds.filter(id => id === optionId).length;
-    const ids = new Set(group.options.map(option => option.id));
+    const ids = new Set(choices.map(choice => choice.id));
     const groupCount = selectedComboOptionIds.filter(id => ids.has(id)).length;
     const nextCount = current + delta;
     const swapping = delta > 0 && current === 0 && groupCount === group.maxSelect;
@@ -845,9 +846,12 @@ function CustomerApp() {
         + " đến " + group.maxSelect + " món.");
       return;
     }
-    const option = group.options.find(item => item.id === optionId);
-    if (!option?.childProduct.isAvailable) {
-      setDetailError("Món này trong combo đang tạm hết."); return;
+    const choice = choices.find(item => item.id === optionId);
+    if (!choice?.isAvailable) {
+      setDetailError(choice?.sourceType === "TOPPING"
+        ? "Topping này trong combo đang tạm hết."
+        : "Món này trong combo đang tạm hết.");
+      return;
     }
     const remaining = [...selectedComboOptionIds];
     if (swapping) {
@@ -1059,18 +1063,25 @@ function CustomerApp() {
         for (const snapshot of item.comboItems.filter(component => component.kind === "CHOICE")) {
           const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
           if (!group) return "Nhóm lựa chọn combo cũ đã thay đổi, vui lòng chọn lại.";
-          const matches = group.options.filter(option => {
+          const choices = comboGroupChoices(group);
+          const matches = choices.filter(choice => {
+            if (snapshot.modifierOptionId) {
+              return choice.sourceType === "TOPPING"
+                && choice.sourceId === snapshot.modifierOptionId
+                && choice.name === snapshot.productName;
+            }
+            if (choice.sourceType !== "PRODUCT") return false;
             const productMatches = snapshot.productId
-              ? option.childProduct.id === snapshot.productId
-              : option.childProduct.name === snapshot.productName;
+              ? choice.sourceId === snapshot.productId
+              : choice.name === snapshot.productName;
             const variantMatches = snapshot.variantId
-              ? option.variant?.id === snapshot.variantId
+              ? choice.variantId === snapshot.variantId
               : snapshot.variantName
-                ? option.variant?.name === snapshot.variantName
-                : option.variant === null;
+                ? choice.variantName === snapshot.variantName
+                : choice.variantId === null;
             return productMatches && variantMatches;
           });
-          if (matches.length !== 1) return "Món trong combo cũ đã thay đổi, vui lòng chọn lại.";
+          if (matches.length !== 1) return "Món/topping trong combo cũ đã thay đổi, vui lòng chọn lại.";
           const option = matches[0]!;
           if (option.quantity < 1 || snapshot.quantity % option.quantity !== 0) {
             return "Số lượng thành phần combo cũ đã thay đổi, vui lòng chọn lại.";
@@ -1312,7 +1323,8 @@ function CustomerApp() {
                 </View>
               </View>)}
               {item.comboGroups.map((group: ComboGroup) => {
-                const ids = new Set(group.options.map(option => option.id));
+                const choices = comboGroupChoices(group);
+                const ids = new Set(choices.map(choice => choice.id));
                 const groupCount = selectedComboOptionIds.filter(id => ids.has(id)).length;
                 const required = group.minSelect > 0;
                 return <View key={group.id} style={[styles.group, required && styles.requiredGroup]}>
@@ -1322,43 +1334,46 @@ function CustomerApp() {
                       {required ? "Bắt buộc" : "Không bắt buộc"}
                     </Text>
                   </View>
-                  <Text style={styles.muted}>Chọn {group.minSelect}–{group.maxSelect} món · hiện {groupCount}</Text>
-                  {group.options.filter(option => option.childProduct.isAvailable).map(option => {
-                    const count = selectedComboOptionIds.filter(id => id === option.id).length;
+                  <Text style={styles.muted}>Chọn {group.minSelect}–{group.maxSelect} món/topping · hiện {groupCount}</Text>
+                  {choices.filter(choice => choice.isAvailable).map(choice => {
+                    const count = selectedComboOptionIds.filter(id => id === choice.id).length;
                     const atMax = groupCount >= group.maxSelect;
                     const wouldSwap = groupCount === group.maxSelect && count === 0;
-                    return <View key={option.id} style={styles.comboChoiceRow}>
-                      {safeProductImageUrl(option.childProduct.imageKey)
-                        ? <Image source={{ uri: safeProductImageUrl(option.childProduct.imageKey)! }}
+                    return <View key={choice.id} style={styles.comboChoiceRow}>
+                      {safeProductImageUrl(choice.imageKey)
+                        ? <Image source={{ uri: safeProductImageUrl(choice.imageKey)! }}
                             style={styles.comboThumb} />
                         : <View style={styles.comboThumbPlaceholder} />}
                       <View style={styles.toppingCopy}>
                         <Text style={styles.optionText} numberOfLines={2}>
-                          {option.quantity} × {option.childProduct.name}
-                          {option.variant ? " · " + option.variant.name : ""}
+                          {choice.quantity} × {choice.name}
+                          {choice.variantName ? " · " + choice.variantName : ""}
                         </Text>
-                        <Text style={styles.optionPrice}>{option.priceDeltaVnd > 0
-                          ? "+" + vnd(option.priceDeltaVnd) : "Trong giá combo"}</Text>
+                        <Text style={styles.optionPrice}>
+                          {choice.sourceType === "TOPPING" && choice.sourceGroupName
+                            ? "Topping · " + choice.sourceGroupName + " · " : ""}
+                          {choice.priceDeltaVnd > 0 ? "+" + vnd(choice.priceDeltaVnd) : "Trong giá combo"}
+                        </Text>
                       </View>
                       <View style={styles.quantityStepper}>
                         <Pressable style={styles.step} accessibilityRole="button"
-                          accessibilityLabel={"Bớt " + option.childProduct.name}
+                          accessibilityLabel={"Bớt " + choice.name}
                           disabled={count === 0 || groupCount <= group.minSelect}
-                          onPress={() => changeDetailCombo(group, option.id, -1)}>
+                          onPress={() => changeDetailCombo(group, choice.id, -1)}>
                           <Text style={styles.stepText}>−</Text>
                         </Pressable>
                         <Text style={styles.qtyText}>{count}</Text>
                         <Pressable style={styles.step} accessibilityRole="button"
-                          accessibilityLabel={"Thêm " + option.childProduct.name}
+                          accessibilityLabel={"Thêm " + choice.name}
                           disabled={(!wouldSwap && atMax) || selectedComboOptionIds.length >= 30}
-                          onPress={() => changeDetailCombo(group, option.id, 1)}>
+                          onPress={() => changeDetailCombo(group, choice.id, 1)}>
                           <Text style={styles.stepText}>+</Text>
                         </Pressable>
                       </View>
                     </View>;
                   })}
                   {groupCount < group.minSelect &&
-                    <Text style={styles.warning}>Cần chọn thêm {group.minSelect - groupCount} món.</Text>}
+                    <Text style={styles.warning}>Cần chọn thêm {group.minSelect - groupCount} món/topping.</Text>}
                 </View>;
               })}
             </View>}
@@ -1554,16 +1569,17 @@ function CustomerApp() {
                           {fixed.variant ? " · " + fixed.variant.name : ""}
                         </Text>)}
                       {product.comboGroups.map(group => {
-                        const selected = group.options.filter(option =>
-                          cartComboOptionCount(line.selection, option.id) > 0);
+                        const selected = comboGroupChoices(group).filter(choice =>
+                          cartComboOptionCount(line.selection, choice.id) > 0);
                         return selected.length ? <View key={group.id} style={styles.comboCartGroup}>
                           <Text style={styles.cartToppingName}>{group.name}</Text>
-                          {selected.map(option => {
-                            const count = cartComboOptionCount(line.selection, option.id);
-                            return <Text key={option.id} style={styles.muted}>
-                              • {option.quantity * count} × {option.childProduct.name}
-                              {option.variant ? " · " + option.variant.name : ""}
-                              {option.priceDeltaVnd > 0 ? " · +" + vnd(option.priceDeltaVnd * count) : ""}
+                          {selected.map(choice => {
+                            const count = cartComboOptionCount(line.selection, choice.id);
+                            return <Text key={choice.id} style={styles.muted}>
+                              • {choice.quantity * count} × {choice.name}
+                              {choice.variantName ? " · " + choice.variantName : ""}
+                              {choice.sourceType === "TOPPING" ? " · topping" : ""}
+                              {choice.priceDeltaVnd > 0 ? " · +" + vnd(choice.priceDeltaVnd * count) : ""}
                             </Text>;
                           })}
                         </View> : null;

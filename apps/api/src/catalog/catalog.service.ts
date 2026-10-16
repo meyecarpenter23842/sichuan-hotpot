@@ -57,6 +57,18 @@ export class CatalogService {
                         childProduct: { select: { id: true, name: true, kind: true,
                           isAvailable: true, imageKey: true } } },
                     },
+                    modifierOptions: {
+                      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                      select: {
+                        id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                        modifierOption: { select: {
+                          id: true, name: true, priceDeltaVnd: true, isAvailable: true, imageKey: true,
+                          group: { select: {
+                            id: true, name: true, isAvailable: true, imageKey: true,
+                          } },
+                        } },
+                      },
+                    },
                   },
                 },
                 modifierGroups: {
@@ -104,11 +116,15 @@ export class CatalogService {
           && comboFixedItems.every(item =>
             item.childProduct.kind === "STANDARD" && item.childProduct.isAvailable
             && (item.variant == null || item.variant.isAvailable))
-          && comboGroups.every(group =>
-            group.maxSelect >= group.minSelect
-            && (group.minSelect === 0 || group.options.some(option =>
+          && comboGroups.every(group => {
+            const productAvailable = group.options.some(option =>
               option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
-              && (option.variant == null || option.variant.isAvailable))))
+              && (option.variant == null || option.variant.isAvailable));
+            const toppingAvailable = (group.modifierOptions ?? []).some(option =>
+              option.modifierOption.isAvailable && option.modifierOption.group.isAvailable);
+            return group.maxSelect >= group.minSelect
+              && (group.minSelect === 0 || productAvailable || toppingAvailable);
+          })
         );
         return { ...product,
           comboFixedItems, comboGroups,

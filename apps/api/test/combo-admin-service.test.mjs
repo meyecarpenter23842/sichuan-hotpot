@@ -12,11 +12,12 @@ const childA = randomUUID();
 const childB = randomUUID();
 const variantA = randomUUID();
 const variantB = randomUUID();
+const sharedToppingId = randomUUID();
 
 function fixture(children = [
   { id: childA, kind: "STANDARD" },
   { id: childB, kind: "STANDARD" },
-], variants = []) {
+], variants = [], modifierOptions = []) {
   const writes = [];
   const db = {
     branch: {
@@ -30,11 +31,16 @@ function fixture(children = [
         return null;
       },
       findMany: async input => {
-        writes.push(["children", input]); return children;
+        writes.push(["children", input]);
+        const ids = new Set(input.where?.id?.in ?? []);
+        return children.filter(child => ids.has(child.id));
       },
     },
     productVariant: {
       findMany: async input => { writes.push(["variants", input]); return variants; },
+    },
+    modifierOption: {
+      findMany: async input => { writes.push(["toppings", input]); return modifierOptions; },
     },
     productComboFixedItem: {
       deleteMany: async input => { writes.push(["fixed-delete", input]); },
@@ -50,6 +56,10 @@ function fixture(children = [
     productComboOption: {
       deleteMany: async input => { writes.push(["option-delete", input]); },
       createMany: async input => { writes.push(["option-create", input]); return { count: input.data.length }; },
+    },
+    productComboModifierOption: {
+      deleteMany: async input => { writes.push(["topping-delete", input]); },
+      createMany: async input => { writes.push(["topping-create", input]); return { count: input.data.length }; },
     },
   };
   db.$transaction = async callback => callback(db);
@@ -120,4 +130,71 @@ test("admin persists child size and rejects a size from the wrong product", asyn
     fixedItems: [{ productId: childA, variantId: variantA, quantity: 1, sortOrder: 0 }],
     groups: [],
   }), error => error.getStatus?.() === 400);
+});
+
+
+test("admin can use a shared topping in a combo group without duplicating it as Product", async () => {
+  const { service, writes } = fixture(undefined, [], [{ id: sharedToppingId }]);
+  const result = await service.saveCombo("Bearer owner", branchId, comboId, {
+    fixedItems: [{ productId: childA, quantity: 1, sortOrder: 0 }],
+    groups: [{
+      name: "Chọn topping", minSelect: 1, maxSelect: 2, sortOrder: 1,
+      options: [{
+        modifierOptionId: sharedToppingId, quantity: 1,
+        priceDeltaVnd: 12000, sortOrder: 0,
+      }],
+    }],
+  });
+  assert.equal(result.status, "saved");
+  const toppingWrite = writes.find(row => row[0] === "topping-create")[1].data[0];
+  assert.equal(toppingWrite.modifierOptionId, sharedToppingId);
+  assert.equal(toppingWrite.priceDeltaVnd, 12000);
+  assert.equal(writes.some(row => row[0] === "option-create"), false,
+    "Shared topping must not be duplicated as a ProductComboOption");
+  const lookup = writes.find(row => row[0] === "toppings")[1];
+  assert.deepEqual(lookup.where.group.OR[0], { branchId });
+});
+
+test("combo rejects missing/cross-branch topping and ambiguous option sources", async () => {
+  const shared = {
+    fixedItems: [],
+    groups: [{
+      name: "Chọn topping", minSelect: 1, maxSelect: 1, sortOrder: 0,
+      options: [{
+        modifierOptionId: sharedToppingId, quantity: 1, priceDeltaVnd: 0, sortOrder: 0,
+      }],
+    }],
+  };
+  await assert.rejects(
+    fixture(undefined, [], []).service.saveCombo("Bearer owner", branchId, comboId, shared),
+    error => error.getStatus?.() === 400,
+  );
+  await assert.rejects(
+    fixture(undefined, [], [{ id: sharedToppingId }]).service.saveCombo(
+      "Bearer owner", branchId, comboId, {
+        fixedItems: [],
+        groups: [{
+          name: "Sai nguồn", minSelect: 1, maxSelect: 1, sortOrder: 0,
+          options: [{
+            productId: childA, modifierOptionId: sharedToppingId,
+            quantity: 1, priceDeltaVnd: 0, sortOrder: 0,
+          }],
+        }],
+      }),
+    error => error.getStatus?.() === 400,
+  );
+  await assert.rejects(
+    fixture(undefined, [], [{ id: sharedToppingId }]).service.saveCombo(
+      "Bearer owner", branchId, comboId, {
+        fixedItems: [],
+        groups: [{
+          name: "Topping không size", minSelect: 1, maxSelect: 1, sortOrder: 0,
+          options: [{
+            modifierOptionId: sharedToppingId, variantId: variantA,
+            quantity: 1, priceDeltaVnd: 0, sortOrder: 0,
+          }],
+        }],
+      }),
+    error => error.getStatus?.() === 400,
+  );
 });

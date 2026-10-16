@@ -471,3 +471,78 @@ test("real combo checkout stores immutable fixed and chosen component snapshots"
     });
   }
 });
+
+
+test("combo checkout reuses shared topping library and preserves immutable topping snapshot", async () => {
+  await db.address.update({ where: { id: addressId }, data: { wardCode: "25747" } });
+  const base = await db.product.findUniqueOrThrow({
+    where: { id: productId }, select: { categoryId: true },
+  });
+  const combo = await db.product.create({ data: {
+    categoryId: base.categoryId, name: "Combo topping CI " + randomUUID(),
+    priceVnd: 100000, kind: "COMBO", isAvailable: true,
+  } });
+  const libraryGroup = await db.modifierGroup.create({ data: {
+    branchId, name: "Thư viện topping " + randomUUID(),
+    minSelect: 0, maxSelect: 5, sortOrder: 0, isAvailable: true,
+  } });
+  const topping = await db.modifierOption.create({ data: {
+    groupId: libraryGroup.id, name: "Bò cuộn combo", priceDeltaVnd: 12000,
+    isAvailable: true,
+  } });
+  const group = await db.productComboGroup.create({ data: {
+    comboProductId: combo.id, name: "Chọn topping", minSelect: 1, maxSelect: 1, sortOrder: 0,
+  } });
+  const comboTopping = await db.productComboModifierOption.create({ data: {
+    groupId: group.id, modifierOptionId: topping.id, quantity: 2,
+    priceDeltaVnd: 7000, sortOrder: 0,
+  } });
+
+  const key = randomUUID();
+  const accepted = await request({
+    branchId, addressId, idempotencyKey: key, paymentMethod: "COD",
+    items: [{
+      productId: combo.id, variantId: null, modifierIds: [],
+      comboOptionIds: [comboTopping.id], quantity: 1, pricingMode: "SEPARATE",
+    }],
+  }).expect(201);
+  assert.equal(accepted.body.totalVnd, 127000);
+
+  const saved = await db.order.findUniqueOrThrow({
+    where: { customerId_idempotencyKey: { customerId: userId, idempotencyKey: key } },
+    include: { items: { include: { comboItems: true } } },
+  });
+  assert.equal(saved.subtotalVnd, 107000);
+  assert.equal(saved.items[0].comboItems.length, 1);
+  assert.equal(saved.items[0].comboItems[0].productId, null);
+  assert.equal(saved.items[0].comboItems[0].modifierOptionId, topping.id);
+  assert.equal(saved.items[0].comboItems[0].productName, "Bò cuộn combo");
+  assert.equal(saved.items[0].comboItems[0].quantity, 2);
+  assert.equal(saved.items[0].comboItems[0].priceDeltaVnd, 7000);
+
+  const detail = await client.get("/customer/orders/" + saved.id)
+    .set("Authorization", "Bearer " + token).expect(200);
+  assert.equal(detail.body.items[0].comboItems[0].modifierOptionId, topping.id);
+
+  await db.modifierOption.update({ where: { id: topping.id }, data: {
+    name: "Tên topping mới", priceDeltaVnd: 99000, isAvailable: false,
+  } });
+  try {
+    const blockedKey = randomUUID();
+    await request({
+      branchId, addressId, idempotencyKey: blockedKey, paymentMethod: "COD",
+      items: [{
+        productId: combo.id, variantId: null, modifierIds: [],
+        comboOptionIds: [comboTopping.id], quantity: 1, pricingMode: "SEPARATE",
+      }],
+    }).expect(422);
+    assert.equal(await db.order.count({ where: { idempotencyKey: blockedKey } }), 0);
+    const history = await db.order.findUniqueOrThrow({
+      where: { id: saved.id }, include: { items: { include: { comboItems: true } } },
+    });
+    assert.equal(history.items[0].comboItems[0].productName, "Bò cuộn combo");
+    assert.equal(history.items[0].comboItems[0].priceDeltaVnd, 7000);
+  } finally {
+    await db.modifierOption.update({ where: { id: topping.id }, data: { isAvailable: true } });
+  }
+});

@@ -223,6 +223,7 @@ export class OrdersService {
                   })) },
                   comboItems: { create: line.comboItems.map(component => ({
                     productId: component.productId, variantId: component.variantId,
+                    modifierOptionId: component.modifierOptionId,
                     kind: component.kind, groupName: component.groupName,
                     productName: component.productName, variantName: component.variantName,
                     quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
@@ -307,8 +308,9 @@ export class OrdersService {
           comboItems: {
             orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
             select: {
-              productId: true, variantId: true, kind: true, groupName: true,
-              productName: true, variantName: true, quantity: true, priceDeltaVnd: true,
+              productId: true, variantId: true, modifierOptionId: true,
+              kind: true, groupName: true, productName: true,
+              variantName: true, quantity: true, priceDeltaVnd: true,
             },
           },
         } },

@@ -39,7 +39,7 @@ export interface StaffOrder {
     unitPriceVnd?: number; lineTotalVnd?: number;
     modifiers: { optionId?: string | null; name: string; priceVnd?: number }[];
     comboItems: {
-      productId?: string | null; variantId?: string | null;
+      productId?: string | null; variantId?: string | null; modifierOptionId?: string | null;
       kind: "FIXED" | "CHOICE"; groupName?: string | null;
       productName: string; variantName?: string | null;
       quantity: number; priceDeltaVnd?: number; sortOrder?: number;
@@ -67,6 +67,31 @@ const statusName: Record<OrderStatus, string> = {
   CANCELED: "Đã hủy", DELIVERY_FAILED: "Giao thất bại",
 };
 const money = (n: number) => n.toLocaleString("vi-VN") + "đ";
+type AdminComboChoice = {
+  id: string; sourceType: "PRODUCT" | "TOPPING";
+  sourceId: string; name: string; sourceGroupName: string | null;
+  variantId: string | null; variantName: string | null;
+  quantity: number; priceDeltaVnd: number; isAvailable: boolean;
+};
+function comboChoices(group: CatalogComboGroup): AdminComboChoice[] {
+  return [
+    ...group.options.map(option => ({
+      id: option.id, sourceType: "PRODUCT" as const, sourceId: option.childProduct.id,
+      name: option.childProduct.name, sourceGroupName: null,
+      variantId: option.variant?.id ?? null, variantName: option.variant?.name ?? null,
+      quantity: option.quantity, priceDeltaVnd: option.priceDeltaVnd,
+      isAvailable: option.childProduct.isAvailable
+        && (option.variant == null || option.variant.isAvailable),
+    })),
+    ...(group.modifierOptions ?? []).map(option => ({
+      id: option.id, sourceType: "TOPPING" as const, sourceId: option.modifierOption.id,
+      name: option.modifierOption.name, sourceGroupName: option.modifierOption.group.name,
+      variantId: null, variantName: null, quantity: option.quantity,
+      priceDeltaVnd: option.priceDeltaVnd,
+      isAvailable: option.modifierOption.isAvailable && option.modifierOption.group.isAvailable,
+    })),
+  ];
+}
 const when = (date: string) => new Date(date).toLocaleString("vi-VN", {
   day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
 });
@@ -307,19 +332,25 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
             const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
             if (!group) throw Error(
               "Nhóm lựa chọn của combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
-            const matches = group.options.filter(option => {
+            const matches = comboChoices(group).filter(option => {
+              if (snapshot.modifierOptionId) {
+                return option.sourceType === "TOPPING"
+                  && option.sourceId === snapshot.modifierOptionId
+                  && option.name === snapshot.productName;
+              }
+              if (option.sourceType !== "PRODUCT") return false;
               const productMatches = snapshot.productId
-                ? option.childProduct.id === snapshot.productId
-                : option.childProduct.name === snapshot.productName;
+                ? option.sourceId === snapshot.productId
+                : option.name === snapshot.productName;
               const variantMatches = snapshot.variantId
-                ? option.variant?.id === snapshot.variantId
+                ? option.variantId === snapshot.variantId
                 : snapshot.variantName
-                  ? option.variant?.name === snapshot.variantName
-                  : option.variant === null;
+                  ? option.variantName === snapshot.variantName
+                  : option.variantId === null;
               return productMatches && variantMatches;
             });
             if (matches.length !== 1) throw Error(
-              "Món lựa chọn trong combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
+              "Món/topping lựa chọn trong combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
             const option = matches[0]!;
             if (option.quantity < 1 || snapshot.quantity % option.quantity !== 0) {
               throw Error("Số lượng thành phần combo cũ không còn khớp cấu hình hiện tại.");
@@ -381,7 +412,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   ) => {
     setEditLines(lines => lines.map((line, index) => {
       if (index !== lineIndex) return line;
-      const optionIds = new Set(group.options.map(option => option.id));
+      const optionIds = new Set(comboChoices(group).map(option => option.id));
       const groupCount = line.comboOptionIds.filter(id => optionIds.has(id)).length;
       const current = line.comboOptionIds.filter(id => id === optionId).length;
       const swapping = delta > 0 && current === 0 && groupCount === group.maxSelect;
@@ -420,11 +451,11 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
       }
       if (product.kind === "COMBO") {
         for (const group of product.comboGroups) {
-          const ids = new Set(group.options.map(option => option.id));
+          const ids = new Set(comboChoices(group).map(option => option.id));
           const count = line.comboOptionIds.filter(id => ids.has(id)).length;
           if (count < group.minSelect || count > group.maxSelect) {
             setEditError("Combo “" + product.name + "” · nhóm “" + group.name
-              + "” cần chọn " + group.minSelect + "–" + group.maxSelect + " món.");
+              + "” cần chọn " + group.minSelect + "–" + group.maxSelect + " món/topping.");
             return;
           }
         }
@@ -665,23 +696,26 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                         return <View key={group.id} style={s.editChoices}>
                           <Text style={s.note}>{group.name} · chọn {group.minSelect}–{group.maxSelect}
                             {" · hiện "}{selectedCount}</Text>
-                          {group.options.map(option => {
+                          {comboChoices(group).map(option => {
                             const count = line.comboOptionIds.filter(id => id === option.id).length;
                             const atMax = selectedCount >= group.maxSelect;
                             const wouldSwap = selectedCount === group.maxSelect && count === 0;
                             return <View key={option.id} style={s.modifierRow}>
                               <View style={{ flex: 1 }}>
                                 <Text style={s.modifierName}>
-                                  {option.quantity} × {option.childProduct.name}
-                                  {option.variant ? " · " + option.variant.name : ""}
+                                  {option.quantity} × {option.name}
+                                  {option.variantName ? " · " + option.variantName : ""}
+                                  {option.sourceType === "TOPPING" && option.sourceGroupName
+                                    ? " · topping/" + option.sourceGroupName : ""}
                                   {option.priceDeltaVnd ? " · +" + money(option.priceDeltaVnd) : ""}
                                 </Text>
-                                {(!option.childProduct.isAvailable
-                                  || (option.variant !== null && !option.variant.isAvailable)) &&
-                                  <Text style={s.editWarning}>Món hoặc size đang tạm hết</Text>}
+                                {!option.isAvailable &&
+                                  <Text style={s.editWarning}>
+                                    {option.sourceType === "TOPPING" ? "Topping đang tạm hết" : "Món hoặc size đang tạm hết"}
+                                  </Text>}
                               </View>
                               <Pressable accessibilityRole="button"
-                                accessibilityLabel={"Giảm " + option.childProduct.name}
+                                accessibilityLabel={"Giảm " + option.name}
                                 disabled={count === 0 || selectedCount <= group.minSelect}
                                 style={[s.qtyButton,
                                   (count === 0 || selectedCount <= group.minSelect) && s.disabledButton]}
@@ -690,21 +724,17 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                               </Pressable>
                               <Text style={s.qtyValue}>{count}</Text>
                               <Pressable accessibilityRole="button"
-                                accessibilityLabel={"Thêm " + option.childProduct.name}
-                                disabled={!option.childProduct.isAvailable
-                                  || (option.variant !== null && !option.variant.isAvailable)
-                                  || (!wouldSwap && atMax)}
+                                accessibilityLabel={"Thêm " + option.name}
+                                disabled={!option.isAvailable || (!wouldSwap && atMax)}
                                 style={[s.qtyButton,
-                                  (!option.childProduct.isAvailable
-                                    || (option.variant !== null && !option.variant.isAvailable)
-                                    || (!wouldSwap && atMax)) && s.disabledButton]}
+                                  (!option.isAvailable || (!wouldSwap && atMax)) && s.disabledButton]}
                                 onPress={() => changeComboOption(lineIndex, group, option.id, 1)}>
                                 <Text style={s.qtyText}>＋</Text>
                               </Pressable>
                             </View>;
                           })}
                           {selectedCount < group.minSelect &&
-                            <Text style={s.editWarning}>Cần chọn thêm {group.minSelect - selectedCount} món.</Text>}
+                            <Text style={s.editWarning}>Cần chọn thêm {group.minSelect - selectedCount} món/topping.</Text>}
                         </View>;
                       })}
                     </View>}
