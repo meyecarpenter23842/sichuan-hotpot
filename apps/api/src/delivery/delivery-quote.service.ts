@@ -12,7 +12,7 @@ export interface DeliveryCartItem {
   productId: string;
   variantId: string | null;
   modifierIds: string[];
-  comboOptionIds: string[];
+  comboOptionIds?: string[];
   quantity: number;
   pricingMode?: "SEPARATE";
 }
