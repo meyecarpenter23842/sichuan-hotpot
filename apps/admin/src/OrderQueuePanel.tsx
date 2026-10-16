@@ -29,6 +29,7 @@ type EditLine = {
 
 export interface StaffOrder {
   id: string; branchId: string; status: OrderStatus; createdAt: string; updatedAt: string;
+  customerNote?: string | null;
   subtotalVnd?: number; deliveryFeeVnd?: number; totalVnd?: number;
   payment?: { method: "COD" | "QR"; status: string; amountVnd?: number } | null;
   items: {
@@ -38,8 +39,10 @@ export interface StaffOrder {
     unitPriceVnd?: number; lineTotalVnd?: number;
     modifiers: { optionId?: string | null; name: string; priceVnd?: number }[];
     comboItems: {
-      productId?: string | null; kind: "FIXED" | "CHOICE"; groupName?: string | null;
-      productName: string; quantity: number; priceDeltaVnd?: number; sortOrder?: number;
+      productId?: string | null; variantId?: string | null;
+      kind: "FIXED" | "CHOICE"; groupName?: string | null;
+      productName: string; variantName?: string | null;
+      quantity: number; priceDeltaVnd?: number; sortOrder?: number;
     }[];
   }[];
 }
@@ -282,10 +285,17 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
             const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
             if (!group) throw Error(
               "Nhóm lựa chọn của combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
-            const matches = group.options.filter(option =>
-              (snapshot.productId
+            const matches = group.options.filter(option => {
+              const productMatches = snapshot.productId
                 ? option.childProduct.id === snapshot.productId
-                : option.childProduct.name === snapshot.productName));
+                : option.childProduct.name === snapshot.productName;
+              const variantMatches = snapshot.variantId
+                ? option.variant?.id === snapshot.variantId
+                : snapshot.variantName
+                  ? option.variant?.name === snapshot.variantName
+                  : option.variant === null;
+              return productMatches && variantMatches;
+            });
             if (matches.length !== 1) throw Error(
               "Món lựa chọn trong combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
             const option = matches[0]!;
@@ -574,6 +584,10 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                   </View>;
                 })}
               </View>
+              {!!selected.customerNote && <View style={s.customerNoteBox}>
+                <Text style={s.customerNoteTitle}>Ghi chú khách hàng</Text>
+                <Text style={s.customerNoteText}>{selected.customerNote}</Text>
+              </View>}
               <View style={s.detailSectionRow}>
                 <Text style={s.detailSectionTitle}>Danh sách món ({selected.items.length} dòng món)</Text>
                 {manager && ["PENDING", "CONFIRMED"].includes(selected.status) && !editingOrder &&
@@ -637,10 +651,12 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                               <View style={{ flex: 1 }}>
                                 <Text style={s.modifierName}>
                                   {option.quantity} × {option.childProduct.name}
+                                  {option.variant ? " · " + option.variant.name : ""}
                                   {option.priceDeltaVnd ? " · +" + money(option.priceDeltaVnd) : ""}
                                 </Text>
-                                {!option.childProduct.isAvailable &&
-                                  <Text style={s.editWarning}>Đang tạm hết</Text>}
+                                {(!option.childProduct.isAvailable
+                                  || (option.variant !== null && !option.variant.isAvailable)) &&
+                                  <Text style={s.editWarning}>Món hoặc size đang tạm hết</Text>}
                               </View>
                               <Pressable accessibilityRole="button"
                                 accessibilityLabel={"Giảm " + option.childProduct.name}
@@ -653,10 +669,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                               <Text style={s.qtyValue}>{count}</Text>
                               <Pressable accessibilityRole="button"
                                 accessibilityLabel={"Thêm " + option.childProduct.name}
-                                disabled={!option.childProduct.isAvailable || (!wouldSwap && atMax)}
+                                disabled={!option.childProduct.isAvailable
+                                  || (option.variant !== null && !option.variant.isAvailable)
+                                  || (!wouldSwap && atMax)}
                                 style={[s.qtyButton,
-                                  (!option.childProduct.isAvailable || (!wouldSwap && atMax))
-                                    && s.disabledButton]}
+                                  (!option.childProduct.isAvailable
+                                    || (option.variant !== null && !option.variant.isAvailable)
+                                    || (!wouldSwap && atMax)) && s.disabledButton]}
                                 onPress={() => changeComboOption(lineIndex, group, option.id, 1)}>
                                 <Text style={s.qtyText}>＋</Text>
                               </Pressable>
@@ -748,6 +767,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                       {component.kind === "CHOICE" && component.groupName
                         ? "• " + component.groupName + ": " : "• "}
                       {component.quantity} × {component.productName}
+                      {component.variantName ? " · " + component.variantName : ""}
                       {!kitchenOnly && component.priceDeltaVnd
                         ? " (+" + money(component.priceDeltaVnd) + ")" : ""}
                     </Text>)}
@@ -899,6 +919,10 @@ const s = StyleSheet.create({
   detailSectionTitle: { fontSize: 15, fontWeight: "800", color: c.ink,
     paddingLeft: 9, borderLeftWidth: 4, borderLeftColor: c.red },
   detailSectionRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  customerNoteBox: { gap: 4, padding: 10, borderRadius: 10, backgroundColor: "#FFF8EC",
+    borderWidth: 1, borderColor: "#F1DFC0" },
+  customerNoteTitle: { color: c.redDeep, fontSize: font.note, fontWeight: "900" },
+  customerNoteText: { color: c.ink, fontSize: font.body, lineHeight: 20 },
   inlineEdit: { marginLeft: "auto", minHeight: 44, justifyContent: "center",
     paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#FCE6E7" },
   inlineEditText: { color: c.redDeep, fontWeight: "800", fontSize: 12 },
