@@ -13,6 +13,7 @@ class OrderCartItemInput {
   @IsOptional() @IsUUID("4") variantId!: string | null;
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) modifierIds!: string[];
   @IsInt() @Min(1) @Max(99) quantity!: number;
+  @IsOptional() @IsIn(["SEPARATE"]) pricingMode?: "SEPARATE";
 }
 export class CheckoutInput {
   @IsUUID("4") branchId!: string;
@@ -37,6 +38,7 @@ export class OrdersController {
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
         modifierIds: item.modifierIds, quantity: item.quantity,
+        pricingMode: item.pricingMode,
       })),
     });
   }
