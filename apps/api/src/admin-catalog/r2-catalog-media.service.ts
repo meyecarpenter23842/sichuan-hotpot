@@ -63,7 +63,8 @@ export class R2CatalogMediaService {
    }
    if(previous.imageKey===key)return {id,imageKey:key};
    const changed=kind==="categories"?await tx.catalogCategory.updateMany({
-    where:{id,branchId,imageKey:previous.imageKey},data:{imageKey:key}})
+    where:{id,branchId,imageKey:previous.imageKey},
+    data:{imageKey:key,isPublished:key!==null}})
     :kind==="groups"?await tx.modifierGroup.updateMany({
     where:{id,branchId,imageKey:previous.imageKey},data:{imageKey:key}})
     :await tx.modifierOption.updateMany({

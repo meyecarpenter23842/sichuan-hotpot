@@ -26,6 +26,7 @@ export interface CatalogProduct {
 }
 export interface CatalogCategory {
   id: string; name: string; sortOrder: number; imageKey?: string | null;
+  isPublished?: boolean;
   products: CatalogProduct[];
 }
 export interface OpeningHour {
