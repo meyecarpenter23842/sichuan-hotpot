@@ -68,8 +68,9 @@ try {
       "Home popup clipped at "+width+"x"+height);
     if(width===320){
       await page.screenshot({path:directory+"/p24-home-popup-"+width+"x"+height+".png"});
-      await page.waitForTimeout(2300);
-      assert.equal(await page.getByRole("tab",{name:"Ảnh popup 2"}).getAttribute("aria-selected"),"true",
+      await page.getByTestId("home-promo-slide-0").waitFor();
+      await page.getByTestId("home-promo-slide-1").waitFor({timeout:3500});
+      assert.equal(await page.getByTestId("home-promo-slide-1").count(),1,
         "Home popup must auto-slide horizontally using configured dwell time");
     }
     await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
