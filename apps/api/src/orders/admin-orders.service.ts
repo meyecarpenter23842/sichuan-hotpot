@@ -19,7 +19,7 @@ type TargetStatus = (typeof allowedTargets)[number];
 
 const selectOrder = {
   id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
-  subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
+  customerNote: true, subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
   payment: { select: { method: true, status: true, amountVnd: true } },
   items: { select: {
     id: true, productId: true, variantId: true, pricingMode: true,
@@ -27,17 +27,20 @@ const selectOrder = {
     lineTotalVnd: true,
     modifiers: { select: { optionId: true, name: true, priceVnd: true } },
     comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-      select: { productId: true, kind: true, groupName: true, productName: true,
+      select: { productId: true, variantId: true, kind: true, groupName: true,
+        productName: true, variantName: true,
         quantity: true, priceDeltaVnd: true, sortOrder: true } },
   } },
 } as const satisfies Prisma.OrderSelect;
 
 const kitchenOrderSelect = {
   id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
+  customerNote: true,
   items: { select: { productName: true, variantName: true, quantity: true,
     modifiers: { select: { name: true } },
     comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-      select: { kind: true, groupName: true, productName: true, quantity: true } },
+      select: { kind: true, groupName: true, productName: true,
+        variantName: true, quantity: true } },
   } },
 } as const satisfies Prisma.OrderSelect;
 
@@ -253,7 +256,8 @@ export class AdminOrdersService {
                 },
                 comboItems: {
                   orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-                  select: { productId: true, kind: true, groupName: true, productName: true,
+                  select: { productId: true, variantId: true, kind: true,
+                    groupName: true, productName: true, variantName: true,
                     quantity: true, priceDeltaVnd: true, sortOrder: true },
                 },
               },
@@ -315,8 +319,9 @@ export class AdminOrdersService {
               },
               comboItems: {
                 create: line.comboItems.map(component => ({
-                  productId: component.productId, kind: component.kind,
-                  groupName: component.groupName, productName: component.productName,
+                  productId: component.productId, variantId: component.variantId,
+                  kind: component.kind, groupName: component.groupName,
+                  productName: component.productName, variantName: component.variantName,
                   quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
                   sortOrder: component.sortOrder,
                 })),
