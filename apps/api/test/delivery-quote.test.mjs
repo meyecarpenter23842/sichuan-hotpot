@@ -61,6 +61,22 @@ test("route quote uses actual provider meters and DB prices, never frontend tota
     { is: { branchId } });
   assert.equal(f.captured.filter(x => x[0] === "routing").length, 1);
 });
+test("a topping counted twice is priced twice by the server and checked against maxSelect",async()=>{
+ const f=fixture(2100);
+ const original=f.db.product.findMany;
+ f.db.product.findMany=async query=>{
+   const rows=await original(query);
+   rows[0].modifierGroups[0].maxSelect=2;
+   return rows;
+ };
+ const input={...f.input,items:[{...item(),modifierIds:[modifierId,modifierId]}]};
+ const quote=await f.service.calculate("Bearer valid",input);
+ assert.equal(quote.subtotalVnd,140000,"2 portions x (50000 base + 10000 size + 2 x 5000 toppings)");
+ assert.equal(quote.totalVnd,155000);
+ await assert.rejects(f.service.calculate("Bearer valid",{
+   ...f.input,items:[{...item(),modifierIds:[modifierId,modifierId,modifierId]}],
+ }),e=>e.getStatus?.()===422,"server must reject qty beyond maxSelect");
+});
 test("all boundary routes are evaluated with road meters (not crow-flies)", async () => {
   for (const [meters, expected] of [[2000, 10000], [2100, 15000], [4300, 25000], [8000, 40000]]) {
     const f = fixture(meters);
