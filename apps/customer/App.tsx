@@ -259,7 +259,6 @@ function CustomerApp() {
         loadedOffersForBranch.current="";
         setOfferError("");
         setHomeHero(null);loadedHeroForBranch.current="";setHeroError("");
-      setHomePopup(null);loadedPopupForBranch.current="";
         setHomePopup(null);loadedPopupForBranch.current="";
         setBranchId("");
         setCategoryId("");
@@ -334,6 +333,7 @@ function CustomerApp() {
       setOffers([]);loadedOffersForBranch.current="";
       setOfferError("");setSelectedOffer(null);
       setHomeHero(null);loadedHeroForBranch.current="";setHeroError("");
+      setHomePopup(null);loadedPopupForBranch.current="";
     } finally {
       if (requestId === catalogueRequest.current) setCatalogLoading(false);
     }
@@ -1233,10 +1233,10 @@ function CustomerApp() {
       case "menu":
         return (
           <>
-            <View style={styles.section}>
-              <Text style={styles.pageTitle}>Thực đơn</Text>
-              {branches.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={[styles.section,styles.menuTopSection]}>
+              {branches.length > 1 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.branchSwitcher}>
                   {branches.map(branch => (
                     <Pressable key={branch.id} onPress={() => void refreshCatalogue(branch.id)}
                       style={[styles.branchPill, branchId === branch.id && styles.branchActive]}
@@ -1245,7 +1245,7 @@ function CustomerApp() {
                     </Pressable>
                   ))}
                 </ScrollView>
-              ) : <Text style={styles.muted}>Chi nhánh đang được cập nhật.</Text>}
+              )}
               {menu && !menu.isActive && <Notice message="Quán hiện đã nghỉ. Bạn vẫn có thể xem món và thêm vào giỏ; đặt hàng sẽ mở lại khi quán hoạt động." />}
               <Field label="Tìm món ăn, trà sữa" value={search} onChangeText={setSearch}
                 placeholder="Nhập tên món bạn muốn tìm..." />
@@ -2112,6 +2112,8 @@ const styles = StyleSheet.create({
   loginGuest: { alignSelf: "center", minHeight: 44, paddingVertical: 12, justifyContent: "center" },
   loginGuestText: { color: brand, fontWeight: "700", textAlign: "center", fontSize: 13 },
   section: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
+  menuTopSection: { paddingTop: 10, gap: 8 },
+  branchSwitcher: { paddingRight: 8 },
   accountPage: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24,
     gap: 18, flexGrow: 1 },
   accountIdentity: { flexDirection: "row", alignItems: "center", gap: 14,
@@ -2171,7 +2173,7 @@ const styles = StyleSheet.create({
   homeCartInner: { flexDirection: "row", alignItems: "center", gap: 4 },
   cartIconSurface: { backgroundColor: palette.white, borderRadius: 8, padding: 3 },
   headerCartInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  homeHeroRegion: { backgroundColor: "#4A0C0A", paddingBottom: 12 },
+  homeHeroRegion: { backgroundColor: "#4A0C0A" },
   homeBanner: { overflow: "hidden", marginHorizontal: 12,
     borderRadius: 18, backgroundColor: "#6D1710" },
   homeBannerImage: { position: "absolute" },
