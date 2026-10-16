@@ -91,6 +91,57 @@ test("L03: bulk group assignment updates several products in one transaction",as
    [productId,secondProductId],7),error=>error.getStatus()===409);
  assert.equal(calls.length,0,"stale catalog revision must not mutate links");
 });
+test("L03 regression: one-tap assignment persists atomically and is idempotent",async()=>{
+ const links=new Set();let revisions=0;let removed=0;let created=0;
+ const tx={
+  product:{findFirst:async()=>({id:productId})},
+  modifierGroup:{findFirst:async()=>({id:groupId,sortOrder:2})},
+  productModifierGroupAssignment:{
+   upsert:async()=>{links.add(productId+"-"+groupId);created++},
+   deleteMany:async()=>{links.delete(productId+"-"+groupId);removed++},
+   findUnique:async()=>links.size?{productId}:null,
+  },
+  branch:{update:async()=>{revisions++;return {id:branchId}}},
+ };
+ const db={
+  branch:{findUnique:async()=>({id:branchId})},
+  $transaction:async fn=>fn(tx),
+ };
+ const service=new ModifierLibraryService({database:db},auth);
+ for (const step of [true,true,false,false,true]) {
+  const result=await service.setProductGroupMembership("token",branchId,productId,groupId,step);
+  assert.deepEqual(result,{productId,groupId,attached:step});
+  assert.equal(links.has(productId+"-"+groupId),step);
+ }
+ assert.equal(links.size,1,"repeat tap must not create duplicate associations");
+ assert.equal(revisions,5);
+ assert.equal(created,3);
+ assert.equal(removed,2);
+});
+test("L03 regression: reject cross-branch product/group and false confirmation",async()=>{
+ let writes=0;let foreignProduct=true,foreignGroup=false;
+ const tx={
+  product:{findFirst:async()=>foreignProduct?null:{id:productId}},
+  modifierGroup:{findFirst:async()=>foreignGroup?null:{id:groupId,sortOrder:0}},
+  productModifierGroupAssignment:{
+   upsert:async()=>{writes++},
+   findUnique:async()=>null,
+  },
+  branch:{update:async()=>{writes++}},
+ };
+ const db={branch:{findUnique:async()=>({id:branchId})},$transaction:async fn=>fn(tx)};
+ const service=new ModifierLibraryService({database:db},auth);
+ await assert.rejects(service.setProductGroupMembership("token",branchId,productId,groupId,true),
+   err=>err.getStatus()===404);
+ foreignProduct=false;foreignGroup=true;
+ await assert.rejects(service.setProductGroupMembership("token",branchId,productId,groupId,true),
+   err=>err.getStatus()===404);
+ assert.equal(writes,0,"cannot mutate cross-branch associations");
+ foreignGroup=false;
+ await assert.rejects(service.setProductGroupMembership("token",branchId,productId,groupId,true),
+   err=>err.getStatus()===409);
+ assert.equal(writes,1,"unverified membership must roll back in actual transaction");
+});
 test("L03: additive migration backfills links without changing original option IDs or order snapshots",()=>{
  const sql=readFileSync(new URL("../prisma/migrations/20261015150000_l03_reusable_modifiers/migration.sql",import.meta.url),"utf8");
  assert.match(sql,/INSERT INTO "ProductModifierGroupAssignment"/);

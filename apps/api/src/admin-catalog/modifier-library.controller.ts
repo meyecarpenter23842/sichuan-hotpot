@@ -29,6 +29,9 @@ class SetGroupProductsDto {
   @IsArray() @ArrayMaxSize(200) @IsUUID("4",{each:true}) productIds!: string[];
   @IsInt() @Min(0) revision!: number;
 }
+class GroupMembershipDto {
+  @IsBoolean() attached!: boolean;
+}
 class SetGroupAssignmentsDto {
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", {each:true}) groupIds!: string[];
   @IsInt() @Min(0) revision!: number;
@@ -58,6 +61,14 @@ export class ModifierLibraryController {
     @Param("branchId",uuid) branchId:string,@Param("groupId",uuid) groupId:string,
     @Body() dto:SetGroupProductsDto){
     return this.lib.setGroupProducts(auth,branchId,groupId,dto.productIds,dto.revision);
+  }
+  @Patch("products/:productId/group-assignments/:groupId")
+  toggleProductGroup(@Headers("authorization") auth:string|undefined,
+    @Param("branchId",uuid) branchId:string,
+    @Param("productId",uuid) productId:string,
+    @Param("groupId",uuid) groupId:string,
+    @Body() dto:GroupMembershipDto) {
+    return this.lib.setProductGroupMembership(auth,branchId,productId,groupId,dto.attached);
   }
   @Put("products/:productId/group-assignments")
   attach(@Headers("authorization") auth: string | undefined,
