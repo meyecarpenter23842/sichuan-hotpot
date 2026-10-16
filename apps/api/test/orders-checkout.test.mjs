@@ -225,6 +225,18 @@ test("L08 rejects an option or size turned off before checkout, without insertin
   });
   const accepted = await request(cart(randomUUID())).expect(201);
   assert.equal(accepted.body.totalVnd, 161000, "2 x (50000 + 15000 + 8000) + 15000");
+  await db.modifierGroup.update({ where:{id:group.id},data:{maxSelect:2} });
+  const repeatKey=randomUUID();
+  const duplicate=await request(cart(repeatKey,[option.id,option.id])).expect(201);
+  assert.equal(duplicate.body.totalVnd,177000,
+    "2 portions x (50000 base + 15000 size + 2 x 8000 topping) + 15000 delivery");
+  const repeated=await db.order.findUniqueOrThrow({
+    where:{customerId_idempotencyKey:{customerId:userId,idempotencyKey:repeatKey}},
+    include:{items:{include:{modifiers:true}}},
+  });
+  assert.equal(repeated.items[0].modifiers.length,2,
+    "Both topping units must survive in immutable order snapshots");
+  await request(cart(randomUUID(),[option.id,option.id,option.id])).expect(422);
   await db.modifierOption.update({ where: { id: option.id }, data: { isAvailable: false } });
   try {
     const blockedKey = randomUUID();
