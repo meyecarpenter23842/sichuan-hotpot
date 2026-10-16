@@ -44,6 +44,11 @@ export interface Category {
   imageKey?: string | null;
   products: Product[];
 }
+/** Public promotion is editorial content, not a cart discount. */
+export interface HomeOffer {
+  id:string; title:string; summary:string; body:string; imageKey:string;
+  ctaTarget:"MENU"|null; startAt:string|null; endAt:string|null; sortOrder:number;
+}
 export interface BranchMenu extends BranchSummary {
   categories: Category[];
 }
