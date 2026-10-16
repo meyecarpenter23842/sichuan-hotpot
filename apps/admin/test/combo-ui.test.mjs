@@ -50,7 +50,7 @@ test("Admin combo editor reuses shared topping library and existing Product R2 i
   assert.match(editor, /chooseTopping/);
   assert.match(editor, /item\.option\.imageKey/);
   assert.match(editor, /Ảnh combo/);
-  assert.match(editor, /onPickImage\?\(product\.id\)/);
+  assert.match(editor, /onPickImage\?\.\(product\.id\)/);
   assert.match(catalog, /onPickImage=\{pickImage\}/);
   assert.match(catalog, /onRemoveImage=\{productId => void removeProductImage\(productId\)\}/);
   assert.match(schema, /model ProductComboModifierOption/);
