@@ -9,6 +9,40 @@ p4 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p4)
 
 
+class NeonDatabaseUrlTests(unittest.TestCase):
+    def test_pooler_url_is_normalized_to_direct_neon_for_backup_and_migration(self):
+        original = p4.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                p4.CONFIG = Path(d)
+                (p4.CONFIG / "api.env").write_text(
+                    "DATABASE_URL=postgresql://hotpot_owner:test%40secret@"
+                    "ep-demo-pooler.c-6.us-east-2.aws.neon.tech/hotpot?sslmode=require\n"
+                )
+                url = p4.production_database_url()
+                self.assertIn("@ep-demo.c-6.us-east-2.aws.neon.tech:5432/hotpot", url)
+                self.assertNotIn("-pooler.", url)
+                self.assertTrue(url.endswith("?sslmode=require"))
+                env = p4.database_process_env()
+                self.assertEqual(env["PGHOST"], "ep-demo.c-6.us-east-2.aws.neon.tech")
+                self.assertEqual(env["PGPASSWORD"], "test@secret")
+        finally:
+            p4.CONFIG = original
+
+    def test_non_neon_database_is_rejected(self):
+        original = p4.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                p4.CONFIG = Path(d)
+                (p4.CONFIG / "api.env").write_text(
+                    "DATABASE_URL=postgresql://u:p@127.0.0.1:5432/hotpot\n"
+                )
+                with self.assertRaisesRegex(p4.GateError, "neon_database_configuration_required"):
+                    p4.production_database_url()
+        finally:
+            p4.CONFIG = original
+
+
 class LiveP4HistoryTests(unittest.TestCase):
     def setUp(self):
         self.migrations = ("20261012000000_init", "20261013000000_feature_a",
@@ -133,6 +167,9 @@ class LiveP4SafetyTests(unittest.TestCase):
         self.assertNotIn("PREVIOUS =", source)
         self.assertNotIn("UPDATES =", source)
         self.assertIn("migration_history_incomplete", source)
+        self.assertIn("production_database_url", source)
+        self.assertNotIn('@127.0.0.1:5432/hotpot', source)
+        self.assertNotIn('runuser", "-u", "postgres"', source)
 
     def test_invalid_arguments_rejected(self):
         with patch.object(p4.os, "geteuid", return_value=0):
