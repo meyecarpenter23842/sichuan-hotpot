@@ -21,8 +21,8 @@ test("L03 attaches shared groups to multiple products without duplicate creation
   assert.match(library, /group-assignments/);
   assert.match(library, /catalog\.catalogRevision/);
   assert.match(catalog, /setAssignProductId/);
-  assert.match(library, /onPickImage\("options"/);
-  assert.match(library, /onPickImage\("groups"/);
+  assert.match(library, /pickMedia\("options"/);
+  assert.match(library, /pickMedia\("groups"/);
   assert.match(catalog, /busyRef\.current = true/);
   assert.match(catalog, /request\(root \+ path, token, method, body\)/);
 });
@@ -48,7 +48,7 @@ test("L03 keeps new photo and topping drafts in a single active edit modal",()=>
   assert.match(library,/Gắn nhóm vào món \(\{selectedProducts\.length\} đã chọn\)/);
   assert.match(library,/Đã tạo bản nháp\. Tiếp tục gắn ảnh/);
   assert.match(library,/Lưu & tiếp tục/);
-  assert.match(library,/onPickImage\(editing\.kind==="group"\?"groups":"options"/);
+  assert.match(library,/pickMedia\(editing\.kind==="group"\?"groups":"options"/);
   assert.match(library,/product-assignments/);
   assert.match(catalog,/Chọn \/ thay ảnh món/);
   assert.match(catalog,/!!notice && <Notice text=\{notice\} \/>/);
