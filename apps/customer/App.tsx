@@ -743,6 +743,53 @@ function CustomerApp() {
     setScreen("detail");
   }
 
+  function changeDetailTopping(group: ModifierGroup, optionId: string, delta: number) {
+    const inGroup = new Set(group.options.map(option => option.id));
+    const currentGroupUnits = selectedModifierIds.filter(id => inGroup.has(id)).length;
+    const currentUnits = selectedModifierIds.filter(id => id === optionId).length;
+    const nextUnits = currentUnits + delta;
+    if (nextUnits < 0 || (delta > 0 && (currentGroupUnits >= group.maxSelect ||
+        selectedModifierIds.length >= 30))) {
+      setDetailError("Nhóm "+group.name+" chỉ được chọn tối đa "+group.maxSelect+" topping.");
+      return;
+    }
+    if (delta < 0 && currentGroupUnits <= group.minSelect) {
+      setDetailError("Nhóm "+group.name+" cần tối thiểu "+group.minSelect+" topping.");
+      return;
+    }
+    setDetailError("");
+    setSelectedModifierIds(old => delta > 0
+      ? [...old, optionId]
+      : [...old.slice(0,old.indexOf(optionId)), ...old.slice(old.indexOf(optionId)+1)]);
+  }
+
+  function changeCartTopping(line:CartLine, group:ModifierGroup, optionId:string, delta:number) {
+    const current=cartModifierCount(line.selection,optionId);
+    const option=group.options.find(x=>x.id===optionId);
+    if(!option || !option.isAvailable){ setNotice("Topping này không còn bán.");return; }
+    const ids=new Set(group.options.map(x=>x.id));
+    const groupUnits=line.selection.modifierIds.filter(id=>ids.has(id)).length;
+    const newCount=current+delta;
+    if(newCount<0 || groupUnits+delta<group.minSelect || groupUnits+delta>group.maxSelect ||
+        line.selection.modifierIds.length+delta>30) {
+      setNotice("Nhóm "+group.name+" yêu cầu từ "+group.minSelect+
+        " đến "+group.maxSelect+" topping trên mỗi phần.");
+      return;
+    }
+    const remaining=line.selection.modifierIds.filter(id=>id!==optionId);
+    const modifierIds=[...remaining,...Array(newCount).fill(optionId)];
+    const product=productsById.get(line.selection.productId);
+    if(!product) {setNotice("Món không còn bán.");return;}
+    const error=optionSelectionError(product.modifierGroups,modifierIds);
+    if(error){setNotice(error);return;}
+    try {
+      setCart(replaceCartLineSelection(cart,line.key,{...line.selection,modifierIds}));
+      setNotice("Đã cập nhật topping trong giỏ. Tiền sẽ được máy chủ kiểm tra lại.");
+    } catch(e) {
+      setNotice(e instanceof Error?e.message:"Không cập nhật được topping.");
+    }
+  }
+
   function addSelectedProduct() {
     if (!selectedProduct || !selectedProduct.isAvailable) return;
     const selectionError = optionSelectionError(selectedProduct.modifierGroups ?? [], selectedModifierIds);
