@@ -16,7 +16,7 @@ export interface ComboConfigInput {
   fixedItems: { productId: string; variantId?: string | null; quantity: number; sortOrder: number }[];
   groups: {
     name: string; minSelect: number; maxSelect: number; sortOrder: number;
-    options: { productId: string; variantId?: string | null;
+    options: { productId?: string; modifierOptionId?: string; variantId?: string | null;
       quantity: number; priceDeltaVnd: number; sortOrder: number }[];
   }[];
 }
@@ -128,6 +128,18 @@ export class AdminCatalogService {
                         childProduct: { select: { id: true, name: true, priceVnd: true,
                           kind: true, isAvailable: true, imageKey: true } } },
                     },
+                    modifierOptions: {
+                      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                      select: {
+                        id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                        modifierOption: { select: {
+                          id: true, name: true, priceDeltaVnd: true, isAvailable: true, imageKey: true,
+                          group: { select: {
+                            id: true, name: true, isAvailable: true, imageKey: true, branchId: true,
+                          } },
+                        } },
+                      },
+                    },
                   },
                 },
                 variants: { orderBy: { name: "asc" },
@@ -222,6 +234,12 @@ export class AdminCatalogService {
             variant: { select: { productId: true, isAvailable: true } },
             childProduct: { select: { id: true, kind: true, isAvailable: true } },
           } },
+          modifierOptions: { select: {
+            modifierOption: { select: {
+              isAvailable: true,
+              group: { select: { isAvailable: true } },
+            } },
+          } },
         } },
       },
     });
@@ -235,13 +253,16 @@ export class AdminCatalogService {
       throw new ConflictException("COMBO_FIXED_ITEM_UNAVAILABLE");
     }
     for (const group of combo.comboGroups) {
+      const sellableProducts = group.options.filter(option =>
+        option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
+        && (option.variant === null
+          || (option.variant.productId === option.childProduct.id && option.variant.isAvailable))
+      ).length;
+      const sellableToppings = group.modifierOptions.filter(option =>
+        option.modifierOption.isAvailable && option.modifierOption.group.isAvailable).length;
       if (group.minSelect < 0 || group.maxSelect < group.minSelect
-        || group.maxSelect > 30 || group.options.length === 0
-        || group.options.filter(option =>
-          option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
-          && (option.variant === null
-            || (option.variant.productId === option.childProduct.id && option.variant.isAvailable))
-        ).length === 0) {
+        || group.maxSelect > 30 || group.options.length + group.modifierOptions.length === 0
+        || (group.minSelect > 0 && sellableProducts + sellableToppings === 0)) {
         throw new ConflictException("COMBO_GROUP_UNAVAILABLE");
       }
     }
@@ -275,8 +296,18 @@ export class AdminCatalogService {
       if (group.minSelect < 0 || group.maxSelect < group.minSelect || group.maxSelect > 30) {
         throw new BadRequestException("COMBO_INVALID_GROUP_LIMITS");
       }
-      const ids = group.options.map(option => option.productId);
-      if (new Set(ids).size !== ids.length) {
+      const keys = group.options.map(option => {
+        const hasProduct = typeof option.productId === "string";
+        const hasModifier = typeof option.modifierOptionId === "string";
+        if (hasProduct === hasModifier || (!hasProduct && option.variantId)) {
+          throw new BadRequestException("COMBO_OPTION_SOURCE_REQUIRED");
+        }
+        if (hasModifier && option.variantId) {
+          throw new BadRequestException("COMBO_TOPPING_CANNOT_HAVE_VARIANT");
+        }
+        return hasProduct ? "product:" + option.productId : "modifier:" + option.modifierOptionId;
+      });
+      if (new Set(keys).size !== keys.length) {
         throw new BadRequestException("COMBO_DUPLICATE_GROUP_OPTION");
       }
     }
@@ -284,7 +315,8 @@ export class AdminCatalogService {
 
     const childIds = [...new Set([
       ...fixedIds,
-      ...input.groups.flatMap(group => group.options.map(option => option.productId)),
+      ...input.groups.flatMap(group => group.options.flatMap(option =>
+        option.productId ? [option.productId] : [])),
     ])];
     if (childIds.includes(productId)) throw new BadRequestException("COMBO_SELF_REFERENCE");
     const children = await this.prisma.database.product.findMany({
@@ -298,8 +330,8 @@ export class AdminCatalogService {
       ...input.fixedItems.filter(item => item.variantId).map(item => ({
         productId: item.productId, variantId: item.variantId!,
       })),
-      ...input.groups.flatMap(group => group.options.filter(option => option.variantId)
-        .map(option => ({ productId: option.productId, variantId: option.variantId! }))),
+      ...input.groups.flatMap(group => group.options.filter(option => option.productId && option.variantId)
+        .map(option => ({ productId: option.productId!, variantId: option.variantId! }))),
     ];
     const variantIds = [...new Set(variantPairs.map(pair => pair.variantId))];
     const variants = variantIds.length ? await this.prisma.database.productVariant.findMany({
@@ -314,7 +346,24 @@ export class AdminCatalogService {
       throw new BadRequestException("COMBO_VARIANT_MUST_MATCH_CHILD");
     }
 
+    const modifierOptionIds = [...new Set(input.groups.flatMap(group =>
+      group.options.flatMap(option => option.modifierOptionId ? [option.modifierOptionId] : [])))];
+    const modifierOptions = modifierOptionIds.length
+      ? await this.prisma.database.modifierOption.findMany({
+        where: {
+          id: { in: modifierOptionIds },
+          group: { OR: [{ branchId }, { branchId: null, product: { category: { branchId } } }] },
+        },
+        select: { id: true },
+      }) : [];
+    if (modifierOptions.length !== modifierOptionIds.length) {
+      throw new BadRequestException("COMBO_TOPPING_MUST_BE_SAME_BRANCH");
+    }
+
     return this.change(() => this.prisma.database.$transaction(async tx => {
+      await tx.productComboModifierOption.deleteMany({
+        where: { group: { comboProductId: productId } },
+      });
       await tx.productComboOption.deleteMany({
         where: { group: { comboProductId: productId } },
       });
@@ -339,14 +388,27 @@ export class AdminCatalogService {
           },
           select: { id: true },
         });
-        await tx.productComboOption.createMany({
-          data: group.options.map(option => ({
-            groupId: saved.id, childProductId: option.productId,
-            variantId: option.variantId ?? null,
-            quantity: option.quantity, priceDeltaVnd: option.priceDeltaVnd,
-            sortOrder: option.sortOrder,
-          })),
-        });
+        const productOptions = group.options.filter(option => option.productId);
+        const toppingOptions = group.options.filter(option => option.modifierOptionId);
+        if (productOptions.length) {
+          await tx.productComboOption.createMany({
+            data: productOptions.map(option => ({
+              groupId: saved.id, childProductId: option.productId!,
+              variantId: option.variantId ?? null,
+              quantity: option.quantity, priceDeltaVnd: option.priceDeltaVnd,
+              sortOrder: option.sortOrder,
+            })),
+          });
+        }
+        if (toppingOptions.length) {
+          await tx.productComboModifierOption.createMany({
+            data: toppingOptions.map(option => ({
+              groupId: saved.id, modifierOptionId: option.modifierOptionId!,
+              quantity: option.quantity, priceDeltaVnd: option.priceDeltaVnd,
+              sortOrder: option.sortOrder,
+            })),
+          });
+        }
       }
       await tx.branch.update({
         where: { id: branchId }, data: { catalogRevision: { increment: 1 } },
@@ -648,6 +710,10 @@ export class AdminCatalogService {
   async deleteOption(auth: string | undefined, branchId: string, id: string) {
     await this.authorize(auth, branchId);
     await this.option(branchId, id);
+    const comboUse = await this.prisma.database.productComboModifierOption.count({
+      where: { modifierOptionId: id },
+    });
+    if (comboUse) throw new ConflictException("TOPPING_USED_BY_COMBO_REMOVE_FROM_COMBO_FIRST");
     await this.change(() => this.prisma.database.modifierOption.delete({ where: { id } }));
     return { status: "deleted" };
   }
