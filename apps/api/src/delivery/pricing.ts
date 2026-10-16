@@ -23,11 +23,15 @@ export type PricedCatalogProduct = Prisma.ProductGetPayload<{ select: typeof pro
 export interface PricedOrderLine {
   readonly productId: string;
   readonly productName: string;
+  readonly variantId: string | null;
   readonly variantName: string | null;
+  readonly pricingMode: "LEGACY" | "SEPARATE";
   readonly quantity: number;
   readonly unitPriceVnd: number;
   readonly lineTotalVnd: number;
-  readonly modifiers: readonly { readonly name: string; readonly priceVnd: number }[];
+  readonly modifiers: readonly {
+    readonly optionId: string; readonly name: string; readonly priceVnd: number;
+  }[];
 }
 export interface PricedCart {
   readonly subtotalVnd: number;
@@ -59,17 +63,19 @@ export function priceCart(
     const separate = item.pricingMode === "SEPARATE";
     const baseUnit = amount(product.priceVnd);
     let dishUnit = baseUnit;
+    let variantId: string | null = null;
     let variantName: string | null = null;
     if (item.variantId !== null) {
       const variant = product.variants.find(v => v.id === item.variantId);
       if (!variant || !variant.isAvailable) throw new UnprocessableEntityException("VARIANT_UNAVAILABLE");
       dishUnit = amount(dishUnit + variant.priceDeltaVnd);
+      variantId = variant.id;
       variantName = variant.name;
     }
     const selected = new Map<string,number>();
     for (const id of item.modifierIds) selected.set(id, (selected.get(id)??0)+1);
     const known = new Set<string>();
-    const modifiers: {name:string;priceVnd:number}[] = [];
+    const modifiers: {optionId:string;name:string;priceVnd:number}[] = [];
     let separateExtras = 0;
     let legacyUnit = dishUnit;
     const groups = [...new Map([
@@ -98,11 +104,12 @@ export function priceCart(
         legacyUnit=amount(legacyUnit+amount(price*units));
         if (separate && group.minSelect>0) {
           separateExtras=amount(separateExtras+amount(price*units*item.quantity));
-          modifiers.push({name:option.name,priceVnd:amount(price*units*item.quantity)});
+          modifiers.push({optionId:option.id,name:option.name,
+            priceVnd:amount(price*units*item.quantity)});
         } else {
           for(let n=0;n<units;n++){
             if(separate)separateExtras=amount(separateExtras+price);
-            modifiers.push({name:option.name,priceVnd:price});
+            modifiers.push({optionId:option.id,name:option.name,priceVnd:price});
           }
         }
       }
@@ -116,7 +123,8 @@ export function priceCart(
       :amount(legacyUnit*item.quantity);
     subtotalVnd=amount(subtotalVnd+lineTotalVnd);
     lines.push({
-      productId: product.id, productName: product.name, variantName,
+      productId: product.id, productName: product.name, variantId, variantName,
+      pricingMode: separate ? "SEPARATE" : "LEGACY",
       quantity: item.quantity, unitPriceVnd, lineTotalVnd, modifiers,
     });
   }

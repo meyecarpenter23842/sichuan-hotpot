@@ -25,7 +25,7 @@ export function watchCustomerOrderEvents(token: string, refresh: () => void): ()
         try {
           const message: unknown = JSON.parse(String(event.data));
           if (message && typeof message === "object" && "type" in message
-            && ["ready", "order.created", "order.status"].includes(String(message.type))) {
+            && ["ready", "order.created", "order.status", "order.updated"].includes(String(message.type))) {
             refresh();
           }
         } catch { /* Ignore corrupt hints and continue regular HTTP sync. */ }

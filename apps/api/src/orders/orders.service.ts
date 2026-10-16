@@ -197,10 +197,11 @@ export class OrdersService {
               items: {
                 create: priced.lines.map(line => ({
                   productId: line.productId, productName: line.productName,
-                  variantName: line.variantName, quantity: line.quantity,
+                  variantId: line.variantId, variantName: line.variantName,
+                  pricingMode: line.pricingMode, quantity: line.quantity,
                   unitPriceVnd: line.unitPriceVnd, lineTotalVnd: line.lineTotalVnd,
                   modifiers: { create: line.modifiers.map(modifier => ({
-                    name: modifier.name, priceVnd: modifier.priceVnd,
+                    optionId: modifier.optionId, name: modifier.name, priceVnd: modifier.priceVnd,
                   })) },
                 })),
               },

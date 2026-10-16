@@ -10,7 +10,7 @@ import { PrismaService } from "../database/prisma.service";
 type Status = "PENDING" | "CONFIRMED" | "PREPARING" | "READY" |
   "DELIVERING" | "DELIVERED" | "CANCELED" | "DELIVERY_FAILED";
 export interface OrderChange {
-  type: "order.created" | "order.status" | "order.overdue";
+  type: "order.created" | "order.status" | "order.updated" | "order.overdue";
   orderId: string; branchId: string; customerId: string; status: Status;
 }
 

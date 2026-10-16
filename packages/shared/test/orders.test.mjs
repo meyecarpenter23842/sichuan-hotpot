@@ -10,13 +10,18 @@ test("shop manager may confirm and kitchen may prepare", () => {
   assert.equal(allowed("CONFIRMED", "PREPARING", "KITCHEN"), true);
   assert.equal(allowed("PREPARING", "READY", "KITCHEN"), true);
 });
-test("driver must be assigned and cannot alter unrelated orders", () => {
+test("manager can operate store self-delivery while driver must be assigned", () => {
+  assert.equal(allowed("READY", "DELIVERING", "OWNER"), true);
+  assert.equal(allowed("READY", "DELIVERING", "MANAGER"), true);
+  assert.equal(allowed("DELIVERING", "DELIVERED", "OWNER"), true);
+  assert.equal(allowed("DELIVERING", "DELIVERY_FAILED", "MANAGER"), true);
   assert.equal(allowed("READY", "DELIVERING", "DRIVER"), false);
   assert.equal(allowed("READY", "DELIVERING", "DRIVER", true), true);
   assert.equal(allowed("DELIVERING", "DELIVERED", "DRIVER"), false);
   assert.equal(allowed("DELIVERING", "DELIVERED", "DRIVER", true), true);
   assert.equal(allowed("DELIVERING", "DELIVERY_FAILED", "DRIVER", true), true);
   assert.equal(allowed("READY", "DELIVERING", "CUSTOMER", true), false);
+  assert.equal(allowed("READY", "DELIVERING", "KITCHEN"), false);
 });
 test("invalid jumps and terminal orders fail closed", () => {
   assert.equal(allowed("PENDING", "DELIVERED", "OWNER"), false);
