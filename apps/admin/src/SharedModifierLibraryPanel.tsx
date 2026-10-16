@@ -30,6 +30,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const [notice,setNotice]=useState("");
  const [query,setQuery]=useState("");
  const [selectedProducts,setSelectedProducts]=useState<string[]>([]);
+ const [showProducts,setShowProducts]=useState(false);
  const [confirmImpact,setConfirmImpact]=useState(false);
  const [pendingToggle,setPendingToggle]=useState<{kind:"group"|"option";id:string;enabled:boolean;usedBy:number}|null>(null);
  const products=catalog.categories.flatMap(cat=>cat.products);
@@ -42,7 +43,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
      groupId:group?.id,name:kind==="group"?group?.name??"":option?.name??"",
      price:String(option?.priceDeltaVnd??0),min:String(group?.minSelect??0),
      max:String(group?.maxSelect??1),order:String(group?.sortOrder??0),usedBy:n});
-   setSelectedProducts(group?.usedByProductIds??[]);
+   setSelectedProducts(group?.usedByProductIds??[]);setShowProducts(false);
    setError("");setNotice("");setConfirmImpact(false);
  }
  async function call(path:string,method:"POST"|"PATCH",payload:unknown){
@@ -210,7 +211,9 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
          {editing.kind==="group"&&<>
            <Text style={s.title}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
            <Text style={s.hint}>Chọn món dùng nhóm này. Lưu cập nhật liên kết trong một giao dịch.</Text>
-           {products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
+           <Action label={showProducts?"Thu gọn danh sách món":"Chọn món sử dụng"} secondary
+             onPress={()=>setShowProducts(old=>!old)}/>
+           {showProducts&&products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
              accessibilityState={{checked:selectedProducts.includes(product.id)}} style={s.line}
              onPress={()=>setSelectedProducts(old=>old.includes(product.id)
                ?old.filter(id=>id!==product.id):[...old,product.id])}>
