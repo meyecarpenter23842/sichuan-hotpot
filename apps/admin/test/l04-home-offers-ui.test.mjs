@@ -22,3 +22,9 @@ test("L04 time editor converts Vietnam local time to UTC without client timezone
  assert.match(p,/giờ Việt Nam/i);
  assert.match(p,/OFFER_IMAGE_REQUIRED|Thêm ảnh trước khi bật|Hãy thêm ảnh trước khi bật/);
 });
+
+test("L04 create draft payload leaves enabled server-controlled",()=>{
+ const panel=read("../src/HomeOffersPanel.tsx");
+ assert.match(panel,/request<HomeOffer>\(root,token,"POST",\{\s*\.\.\.data,sortOrder:offers\.length\}\)/s);
+ assert.doesNotMatch(panel,/request<HomeOffer>\(root,token,"POST",\{[^}]*enabled\s*:/s);
+});
