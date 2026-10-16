@@ -137,6 +137,11 @@ test("P4.6 acceptingOrders off denies quote before expensive routing", async () 
 
 test("independent toppings stay fixed when increasing soup portions",async()=>{
   const f=fixture(2100);
+  // Isolate quantity pricing from the store's 80k minimum order policy.
+  const policy=f.db.deliveryPolicyVersion.findFirst;
+  f.db.deliveryPolicyVersion.findFirst=async query=>({
+    ...(await policy(query)),minSubtotalVnd:0,
+  });
   const separate={...item(),pricingMode:"SEPARATE"};
   const one=await f.service.calculate("Bearer valid",{
     ...f.input,items:[{...separate,quantity:1}],
