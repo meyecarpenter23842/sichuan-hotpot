@@ -123,7 +123,10 @@ try {
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "＋ Nhóm" }).click();
   await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Độ cay");
-  await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("1");
+  // Required vs optional is now a large checkbox, not an unexplained numeric field.
+  const requiredGroup = page.getByRole("checkbox", { name: "Bắt buộc khách chọn" });
+  await requiredGroup.click();
+  assert.equal(await requiredGroup.getAttribute("aria-checked"),"true");
   await page.getByRole("textbox", { name: "Chọn tối đa" }).fill("1");
   // L03 flow: choose participating products before saving, then stay inside
   // the same modal to add toppings and their images without stacked dialogs.
@@ -133,7 +136,7 @@ try {
   await page.getByRole("button", { name: "＋ Thêm topping vào nhóm" }).waitFor();
   await page.getByRole("button", { name: "＋ Thêm topping vào nhóm" }).click();
   await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Cay vừa");
-  await page.getByRole("textbox", { name: "Giá topping (VND)" }).fill("5000");
+  await page.getByRole("textbox", { name: "Giá topping (VND)" }).fill("0");
   await page.getByRole("button", { name: "Lưu & tiếp tục" }).click();
   await page.getByRole("button", { name: "Chọn / thay ảnh" }).waitFor();
   await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).click();
@@ -145,7 +148,14 @@ try {
     where: { name: "Cay vừa", groupId: savedGroup.id },
   });
   assert.equal(savedGroup.isAvailable, false, "Unpictured new group starts as a draft");
+  const emptyGroupSwitch=page.getByRole("switch",{name:"Hiển thị nhóm Độ cay"});
+  await emptyGroupSwitch.waitFor();
+  assert.equal(await emptyGroupSwitch.isDisabled(),true,
+    "A draft missing photos/options must be visibly locked instead of returning HTTP 409");
+  await page.getByText(/Để bật nhóm:/).waitFor();
   assert.equal(savedOption.isAvailable, false, "Unpictured new option starts as a draft");
+  assert.equal(savedGroup.minSelect,1,"Required group must enforce at least one selection");
+  assert.equal(savedOption.priceDeltaVnd,0,"Free topping price must be accepted and persisted");
   // Assert the association in PostgreSQL first, independently of modal paint.
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
@@ -198,19 +208,21 @@ try {
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
   const optionSwitch = page.getByRole("switch", { name: "Bán topping Cay vừa" });
-  const rejected = page.waitForResponse(response => response.url().includes(
-    "/library/options/" + savedOption.id) && response.request().method() === "PATCH");
-  await optionSwitch.click();
-  assert.equal((await rejected).status(), 409,
-    "Disabling the only required topping must be rejected by the backend");
+  assert.equal(await optionSwitch.isDisabled(), true,
+    "UI must disable the only required topping instead of sending doomed 409 requests");
+  await page.getByText("Bắt buộc", {exact:true}).waitFor();
   assert.equal((await db.modifierOption.findUniqueOrThrow({ where: {
     id: savedOption.id,
   } })).isAvailable, true, "Required topping cannot be disabled");
 
   await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).click();
-  await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("0");
+  const optionalGroup = page.getByRole("checkbox", { name: "Bắt buộc khách chọn" });
+  await optionalGroup.click();
+  assert.equal(await optionalGroup.getAttribute("aria-checked"),"false");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
   await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
+  assert.equal((await db.modifierGroup.findUniqueOrThrow({where:{id:savedGroup.id}})).minSelect,0,
+    "Optional group must persist minSelect=0 and allow skipping toppings");
   await optionSwitch.click();
   await page.waitForFunction(() =>
     document.querySelector('[role="switch"][aria-label="Bán topping Cay vừa"]')

@@ -53,3 +53,20 @@ test("L03 keeps new photo and topping drafts in a single active edit modal",()=>
   assert.match(catalog,/Chọn \/ thay ảnh món/);
   assert.match(catalog,/!!notice && <Notice text=\{notice\} \/>/);
 });
+
+test("L03 publication has explanatory prerequisites instead of a failing toggle",()=>{
+  assert.match(library,/export function publicationBlockers/);
+  assert.match(library,/disabled=\{cannotEnable\}/);
+  assert.match(library,/Để bật nhóm:/);
+  assert.match(library,/Không thể tắt topping bắt buộc/);
+  assert.match(library,/group\.options\.filter\(o=>o\.isAvailable\)\.length<=group\.minSelect/);
+  assert.match(library,/Giá topping 0đ vẫn hợp lệ/);
+});
+test("L03 editing groups has required selector, independent photos and mobile-size checkboxes",()=>{
+  assert.match(library,/accessibilityLabel="Bắt buộc khách chọn"/);
+  assert.match(library,/min:Number\(old\.min\)>0\?"0":"1"/);
+  assert.match(library,/editing\.kind==="group"\?"groups":"options"/);
+  assert.match(library,/Ảnh \{editing\.kind==="group"/);
+  assert.match(library,/checkBox:\{width:28,height:28/);
+  assert.match(library,/checkRow:\{minHeight:56/);
+});
