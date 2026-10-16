@@ -32,7 +32,14 @@ function optionalText(value:string|null|undefined,max:number){
   if(value===undefined)return undefined;
   if(value===null)return null;
   const clean=value.trim();
-  return clean?clean.slice(0,max):null;
+  if(clean.length>max)throw new BadRequestException("INVALID_HERO_TEXT");
+  return clean||null;
+}
+function validateConfig(input:HeroConfigChanges){
+  if(!Number.isInteger(input.dwellMs)||input.dwellMs<2000||input.dwellMs>10000||
+    !Number.isInteger(input.transitionDurationMs)||input.transitionDurationMs<250||
+    input.transitionDurationMs>1000||!["fade","slide","wipe"].includes(input.transitionType))
+    throw new BadRequestException("INVALID_HERO_CONFIG");
 }
 
 @Injectable()
@@ -74,7 +81,7 @@ export class HomeHeroService {
     return this.payload(branchId,true);
   }
   async updateConfig(auth:string|undefined,branchId:string,revision:number,input:HeroConfigChanges){
-    await this.owner(auth,branchId);
+    await this.owner(auth,branchId);validateConfig(input);
     const current=await this.db.homeHeroConfig.findUnique({where:{branchId}});
     if(!current){
       if(revision!==0)throw new ConflictException("HERO_CONFIG_CHANGED_RELOAD");
