@@ -9,7 +9,8 @@ export function comboSelectionError(product: Product, optionIds: readonly string
     return "Combo chưa được cửa hàng thiết lập đầy đủ.";
   }
   if (product.comboFixedItems.some(item =>
-    item.quantity < 1 || item.childProduct.kind !== "STANDARD" || !item.childProduct.isAvailable)) {
+    item.quantity < 1 || item.childProduct.kind !== "STANDARD" || !item.childProduct.isAvailable
+    || (item.variant !== null && !item.variant.isAvailable))) {
     return "Một món cố định trong combo đang tạm hết.";
   }
 
@@ -27,7 +28,8 @@ export function comboSelectionError(product: Product, optionIds: readonly string
     }
     for (const option of group.options) {
       if ((selected.get(option.id) ?? 0) > 0
-        && (!option.childProduct.isAvailable || option.childProduct.kind !== "STANDARD")) {
+        && (!option.childProduct.isAvailable || option.childProduct.kind !== "STANDARD"
+          || (option.variant !== null && !option.variant.isAvailable))) {
         return "Món “" + option.childProduct.name + "” trong combo đang tạm hết.";
       }
     }
