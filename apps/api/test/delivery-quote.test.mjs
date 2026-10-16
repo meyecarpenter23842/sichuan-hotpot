@@ -134,3 +134,28 @@ test("P4.6 acceptingOrders off denies quote before expensive routing", async () 
     e => e.getStatus?.() === 422 && e.getResponse?.().code === "STORE_CLOSED");
   assert.equal(f.captured.filter(x => x[0] === "routing").length, 0);
 });
+
+test("independent toppings stay fixed when increasing soup portions",async()=>{
+  const f=fixture(2100);
+  const separate={...item(),pricingMode:"SEPARATE"};
+  const one=await f.service.calculate("Bearer valid",{
+    ...f.input,items:[{...separate,quantity:1}],
+  });
+  const two=await f.service.calculate("Bearer valid",{
+    ...f.input,items:[{...separate,quantity:2}],
+  });
+  assert.equal(one.subtotalVnd,65000);
+  assert.equal(two.subtotalVnd,125000);
+  assert.equal(two.subtotalVnd-one.subtotalVnd,60000,
+    "another Lẩu Lớn must add only soup price, not another topping");
+  const original=f.db.product.findMany;
+  f.db.product.findMany=async query=>{
+    const rows=await original(query);
+    rows[0].modifierGroups[0].maxSelect=2;
+    return rows;
+  };
+  const twice=await f.service.calculate("Bearer valid",{
+    ...f.input,items:[{...separate,modifierIds:[modifierId,modifierId],quantity:2}],
+  });
+  assert.equal(twice.subtotalVnd,130000);
+});
