@@ -51,7 +51,7 @@ export function priceCart(
   for (const item of items) {
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 99
       || !Array.isArray(item.modifierIds) || item.modifierIds.length > 30
-      || new Set(item.modifierIds).size !== item.modifierIds.length) {
+      || item.modifierIds.some(id => typeof id !== "string" || !id.trim())) {
       throw new BadRequestException("INVALID_CART_LINE");
     }
     const product = catalog.get(item.productId);
@@ -64,7 +64,10 @@ export function priceCart(
       unit += variant.priceDeltaVnd;
       variantName = variant.name;
     }
-    const selected = new Set(item.modifierIds);
+    // Each repeated option ID is one unit of that topping per dish. Repricing
+    // and order snapshots must preserve counts; never trust frontend totals.
+    const selected = new Map<string,number>();
+    for (const id of item.modifierIds) selected.set(id, (selected.get(id)??0)+1);
     const known = new Set<string>();
     const modifiers: { name: string; priceVnd: number }[] = [];
     const groups = [...new Map([
@@ -78,14 +81,18 @@ export function priceCart(
     for (const group of groups) {
       const chosen = group.options.filter(option => selected.has(option.id));
       for (const option of group.options) known.add(option.id);
+      const count = chosen.reduce((sum, option) => sum + (selected.get(option.id)??0), 0);
       if (group.minSelect < 0 || group.maxSelect < group.minSelect
-        || chosen.length < group.minSelect || chosen.length > group.maxSelect
+        || count < group.minSelect || count > group.maxSelect
         || chosen.some(option => !option.isAvailable)) {
         throw new UnprocessableEntityException("INVALID_MODIFIERS");
       }
       for (const option of chosen) {
-        unit += option.priceDeltaVnd;
-        modifiers.push({ name: option.name, priceVnd: option.priceDeltaVnd });
+        for (let i=0; i<(selected.get(option.id)??0); i++) {
+          unit = amount(unit + amount(option.priceDeltaVnd));
+          // Repeated price snapshots represent one purchased topping each.
+          modifiers.push({ name: option.name, priceVnd: option.priceDeltaVnd });
+        }
       }
     }
     if (item.modifierIds.some(id => !known.has(id))) {
