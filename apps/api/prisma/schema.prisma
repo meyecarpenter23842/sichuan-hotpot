@@ -46,6 +46,16 @@ enum OrderItemPricingMode {
   SEPARATE
 }
 
+enum ProductKind {
+  STANDARD
+  COMBO
+}
+
+enum ComboSnapshotKind {
+  FIXED
+  CHOICE
+}
+
 enum DeliveryPricingMode {
   DISTANCE
   ZONE
@@ -193,6 +203,7 @@ model Product {
   productNotes String?       @db.VarChar(800)
   allergenNotice String?     @db.VarChar(800)
   priceVnd    Int
+  kind        ProductKind    @default(STANDARD)
   isAvailable Boolean        @default(true)
   isFeatured  Boolean        @default(false)
   sortOrder   Int            @default(0)
@@ -204,10 +215,58 @@ model Product {
   modifierAssignments ProductModifierGroupAssignment[]
   imageKey    String?        @db.VarChar(512)
   orderItems  OrderItem[]
+  comboFixedItems ProductComboFixedItem[] @relation("ComboParentFixed")
+  usedAsComboFixed ProductComboFixedItem[] @relation("ComboChildFixed")
+  comboGroups ProductComboGroup[]
+  usedAsComboOption ProductComboOption[]
+  orderComboSnapshots OrderItemComboSnapshot[]
 
   @@index([categoryId, isAvailable])
   @@index([categoryId, sortOrder])
   @@index([isFeatured])
+}
+
+model ProductComboFixedItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  comboProductId String   @db.Uuid
+  childProductId String   @db.Uuid
+  quantity       Int      @default(1)
+  sortOrder      Int      @default(0)
+  comboProduct   Product  @relation("ComboParentFixed", fields: [comboProductId], references: [id], onDelete: Restrict)
+  childProduct   Product  @relation("ComboChildFixed", fields: [childProductId], references: [id], onDelete: Restrict)
+
+  @@unique([comboProductId, childProductId])
+  @@index([comboProductId, sortOrder])
+  @@index([childProductId])
+}
+
+model ProductComboGroup {
+  id             String               @id @default(uuid()) @db.Uuid
+  comboProductId String               @db.Uuid
+  name           String               @db.VarChar(160)
+  minSelect      Int                  @default(1)
+  maxSelect      Int                  @default(1)
+  sortOrder      Int                  @default(0)
+  comboProduct   Product              @relation(fields: [comboProductId], references: [id], onDelete: Restrict)
+  options        ProductComboOption[]
+
+  @@unique([comboProductId, name])
+  @@index([comboProductId, sortOrder])
+}
+
+model ProductComboOption {
+  id             String            @id @default(uuid()) @db.Uuid
+  groupId        String            @db.Uuid
+  childProductId String            @db.Uuid
+  quantity       Int               @default(1)
+  priceDeltaVnd  Int               @default(0)
+  sortOrder      Int               @default(0)
+  group          ProductComboGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  childProduct   Product           @relation(fields: [childProductId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, childProductId])
+  @@index([groupId, sortOrder])
+  @@index([childProductId])
 }
 
 model ProductVariant {
@@ -343,6 +402,7 @@ model OrderItem {
   product       Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
   variant       ProductVariant?             @relation(fields: [variantId], references: [id], onDelete: SetNull)
   modifiers     OrderItemModifierSnapshot[]
+  comboItems    OrderItemComboSnapshot[]
 
   @@index([orderId])
   @@index([variantId])
@@ -359,6 +419,23 @@ model OrderItemModifierSnapshot {
 
   @@index([orderItemId])
   @@index([optionId])
+}
+
+model OrderItemComboSnapshot {
+  id           String            @id @default(uuid()) @db.Uuid
+  orderItemId  String            @db.Uuid
+  productId    String?           @db.Uuid
+  kind         ComboSnapshotKind
+  groupName    String?           @db.VarChar(160)
+  productName  String            @db.VarChar(200)
+  quantity     Int
+  priceDeltaVnd Int              @default(0)
+  sortOrder    Int               @default(0)
+  orderItem    OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  product      Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderItemId, sortOrder])
+  @@index([productId])
 }
 
 model OrderStatusHistory {
