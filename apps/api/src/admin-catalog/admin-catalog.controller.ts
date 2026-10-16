@@ -49,7 +49,8 @@ class ComboFixedItemInput {
   @IsInt() @Min(-1000) @Max(1000) sortOrder!: number;
 }
 class ComboOptionInput {
-  @IsUUID("4") productId!: string;
+  @IsOptional() @IsUUID("4") productId?: string;
+  @IsOptional() @IsUUID("4") modifierOptionId?: string;
   @IsOptional() @IsUUID("4") variantId?: string | null;
   @IsInt() @Min(1) @Max(99) quantity!: number;
   @IsInt() @Min(0) @Max(100000000) priceDeltaVnd!: number;
