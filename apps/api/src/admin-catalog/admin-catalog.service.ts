@@ -609,6 +609,9 @@ export class AdminCatalogService {
       });
       if (!previous) throw new NotFoundException("PRODUCT_NOT_FOUND");
       if (previous.kind === "COMBO") {
+        await tx.productComboModifierOption.deleteMany({
+          where: { group: { comboProductId: id } },
+        });
         await tx.productComboOption.deleteMany({
           where: { group: { comboProductId: id } },
         });
