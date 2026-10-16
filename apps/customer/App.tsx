@@ -1034,12 +1034,42 @@ function CustomerApp() {
       }
       const comboOptionIds: string[] = [];
       if (product.kind === "COMBO") {
+        const historicalFixed = item.comboItems.filter(component => component.kind === "FIXED");
+        if (historicalFixed.length !== product.comboFixedItems.length) {
+          return "Thành phần cố định của combo cũ đã thay đổi, vui lòng chọn lại.";
+        }
+        const unmatchedFixed = [...historicalFixed];
+        for (const fixed of product.comboFixedItems) {
+          const matchIndex = unmatchedFixed.findIndex(snapshot => {
+            const productMatches = snapshot.productId
+              ? snapshot.productId === fixed.childProduct.id
+              : snapshot.productName === fixed.childProduct.name;
+            const variantMatches = snapshot.variantId
+              ? snapshot.variantId === fixed.variant?.id
+              : snapshot.variantName
+                ? snapshot.variantName === fixed.variant?.name
+                : fixed.variant == null;
+            return productMatches && variantMatches && snapshot.quantity === fixed.quantity;
+          });
+          if (matchIndex < 0) {
+            return "Món hoặc size cố định của combo cũ đã thay đổi, vui lòng chọn lại.";
+          }
+          unmatchedFixed.splice(matchIndex, 1);
+        }
         for (const snapshot of item.comboItems.filter(component => component.kind === "CHOICE")) {
           const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
           if (!group) return "Nhóm lựa chọn combo cũ đã thay đổi, vui lòng chọn lại.";
-          const matches = group.options.filter(option => snapshot.productId
-            ? option.childProduct.id === snapshot.productId
-            : option.childProduct.name === snapshot.productName);
+          const matches = group.options.filter(option => {
+            const productMatches = snapshot.productId
+              ? option.childProduct.id === snapshot.productId
+              : option.childProduct.name === snapshot.productName;
+            const variantMatches = snapshot.variantId
+              ? option.variant?.id === snapshot.variantId
+              : snapshot.variantName
+                ? option.variant?.name === snapshot.variantName
+                : option.variant === null;
+            return productMatches && variantMatches;
+          });
           if (matches.length !== 1) return "Món trong combo cũ đã thay đổi, vui lòng chọn lại.";
           const option = matches[0]!;
           if (option.quantity < 1 || snapshot.quantity % option.quantity !== 0) {
@@ -1273,7 +1303,10 @@ function CustomerApp() {
                       style={styles.comboThumb} />
                   : <View style={styles.comboThumbPlaceholder} />}
                 <View style={styles.toppingCopy}>
-                  <Text style={styles.optionText}>{fixed.quantity} × {fixed.childProduct.name}</Text>
+                  <Text style={styles.optionText}>
+                    {fixed.quantity} × {fixed.childProduct.name}
+                    {fixed.variant ? " · " + fixed.variant.name : ""}
+                  </Text>
                   {!fixed.childProduct.isAvailable &&
                     <Text style={styles.warning}>Món này đang tạm hết</Text>}
                 </View>
@@ -1302,6 +1335,7 @@ function CustomerApp() {
                       <View style={styles.toppingCopy}>
                         <Text style={styles.optionText} numberOfLines={2}>
                           {option.quantity} × {option.childProduct.name}
+                          {option.variant ? " · " + option.variant.name : ""}
                         </Text>
                         <Text style={styles.optionPrice}>{option.priceDeltaVnd > 0
                           ? "+" + vnd(option.priceDeltaVnd) : "Trong giá combo"}</Text>
@@ -1517,6 +1551,7 @@ function CustomerApp() {
                       {product.comboFixedItems.map(fixed =>
                         <Text key={fixed.id} style={styles.muted}>
                           • {fixed.quantity} × {fixed.childProduct.name}
+                          {fixed.variant ? " · " + fixed.variant.name : ""}
                         </Text>)}
                       {product.comboGroups.map(group => {
                         const selected = group.options.filter(option =>
@@ -1527,6 +1562,7 @@ function CustomerApp() {
                             const count = cartComboOptionCount(line.selection, option.id);
                             return <Text key={option.id} style={styles.muted}>
                               • {option.quantity * count} × {option.childProduct.name}
+                              {option.variant ? " · " + option.variant.name : ""}
                               {option.priceDeltaVnd > 0 ? " · +" + vnd(option.priceDeltaVnd * count) : ""}
                             </Text>;
                           })}

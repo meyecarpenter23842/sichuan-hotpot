@@ -103,6 +103,36 @@ test("replay returns stable order, reuse of key with changed payload is 409", as
   await request({ ...orderBody(), paymentMethod: "QR" }).expect(409);
   await request({ ...orderBody(), items: [{ productId, variantId: null, modifierIds: [], quantity: 3 }] }).expect(409);
 });
+test("customer order note is normalized, immutable and part of idempotency", async () => {
+  const noteKey = randomUUID();
+  const first = await request({
+    ...orderBody(noteKey),
+    customerNote: "  Gọi trước khi giao\r\nKhông bấm chuông  ",
+  }).expect(201);
+  const saved = await db.order.findUniqueOrThrow({
+    where: { id: first.body.orderId }, select: { customerNote: true },
+  });
+  assert.equal(saved.customerNote, "Gọi trước khi giao\nKhông bấm chuông");
+
+  const detail = await client.get("/customer/orders/" + first.body.orderId)
+    .set("Authorization", "Bearer " + token).expect(200);
+  assert.equal(detail.body.customerNote, "Gọi trước khi giao\nKhông bấm chuông");
+
+  const replay = await request({
+    ...orderBody(noteKey),
+    customerNote: "Gọi trước khi giao\nKhông bấm chuông",
+  }).expect(201);
+  assert.equal(replay.body.orderId, first.body.orderId);
+  assert.equal(replay.body.replayed, true);
+
+  await request({
+    ...orderBody(noteKey), customerNote: "Đổi ghi chú sau khi gửi",
+  }).expect(409);
+  await request({
+    ...orderBody(randomUUID()), customerNote: "x".repeat(501),
+  }).expect(400);
+});
+
 test("QR order stores payment PENDING and never claims money received", async () => {
   const qrKey = randomUUID();
   const result = await request({ ...orderBody(qrKey), paymentMethod: "QR" }).expect(201);
@@ -357,19 +387,28 @@ test("real combo checkout stores immutable fixed and chosen component snapshots"
       priceVnd: 30000, kind: "STANDARD", isAvailable: true,
     } }),
   ]);
+  const [fixedVariant, choiceVariant] = await Promise.all([
+    db.productVariant.create({ data: {
+      productId: fixedChild.id, name: "Tô lớn", priceDeltaVnd: 0, isAvailable: true,
+    } }),
+    db.productVariant.create({ data: {
+      productId: choiceChild.id, name: "200g", priceDeltaVnd: 0, isAvailable: true,
+    } }),
+  ]);
   const combo = await db.product.create({ data: {
     categoryId: base.categoryId, name: "Combo CI " + randomUUID(),
     priceVnd: 100000, kind: "COMBO", isAvailable: true,
   } });
   await db.productComboFixedItem.create({ data: {
-    comboProductId: combo.id, childProductId: fixedChild.id, quantity: 1, sortOrder: 0,
+    comboProductId: combo.id, childProductId: fixedChild.id, variantId: fixedVariant.id,
+    quantity: 1, sortOrder: 0,
   } });
   const group = await db.productComboGroup.create({ data: {
     comboProductId: combo.id, name: "Chọn thịt", minSelect: 1, maxSelect: 1, sortOrder: 1,
   } });
   const option = await db.productComboOption.create({ data: {
-    groupId: group.id, childProductId: choiceChild.id, quantity: 2,
-    priceDeltaVnd: 5000, sortOrder: 0,
+    groupId: group.id, childProductId: choiceChild.id, variantId: choiceVariant.id,
+    quantity: 2, priceDeltaVnd: 5000, sortOrder: 0,
   } });
 
   const result = await request({
@@ -389,15 +428,18 @@ test("real combo checkout stores immutable fixed and chosen component snapshots"
   assert.equal(saved.items.length, 1);
   assert.deepEqual(saved.items[0].comboItems.map(component => ({
     kind: component.kind, productId: component.productId,
-    productName: component.productName, quantity: component.quantity,
+    variantId: component.variantId, productName: component.productName,
+    variantName: component.variantName, quantity: component.quantity,
     priceDeltaVnd: component.priceDeltaVnd,
   })), [
     {
-      kind: "FIXED", productId: fixedChild.id, productName: fixedChild.name,
+      kind: "FIXED", productId: fixedChild.id, variantId: fixedVariant.id,
+      productName: fixedChild.name, variantName: "Tô lớn",
       quantity: 1, priceDeltaVnd: 0,
     },
     {
-      kind: "CHOICE", productId: choiceChild.id, productName: choiceChild.name,
+      kind: "CHOICE", productId: choiceChild.id, variantId: choiceVariant.id,
+      productName: choiceChild.name, variantName: "200g",
       quantity: 2, priceDeltaVnd: 5000,
     },
   ]);
@@ -407,4 +449,25 @@ test("real combo checkout stores immutable fixed and chosen component snapshots"
   assert.equal(detail.body.items[0].comboItems.length, 2);
   assert.equal(detail.body.items[0].comboItems[1].groupName, "Chọn thịt");
   assert.equal(detail.body.items[0].comboItems[1].productId, choiceChild.id);
+  assert.equal(detail.body.items[0].comboItems[0].variantName, "Tô lớn");
+  assert.equal(detail.body.items[0].comboItems[1].variantName, "200g");
+
+  await db.productVariant.update({
+    where: { id: choiceVariant.id }, data: { isAvailable: false },
+  });
+  try {
+    const blockedKey = randomUUID();
+    await request({
+      branchId, addressId, idempotencyKey: blockedKey, paymentMethod: "COD",
+      items: [{
+        productId: combo.id, variantId: null, modifierIds: [],
+        comboOptionIds: [option.id], quantity: 1, pricingMode: "SEPARATE",
+      }],
+    }).expect(422);
+    assert.equal(await db.order.count({ where: { idempotencyKey: blockedKey } }), 0);
+  } finally {
+    await db.productVariant.update({
+      where: { id: choiceVariant.id }, data: { isAvailable: true },
+    });
+  }
 });

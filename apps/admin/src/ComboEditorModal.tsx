@@ -10,9 +10,9 @@ import { Action, Field, Notice } from "./ui";
 import { c, font } from "./theme";
 import { Icon } from "./Icon";
 
-type FixedDraft = { key: string; productId: string; quantity: number };
+type FixedDraft = { key: string; productId: string; variantId: string | null; quantity: number };
 type OptionDraft = {
-  key: string; productId: string; quantity: number; priceDelta: string;
+  key: string; productId: string; variantId: string | null; quantity: number; priceDelta: string;
 };
 type GroupDraft = {
   key: string; name: string; minSelect: string; maxSelect: string; options: OptionDraft[];
@@ -33,13 +33,15 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
   onFeedback: (message: string, failed?: boolean) => void;
 }) {
   const [fixed, setFixed] = useState<FixedDraft[]>(() => product?.comboFixedItems.map(item => ({
-    key: item.id, productId: item.childProduct.id, quantity: item.quantity,
+    key: item.id, productId: item.childProduct.id,
+    variantId: item.variantId ?? item.variant?.id ?? null, quantity: item.quantity,
   })) ?? []);
   const [groups, setGroups] = useState<GroupDraft[]>(() => product?.comboGroups.map(group => ({
     key: group.id, name: group.name, minSelect: String(group.minSelect),
     maxSelect: String(group.maxSelect),
     options: group.options.map(option => ({
-      key: option.id, productId: option.childProduct.id, quantity: option.quantity,
+      key: option.id, productId: option.childProduct.id,
+      variantId: option.variantId ?? option.variant?.id ?? null, quantity: option.quantity,
       priceDelta: String(option.priceDeltaVnd),
     })),
   })) ?? []);
@@ -73,18 +75,48 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
       options: group.options.map((option, oi) => oi === optionIndex ? { ...option, ...change } : option),
     }));
   }
-  function choose(item: CatalogProduct) {
+  function choose(item: CatalogProduct, variantId: string | null = null) {
     if (!picker) return;
     if (picker.kind === "fixed") {
-      setFixed(rows => [...rows, { key: key(), productId: item.id, quantity: 1 }]);
+      setFixed(rows => [...rows, {
+        key: key(), productId: item.id, variantId, quantity: 1,
+      }]);
     } else {
       setGroups(rows => rows.map((group, index) => index !== picker.groupIndex ? group : ({
         ...group, options: [...group.options, {
-          key: key(), productId: item.id, quantity: 1, priceDelta: "0",
+          key: key(), productId: item.id, variantId, quantity: 1, priceDelta: "0",
         }],
       })));
     }
     setPicker(null); setSearch("");
+  }
+
+  function VariantChoices({ item, value, onChange }: {
+    item: CatalogProduct; value: string | null; onChange: (variantId: string | null) => void;
+  }) {
+    if (item.variants.length === 0) return null;
+    return <View style={st.variantBlock}>
+      <Text style={st.variantLabel}>Size / khẩu phần</Text>
+      <View style={st.variantWrap}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Chọn size mặc định"
+          style={[st.variantChip, value === null && st.variantChipActive]}
+          onPress={() => onChange(null)}>
+          <Text style={[st.variantChipText, value === null && st.variantChipTextActive]}>Mặc định</Text>
+        </Pressable>
+        {item.variants.map(variant =>
+          <Pressable key={variant.id} accessibilityRole="button"
+            accessibilityLabel={"Chọn size " + variant.name}
+            accessibilityState={{ selected: value === variant.id, disabled: !variant.isAvailable }}
+            disabled={!variant.isAvailable}
+            style={[st.variantChip, value === variant.id && st.variantChipActive,
+              !variant.isAvailable && st.variantChipDisabled]}
+            onPress={() => onChange(variant.id)}>
+            <Text style={[st.variantChipText, value === variant.id && st.variantChipTextActive]}>
+              {variant.name}{variant.isAvailable ? "" : " · hết"}
+            </Text>
+          </Pressable>)}
+      </View>
+    </View>;
   }
 
   async function save() {
@@ -96,7 +128,8 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
       }
       const payload = {
         fixedItems: fixed.map((row, index) => ({
-          productId: row.productId, quantity: row.quantity, sortOrder: index,
+          productId: row.productId, variantId: row.variantId,
+          quantity: row.quantity, sortOrder: index,
         })),
         groups: groups.map((group, groupIndex) => {
           const name = group.name.trim();
@@ -110,7 +143,8 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
           return {
             name, minSelect, maxSelect, sortOrder: groupIndex,
             options: group.options.map((option, optionIndex) => ({
-              productId: option.productId, quantity: option.quantity,
+              productId: option.productId, variantId: option.variantId,
+              quantity: option.quantity,
               priceDeltaVnd: integer(option.priceDelta, 100000000), sortOrder: optionIndex,
             })),
           };
@@ -162,6 +196,9 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
                   <Text style={[st.sub, !item?.isAvailable && st.warning]}>
                     {item?.isAvailable ? "Đang bán" : "Đang tạm hết"}
                   </Text>
+                  {item && <VariantChoices item={item} value={row.variantId}
+                    onChange={variantId => setFixed(rows => rows.map((entry, current) =>
+                      current === index ? { ...entry, variantId } : entry))} />}
                 </View>
                 <View style={st.stepper}>
                   <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng"
@@ -219,6 +256,8 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
                     <Text style={[st.sub, !item?.isAvailable && st.warning]}>
                       {item?.isAvailable ? "Đang bán" : "Đang tạm hết"}
                     </Text>
+                    {item && <VariantChoices item={item} value={option.variantId}
+                      onChange={variantId => changeOption(groupIndex, optionIndex, { variantId })} />}
                   </View>
                   <View style={st.stepper}>
                     <Pressable accessibilityRole="button" accessibilityLabel="Giảm phần trong lựa chọn"
@@ -271,14 +310,39 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
           <View style={st.search}><Field label="Tìm món" value={search}
             onChangeText={setSearch} placeholder="Tên món, topping, nước..." /></View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={st.pickerBody}>
-            {candidates.map(item => <Pressable key={item.id} accessibilityRole="button"
-              accessibilityLabel={"Chọn " + item.name} style={st.pickRow} onPress={() => choose(item)}>
-              <View style={st.rowCopy}>
-                <Text style={st.rowName}>{item.name}</Text>
-                <Text style={st.sub}>{item.priceVnd.toLocaleString("vi-VN")}đ · {item.isAvailable ? "Đang bán" : "Tạm hết"}</Text>
+            {candidates.map(item => <View key={item.id} style={st.pickCard}>
+              <View style={st.pickRow}>
+                <View style={st.rowCopy}>
+                  <Text style={st.rowName}>{item.name}</Text>
+                  <Text style={st.sub}>{item.priceVnd.toLocaleString("vi-VN")}đ · {item.isAvailable ? "Đang bán" : "Tạm hết"}</Text>
+                </View>
+                {item.variants.length === 0 &&
+                  <Pressable accessibilityRole="button" accessibilityLabel={"Chọn " + item.name}
+                    style={st.pickAdd} onPress={() => choose(item, null)}>
+                    <Text style={st.pickGlyph}>＋</Text>
+                  </Pressable>}
               </View>
-              <Text style={st.pickGlyph}>＋</Text>
-            </Pressable>)}
+              {item.variants.length > 0 && <View style={st.pickVariants}>
+                <Text style={st.variantLabel}>Chọn size / khẩu phần cho combo</Text>
+                <View style={st.variantWrap}>
+                  <Pressable accessibilityRole="button"
+                    accessibilityLabel={"Chọn " + item.name + " size mặc định"}
+                    style={st.variantChip} onPress={() => choose(item, null)}>
+                    <Text style={st.variantChipText}>Mặc định</Text>
+                  </Pressable>
+                  {item.variants.map(variant =>
+                    <Pressable key={variant.id} accessibilityRole="button"
+                      accessibilityLabel={"Chọn " + item.name + " size " + variant.name}
+                      disabled={!variant.isAvailable}
+                      style={[st.variantChip, !variant.isAvailable && st.variantChipDisabled]}
+                      onPress={() => choose(item, variant.id)}>
+                      <Text style={st.variantChipText}>
+                        {variant.name}{variant.isAvailable ? "" : " · hết"}
+                      </Text>
+                    </Pressable>)}
+                </View>
+              </View>}
+            </View>)}
             {candidates.length === 0 && <Text style={st.empty}>Không có món thường phù hợp.</Text>}
           </ScrollView>
         </View>
@@ -309,7 +373,7 @@ const st = StyleSheet.create({
   empty: { color: c.secondary, fontSize: font.note, paddingVertical: 8 },
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 8,
     borderBottomWidth: 1, borderBottomColor: c.line, paddingVertical: 6 },
-  rowCopy: { flex: 1, minWidth: 0, gap: 2 },
+  rowCopy: { flex: 1, minWidth: 0, gap: 4 },
   rowName: { color: c.ink, fontSize: 13, fontWeight: "800" },
   stepper: { flexDirection: "row", alignItems: "center" },
   step: { width: 44, height: 44, alignItems: "center", justifyContent: "center",
@@ -327,9 +391,21 @@ const st = StyleSheet.create({
   delta: { maxWidth: 180 },
   actions: { flexDirection: "row", gap: 8, padding: 12, borderTopWidth: 1,
     borderTopColor: c.line, backgroundColor: c.white },
+  variantBlock: { gap: 5, paddingTop: 4 },
+  variantLabel: { color: c.secondary, fontSize: 11, fontWeight: "700" },
+  variantWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  variantChip: { minHeight: 36, justifyContent: "center", borderWidth: 1,
+    borderColor: c.line, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: c.white },
+  variantChipActive: { borderColor: c.red, backgroundColor: "#FDE8EA" },
+  variantChipDisabled: { opacity: 0.4 },
+  variantChipText: { color: c.secondary, fontSize: 11, fontWeight: "700" },
+  variantChipTextActive: { color: c.red, fontWeight: "900" },
   search: { paddingHorizontal: 14, paddingTop: 10 },
   pickerBody: { paddingHorizontal: 14, paddingBottom: 24 },
-  pickRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 8,
-    borderBottomWidth: 1, borderBottomColor: c.line },
-  pickGlyph: { color: c.red, fontWeight: "900", fontSize: 22, paddingHorizontal: 10 },
+  pickCard: { borderBottomWidth: 1, borderBottomColor: c.line, paddingVertical: 6 },
+  pickRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 8 },
+  pickAdd: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  pickVariants: { gap: 6, paddingBottom: 6 },
+  pickGlyph: { color: c.red, fontWeight: "900", fontSize: 22 },
 });

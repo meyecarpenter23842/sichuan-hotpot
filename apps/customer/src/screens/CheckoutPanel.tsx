@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { checkoutCartItems, type CartLine } from "../../../../packages/shared/src/cart";
@@ -27,6 +27,7 @@ type Props = {
 
 export function CheckoutPanel({ accessToken, userId, branchId, branchActive, addressId, addressRevision, addressRegionConfirmed, cart, onPlaced }: Props) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+  const [orderNote, setOrderNote] = useState("");
   const [qrAvailable, setQrAvailable] = useState(false);
   const [quote, setQuote] = useState<DeliveryQuote | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,9 +37,17 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
   const items = useMemo(() => {
     try { return checkoutCartItems(cart); } catch { return null; }
   }, [cart]);
+  const quoteFingerprint = useMemo(() => JSON.stringify({
+    userId, branchId, addressId, addressRevision, items,
+  }), [userId, branchId, addressId, addressRevision, items]);
+  const normalizedNote = useMemo(() =>
+    orderNote.normalize("NFC").replace(/\r\n?/g, "\n").trim(), [orderNote]);
+  // Keep the pre-note fingerprint byte-for-byte compatible when note is empty,
+  // so an in-flight retry stored before this release can still reuse its key.
   const fingerprint = useMemo(() => JSON.stringify({
     userId, branchId, addressId, addressRevision, paymentMethod, items,
-  }), [userId, branchId, addressId, addressRevision, paymentMethod, items]);
+    ...(normalizedNote ? { customerNote: normalizedNote } : {}),
+  }), [userId, branchId, addressId, addressRevision, paymentMethod, items, normalizedNote]);
 
   useEffect(() => {
     let active = true;
@@ -51,7 +60,7 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
     [qrAvailable, paymentMethod]);
 
   // A cart/address change invalidates even a not-yet-expired server quote.
-  useEffect(() => { setQuote(null); setProblem(""); }, [fingerprint]);
+  useEffect(() => { setQuote(null); setProblem(""); }, [quoteFingerprint]);
 
   async function requestQuote() {
     if (!branchActive) { setClosedPopup(true); return; }
@@ -117,9 +126,11 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
         body: {
           branchId, addressId, items,
           idempotencyKey: pending.idempotencyKey, paymentMethod,
+          customerNote: normalizedNote || null,
         },
       });
       await AsyncStorage.removeItem(PENDING_KEY);
+      setOrderNote("");
       onPlaced(receipt);
     } catch (error) {
       // Preserve the intent on uncertainty; never assume a failed HTTP
@@ -139,6 +150,19 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
       {!branchActive && <Text style={styles.warning}>Quán đã nghỉ. Bạn vẫn có thể xem món và giữ giỏ hàng.</Text>}
       {!addressId && <Text style={styles.warning}>Lưu và chọn địa chỉ giao hàng trong tài khoản trước khi đặt.</Text>}
       {!!addressId && !addressRegionConfirmed && <Text style={styles.warning}>Địa chỉ cũ cần chọn lại tỉnh/phường trước khi tính phí giao.</Text>}
+      <Text style={styles.label}>Ghi chú cho cửa hàng</Text>
+      <TextInput
+        accessibilityLabel="Ghi chú cho cửa hàng"
+        value={orderNote}
+        onChangeText={setOrderNote}
+        placeholder="Ví dụ: gọi trước khi giao, ít hành, giao giờ nghỉ trưa..."
+        placeholderTextColor={palette.muted}
+        multiline
+        maxLength={500}
+        textAlignVertical="top"
+        style={styles.noteInput}
+      />
+      <Text style={styles.noteCount}>{Array.from(orderNote).length}/500 · Không bắt buộc</Text>
       <Text style={styles.label}>Phương thức thanh toán</Text>
       <View style={styles.methods}>
         {(["COD", "QR"] as const).map(method => (
@@ -199,6 +223,10 @@ const styles = StyleSheet.create({
   panel: { gap: 11, paddingVertical: 14, borderTopColor: palette.line, borderTopWidth: 1 },
   heading: { fontSize: typeScale.section, fontWeight: "800", color: palette.text },
   label: { fontSize: typeScale.body, fontWeight: "700", color: palette.text },
+  noteInput: { minHeight: 88, borderWidth: 1, borderColor: palette.line,
+    borderRadius: 9, paddingHorizontal: 11, paddingVertical: 10,
+    color: palette.text, backgroundColor: palette.white, fontSize: typeScale.body, lineHeight: 20 },
+  noteCount: { color: palette.muted, fontSize: typeScale.small, textAlign: "right" },
   methods: { flexDirection: "row", gap: 8 },
   method: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: palette.line, borderRadius: 9, alignItems: "center", justifyContent: "center", padding: 8 },
   selected: { borderColor: palette.red, backgroundColor: palette.softRed },

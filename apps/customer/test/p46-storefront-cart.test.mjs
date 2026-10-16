@@ -50,3 +50,12 @@ test("cart exposes each real topping with per-portion quantity and server-repric
   assert.match(checkout,/checkoutCartItems\(cart\)/);
   assert.doesNotMatch(checkout,/modifierPriceVnd\s*:/);
 });
+
+test("checkout has optional order note without invalidating a valid delivery quote",()=>{
+  assert.match(checkout,/Ghi chú cho cửa hàng/);
+  assert.match(checkout,/maxLength=\{500\}/);
+  assert.match(checkout,/customerNote: normalizedNote \|\| null/);
+  assert.match(checkout,/quoteFingerprint/);
+  assert.match(checkout,/\[quoteFingerprint\]/);
+  assert.match(checkout,/customerNote: normalizedNote/);
+});

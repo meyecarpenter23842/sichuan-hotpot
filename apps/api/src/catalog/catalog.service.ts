@@ -41,7 +41,8 @@ export class CatalogService {
                 isFeatured: true, sortOrder: true, imageKey: true,
                 comboFixedItems: {
                   orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-                  select: { id: true, quantity: true, sortOrder: true,
+                  select: { id: true, variantId: true, quantity: true, sortOrder: true,
+                    variant: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
                     childProduct: { select: { id: true, name: true, kind: true,
                       isAvailable: true, imageKey: true } } },
                 },
@@ -51,7 +52,8 @@ export class CatalogService {
                     id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
                     options: {
                       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-                      select: { id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                      select: { id: true, variantId: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                        variant: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
                         childProduct: { select: { id: true, name: true, kind: true,
                           isAvailable: true, imageKey: true } } },
                     },
@@ -100,11 +102,13 @@ export class CatalogService {
         const comboSellable = product.kind !== "COMBO" || (
           comboConfigured
           && comboFixedItems.every(item =>
-            item.childProduct.kind === "STANDARD" && item.childProduct.isAvailable)
+            item.childProduct.kind === "STANDARD" && item.childProduct.isAvailable
+            && (item.variant == null || item.variant.isAvailable))
           && comboGroups.every(group =>
             group.maxSelect >= group.minSelect
             && (group.minSelect === 0 || group.options.some(option =>
-              option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable)))
+              option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
+              && (option.variant == null || option.variant.isAvailable))))
         );
         return { ...product,
           comboFixedItems, comboGroups,

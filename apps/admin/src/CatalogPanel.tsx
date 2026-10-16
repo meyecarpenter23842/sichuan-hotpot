@@ -568,7 +568,10 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <Notice text="Combo chưa có thành phần nên đang được giữ ở trạng thái tạm hết." />}
                 {product.comboFixedItems.map(item =>
                   <Text key={item.id} style={st.emptyNote}>
-                    • {item.quantity} × {item.childProduct.name}{item.childProduct.isAvailable ? "" : " · đang hết"}
+                    • {item.quantity} × {item.childProduct.name}
+                    {item.variant ? " · " + item.variant.name : ""}
+                    {item.childProduct.isAvailable && (item.variant == null || item.variant.isAvailable)
+                      ? "" : " · đang hết"}
                   </Text>)}
                 {product.comboGroups.map(group =>
                   <Text key={group.id} style={st.emptyNote}>
