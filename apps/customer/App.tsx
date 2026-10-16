@@ -1005,7 +1005,7 @@ function CustomerApp() {
         ];
         return (
           <View style={styles.homePage}>
-            <View style={styles.homeHeroRegion}>
+            <View style={styles.homeHeroRegion} testID="home-approved-hero">
               <HomeHeroCarousel payload={homeHero} loading={heroLoading} error={heroError}
                 active={screen==="home"} onRetry={()=>void refreshCatalogue(undefined,true)}
                 onMenu={()=>{setCategoryId("");setScreen("menu");}}/>
