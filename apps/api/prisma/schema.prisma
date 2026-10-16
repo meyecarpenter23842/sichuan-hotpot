@@ -252,6 +252,7 @@ model ProductComboGroup {
   sortOrder      Int                  @default(0)
   comboProduct   Product              @relation(fields: [comboProductId], references: [id], onDelete: Restrict)
   options        ProductComboOption[]
+  modifierOptions ProductComboModifierOption[]
 
   @@unique([comboProductId, name])
   @@index([comboProductId, sortOrder])
@@ -273,6 +274,21 @@ model ProductComboOption {
   @@index([groupId, sortOrder])
   @@index([childProductId])
   @@index([variantId])
+}
+
+model ProductComboModifierOption {
+  id               String            @id @default(uuid()) @db.Uuid
+  groupId          String            @db.Uuid
+  modifierOptionId String            @db.Uuid
+  quantity         Int               @default(1)
+  priceDeltaVnd    Int               @default(0)
+  sortOrder        Int               @default(0)
+  group            ProductComboGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  modifierOption   ModifierOption    @relation(fields: [modifierOptionId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, modifierOptionId])
+  @@index([groupId, sortOrder])
+  @@index([modifierOptionId])
 }
 
 model ProductVariant {
@@ -334,6 +350,8 @@ model ModifierOption {
   imageKey      String?        @db.VarChar(512)
   group         ModifierGroup  @relation(fields: [groupId], references: [id], onDelete: Restrict)
   orderSnapshots OrderItemModifierSnapshot[]
+  comboOptions ProductComboModifierOption[]
+  orderComboSnapshots OrderItemComboSnapshot[] @relation("OrderComboModifierOption")
 
   @@unique([groupId, name])
 }
@@ -436,6 +454,7 @@ model OrderItemComboSnapshot {
   orderItemId  String            @db.Uuid
   productId    String?           @db.Uuid
   variantId    String?           @db.Uuid
+  modifierOptionId String?       @db.Uuid
   kind         ComboSnapshotKind
   groupName    String?           @db.VarChar(160)
   productName  String            @db.VarChar(200)
@@ -446,10 +465,12 @@ model OrderItemComboSnapshot {
   orderItem    OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
   product      Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
   variant      ProductVariant?   @relation("OrderComboVariant", fields: [variantId], references: [id], onDelete: SetNull)
+  modifierOption ModifierOption?  @relation("OrderComboModifierOption", fields: [modifierOptionId], references: [id], onDelete: SetNull)
 
   @@index([orderItemId, sortOrder])
   @@index([productId])
   @@index([variantId])
+  @@index([modifierOptionId])
 }
 
 model OrderStatusHistory {
