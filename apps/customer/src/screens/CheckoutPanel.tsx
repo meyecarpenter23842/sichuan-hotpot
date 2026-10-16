@@ -42,10 +42,12 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
   }), [userId, branchId, addressId, addressRevision, items]);
   const normalizedNote = useMemo(() =>
     orderNote.normalize("NFC").replace(/\r\n?/g, "\n").trim(), [orderNote]);
+  // Keep the pre-note fingerprint byte-for-byte compatible when note is empty,
+  // so an in-flight retry stored before this release can still reuse its key.
   const fingerprint = useMemo(() => JSON.stringify({
-    quoteFingerprint, paymentMethod,
+    userId, branchId, addressId, addressRevision, paymentMethod, items,
     ...(normalizedNote ? { customerNote: normalizedNote } : {}),
-  }), [quoteFingerprint, paymentMethod, normalizedNote]);
+  }), [userId, branchId, addressId, addressRevision, paymentMethod, items, normalizedNote]);
 
   useEffect(() => {
     let active = true;
