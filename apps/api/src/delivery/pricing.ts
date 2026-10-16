@@ -92,7 +92,8 @@ export function priceCart(
       productName: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
     }[] = [];
 
-    if (product.kind === "STANDARD") {
+    const productKind = product.kind ?? "STANDARD";
+    if (productKind === "STANDARD") {
       if (comboOptionIds.length) {
         throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
       }
