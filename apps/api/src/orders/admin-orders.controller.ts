@@ -1,8 +1,12 @@
 import {
-  Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Patch, Query,
-  BadRequestException,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsISO8601, IsOptional,
+  IsString, IsUUID, Length, Max, Min, ValidateNested,
+} from "class-validator";
+import { Type } from "class-transformer";
+import {
+  BadRequestException, Body, Controller, Get, Header, Headers, Param,
+  ParseUUIDPipe, Patch, Put, Query,
 } from "@nestjs/common";
-import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 import type { OrderStatus } from "@prisma/client";
 import { AdminOrdersService } from "./admin-orders.service";
 
@@ -10,14 +14,52 @@ const statuses = [
   "PENDING", "CONFIRMED", "PREPARING", "READY",
   "DELIVERING", "DELIVERED", "CANCELED", "DELIVERY_FAILED",
 ] as const;
+const actionTargets = [
+  "CONFIRMED", "CANCELED", "PREPARING", "READY",
+  "DELIVERING", "DELIVERED", "DELIVERY_FAILED",
+] as const;
 
 class OrderActionInput {
   @IsIn(statuses)
   expectedStatus!: OrderStatus;
-  @IsIn(["CONFIRMED", "CANCELED", "PREPARING", "READY"])
-  toStatus!: "CONFIRMED" | "CANCELED" | "PREPARING" | "READY";
-  @IsOptional() @IsString() @MaxLength(500)
+
+  @IsIn(actionTargets)
+  toStatus!: (typeof actionTargets)[number];
+
+  @IsOptional() @IsString() @Length(5, 500)
   reason?: string;
+}
+
+class OrderEditLineInput {
+  @IsUUID("4")
+  productId!: string;
+
+  @IsOptional() @IsUUID("4")
+  variantId?: string | null;
+
+  @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true })
+  modifierIds!: string[];
+
+  @IsInt() @Min(1) @Max(99)
+  quantity!: number;
+
+  @IsOptional() @IsIn(["SEPARATE"])
+  pricingMode?: "SEPARATE";
+}
+
+class OrderEditInput {
+  @IsIn(["PENDING", "CONFIRMED"])
+  expectedStatus!: "PENDING" | "CONFIRMED";
+
+  @IsISO8601()
+  expectedUpdatedAt!: string;
+
+  @IsString() @Length(5, 500)
+  reason!: string;
+
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100)
+  @ValidateNested({ each: true }) @Type(() => OrderEditLineInput)
+  items!: OrderEditLineInput[];
 }
 
 @Controller("admin/orders")
@@ -62,5 +104,16 @@ export class AdminOrdersController {
     @Body() input: OrderActionInput,
   ) {
     return this.orders.transition(auth, branchId, orderId, input);
+  }
+
+  @Put(":branchId/:orderId/items")
+  @Header("Cache-Control", "no-store")
+  editItems(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Param("orderId", new ParseUUIDPipe({ version: "4" })) orderId: string,
+    @Body() input: OrderEditInput,
+  ) {
+    return this.orders.editItems(auth, branchId, orderId, input);
   }
 }
