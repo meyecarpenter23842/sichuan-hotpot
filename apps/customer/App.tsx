@@ -1083,8 +1083,13 @@ function CustomerApp() {
                 {item.variants.filter(v => v.isAvailable).map(v => (
                   <Pressable key={v.id} style={styles.option} accessibilityRole="radio"
                     accessibilityState={{ checked: selectedVariantId === v.id }}
+                    aria-checked={selectedVariantId === v.id}
                     onPress={() => setSelectedVariantId(v.id)}>
-                    <Text style={styles.optionText}>{selectedVariantId === v.id ? "◉" : "◯"} {v.name}</Text>
+                    <View pointerEvents="none" style={[styles.choiceIndicator,styles.radioIndicator,
+                      selectedVariantId===v.id&&styles.choiceIndicatorSelected]}>
+                      <Text style={styles.choiceIndicatorGlyph}>{selectedVariantId===v.id?"✓":""}</Text>
+                    </View>
+                    <Text style={styles.optionText}>{v.name}</Text>
                     <Text>{vnd(item.priceVnd + v.priceDeltaVnd)}</Text>
                   </Pressable>
                 ))}
@@ -1108,6 +1113,7 @@ function CustomerApp() {
                     disabled={!option.isAvailable}
                     accessibilityRole={group.maxSelect === 1 ? "radio" : "checkbox"}
                     accessibilityState={{ checked: selected, disabled: !option.isAvailable }}
+                    aria-checked={selected}
                     onPress={() => {
                       setDetailError("");
                       setSelectedModifierIds(current => {
@@ -1128,8 +1134,13 @@ function CustomerApp() {
                       : <View style={{width:40,height:40,borderRadius:8,marginRight:5,
                           backgroundColor:"#F1F2F4",alignItems:"center",justifyContent:"center"}}>
                           <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
-                    <Text style={styles.optionText}>{selected ? "◉" : "◯"} {option.name}{option.isAvailable ? "" : " · Hết"}</Text>
-                    <Text style={styles.optionPrice}>{option.priceDeltaVnd ? "+ " + vnd(option.priceDeltaVnd) : "0 ₫"}</Text>
+                    <View pointerEvents="none" style={[styles.choiceIndicator,
+                      group.maxSelect===1&&styles.radioIndicator,
+                      selected&&styles.choiceIndicatorSelected]}>
+                      <Text style={styles.choiceIndicatorGlyph}>{selected?"✓":""}</Text>
+                    </View>
+                    <Text style={styles.optionText} numberOfLines={2}>{option.name}{option.isAvailable ? "" : " · Hết"}</Text>
+                    <Text style={styles.optionPrice}>{option.priceDeltaVnd>0?"+ "+vnd(option.priceDeltaVnd):"0 ₫"}</Text>
                   </Pressable>;
                 })}
               </View>
@@ -1738,9 +1749,16 @@ const styles = StyleSheet.create({
   detailTitle: { fontSize: typeScale.page, fontWeight: "800", color: "#20252B" },
   detailPrice: { color: brand, fontSize: 19, fontWeight: "900" },
   group: { marginTop: 8, gap: 9, paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
-  option: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, minHeight: 48, borderBottomWidth: 1, borderBottomColor: "#E4E7EC" },
+  option: { flexDirection: "row", alignItems: "center",gap:10,
+    paddingVertical: 10, paddingHorizontal:6, minHeight: 58, borderBottomWidth: 1,
+    borderBottomColor: "#E4E7EC" },
+  choiceIndicator: { width:28,height:28,minWidth:28,borderWidth:2,borderRadius:7,
+    borderColor:"#667085",backgroundColor:"#FFFFFF",alignItems:"center",justifyContent:"center" },
+  radioIndicator: { borderRadius:14 },
+  choiceIndicatorSelected: { borderColor:"#B3262D",backgroundColor:"#B3262D" },
+  choiceIndicatorGlyph: { fontSize:19,color:"#FFFFFF",fontWeight:"800",lineHeight:24 },
   optionUnavailable: { opacity: 0.45 },
-  optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13 },
+  optionPrice: { color: "#B3262D", fontWeight: "700", fontSize: 13,flexShrink:0 },
   addressPage: { paddingBottom: 26, backgroundColor: palette.white },
   addressPageHint: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 11,
     color: palette.muted, fontSize: 12, lineHeight: 19 },
@@ -1785,7 +1803,8 @@ const styles = StyleSheet.create({
   addressSmallButton: { width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   addressDeleteGlyph: { fontSize: 12, fontWeight: "700", color: "#9B5A5E" },
   addressEditGlyph: { fontSize: 12, fontWeight: "800", color: palette.red },
-  optionText: { color: "#20252B", fontSize: typeScale.action, fontWeight: "700" },
+  optionText: { flex:1,minWidth:0,color: "#20252B", fontSize: typeScale.action,
+    fontWeight: "700" },
   quantityLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13 },
   quantityStepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#D0D5DD", borderRadius: 12 },
   step: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
