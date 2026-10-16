@@ -766,7 +766,7 @@ function CustomerApp() {
   function changeCartTopping(line:CartLine, group:ModifierGroup, optionId:string, delta:number) {
     const current=cartModifierCount(line.selection,optionId);
     const option=group.options.find(x=>x.id===optionId);
-    if(!option || !option.isAvailable){ setNotice("Topping này không còn bán.");return; }
+    if(!option || (delta>0&&!option.isAvailable)){ setNotice("Topping này không còn bán.");return; }
     const ids=new Set(group.options.map(x=>x.id));
     const groupUnits=line.selection.modifierIds.filter(id=>ids.has(id)).length;
     const newCount=current+delta;
@@ -1328,15 +1328,16 @@ function CustomerApp() {
                             <View style={styles.quantityStepper}>
                               <Pressable style={styles.step} accessibilityRole="button"
                                 accessibilityLabel={"Bớt topping "+option.name}
-                                disabled={unavailable||count===0||groupCount<=group.minSelect}
+                                disabled={!product||!product.isAvailable||count===0||groupCount<=group.minSelect}
                                 onPress={()=>changeCartTopping(line,group,option.id,-1)}>
                                 <Text style={styles.stepText}>−</Text>
                               </Pressable>
                               <Text style={styles.qtyText}>{count}</Text>
                               <Pressable style={styles.step} accessibilityRole="button"
                                 accessibilityLabel={"Thêm topping "+option.name}
-                                disabled={unavailable||(!wouldSwap&&atMax)
-                                  ||line.selection.modifierIds.length>=30}
+                                disabled={!product||!product.isAvailable||!option.isAvailable
+                                  ||(!wouldSwap&&atMax)
+                                  ||(line.selection.modifierIds.length>=30&&!wouldSwap)}
                                 onPress={()=>changeCartTopping(line,group,option.id,1)}>
                                 <Text style={styles.stepText}>+</Text>
                               </Pressable>
