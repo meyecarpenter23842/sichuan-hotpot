@@ -101,9 +101,9 @@ def sql(query, database="hotpot"):
                timeout=30, capture=True).decode().strip()
 
 
-def sql_write(query):
+def sql_write(query, database="hotpot"):
     run(["/usr/bin/psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"],
-        env=database_process_env("hotpot"), input_bytes=query.encode(), timeout=30)
+        env=database_process_env(database), input_bytes=query.encode(), timeout=30)
 
 
 def checked_history(expected):
@@ -209,26 +209,62 @@ def wait_for_database(database, timeout=30):
     raise GateError("isolated_database_not_ready")
 
 
+def restore_failure_reason(stderr):
+    """Reduce pg_restore stderr to a fixed non-secret diagnostic code."""
+    text = stderr.decode(errors="replace").lower()
+    if "permission denied" in text or "must be owner" in text:
+        return "isolated_restore_permission"
+    if "already exists" in text:
+        return "isolated_restore_conflict"
+    if "unrecognized configuration parameter" in text:
+        return "isolated_restore_compatibility"
+    if "database" in text and "does not exist" in text:
+        return "isolated_restore_database_missing"
+    if "connection to server" in text or "server closed the connection" in text:
+        return "isolated_restore_connection"
+    if "could not execute query" in text:
+        return "isolated_restore_query_failed"
+    return "isolated_restore_failed"
+
+
+def verify_decryption(cipher):
+    result = subprocess.run(
+        ["/usr/bin/age", "-d", "-i", str(KEY), str(cipher)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600,
+    )
+    require(result.returncode == 0, "isolated_decrypt_failed")
+
+
 def isolated_restore(cipher):
     name = "hotpot_p4_restore_" + secrets.token_hex(7)
     sql_write("CREATE DATABASE " + name + " TEMPLATE template0;")
     try:
         wait_for_database(name)
         sql_write("REVOKE ALL ON DATABASE " + name + " FROM PUBLIC;")
+        # Neon creates the default public schema. Reset only this disposable DB
+        # before restore so pg_restore never collides with pre-existing objects.
+        sql_write("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;", name)
+        # Verify the encrypted round-trip independently. If pg_restore exits
+        # early later, age can receive SIGPIPE; that must not be misreported
+        # as a recovery-key failure.
+        verify_decryption(cipher)
         decrypt = subprocess.Popen(["/usr/bin/age", "-d", "-i", str(KEY), str(cipher)],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            restore = subprocess.Popen([
-                "/usr/bin/pg_restore", "--exit-on-error", "--single-transaction",
-                "--clean", "--if-exists", "--no-owner", "--no-acl",
-            ], env=database_process_env(name),
-               stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
-               stderr=subprocess.DEVNULL)
-            decrypt.stdout.close()
-            status_restore = restore.wait(timeout=600)
-            status_decrypt = decrypt.wait(timeout=600)
-            require(status_decrypt == 0, "isolated_decrypt_failed")
-            require(status_restore == 0, "isolated_restore_failed")
+            with tempfile.TemporaryFile() as restore_errors:
+                restore = subprocess.Popen([
+                    "/usr/bin/pg_restore", "--exit-on-error",
+                    "--clean", "--if-exists", "--no-owner", "--no-acl",
+                ], env=database_process_env(name),
+                   stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
+                   stderr=restore_errors)
+                decrypt.stdout.close()
+                status_restore = restore.wait(timeout=600)
+                status_decrypt = decrypt.wait(timeout=600)
+                if status_restore != 0:
+                    restore_errors.seek(0)
+                    raise GateError(restore_failure_reason(restore_errors.read()))
+                require(status_decrypt == 0, "isolated_decrypt_failed")
         finally:
             if decrypt.poll() is None:
                 decrypt.kill()
