@@ -35,10 +35,32 @@ test("Admin combo editor chooses a concrete child size and sends only IDs", () =
   assert.match(editor, /Size \/ khẩu phần/);
   assert.match(editor, /variantId: row\.variantId/);
   assert.match(editor, /variantId: option\.variantId/);
-  assert.match(editor, /choose\(item, variant\.id\)/);
+  assert.match(editor, /chooseProduct\(item, variant\.id\)/);
   assert.match(api, /variantId\?: string \| null/);
   assert.match(service, /COMBO_VARIANT_MUST_MATCH_CHILD/);
   assert.match(schema, /ProductComboFixedItem[\s\S]*variantId/);
   assert.match(schema, /ProductComboOption[\s\S]*variantId/);
   assert.match(schema, /OrderItemComboSnapshot[\s\S]*variantName/);
+});
+
+
+test("Admin combo editor reuses shared topping library and existing Product R2 image flow", () => {
+  assert.match(editor, /Topping thư viện chung/);
+  assert.match(editor, /modifierOptionId/);
+  assert.match(editor, /chooseTopping/);
+  assert.match(editor, /item\.option\.imageKey/);
+  assert.match(editor, /Ảnh combo/);
+  assert.match(editor, /onPickImage\?\(product\.id\)/);
+  assert.match(catalog, /onPickImage=\{pickImage\}/);
+  assert.match(catalog, /onRemoveImage=\{productId => void removeProductImage\(productId\)\}/);
+  assert.match(schema, /model ProductComboModifierOption/);
+  assert.match(schema, /modifierOptionId/);
+  assert.match(service, /COMBO_TOPPING_MUST_BE_SAME_BRANCH/);
+  assert.match(service, /TOPPING_USED_BY_COMBO_REMOVE_FROM_COMBO_FIRST/);
+});
+
+test("combo image remains Product.imageKey rather than creating a second image source", () => {
+  assert.match(editor, /imageUrl\(product\.imageKey\)/);
+  assert.doesNotMatch(schema, /comboImageKey/);
+  assert.doesNotMatch(schema, /ProductComboImage/);
 });
