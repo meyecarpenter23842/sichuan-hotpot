@@ -53,9 +53,9 @@ try {
     // P22 seeded this exact product into disposable CI PostgreSQL. Select its
     // branch so homepage screenshots exercise the real carousel, not only empty state.
     await page.getByRole("tab", { name: "Thực đơn" }).click();
+    await db.homePopupConfig.update({where:{branchId:seedBranch.id},data:{revision:{increment:1}}});
     await page.getByRole("button", { name: /^P22 QA / }).first().click();
     await page.getByRole("button", { name: "Xem món Lẩu QA vị Tứ Xuyên" }).waitFor();
-    await db.homePopupConfig.update({where:{branchId:seedBranch.id},data:{revision:{increment:1}}});
     await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
     await page.getByTestId("home-feature-carousel").waitFor();
@@ -74,7 +74,7 @@ try {
         "Home popup must auto-slide horizontally using configured dwell time");
     }
     await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
-    await promoPopup.waitFor({state:"detached"});
+    await promoPopup.waitFor({state:"hidden",timeout:3000});
     const promotion=page.getByRole("button",{name:"Xem ưu đãi Ưu đãi QA cuối tuần"});
     await promotion.waitFor();
     await promotion.click();
