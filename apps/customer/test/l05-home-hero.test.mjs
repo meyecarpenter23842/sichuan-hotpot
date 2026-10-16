@@ -29,6 +29,7 @@ test("L05 carousel cleans timers, pauses in background and handles manual swipe 
 
 test("L05 carousel supports reduced motion, preloading, all transitions and approved fallback",()=>{
   const hero=read("../src/components/HomeHeroCarousel.tsx");
+  const app=read("../App.tsx");
   assert.match(hero,/isReduceMotionEnabled/);
   assert.match(hero,/reduceMotionChanged/);
   assert.match(hero,/Image\.prefetch/);
