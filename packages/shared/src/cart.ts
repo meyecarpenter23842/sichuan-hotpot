@@ -136,6 +136,7 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
   variantId: string | null;
   modifierIds: string[];
   quantity: number;
+  pricingMode: "SEPARATE";
 }[] {
   if (cart.length === 0) throw new CartInputError("EMPTY_CART");
   return cart.map(line => {
@@ -147,6 +148,8 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
       variantId: selection.variantId,
       modifierIds: [...selection.modifierIds],
       quantity: line.quantity,
+      // Dish counter never multiplies optional topping quantities.
+      pricingMode: "SEPARATE" as const,
     };
   });
 }
