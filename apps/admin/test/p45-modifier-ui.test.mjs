@@ -58,6 +58,8 @@ test("L03 publication has explanatory prerequisites instead of a failing toggle"
   assert.match(library,/export function publicationBlockers/);
   assert.match(library,/disabled=\{cannotEnable\}/);
   assert.match(library,/Để bật nhóm:/);
+  assert.match(library,/Không thể tắt topping bắt buộc/);
+  assert.match(library,/group\.options\.filter\(o=>o\.isAvailable\)\.length<=group\.minSelect/);
   assert.match(library,/Giá topping 0đ vẫn hợp lệ/);
 });
 test("L03 editing groups has required selector, independent photos and mobile-size checkboxes",()=>{
