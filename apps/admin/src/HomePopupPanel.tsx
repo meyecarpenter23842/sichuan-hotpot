@@ -77,6 +77,9 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
       throw Error("Tần suất popup phải từ 5 phút đến 7 ngày.");
     if(!Number.isFinite(dwell)||dwell<2||dwell>10)
       throw Error("Mỗi ảnh phải hiển thị từ 2 đến 10 giây.");
+    const liveCount=(payload.slides??[]).filter(slide=>slide.enabled&&imageUrl(slide.imageKey)).length;
+    if(enabled&&liveCount<1)
+      throw Error("Tải ít nhất một ảnh popup trước khi bật popup trang chủ.");
     await request(root+"/config",token,"PUT",{
       revision:payload.settings.revision,enabled,repeatIntervalMinutes:repeat,
       slideDwellMs:Math.round(dwell*1000),
@@ -84,7 +87,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
     await refresh(true);
   },"Đã lưu cấu hình popup trang chủ.");
 
-  async function upload(slideId:string,blob:Blob|{uri:string;size:number;mime:string},mime:string){
+  async function upload(slideId:string,blob:Blob|{uri:string;size:number;mime:string},mime:string):Promise<PopupSlide>{
     const size="size" in blob?blob.size:0;
     const endpoint=root+"/slides/"+slideId+"/image";
     const ticket=await request<{key:string;uploadUrl:string;contentType:string}>(
@@ -99,14 +102,17 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
         headers:{"Content-Type":ticket.contentType},body:blob});
       if(!sent.ok)throw Error("R2 từ chối một ảnh popup. Kiểm tra CORS bucket media.");
     }
-    await request(endpoint+"/attach",token,"POST",{key:ticket.key});
+    return request<PopupSlide>(endpoint+"/attach",token,"POST",{key:ticket.key});
   }
   async function createAndUpload(blob:Blob|{uri:string;size:number;mime:string},mime:string,alt:string){
     const current=await request<PopupPayload>(root,token);
     const slide=await request<PopupSlide>(root+"/slides",token,"POST",{
       altText:alt,sortOrder:current.slides.length,
     });
-    await upload(slide.id,blob,mime);
+    const attached=await upload(slide.id,blob,mime);
+    await request(root+"/slides/"+slide.id,token,"PATCH",{
+      revision:attached.revision,enabled:true,
+    });
   }
   const pickMany=()=>{
     if(Platform.OS==="web"){
@@ -121,7 +127,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
             await createAndUpload(prepared.blob,prepared.contentType,filenameAlt(file.name,i));
           }
           await refresh(false);
-        },files.length+" ảnh popup đã được tải lên R2. Bật từng ảnh khi sẵn sàng.");
+        },files.length+" ảnh popup đã được tải lên R2 và bật sẵn.");
       };
       input.click();return;
     }
@@ -143,7 +149,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
             filenameAlt(asset.fileName??"",i));
         }
         await refresh(false);
-      },result.assets.length+" ảnh popup đã được tải lên R2.");
+      },result.assets.length+" ảnh popup đã được tải lên R2 và bật sẵn.");
     })().catch(e=>setError(e instanceof Error?e.message:"Không chọn được ảnh popup."));
   };
 
@@ -181,6 +187,8 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
         <View style={s.copy}><Text style={s.name}>Bật popup trang chủ</Text>
           <Text style={s.hint}>{live.length>0?"Có "+live.length+" ảnh đang sẵn sàng.":"Chưa có ảnh đang bật."}</Text></View>
         <StatusSwitch label="Bật popup trang chủ" value={enabled} busy={busy}
+          disabled={!enabled&&live.length===0}
+          hint={!enabled&&live.length===0?"Tải ít nhất một ảnh trước":undefined}
           onValueChange={value=>{setEnabled(value);markConfig();}}/>
       </View>
       <Text style={s.name}>Popup hiện lại sau</Text>
@@ -206,7 +214,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
     </View>}
     {payload&&<View style={s.list}>
       <Action secondary label={busy?"Đang tải ảnh…":"＋ Chọn nhiều ảnh R2"} disabled={busy} onPress={pickMany}/>
-      <Text style={s.hint}>Có thể chọn nhiều ảnh cùng lúc. Ảnh mới mặc định tắt để anh kiểm tra trước khi công khai.</Text>
+      <Text style={s.hint}>Có thể chọn nhiều ảnh cùng lúc. Ảnh tải thành công sẽ bật sẵn; có thể tắt riêng ảnh nào chưa muốn hiển thị.</Text>
       {payload.slides.length===0&&<Text style={s.empty}>Chưa có ảnh popup.</Text>}
       {payload.slides.map((slide,index)=><View key={slide.id} style={s.item}>
         {imageUrl(slide.imageKey)?<Image source={{uri:imageUrl(slide.imageKey)!}} style={s.thumb}/>

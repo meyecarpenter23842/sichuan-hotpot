@@ -27,6 +27,8 @@ function fixture(){
           slideDwellMs:4000,updatedAt:new Date()};configs.set(where.branchId,next);return next;},
     },
     homePopupSlide:{
+      count:async({where})=>[...slides.values()].filter(row=>
+        row.branchId===where.branchId&&row.enabled&&row.imageKey).length,
       findFirst:async({where})=>{const row=slides.get(where.id);return row?.branchId===where.branchId?row:null;},
       findMany:async({where})=>[...slides.values()].filter(row=>{
         if(row.branchId!==where.branchId)return false;
@@ -65,14 +67,29 @@ test("L05 popup is off by default and public response exposes only enabled image
   assert.equal(payload.slides[0].id,id1);
 });
 
+test("L05 popup cannot be globally enabled without at least one live image",async()=>{
+  const {service,slides}=fixture();
+  await assert.rejects(service.updateConfig("Bearer owner",branch,0,{
+    enabled:true,repeatIntervalMinutes:60,slideDwellMs:3000,
+  }),e=>e.getStatus()===409);
+  slides.set(id1,{id:id1,branchId:branch,imageKey:image(id1),altText:"Ảnh live",enabled:true,
+    sortOrder:0,revision:0,createdAt:new Date()});
+  const saved=await service.updateConfig("Bearer owner",branch,0,{
+    enabled:true,repeatIntervalMinutes:60,slideDwellMs:3000,
+  });
+  assert.equal(saved.enabled,true);
+});
+
 test("L05 popup config validates frequency and is OWNER/revision protected",async()=>{
-  const {service,auth}=fixture();
+  const {service,auth,slides}=fixture();
   auth.principal=async()=>({id:"staff",role:"MANAGER"});
   await assert.rejects(service.adminGet("Bearer staff",branch),e=>e.getStatus()===403);
   auth.principal=async()=>({id:"owner",role:"OWNER"});
   await assert.rejects(service.updateConfig("Bearer owner",branch,0,{
     enabled:true,repeatIntervalMinutes:1,slideDwellMs:4000,
   }),e=>e.getStatus()===400);
+  slides.set(id1,{id:id1,branchId:branch,imageKey:image(id1),altText:"Ảnh live",enabled:true,
+    sortOrder:0,revision:0,createdAt:new Date()});
   const saved=await service.updateConfig("Bearer owner",branch,0,{
     enabled:true,repeatIntervalMinutes:60,slideDwellMs:3000,
   });

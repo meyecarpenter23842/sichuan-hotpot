@@ -26,3 +26,13 @@ test("L05 Home popup uses signed R2 tickets and safe publication gate",()=>{
   assert.match(panel,/2097152/);
   assert.match(panel,/Thêm ảnh R2 trước khi bật slide popup/);
 });
+
+
+test("L05 popup upload publishes safely and invalid global enable is blocked in UI",()=>{
+  const panel=read("../src/HomePopupPanel.tsx");
+  assert.match(panel,/const attached=await upload\(slide\.id,blob,mime\)/);
+  assert.match(panel,/revision:attached\.revision,enabled:true/);
+  assert.match(panel,/Tải ít nhất một ảnh popup trước khi bật popup trang chủ/);
+  assert.match(panel,/disabled=\{!enabled&&live\.length===0\}/);
+  assert.match(panel,/Ảnh tải thành công sẽ bật sẵn/);
+});

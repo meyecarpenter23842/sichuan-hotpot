@@ -65,7 +65,10 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
   },[index,progress,reducedMotion,settings.transitionDurationMs,slides.length]);
 
   useEffect(()=>{
-    if(!active||!visible||!settings.autoplay||slides.length<2||transitionLock.current)return;
+    if(!active||!visible||!settings.autoplay||slides.length<2)return;
+    // Schedule the next dwell whenever the visible index changes. Do not gate
+    // scheduling on transitionLock: index changes while the animation lock is
+    // still true, so that gate permanently stopped autoplay after slide #2.
     const timer=setTimeout(()=>goTo(index+1),settings.dwellMs);
     return()=>clearTimeout(timer);
   },[active,goTo,index,settings.autoplay,settings.dwellMs,slides.length,timerEpoch,visible]);
@@ -126,7 +129,7 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
     </View>}
   </View>;
 
-  if(!current)return <View style={s.wrap}>{fallback}<View style={s.dotsSlot}/></View>;
+  if(!current)return <View style={s.wrap}>{fallback}</View>;
   return <View style={s.wrap}>
     <View style={[s.frame,{width:heroWidth,height:heroHeight}]} {...pan.panHandlers}
       testID="home-live-hero" accessibilityLabel={"Banner "+(index+1)+" trên "+slides.length}>
@@ -136,13 +139,13 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
           <View style={{width:heroWidth,height:heroHeight}}>{renderContent(current)}</View>
         </Animated.View>
         :<Animated.View style={[StyleSheet.absoluteFill,incoming]}>{renderContent(current)}</Animated.View>}
-    </View>
-    <View style={s.dotsSlot} accessibilityRole="tablist">
-      {slides.length>1&&slides.map((slide,dot)=><Pressable key={slide.id} accessibilityRole="tab"
-        accessibilityLabel={"Banner "+(dot+1)} accessibilityState={{selected:dot===index}}
-        onPress={()=>goTo(dot,true)} style={s.dotTap}>
-        <View style={[s.dot,dot===index&&s.dotActive]}/>
-      </Pressable>)}
+      {slides.length>1&&<View style={s.dotsOverlay} accessibilityRole="tablist">
+        {slides.map((slide,dot)=><Pressable key={slide.id} accessibilityRole="tab"
+          accessibilityLabel={"Banner "+(dot+1)} accessibilityState={{selected:dot===index}}
+          onPress={()=>goTo(dot,true)} style={s.dotTap}>
+          <View style={[s.dot,dot===index&&s.dotActive]}/>
+        </Pressable>)}
+      </View>}
     </View>
   </View>;
 }
@@ -150,16 +153,17 @@ const s=StyleSheet.create({
   wrap:{alignItems:"center"},frame:{overflow:"hidden",borderRadius:18,backgroundColor:"#6D1710"},
   slide:{position:"relative",overflow:"hidden"},wipe:{position:"absolute",left:0,top:0,overflow:"hidden"},
   fallbackImage:{position:"absolute"},copy:{position:"absolute",left:0,right:0,bottom:0,
-    paddingHorizontal:16,paddingTop:28,paddingBottom:13,gap:4,
+    paddingHorizontal:16,paddingTop:28,paddingBottom:46,gap:4,
     backgroundColor:"rgba(43,4,2,0.52)"},
   title:{color:"#FFF8EA",fontSize:20,lineHeight:24,fontWeight:"900",maxWidth:"86%"},
   subtitle:{color:"#FFF8EA",fontSize:12,lineHeight:17,fontWeight:"600",maxWidth:"88%"},
   cta:{minHeight:44,alignSelf:"flex-start",justifyContent:"center",marginTop:4,
     paddingHorizontal:16,borderRadius:22,backgroundColor:"#FFF0D3"},
   ctaText:{fontSize:13,fontWeight:"900",color:"#A31E1B"},
-  dotsSlot:{height:38,flexDirection:"row",alignItems:"center",justifyContent:"center"},
+  dotsOverlay:{position:"absolute",left:0,right:0,bottom:0,height:44,
+    flexDirection:"row",alignItems:"center",justifyContent:"center"},
   dotTap:{width:44,height:44,alignItems:"center",justifyContent:"center"},
-  dot:{width:7,height:7,borderRadius:7,backgroundColor:"rgba(255,255,255,.45)"},
+  dot:{width:7,height:7,borderRadius:7,backgroundColor:"rgba(255,255,255,.62)"},
   dotActive:{width:18,backgroundColor:"#FFFFFF"},
   status:{position:"absolute",left:9,right:9,bottom:9,minHeight:44,borderRadius:10,
     backgroundColor:"rgba(32,8,7,.78)",paddingHorizontal:10,flexDirection:"row",
