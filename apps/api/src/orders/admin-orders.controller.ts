@@ -40,6 +40,9 @@ class OrderEditLineInput {
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true })
   modifierIds!: string[];
 
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true })
+  comboOptionIds?: string[];
+
   @IsInt() @Min(1) @Max(99)
   quantity!: number;
 
@@ -114,6 +117,14 @@ export class AdminOrdersController {
     @Param("orderId", new ParseUUIDPipe({ version: "4" })) orderId: string,
     @Body() input: OrderEditInput,
   ) {
-    return this.orders.editItems(auth, branchId, orderId, input);
+    return this.orders.editItems(auth, branchId, orderId, {
+      ...input,
+      items: input.items.map(item => ({
+        productId: item.productId, variantId: item.variantId ?? null,
+        modifierIds: item.modifierIds, comboOptionIds: item.comboOptionIds ?? [],
+        quantity: item.quantity,
+        ...(item.pricingMode ? { pricingMode: item.pricingMode } : {}),
+      })),
+    });
   }
 }

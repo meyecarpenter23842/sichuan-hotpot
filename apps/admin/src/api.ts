@@ -19,12 +19,29 @@ export interface CatalogGroup {
   isAvailable: boolean; imageKey?: string | null; usedByProductIds?: string[];
   options: CatalogOption[];
 }
+export interface CatalogComboChild {
+  id: string; name: string; priceVnd: number; kind: "STANDARD" | "COMBO";
+  isAvailable: boolean; imageKey: string | null;
+}
+export interface CatalogComboFixedItem {
+  id: string; quantity: number; sortOrder: number; childProduct: CatalogComboChild;
+}
+export interface CatalogComboOption {
+  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  childProduct: CatalogComboChild;
+}
+export interface CatalogComboGroup {
+  id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
+  options: CatalogComboOption[];
+}
 export interface CatalogProduct {
-  id: string; categoryId: string; name: string; priceVnd: number; isAvailable: boolean;
+  id: string; categoryId: string; name: string; priceVnd: number;
+  kind: "STANDARD" | "COMBO"; isAvailable: boolean;
   description: string | null; ingredients: string | null;
   productNotes: string | null; allergenNotice: string | null;
   isFeatured: boolean; sortOrder: number; soldCount: number;
   imageKey: string | null; variants: CatalogVariant[]; modifierGroups: CatalogGroup[];
+  comboFixedItems: CatalogComboFixedItem[]; comboGroups: CatalogComboGroup[];
 }
 export interface CatalogCategory {
   id: string; name: string; sortOrder: number; imageKey?: string | null;

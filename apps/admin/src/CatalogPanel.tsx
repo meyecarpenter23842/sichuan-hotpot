@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import { prepareProductImage } from "./prepare-product-image";
 import { SharedModifierLibraryPanel, ProductGroupAssignmentModal } from "./SharedModifierLibraryPanel";
 import { StatusSwitch } from "./StatusSwitch";
+import { ComboEditorModal } from "./ComboEditorModal";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -21,12 +22,14 @@ type Values = {
   name: string; categoryId: string; price: string; sortOrder: string;
   minSelect: string; maxSelect: string; isAvailable: boolean;
   description: string; ingredients: string; productNotes: string; allergenNotice: string;
+  productKind: "STANDARD" | "COMBO";
 };
 type Editor = { kind: Kind; id?: string; parentId?: string; values: Values };
 const empty: Values = {
   name: "", categoryId: "", price: "0", sortOrder: "0",
   minSelect: "0", maxSelect: "1", isAvailable: true,
   description: "", ingredients: "", productNotes: "", allergenNotice: "",
+  productKind: "STANDARD",
 };
 const title: Record<Kind, string> = {
   category: "danh mục", product: "món", variant: "khẩu phần",
@@ -53,6 +56,7 @@ export function CatalogPanel({ catalog, token, reload }: {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [assignProductId, setAssignProductId] = useState<string | null>(null);
+  const [comboProductId, setComboProductId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -117,6 +121,7 @@ export function CatalogPanel({ catalog, token, reload }: {
         ingredients: obj?.ingredients ?? "",
         productNotes: obj?.productNotes ?? "",
         allergenNotice: obj?.allergenNotice ?? "",
+        productKind: obj?.kind ?? "STANDARD",
       },
     });
     setError("");
@@ -163,7 +168,8 @@ export function CatalogPanel({ catalog, token, reload }: {
             ingredients: v.ingredients.trim() || null,
             productNotes: v.productNotes.trim() || null,
             allergenNotice: v.allergenNotice.trim() || null,
-            isAvailable: v.isAvailable,
+            kind: v.productKind,
+            isAvailable: v.productKind === "COMBO" && !id ? false : v.isAvailable,
           };
           path = id ? "/products/" + id : "/products";
           break;
@@ -508,7 +514,10 @@ export function CatalogPanel({ catalog, token, reload }: {
                 {uri ? <Image source={{ uri }} style={st.thumbnail} /> :
                   <View style={st.thumbnailFallback}><Text style={st.thumbnailText}>Ảnh</Text></View>}
                 <View style={st.productCopy}>
-                  <Text style={st.productName} numberOfLines={2}>{product.name}</Text>
+                  <View style={st.productNameRow}>
+                    <Text style={st.productName} numberOfLines={2}>{product.name}</Text>
+                    {product.kind === "COMBO" && <Text style={st.comboBadge}>COMBO</Text>}
+                  </View>
                   <Text style={st.price}>{toPrice(product.priceVnd)} · Đã bán {product.soldCount}</Text>
                 </View>
               </Pressable>
@@ -527,7 +536,9 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <View style={st.modalHeading}>
                     <View style={st.modalName}>
                       <Text style={st.title} numberOfLines={2}>{product.name}</Text>
-                      <Text style={st.sub}>Khẩu phần · Topping · Hình ảnh</Text>
+                      <Text style={st.sub}>{product.kind === "COMBO"
+                        ? "Thành phần combo · Khẩu phần · Topping · Hình ảnh"
+                        : "Khẩu phần · Topping · Hình ảnh"}</Text>
                     </View>
                     <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết món"
                       style={st.close} disabled={busy}
@@ -541,6 +552,29 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
+              {product.kind === "COMBO" && <>
+                <View style={st.detailHead}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.detailHeading}>Thành phần combo</Text>
+                    <Text style={st.emptyNote}>
+                      {product.comboFixedItems.length} cố định · {product.comboGroups.length} nhóm lựa chọn
+                    </Text>
+                  </View>
+                  <Action label="Thiết lập combo" secondary onPress={() => {
+                    setExpandedId(null); setError(""); setNotice(""); setComboProductId(product.id);
+                  }} />
+                </View>
+                {product.comboFixedItems.length === 0 && product.comboGroups.length === 0 &&
+                  <Notice text="Combo chưa có thành phần nên đang được giữ ở trạng thái tạm hết." />}
+                {product.comboFixedItems.map(item =>
+                  <Text key={item.id} style={st.emptyNote}>
+                    • {item.quantity} × {item.childProduct.name}{item.childProduct.isAvailable ? "" : " · đang hết"}
+                  </Text>)}
+                {product.comboGroups.map(group =>
+                  <Text key={group.id} style={st.emptyNote}>
+                    • {group.name}: chọn {group.minSelect}–{group.maxSelect} · {group.options.length} món
+                  </Text>)}
+              </>}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Khẩu phần / size</Text>
                 <Action label="＋ Size" secondary onPress={() => open("variant", undefined, product.id)} />
@@ -604,6 +638,10 @@ export function CatalogPanel({ catalog, token, reload }: {
       product={allProducts.find(p => p.id === assignProductId) ?? null}
       token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)}
       onFeedback={(message,failed)=>announce(message,failed)} />
+    <ComboEditorModal catalog={catalog}
+      product={allProducts.find(p => p.id === comboProductId) ?? null}
+      token={token} root={root} reload={reload} onClose={() => setComboProductId(null)}
+      onFeedback={(message,failed)=>announce(message,failed)} />
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -620,6 +658,21 @@ export function CatalogPanel({ catalog, token, reload }: {
             <Field label="Tên" value={editor.values.name}
               onChangeText={text => change("name", text)} placeholder="Tên hiển thị cho khách" />
             {editor.kind === "product" && <>
+              <Text style={st.smallLabel}>Loại sản phẩm</Text>
+              {editor.id ? <Text style={st.sub}>
+                {editor.values.productKind === "COMBO" ? "Combo" : "Món thường"} · loại được cố định sau khi tạo
+              </Text> : <View style={st.pills}>
+                <Pill label="Món thường" active={editor.values.productKind === "STANDARD"}
+                  onPress={() => change("productKind", "STANDARD")} />
+                <Pill label="Combo" active={editor.values.productKind === "COMBO"}
+                  onPress={() => setEditor(current => !current ? current : ({
+                    ...current, values: {
+                      ...current.values, productKind: "COMBO", isAvailable: false,
+                    },
+                  }))} />
+              </View>}
+              {editor.values.productKind === "COMBO" && !editor.id &&
+                <Notice text="Combo mới sẽ lưu ở trạng thái tạm hết. Sau khi lưu, mở chi tiết món → Thiết lập combo rồi bật bán." />}
               <Text style={st.smallLabel}>Danh mục</Text>
               <View style={st.pills}>
                 {catalog.categories.map(cat =>
@@ -673,8 +726,9 @@ export function CatalogPanel({ catalog, token, reload }: {
               <Field label="Chọn tối đa" numeric value={editor.values.maxSelect}
                 onChangeText={text => change("maxSelect", text)} />
             </>}
-            {["product", "variant", "option"].includes(editor.kind) &&
-              <View style={st.toggleRow}>
+            {["product", "variant", "option"].includes(editor.kind)
+              && !(editor.kind === "product" && editor.values.productKind === "COMBO" && !editor.id)
+              && <View style={st.toggleRow}>
                 <Text style={st.smallLabel}>Tình trạng</Text>
                 <StatusSwitch value={editor.values.isAvailable} busy={busy}
                   label="Cho phép bán" onValueChange={next => change("isAvailable", next)} />
@@ -833,7 +887,10 @@ const st = StyleSheet.create({
     alignItems: "center", justifyContent: "center" },
   thumbnailText: { fontSize: font.caption, color: c.secondary },
   productCopy: { flex: 1, minWidth: 0, gap: 3 },
-  productName: { color: c.ink, fontSize: font.body, fontWeight: "700" },
+  productNameRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
+  comboBadge: { color: c.red, backgroundColor: "#FDE8EA", fontSize: 9, fontWeight: "900",
+    borderRadius: 7, paddingHorizontal: 6, paddingVertical: 3, overflow: "hidden" },
+  productName: { color: c.ink, fontSize: font.body, fontWeight: "700", flexShrink: 1 },
   price: { color: c.red, fontSize: font.note, fontWeight: "700" },
   stock: { borderRadius: 6, minHeight: 32, justifyContent: "center",
     paddingHorizontal: 7, borderWidth: 1 },

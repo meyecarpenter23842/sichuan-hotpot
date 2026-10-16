@@ -26,13 +26,19 @@ const selectOrder = {
     productName: true, variantName: true, quantity: true, unitPriceVnd: true,
     lineTotalVnd: true,
     modifiers: { select: { optionId: true, name: true, priceVnd: true } },
+    comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { productId: true, kind: true, groupName: true, productName: true,
+        quantity: true, priceDeltaVnd: true, sortOrder: true } },
   } },
 } as const satisfies Prisma.OrderSelect;
 
 const kitchenOrderSelect = {
   id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
   items: { select: { productName: true, variantName: true, quantity: true,
-    modifiers: { select: { name: true } } } },
+    modifiers: { select: { name: true } },
+    comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { kind: true, groupName: true, productName: true, quantity: true } },
+  } },
 } as const satisfies Prisma.OrderSelect;
 
 type EditInput = {
@@ -245,6 +251,11 @@ export class AdminOrdersService {
                   orderBy: { id: "asc" },
                   select: { optionId: true, name: true, priceVnd: true },
                 },
+                comboItems: {
+                  orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                  select: { productId: true, kind: true, groupName: true, productName: true,
+                    quantity: true, priceDeltaVnd: true, sortOrder: true },
+                },
               },
             },
           },
@@ -284,6 +295,9 @@ export class AdminOrdersService {
         await tx.orderItemModifierSnapshot.deleteMany({
           where: { orderItem: { orderId } },
         });
+        await tx.orderItemComboSnapshot.deleteMany({
+          where: { orderItem: { orderId } },
+        });
         await tx.orderItem.deleteMany({ where: { orderId } });
 
         for (const line of priced.lines) {
@@ -297,6 +311,14 @@ export class AdminOrdersService {
                 create: line.modifiers.map(modifier => ({
                   optionId: modifier.optionId,
                   name: modifier.name, priceVnd: modifier.priceVnd,
+                })),
+              },
+              comboItems: {
+                create: line.comboItems.map(component => ({
+                  productId: component.productId, kind: component.kind,
+                  groupName: component.groupName, productName: component.productName,
+                  quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
+                  sortOrder: component.sortOrder,
                 })),
               },
             },
@@ -313,6 +335,7 @@ export class AdminOrdersService {
           variantName: line.variantName, quantity: line.quantity,
           unitPriceVnd: line.unitPriceVnd, lineTotalVnd: line.lineTotalVnd,
           modifiers: line.modifiers,
+          comboItems: line.comboItems,
         }));
 
         await tx.orderEditAudit.create({

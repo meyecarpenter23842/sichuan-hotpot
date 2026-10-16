@@ -3,7 +3,23 @@ import { Prisma } from "@prisma/client";
 import type { DeliveryCartItem } from "./delivery-quote.service";
 
 export const productSelect = {
-  id: true, name: true, isAvailable: true, priceVnd: true,
+  id: true, name: true, kind: true, isAvailable: true, priceVnd: true,
+  comboFixedItems: {
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: { sortOrder: true, quantity: true,
+      childProduct: { select: { id: true, name: true, kind: true, isAvailable: true } } },
+  },
+  comboGroups: {
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: {
+      id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
+      options: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: { id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+          childProduct: { select: { id: true, name: true, kind: true, isAvailable: true } } },
+      },
+    },
+  },
   variants: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
   modifierGroups: {
     select: {
@@ -32,6 +48,11 @@ export interface PricedOrderLine {
   readonly modifiers: readonly {
     readonly optionId: string; readonly name: string; readonly priceVnd: number;
   }[];
+  readonly comboItems: readonly {
+    readonly productId: string; readonly kind: "FIXED" | "CHOICE";
+    readonly groupName: string | null; readonly productName: string;
+    readonly quantity: number; readonly priceDeltaVnd: number; readonly sortOrder: number;
+  }[];
 }
 export interface PricedCart {
   readonly subtotalVnd: number;
@@ -53,9 +74,12 @@ export function priceCart(
   const lines: PricedOrderLine[] = [];
   let subtotalVnd = 0;
   for (const item of items) {
+    const comboOptionIds = item.comboOptionIds ?? [];
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 99
       || !Array.isArray(item.modifierIds) || item.modifierIds.length > 30
-      || item.modifierIds.some(id => typeof id !== "string" || !id.trim())) {
+      || item.modifierIds.some(id => typeof id !== "string" || !id.trim())
+      || !Array.isArray(comboOptionIds) || comboOptionIds.length > 30
+      || comboOptionIds.some(id => typeof id !== "string" || !id.trim())) {
       throw new BadRequestException("INVALID_CART_LINE");
     }
     const product = catalog.get(item.productId);
@@ -63,6 +87,65 @@ export function priceCart(
     const separate = item.pricingMode === "SEPARATE";
     const baseUnit = amount(product.priceVnd);
     let dishUnit = baseUnit;
+    const comboItems: {
+      productId: string; kind: "FIXED" | "CHOICE"; groupName: string | null;
+      productName: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+    }[] = [];
+
+    const productKind = product.kind ?? "STANDARD";
+    if (productKind === "STANDARD") {
+      if (comboOptionIds.length) {
+        throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
+      }
+    } else {
+      if (product.comboFixedItems.length === 0 && product.comboGroups.length === 0) {
+        throw new UnprocessableEntityException("COMBO_NOT_CONFIGURED");
+      }
+      for (const fixed of product.comboFixedItems) {
+        if (fixed.quantity < 1 || fixed.quantity > 99
+          || fixed.childProduct.kind !== "STANDARD" || !fixed.childProduct.isAvailable) {
+          throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
+        }
+        comboItems.push({
+          productId: fixed.childProduct.id, kind: "FIXED", groupName: null,
+          productName: fixed.childProduct.name, quantity: fixed.quantity,
+          priceDeltaVnd: 0, sortOrder: fixed.sortOrder,
+        });
+      }
+
+      const selectedCombo = new Map<string, number>();
+      for (const id of comboOptionIds) {
+        selectedCombo.set(id, (selectedCombo.get(id) ?? 0) + 1);
+      }
+      const knownCombo = new Set<string>();
+      for (const group of product.comboGroups) {
+        for (const option of group.options) knownCombo.add(option.id);
+        const chosen = group.options.filter(option => selectedCombo.has(option.id));
+        const count = chosen.reduce((sum, option) => sum + (selectedCombo.get(option.id) ?? 0), 0);
+        if (group.minSelect < 0 || group.maxSelect < group.minSelect || group.maxSelect > 30
+          || count < group.minSelect || count > group.maxSelect) {
+          throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
+        }
+        for (const option of chosen) {
+          const units = selectedCombo.get(option.id) ?? 0;
+          if (units < 1 || option.quantity < 1 || option.quantity > 99
+            || option.childProduct.kind !== "STANDARD" || !option.childProduct.isAvailable) {
+            throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
+          }
+          const delta = amount(option.priceDeltaVnd);
+          dishUnit = amount(dishUnit + amount(delta * units));
+          comboItems.push({
+            productId: option.childProduct.id, kind: "CHOICE", groupName: group.name,
+            productName: option.childProduct.name, quantity: option.quantity * units,
+            priceDeltaVnd: delta * units,
+            sortOrder: group.sortOrder * 1000 + option.sortOrder,
+          });
+        }
+      }
+      if (comboOptionIds.some(id => !knownCombo.has(id))) {
+        throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
+      }
+    }
     let variantId: string | null = null;
     let variantName: string | null = null;
     if (item.variantId !== null) {
@@ -125,7 +208,7 @@ export function priceCart(
     lines.push({
       productId: product.id, productName: product.name, variantId, variantName,
       pricingMode: separate ? "SEPARATE" : "LEGACY",
-      quantity: item.quantity, unitPriceVnd, lineTotalVnd, modifiers,
+      quantity: item.quantity, unitPriceVnd, lineTotalVnd, modifiers, comboItems,
     });
   }
   if (subtotalVnd === 0) throw new UnprocessableEntityException("INVALID_CATALOG_PRICE");

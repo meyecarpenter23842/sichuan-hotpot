@@ -8,8 +8,16 @@ import { PrismaService } from "../database/prisma.service";
 export interface CategoryInput { name: string; sortOrder: number }
 export interface ProductInput {
   categoryId: string; name: string; priceVnd: number; isAvailable: boolean; isFeatured?: boolean;
+  kind?: "STANDARD" | "COMBO";
   description?: string | null; ingredients?: string | null;
   productNotes?: string | null; allergenNotice?: string | null;
+}
+export interface ComboConfigInput {
+  fixedItems: { productId: string; quantity: number; sortOrder: number }[];
+  groups: {
+    name: string; minSelect: number; maxSelect: number; sortOrder: number;
+    options: { productId: string; quantity: number; priceDeltaVnd: number; sortOrder: number }[];
+  }[];
 }
 export interface VariantInput { name: string; priceDeltaVnd: number; isAvailable: boolean }
 export interface ModifierGroupInput { name: string; minSelect: number; maxSelect: number; sortOrder: number }
@@ -98,9 +106,27 @@ export class AdminCatalogService {
             products: {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
-                id: true, categoryId: true, name: true, priceVnd: true,
+                id: true, categoryId: true, name: true, priceVnd: true, kind: true,
                 description: true, ingredients: true, productNotes: true, allergenNotice: true,
                 isAvailable: true, isFeatured: true, sortOrder: true, imageKey: true,
+                comboFixedItems: {
+                  orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                  select: { id: true, quantity: true, sortOrder: true,
+                    childProduct: { select: { id: true, name: true, priceVnd: true,
+                      kind: true, isAvailable: true, imageKey: true } } },
+                },
+                comboGroups: {
+                  orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                  select: {
+                    id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
+                    options: {
+                      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                      select: { id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                        childProduct: { select: { id: true, name: true, priceVnd: true,
+                          kind: true, isAvailable: true, imageKey: true } } },
+                    },
+                  },
+                },
                 variants: { orderBy: { name: "asc" },
                   select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
                 modifierGroups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -178,6 +204,127 @@ export class AdminCatalogService {
     });
     if (!record) throw new NotFoundException("PRODUCT_NOT_FOUND");
   }
+
+  private async assertComboSellable(branchId: string, productId: string): Promise<void> {
+    const combo = await this.prisma.database.product.findFirst({
+      where: { id: productId, category: { branchId }, kind: "COMBO" },
+      select: {
+        comboFixedItems: { select: { childProduct: {
+          select: { kind: true, isAvailable: true },
+        } } },
+        comboGroups: { select: {
+          minSelect: true, maxSelect: true,
+          options: { select: { childProduct: {
+            select: { kind: true, isAvailable: true },
+          } } },
+        } },
+      },
+    });
+    if (!combo || (combo.comboFixedItems.length === 0 && combo.comboGroups.length === 0)) {
+      throw new ConflictException("COMBO_CONFIG_REQUIRED_BEFORE_ENABLE");
+    }
+    if (combo.comboFixedItems.some(item =>
+      item.childProduct.kind !== "STANDARD" || !item.childProduct.isAvailable)) {
+      throw new ConflictException("COMBO_FIXED_ITEM_UNAVAILABLE");
+    }
+    for (const group of combo.comboGroups) {
+      if (group.minSelect < 0 || group.maxSelect < group.minSelect
+        || group.maxSelect > 30 || group.options.length === 0
+        || group.options.filter(option =>
+          option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable
+        ).length === 0) {
+        throw new ConflictException("COMBO_GROUP_UNAVAILABLE");
+      }
+    }
+  }
+
+  async saveCombo(auth: string | undefined, branchId: string, productId: string,
+    input: ComboConfigInput) {
+    await this.authorize(auth, branchId);
+    if (input.fixedItems.length === 0 && input.groups.length === 0) {
+      throw new BadRequestException("COMBO_REQUIRES_COMPONENTS");
+    }
+    const combo = await this.prisma.database.product.findFirst({
+      where: { id: productId, category: { branchId } },
+      select: { id: true, kind: true },
+    });
+    if (!combo) throw new NotFoundException("PRODUCT_NOT_FOUND");
+    if (combo.kind !== "COMBO") throw new BadRequestException("PRODUCT_IS_NOT_COMBO");
+
+    const fixedIds = input.fixedItems.map(item => item.productId);
+    if (new Set(fixedIds).size !== fixedIds.length) {
+      throw new BadRequestException("COMBO_DUPLICATE_FIXED_ITEM");
+    }
+    const groupNames = input.groups.map(group => group.name.trim().normalize("NFC"));
+    if (groupNames.some(name => !name || name.length > 160)
+      || new Set(groupNames).size !== groupNames.length) {
+      throw new BadRequestException("COMBO_INVALID_GROUP_NAMES");
+    }
+    let optionCount = 0;
+    for (const group of input.groups) {
+      optionCount += group.options.length;
+      if (group.minSelect < 0 || group.maxSelect < group.minSelect || group.maxSelect > 30) {
+        throw new BadRequestException("COMBO_INVALID_GROUP_LIMITS");
+      }
+      const ids = group.options.map(option => option.productId);
+      if (new Set(ids).size !== ids.length) {
+        throw new BadRequestException("COMBO_DUPLICATE_GROUP_OPTION");
+      }
+    }
+    if (optionCount > 300) throw new BadRequestException("COMBO_TOO_MANY_OPTIONS");
+
+    const childIds = [...new Set([
+      ...fixedIds,
+      ...input.groups.flatMap(group => group.options.map(option => option.productId)),
+    ])];
+    if (childIds.includes(productId)) throw new BadRequestException("COMBO_SELF_REFERENCE");
+    const children = await this.prisma.database.product.findMany({
+      where: { id: { in: childIds }, category: { branchId } },
+      select: { id: true, kind: true },
+    });
+    if (children.length !== childIds.length || children.some(child => child.kind !== "STANDARD")) {
+      throw new BadRequestException("COMBO_CHILD_MUST_BE_STANDARD_SAME_BRANCH");
+    }
+
+    return this.change(() => this.prisma.database.$transaction(async tx => {
+      await tx.productComboOption.deleteMany({
+        where: { group: { comboProductId: productId } },
+      });
+      await tx.productComboGroup.deleteMany({ where: { comboProductId: productId } });
+      await tx.productComboFixedItem.deleteMany({ where: { comboProductId: productId } });
+
+      if (input.fixedItems.length) {
+        await tx.productComboFixedItem.createMany({
+          data: input.fixedItems.map(item => ({
+            comboProductId: productId, childProductId: item.productId,
+            quantity: item.quantity, sortOrder: item.sortOrder,
+          })),
+        });
+      }
+      for (let index = 0; index < input.groups.length; index++) {
+        const group = input.groups[index]!;
+        const saved = await tx.productComboGroup.create({
+          data: {
+            comboProductId: productId, name: groupNames[index]!,
+            minSelect: group.minSelect, maxSelect: group.maxSelect, sortOrder: group.sortOrder,
+          },
+          select: { id: true },
+        });
+        await tx.productComboOption.createMany({
+          data: group.options.map(option => ({
+            groupId: saved.id, childProductId: option.productId,
+            quantity: option.quantity, priceDeltaVnd: option.priceDeltaVnd,
+            sortOrder: option.sortOrder,
+          })),
+        });
+      }
+      await tx.branch.update({
+        where: { id: branchId }, data: { catalogRevision: { increment: 1 } },
+      });
+      return { status: "saved", fixedCount: input.fixedItems.length,
+        groupCount: input.groups.length, optionCount };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  }
   private async variant(branchId: string, variantId: string) {
     const record = await this.prisma.database.productVariant.findFirst({
       where: { id: variantId, product: { category: { branchId } } },
@@ -238,7 +385,8 @@ export class AdminCatalogService {
         ingredients: cleanProductText(input.ingredients ?? null, "ingredients"),
         productNotes: cleanProductText(input.productNotes ?? null, "productNotes"),
         allergenNotice: cleanProductText(input.allergenNotice ?? null, "allergenNotice"),
-        priceVnd: input.priceVnd, isAvailable: input.isAvailable,
+        priceVnd: input.priceVnd, kind: input.kind ?? "STANDARD",
+        isAvailable: input.kind === "COMBO" ? false : input.isAvailable,
         isFeatured: input.isFeatured ?? false,
       },
     }));
@@ -246,12 +394,41 @@ export class AdminCatalogService {
   async updateProduct(auth: string | undefined, branchId: string, id: string,
     input: Partial<ProductInput>) {
     await this.authorize(auth, branchId);
-    await this.product(branchId, id);
+    const current = await this.prisma.database.product.findFirst({
+      where: { id, category: { branchId } },
+      select: {
+        id: true, kind: true,
+        _count: { select: { comboFixedItems: true, comboGroups: true } },
+      },
+    });
+    if (!current) throw new NotFoundException("PRODUCT_NOT_FOUND");
     if (input.categoryId !== undefined) await this.category(branchId, input.categoryId);
+    if (input.kind && input.kind !== current.kind) {
+      if (current.kind === "COMBO"
+        && (current._count.comboFixedItems > 0 || current._count.comboGroups > 0)) {
+        throw new ConflictException("COMBO_CONFIG_REMOVE_BEFORE_KIND_CHANGE");
+      }
+      if (input.kind === "COMBO") {
+        const [fixedUse, optionUse] = await Promise.all([
+          this.prisma.database.productComboFixedItem.count({ where: { childProductId: id } }),
+          this.prisma.database.productComboOption.count({ where: { childProductId: id } }),
+        ]);
+        if (fixedUse || optionUse) {
+          throw new ConflictException("PRODUCT_USED_BY_COMBO_CANNOT_NEST");
+        }
+        if (input.isAvailable === true) {
+          throw new ConflictException("COMBO_CONFIG_REQUIRED_BEFORE_ENABLE");
+        }
+      }
+    }
+    if (input.isAvailable === true && (input.kind ?? current.kind) === "COMBO") {
+      await this.assertComboSellable(branchId, id);
+    }
     return this.change(() => this.prisma.database.product.update({
       where: { id },
       data: {
         ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
         ...(input.name === undefined ? {} : { name: input.name.trim() }),
         ...(input.description === undefined ? {} :
           { description: cleanProductText(input.description ?? null, "description") }),
@@ -322,19 +499,30 @@ export class AdminCatalogService {
   async deleteProduct(auth: string | undefined, branchId: string, id: string) {
     await this.authorize(auth, branchId);
     await this.product(branchId, id);
-    const [orderCount, variantCount, groupCount] = await Promise.all([
+    const [orderCount, variantCount, groupCount, comboFixedUse, comboOptionUse] = await Promise.all([
       this.prisma.database.orderItem.count({ where: { productId: id } }),
       this.prisma.database.productVariant.count({ where: { productId: id } }),
       this.prisma.database.modifierGroup.count({ where: { productId: id } }),
+      this.prisma.database.productComboFixedItem.count({ where: { childProductId: id } }),
+      this.prisma.database.productComboOption.count({ where: { childProductId: id } }),
     ]);
-    if (orderCount || variantCount || groupCount) {
-      throw new ConflictException("PRODUCT_HAS_HISTORY_OR_OPTIONS_USE_OUT_OF_STOCK");
+    if (orderCount || variantCount || groupCount || comboFixedUse || comboOptionUse) {
+      throw new ConflictException(comboFixedUse || comboOptionUse
+        ? "PRODUCT_USED_BY_COMBO_USE_OUT_OF_STOCK"
+        : "PRODUCT_HAS_HISTORY_OR_OPTIONS_USE_OUT_OF_STOCK");
     }
     await this.change(() => this.prisma.database.$transaction(async tx => {
       const previous = await tx.product.findFirst({
-        where: { id, category: { branchId } }, select: { imageKey: true },
+        where: { id, category: { branchId } }, select: { imageKey: true, kind: true },
       });
       if (!previous) throw new NotFoundException("PRODUCT_NOT_FOUND");
+      if (previous.kind === "COMBO") {
+        await tx.productComboOption.deleteMany({
+          where: { group: { comboProductId: id } },
+        });
+        await tx.productComboGroup.deleteMany({ where: { comboProductId: id } });
+        await tx.productComboFixedItem.deleteMany({ where: { comboProductId: id } });
+      }
       const deleted = await tx.product.deleteMany({
         where: { id, imageKey: previous.imageKey },
       });
