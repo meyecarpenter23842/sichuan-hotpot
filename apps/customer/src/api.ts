@@ -59,6 +59,14 @@ export interface HomeHeroSlide {
   ctaTarget:"MENU"|null;sortOrder:number;
 }
 export interface HomeHeroPayload { settings:HomeHeroSettings; slides:HomeHeroSlide[]; }
+export interface HomePopupSettings {
+  enabled:boolean;repeatIntervalMinutes:number;slideDwellMs:number;
+  revision:number;updatedAt:string|null;
+}
+export interface HomePopupSlide {
+  id:string;imageKey:string;altText:string;sortOrder:number;
+}
+export interface HomePopupPayload { settings:HomePopupSettings; slides:HomePopupSlide[]; }
 export interface BranchMenu extends BranchSummary {
   categories: Category[];
 }
