@@ -193,11 +193,19 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
           style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
         <View style={{alignItems:"center"}}>
           <StatusSwitch value={option.isAvailable} busy={busy}
-            disabled={!option.isAvailable&&!option.imageKey}
-            hint={!option.isAvailable&&!option.imageKey?"Cần ảnh topping trước khi bật bán":undefined}
+            disabled={(!option.isAvailable&&!option.imageKey)
+              ||(group.isAvailable&&option.isAvailable
+                &&group.options.filter(o=>o.isAvailable).length<=group.minSelect)}
+            hint={!option.isAvailable&&!option.imageKey?"Cần ảnh topping trước khi bật bán"
+              :group.isAvailable&&option.isAvailable
+                &&group.options.filter(o=>o.isAvailable).length<=group.minSelect
+                ?"Không thể tắt topping bắt buộc; giảm số lượng tối thiểu trước.":undefined}
             label={"Bán topping "+option.name}
             onValueChange={value=>void toggle("option",option.id,value,group.usedByProductIds?.length??0)}/>
           {!option.isAvailable&&!option.imageKey&&<Text style={s.hint}>Cần ảnh</Text>}
+          {group.isAvailable&&option.isAvailable
+            &&group.options.filter(o=>o.isAvailable).length<=group.minSelect
+            &&<Text style={s.hint}>Bắt buộc</Text>}
         </View>
       </View>)}
     </View>}
