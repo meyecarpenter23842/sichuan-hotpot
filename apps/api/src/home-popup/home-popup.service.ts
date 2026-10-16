@@ -76,6 +76,12 @@ export class HomePopupService {
   }
   async updateConfig(auth:string|undefined,branchId:string,revision:number,input:PopupConfigChanges){
     await this.owner(auth,branchId);validateConfig(input);
+    if(input.enabled){
+      const liveSlides=await this.db.homePopupSlide.count({
+        where:{branchId,enabled:true,imageKey:{not:null}},
+      });
+      if(liveSlides<1)throw new ConflictException("POPUP_LIVE_SLIDE_REQUIRED");
+    }
     const current=await this.db.homePopupConfig.findUnique({where:{branchId}});
     if(!current){
       if(revision!==0)throw new ConflictException("POPUP_CONFIG_CHANGED_RELOAD");
