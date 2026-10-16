@@ -470,7 +470,7 @@ export default function AdminApp() {
             <Image source={require("./assets/app-icon.png")} style={styles.loginLogo}
               accessibilityLabel="Logo Sichuan Hotpot" />
             <View style={styles.loginBrandText}>
-              <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
+              <Text style={styles.brandName}>HOTPOT</Text>
               <Text style={styles.brandSub}>Quản trị cửa hàng</Text>
             </View>
           </View>

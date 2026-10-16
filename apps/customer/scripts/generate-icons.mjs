@@ -9,7 +9,7 @@ const file = fileURLToPath(import.meta.url);
 const appDir = resolve(dirname(file), "..");
 const root = resolve(appDir, "..", "..");
 
-export const ASSET_VERSION = "v20261016c";
+export const ASSET_VERSION = "v20261016d";
 
 function edgeBackdrop(data, index) {
   const alpha = data[index + 3];
@@ -39,7 +39,7 @@ function edgeBackdrop(data, index) {
  * Interior dark pot details are preserved because the flood fill cannot cross
  * opaque red artwork. Generated icons therefore carry real alpha, not a square.
  */
-export function cleanLogo(source) {
+export function cleanLogo(source, mode = "legacy") {
   const original = PNG.sync.read(source);
   const { width, height } = original;
   if (width > 6000 || height > 6000 || width < 64 || height < 64) {
@@ -47,7 +47,26 @@ export function cleanLogo(source) {
   }
 
   const data = Buffer.from(original.data);
-  const visited = new Uint8Array(width * height);
+  if (mode === "approved-emblem") {
+    // The approved RGB PNG includes a baked-in checkerboard. Extract the real
+    // hotpot emblem, with actual transparency, excluding the wordmark below.
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const red = r > 95 && r - g > 38 && r - b > 30 && g < 175;
+        const white = r > 231 && g > 229 && b > 225 &&
+          Math.max(r, g, b) - Math.min(r, g, b) < 35;
+        const dx = (x - width * 0.488) / (width * 0.231);
+        const dy = (y - height * 0.353) / (height * 0.327);
+        const inEmblem = dx * dx + dy * dy <= 1.075 && y <= height * 0.659;
+        data[i + 3] = inEmblem && (red || white) ? 255 : 0;
+      }
+    }
+  } else {
+    // Retain legacy cleanup only for compatibility with existing tests.
+    // Flood-filling approved logo whites would destroy the design.
+    const visited = new Uint8Array(width * height);
   const stack = [];
   for (let x = 0; x < width; x++) stack.push(x, (height - 1) * width + x);
   for (let y = 0; y < height; y++) stack.push(y * width, y * width + width - 1);
@@ -67,6 +86,8 @@ export function cleanLogo(source) {
     if (x < width - 1 && !visited[pos + 1]) stack.push(pos + 1);
     if (y > 0 && !visited[pos - width]) stack.push(pos - width);
     if (y < height - 1 && !visited[pos + width]) stack.push(pos + width);
+  }
+
   }
 
   let minX = width;
@@ -146,7 +167,7 @@ export function renderIcon(logo, size, adaptive = false) {
 }
 
 export function generate() {
-  const logo = cleanLogo(readFileSync(resolve(root, "assets/brand-approved-20261015.png")));
+  const logo = cleanLogo(readFileSync(resolve(root, "assets/brand-hotpot-approved-20261016.png")), "approved-emblem");
   const outputs = [
     [`public/icon-192-${ASSET_VERSION}.png`, 192, false],
     [`public/icon-512-${ASSET_VERSION}.png`, 512, false],

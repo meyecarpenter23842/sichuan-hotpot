@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const app = process.argv[2];
 if (!["admin", "customer"].includes(app)) throw Error("Invalid PWA app");
 
-const ASSET_VERSION = "v20261016c";
+const ASSET_VERSION = "v20261016d";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const dir = resolve(repoRoot, "apps", app, "dist");
 const html = resolve(dir, "index.html");
