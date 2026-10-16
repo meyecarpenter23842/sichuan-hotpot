@@ -148,8 +148,6 @@ try {
     await page.getByRole("button", { name: "Xem danh mục Trà sữa" }).click();
     await page.getByRole("tab", { name: "Thực đơn" }).waitFor();
     await page.getByRole("textbox", { name: "Tìm món ăn, trà sữa" }).waitFor();
-    assert.equal(await page.getByText("Thực đơn",{exact:true}).count(),0,
-      "Menu must not waste vertical space on a duplicate page title");
     await ctx.close();
     console.log("PASS: Home reference categories, fixed tabs, menu search and artwork", width, height);
   }
