@@ -10,6 +10,8 @@ const comboId = randomUUID();
 const fixedId = randomUUID();
 const choiceId = randomUUID();
 const optionId = randomUUID();
+const fixedVariantId = randomUUID();
+const choiceVariantId = randomUUID();
 
 function combo(overrides = {}) {
   return {
@@ -17,12 +19,14 @@ function combo(overrides = {}) {
     variants: [], modifierGroups: [], modifierAssignments: [],
     comboFixedItems: [{
       quantity: 1, sortOrder: 0,
+      variant: { id: fixedVariantId, productId: fixedId, name: "Lớn", isAvailable: true },
       childProduct: { id: fixedId, name: "Mì tươi", kind: "STANDARD", isAvailable: true },
     }],
     comboGroups: [{
       id: randomUUID(), name: "Chọn topping", minSelect: 2, maxSelect: 2, sortOrder: 1,
       options: [{
         id: optionId, quantity: 1, priceDeltaVnd: 10000, sortOrder: 0,
+        variant: { id: choiceVariantId, productId: choiceId, name: "200g", isAvailable: true },
         childProduct: { id: choiceId, name: "Ba chỉ bò", kind: "STANDARD", isAvailable: true },
       }],
     }],
@@ -41,11 +45,14 @@ test("combo pricing is authoritative and snapshots fixed/choice composition", ()
   assert.equal(priced.lines[0].unitPriceVnd, 120000);
   assert.equal(priced.lines[0].lineTotalVnd, 240000);
   assert.deepEqual(priced.lines[0].comboItems.map(item => ({
-    kind: item.kind, productName: item.productName, quantity: item.quantity,
+    kind: item.kind, productName: item.productName, variantId: item.variantId,
+    variantName: item.variantName, quantity: item.quantity,
     priceDeltaVnd: item.priceDeltaVnd,
   })), [
-    { kind: "FIXED", productName: "Mì tươi", quantity: 1, priceDeltaVnd: 0 },
-    { kind: "CHOICE", productName: "Ba chỉ bò", quantity: 2, priceDeltaVnd: 20000 },
+    { kind: "FIXED", productName: "Mì tươi", variantId: fixedVariantId,
+      variantName: "Lớn", quantity: 1, priceDeltaVnd: 0 },
+    { kind: "CHOICE", productName: "Ba chỉ bò", variantId: choiceVariantId,
+      variantName: "200g", quantity: 2, priceDeltaVnd: 20000 },
   ]);
 });
 
@@ -81,4 +88,26 @@ test("standard product rejects combo choice IDs while old non-combo callers rema
     productId: comboId, variantId: null, modifierIds: [], quantity: 1, pricingMode: "SEPARATE",
   }], [standard]);
   assert.equal(legacy.subtotalVnd, 50000);
+});
+
+
+test("combo rejects configured child size that is unavailable or belongs to another child", () => {
+  assert.throws(() => priceCart([line()], [combo({
+    comboFixedItems: [{
+      quantity: 1, sortOrder: 0,
+      variant: { id: fixedVariantId, productId: fixedId, name: "Lớn", isAvailable: false },
+      childProduct: { id: fixedId, name: "Mì tươi", kind: "STANDARD", isAvailable: true },
+    }],
+  })]), error => error.getStatus?.() === 422);
+
+  assert.throws(() => priceCart([line()], [combo({
+    comboGroups: [{
+      id: randomUUID(), name: "Chọn topping", minSelect: 2, maxSelect: 2, sortOrder: 1,
+      options: [{
+        id: optionId, quantity: 1, priceDeltaVnd: 10000, sortOrder: 0,
+        variant: { id: choiceVariantId, productId: fixedId, name: "Sai món", isAvailable: true },
+        childProduct: { id: choiceId, name: "Ba chỉ bò", kind: "STANDARD", isAvailable: true },
+      }],
+    }],
+  })]), error => error.getStatus?.() === 422);
 });
