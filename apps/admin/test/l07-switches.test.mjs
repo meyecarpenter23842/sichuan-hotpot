@@ -8,6 +8,7 @@ const branch = read("../src/BranchPanel.tsx");
 const policy = read("../src/DeliveryPolicyPanel.tsx");
 const hours = read("../src/HoursPanel.tsx");
 const catalog = read("../src/CatalogPanel.tsx");
+const library = read("../src/SharedModifierLibraryPanel.tsx");
 const app = read("../App.tsx");
 
 test("L07 real settings use semantic switches; selectors and actions remain actions", () => {
@@ -20,7 +21,7 @@ test("L07 real settings use semantic switches; selectors and actions remain acti
   assert.doesNotMatch(policy, /<Pill label="Tạm dừng"/);
   assert.match(catalog, /<StatusSwitch value=\{product\.isAvailable\}/);
   assert.match(catalog, /<StatusSwitch value=\{variant\.isAvailable\}/);
-  assert.match(catalog, /<StatusSwitch value=\{option\.isAvailable\}/);
+  assert.match(library, /<StatusSwitch value=\{option\.isAvailable\}/);
 });
 
 test("L07 branch status stays server-owned and requires explicit confirmation", () => {
