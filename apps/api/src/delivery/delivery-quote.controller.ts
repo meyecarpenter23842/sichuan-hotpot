@@ -9,7 +9,7 @@ class QuoteCartLineInput {
   @IsUUID("4") productId!: string;
   @IsOptional() @IsUUID("4") variantId!: string | null;
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) modifierIds!: string[];
-  @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) comboOptionIds!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) comboOptionIds?: string[];
   @IsInt() @Min(1) @Max(99) quantity!: number;
   @IsOptional() @IsIn(["SEPARATE"]) pricingMode?: "SEPARATE";
 }
@@ -33,7 +33,7 @@ export class DeliveryQuoteController {
       addressId: input.addressId,
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
-        modifierIds: item.modifierIds, comboOptionIds: item.comboOptionIds,
+        modifierIds: item.modifierIds, comboOptionIds: item.comboOptionIds ?? [],
         quantity: item.quantity,
         ...(item.pricingMode ? { pricingMode: item.pricingMode } : {}),
       })),
