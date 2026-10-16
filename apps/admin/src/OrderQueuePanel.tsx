@@ -8,7 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
 import { Icon } from "./Icon";
 import {
-  request, type AdminCatalog, type CatalogGroup, type CatalogProduct,
+  request, type AdminCatalog, type CatalogComboGroup, type CatalogGroup, type CatalogProduct,
 } from "./api";
 import { markNewOrderAlerted, playOrderChime } from "./order-notifications";
 import { watchOrderEvents } from "./order-realtime";
@@ -23,7 +23,8 @@ type ActionStatus =
   "DELIVERING" | "DELIVERED" | "DELIVERY_FAILED";
 type EditLine = {
   key: string; productId: string; variantId: string | null;
-  modifierIds: string[]; quantity: number; pricingMode?: "SEPARATE";
+  modifierIds: string[]; comboOptionIds: string[];
+  quantity: number; pricingMode?: "SEPARATE";
 };
 
 export interface StaffOrder {
@@ -36,6 +37,10 @@ export interface StaffOrder {
     productName: string; variantName: string | null; quantity: number;
     unitPriceVnd?: number; lineTotalVnd?: number;
     modifiers: { optionId?: string | null; name: string; priceVnd?: number }[];
+    comboItems: {
+      productId?: string | null; kind: "FIXED" | "CHOICE"; groupName?: string | null;
+      productName: string; quantity: number; priceDeltaVnd?: number; sortOrder?: number;
+    }[];
   }[];
 }
 interface OrderDetail extends StaffOrder {
@@ -244,6 +249,25 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
 
   const beginEdit = async () => {
     if (!selected || !manager || !["PENDING", "CONFIRMED"].includes(selected.status)) return;
+    for (const line of editLines) {
+      const product = productFor(line);
+      if (!product) {
+        setEditError("Có món không còn trong thực đơn. Hãy tải lại đơn."); return;
+      }
+      if (product.kind === "COMBO") {
+        for (const group of product.comboGroups) {
+          const ids = new Set(group.options.map(option => option.id));
+          const count = line.comboOptionIds.filter(id => ids.has(id)).length;
+          if (count < group.minSelect || count > group.maxSelect) {
+            setEditError("Combo “" + product.name + "” · nhóm “" + group.name
+              + "” cần chọn " + group.minSelect + "–" + group.maxSelect + " món.");
+            return;
+          }
+        }
+      } else if (line.comboOptionIds.length) {
+        setEditError("Món thường không thể chứa lựa chọn combo."); return;
+      }
+    }
     setEditBusy(true); setEditError("");
     try {
       const catalog = await request<AdminCatalog>(
@@ -271,9 +295,34 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
             "Đơn cũ có topping không xác định được ID. Không thể tự đoán khi sửa đơn.");
           modifierIds.push(matches[0]!.id);
         }
+        const comboOptionIds: string[] = [];
+        if (product.kind === "COMBO") {
+          for (const snapshot of item.comboItems.filter(component => component.kind === "CHOICE")) {
+            const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
+            if (!group) throw Error(
+              "Nhóm lựa chọn của combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
+            const matches = group.options.filter(option =>
+              (snapshot.productId
+                ? option.childProduct.id === snapshot.productId
+                : option.childProduct.name === snapshot.productName));
+            if (matches.length !== 1) throw Error(
+              "Món lựa chọn trong combo cũ đã thay đổi. Không thể tự đoán khi sửa đơn.");
+            const option = matches[0]!;
+            if (option.quantity < 1 || snapshot.quantity % option.quantity !== 0) {
+              throw Error("Số lượng thành phần combo cũ không còn khớp cấu hình hiện tại.");
+            }
+            const count = snapshot.quantity / option.quantity;
+            if (!Number.isSafeInteger(count) || count < 1 || count > 30) {
+              throw Error("Số lượng lựa chọn combo cũ không hợp lệ.");
+            }
+            comboOptionIds.push(...Array(count).fill(option.id));
+          }
+        } else if (item.comboItems.length) {
+          throw Error("Đơn cũ có thành phần combo nhưng sản phẩm hiện không còn là combo.");
+        }
         return {
           key: item.id ?? "existing-" + index,
-          productId: item.productId, variantId, modifierIds,
+          productId: item.productId, variantId, modifierIds, comboOptionIds,
           quantity: item.quantity,
           ...(item.pricingMode === "SEPARATE" ? { pricingMode: "SEPARATE" as const } : {}),
         };
@@ -287,8 +336,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   const addProduct = (product: CatalogProduct) => {
     setEditLines(lines => [...lines, {
       key: "new-" + Date.now() + "-" + product.id,
-      productId: product.id, variantId: null, modifierIds: [], quantity: 1,
-      pricingMode: "SEPARATE",
+      productId: product.id, variantId: null, modifierIds: [], comboOptionIds: [],
+      quantity: 1, pricingMode: "SEPARATE",
     }]);
     setAddingProduct(false); setProductSearch("");
   };
@@ -314,6 +363,28 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     }));
   };
 
+  const changeComboOption = (
+    lineIndex: number, group: CatalogComboGroup, optionId: string, delta: number,
+  ) => {
+    setEditLines(lines => lines.map((line, index) => {
+      if (index !== lineIndex) return line;
+      const optionIds = new Set(group.options.map(option => option.id));
+      const groupCount = line.comboOptionIds.filter(id => optionIds.has(id)).length;
+      const current = line.comboOptionIds.filter(id => id === optionId).length;
+      const swapping = delta > 0 && group.maxSelect === 1 && groupCount === 1 && current === 0;
+      const nextCount = current + delta;
+      const nextGroupCount = groupCount + delta - (swapping ? 1 : 0);
+      if (nextCount < 0 || nextGroupCount < 0 || nextGroupCount > group.maxSelect
+        || line.comboOptionIds.length + delta - (swapping ? 1 : 0) > 30) return line;
+      const remaining = line.comboOptionIds.filter(id =>
+        swapping ? !optionIds.has(id) : id !== optionId);
+      return {
+        ...line,
+        comboOptionIds: [...remaining, ...Array(nextCount).fill(optionId)],
+      };
+    }));
+  };
+
   const saveEdit = async () => {
     if (!selected || editBusy) return;
     if (editReason.trim().length < 5) {
@@ -330,7 +401,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
           reason: editReason.trim(),
           items: editLines.map(line => ({
             productId: line.productId, variantId: line.variantId,
-            modifierIds: line.modifierIds, quantity: line.quantity,
+            modifierIds: line.modifierIds, comboOptionIds: line.comboOptionIds,
+            quantity: line.quantity,
             ...(line.pricingMode === "SEPARATE" ? { pricingMode: "SEPARATE" } : {}),
           })),
         });
@@ -537,6 +609,57 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                         <Text style={s.qtyText}>＋</Text>
                       </Pressable>
                     </View>
+                    {product.kind === "COMBO" && <View style={s.editChoices}>
+                      <Text style={s.itemName}>Thành phần combo</Text>
+                      {product.comboFixedItems.map(component =>
+                        <Text key={component.id} style={s.note}>
+                          • {component.quantity} × {component.childProduct.name}
+                          {component.childProduct.isAvailable ? "" : " · đang hết"}
+                        </Text>)}
+                      {product.comboGroups.map(group => {
+                        const allowed = new Set(group.options.map(option => option.id));
+                        const selectedCount = line.comboOptionIds.filter(id => allowed.has(id)).length;
+                        return <View key={group.id} style={s.editChoices}>
+                          <Text style={s.note}>{group.name} · chọn {group.minSelect}–{group.maxSelect}
+                            {" · hiện "}{selectedCount}</Text>
+                          {group.options.map(option => {
+                            const count = line.comboOptionIds.filter(id => id === option.id).length;
+                            const atMax = selectedCount >= group.maxSelect;
+                            const wouldSwap = group.maxSelect === 1 && selectedCount === 1 && count === 0;
+                            return <View key={option.id} style={s.modifierRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={s.modifierName}>
+                                  {option.quantity} × {option.childProduct.name}
+                                  {option.priceDeltaVnd ? " · +" + money(option.priceDeltaVnd) : ""}
+                                </Text>
+                                {!option.childProduct.isAvailable &&
+                                  <Text style={s.editWarning}>Đang tạm hết</Text>}
+                              </View>
+                              <Pressable accessibilityRole="button"
+                                accessibilityLabel={"Giảm " + option.childProduct.name}
+                                disabled={count === 0 || selectedCount <= group.minSelect}
+                                style={[s.qtyButton,
+                                  (count === 0 || selectedCount <= group.minSelect) && s.disabledButton]}
+                                onPress={() => changeComboOption(lineIndex, group, option.id, -1)}>
+                                <Text style={s.qtyText}>−</Text>
+                              </Pressable>
+                              <Text style={s.qtyValue}>{count}</Text>
+                              <Pressable accessibilityRole="button"
+                                accessibilityLabel={"Thêm " + option.childProduct.name}
+                                disabled={!option.childProduct.isAvailable || (!wouldSwap && atMax)}
+                                style={[s.qtyButton,
+                                  (!option.childProduct.isAvailable || (!wouldSwap && atMax))
+                                    && s.disabledButton]}
+                                onPress={() => changeComboOption(lineIndex, group, option.id, 1)}>
+                                <Text style={s.qtyText}>＋</Text>
+                              </Pressable>
+                            </View>;
+                          })}
+                          {selectedCount < group.minSelect &&
+                            <Text style={s.editWarning}>Cần chọn thêm {group.minSelect - selectedCount} món.</Text>}
+                        </View>;
+                      })}
+                    </View>}
                     {product.variants.length > 0 && <View style={s.editChoices}>
                       <Text style={s.note}>Khẩu phần</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -586,7 +709,10 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                   {addableProducts.map(product =>
                     <Pressable key={product.id} accessibilityRole="button"
                       style={s.productPick} onPress={() => addProduct(product)}>
-                      <Text style={s.itemName}>{product.name}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={s.itemName}>{product.name}</Text>
+                        {product.kind === "COMBO" && <Text style={s.note}>Combo</Text>}
+                      </View>
                       <Text style={s.products}>{money(product.priceVnd)}</Text>
                     </Pressable>)}
                   {addableProducts.length === 0 && <Text style={s.note}>Không tìm thấy món đang bán.</Text>}
@@ -610,6 +736,14 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                       <Text style={s.products}>{money(item.lineTotalVnd)}</Text>}
                   </View>
                   {!!item.variantName && <Text style={s.note}>{item.variantName}</Text>}
+                  {item.comboItems.map((component, j) =>
+                    <Text key={"combo-" + j} style={s.note}>
+                      {component.kind === "CHOICE" && component.groupName
+                        ? "• " + component.groupName + ": " : "• "}
+                      {component.quantity} × {component.productName}
+                      {!kitchenOnly && component.priceDeltaVnd
+                        ? " (+" + money(component.priceDeltaVnd) + ")" : ""}
+                    </Text>)}
                   {item.modifiers.map((m,j) =>
                     <Text key={j} style={s.note}>+ {m.name}
                       {!kitchenOnly && m.priceVnd !== undefined ? " (" + money(m.priceVnd) + ")" : ""}
