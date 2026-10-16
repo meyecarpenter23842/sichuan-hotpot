@@ -276,7 +276,9 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [search,setSearch]=useState("");
- React.useEffect(()=>{
+ React.useLayoutEffect(()=>{
+   // Sync selection before the newly opened picker is painted; a stale empty
+   // checkbox is misleading when the server already linked this group.
    setDraft(product?.modifierGroups.map(g=>g.id)??[]);setError("");setSearch("");
  },[product?.id]);
  async function save(){
