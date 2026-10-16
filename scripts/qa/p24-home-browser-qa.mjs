@@ -47,12 +47,15 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(web, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
+    const earlyPopup=page.getByTestId("home-promo-popup");
+    if(await earlyPopup.isVisible().catch(()=>false))
+      await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
     // P22 seeded this exact product into disposable CI PostgreSQL. Select its
     // branch so homepage screenshots exercise the real carousel, not only empty state.
     await page.getByRole("tab", { name: "Thực đơn" }).click();
     await page.getByRole("button", { name: /^P22 QA / }).first().click();
     await page.getByRole("button", { name: "Xem món Lẩu QA vị Tứ Xuyên" }).waitFor();
-    await page.evaluate(()=>localStorage.clear());
+    await db.homePopupConfig.update({where:{branchId:seedBranch.id},data:{revision:{increment:1}}});
     await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
     await page.getByTestId("home-feature-carousel").waitFor();
