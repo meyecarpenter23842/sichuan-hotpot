@@ -108,12 +108,15 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
      setUnsaved(false);onDirtyChange(false);
    },"Đã lưu nội dung ưu đãi lên máy chủ. Thêm ảnh và bật hiển thị khi sẵn sàng.");
  };
- const toggle=(offer:HomeOffer,value:boolean)=>void run(async()=>{
+ const toggle=(offer:HomeOffer,value:boolean)=>{
+   if(unsaved){setError("Lưu nội dung đang sửa trước khi đổi trạng thái.");return;}
+   void run(async()=>{
    if(value&&!offer.imageKey)throw Error("Hãy thêm ảnh trước khi bật ưu đãi.");
    const saved=await request<HomeOffer>(root+"/"+offer.id,token,"PATCH",
      {revision:offer.revision,enabled:value});
    setEditor(old=>old?.id===saved.id?fromOffer(saved):old);
  },"Đã cập nhật trạng thái ưu đãi.");
+ };
  const changeOrder=(index:number,delta:number)=>void run(async()=>{
    const next=[...offers],other=index+delta;
    if(other<0||other>=next.length)return;
@@ -250,7 +253,8 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
          <Text style={s.hint}>{editor.body||"Nội dung chi tiết ưu đãi"}</Text>
        </View>
        <StatusSwitch label="Hiển thị ưu đãi" value={current?.enabled??false} busy={busy}
-         disabled={!current?.imageKey} onValueChange={value=>{
+         disabled={!current?.imageKey||unsaved} hint={unsaved?"Lưu nội dung trước khi bật":undefined}
+         onValueChange={value=>{
            if(current)toggle(current,value);
          }}/>
        {current&&<Action dangerous label={deleteArmed?"Xác nhận xóa ưu đãi":"Xóa ưu đãi"}
