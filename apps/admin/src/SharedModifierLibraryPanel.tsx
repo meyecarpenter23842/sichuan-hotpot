@@ -112,7 +112,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
   </View>
   <Field label="Tìm nhóm hoặc topping" value={query} onChangeText={setQuery}
     placeholder="Tìm theo tên..." />
-  {!!notice&&<Notice text={notice}/>}
+  {!!notice&&!editing&&<Notice text={notice}/>}
   {!!error&&!editing&&<Notice text={error} error/>}
   {visible.length===0&&<Text style={s.hint}>Chưa có nhóm phù hợp. Thêm nhóm để bắt đầu.</Text>}
   {visible.map(group=>{
@@ -189,7 +189,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        <View style={s.heading}>
          <Text style={s.title}>{editing?.id?"Sửa":"Thêm"} {editing?.kind==="group"?"nhóm topping":"topping"}</Text>
          <Pressable accessibilityRole="button" accessibilityLabel="Đóng chỉnh sửa topping"
-           style={s.iconAction} onPress={()=>setEditing(null)}><Text style={s.edit}>✕</Text></Pressable>
+           style={s.iconAction} disabled={busy} onPress={()=>setEditing(null)}><Text style={s.edit}>✕</Text></Pressable>
        </View>
        {editing&&<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.form}>
          <Field label="Tên hiển thị" value={editing.name}
@@ -203,7 +203,43 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
              onChangeText={order=>setEditing(old=>old?{...old,order}:old)}/>
          </>:<Field label="Giá topping (VND)" numeric value={editing.price}
            onChangeText={price=>setEditing(old=>old?{...old,price}:old)}/>}
-         <Text style={s.hint}>Lưu nháp trước, sau đó gắn ảnh R2 và bật bán. Thay đổi thư viện áp dụng cho các món đã gắn; đơn cũ giữ giá chụp lúc đặt.</Text>
+         {editing.kind==="group"&&<>
+           <Text style={s.title}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
+           <Text style={s.hint}>Chọn món dùng nhóm này. Lưu cập nhật liên kết trong một giao dịch.</Text>
+           {products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
+             accessibilityState={{checked:selectedProducts.includes(product.id)}} style={s.line}
+             onPress={()=>setSelectedProducts(old=>old.includes(product.id)
+               ?old.filter(id=>id!==product.id):[...old,product.id])}>
+             <Text style={s.flex} numberOfLines={2}>{product.name}</Text>
+             <Text style={s.edit}>{selectedProducts.includes(product.id)?"☑":"☐"}</Text>
+           </Pressable>)}
+         </>}
+         {editing.id&&<>
+           <Text style={s.title}>Ảnh {editing.kind==="group"?"nhóm":"topping"}</Text>
+           <View style={s.line}>
+             <Photo imageKey={editing.kind==="group"
+               ?groups.find(g=>g.id===editing.id)?.imageKey
+               :groups.flatMap(g=>g.options).find(o=>o.id===editing.id)?.imageKey}
+               label="Ảnh đã lưu"/>
+             <Action label="Chọn / thay ảnh" secondary disabled={busy} onPress={()=>{
+               const itemId=editing.id!;
+               onPickImage(editing.kind==="group"?"groups":"options",itemId,(message,failed)=>{
+                 if(failed){setError(message);setNotice("");}
+                 else {setError("");setNotice(message);}
+               });
+             }}/>
+           </View>
+           {editing.kind==="group"&&<Action label="＋ Thêm topping vào nhóm" secondary
+             onPress={()=>begin("option",{id:editing.id!,name:editing.name,
+               minSelect:Number(editing.min),maxSelect:Number(editing.max),
+               sortOrder:Number(editing.order),isAvailable:false,options:[]})}/>}
+           {editing.kind==="option"&&<Action label="← Quay lại nhóm" secondary
+             onPress={()=>{const group=groups.find(g=>g.id===editing.groupId);
+               if(group)begin("group",group);else setEditing(null);}}/>}
+         </>}
+         {!editing.id&&<Text style={s.hint}>Lưu bản nháp để cấp mã ảnh an toàn. Popup vẫn mở để gắn ảnh.</Text>}
+         {!!notice&&<Notice text={notice}/>}
+         
          {editing.usedBy>1&&<Pressable accessibilityRole="checkbox"
            accessibilityState={{checked:confirmImpact}} style={s.line}
            onPress={()=>setConfirmImpact(old=>!old)}>
@@ -211,8 +247,8 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
            <Text style={s.flex}>Tôi xác nhận thay đổi áp dụng cho {editing.usedBy} món</Text>
          </Pressable>}
          {!!error&&<Notice text={error} error/>}
-         <View style={s.actions}><Action label="Hủy" secondary onPress={()=>setEditing(null)}/>
-           <Action label={busy?"Đang lưu...":"Lưu"} disabled={busy} onPress={save}/></View>
+         <View style={s.actions}><Action label={editing.id?"Đóng":"Hủy"} secondary disabled={busy} onPress={()=>setEditing(null)}/>
+           <Action label={busy?"Đang lưu...":editing.id?"Lưu thay đổi":"Lưu & tiếp tục"} disabled={busy} onPress={save}/></View>
        </ScrollView>}
       </View>
     </KeyboardAvoidingView>
