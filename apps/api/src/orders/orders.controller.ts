@@ -38,7 +38,7 @@ export class OrdersController {
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
         modifierIds: item.modifierIds, quantity: item.quantity,
-        pricingMode: item.pricingMode,
+        ...(item.pricingMode ? { pricingMode: item.pricingMode } : {}),
       })),
     });
   }
