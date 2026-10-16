@@ -21,6 +21,10 @@ class CategoryPatch {
 class ProductInput {
   @IsUUID("4") categoryId!: string;
   @IsString() @MinLength(1) @MaxLength(200) name!: string;
+  @IsOptional() @IsString() @MaxLength(1200) description?: string | null;
+  @IsOptional() @IsString() @MaxLength(1200) ingredients?: string | null;
+  @IsOptional() @IsString() @MaxLength(800) productNotes?: string | null;
+  @IsOptional() @IsString() @MaxLength(800) allergenNotice?: string | null;
   @IsInt() @Min(0) @Max(100000000) priceVnd!: number;
   @IsBoolean() isAvailable!: boolean;
   @IsOptional() @IsBoolean() isFeatured?: boolean;
@@ -28,6 +32,10 @@ class ProductInput {
 class ProductPatch {
   @IsOptional() @IsUUID("4") categoryId?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) name?: string;
+  @IsOptional() @IsString() @MaxLength(1200) description?: string | null;
+  @IsOptional() @IsString() @MaxLength(1200) ingredients?: string | null;
+  @IsOptional() @IsString() @MaxLength(800) productNotes?: string | null;
+  @IsOptional() @IsString() @MaxLength(800) allergenNotice?: string | null;
   @IsOptional() @IsInt() @Min(0) @Max(100000000) priceVnd?: number;
   @IsOptional() @IsBoolean() isAvailable?: boolean;
   @IsOptional() @IsBoolean() isFeatured?: boolean;
