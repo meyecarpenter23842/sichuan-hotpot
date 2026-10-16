@@ -837,7 +837,7 @@ function CustomerApp() {
     const ids = new Set(group.options.map(option => option.id));
     const groupCount = selectedComboOptionIds.filter(id => ids.has(id)).length;
     const nextCount = current + delta;
-    const swapping = delta > 0 && group.maxSelect === 1 && groupCount === 1 && current === 0;
+    const swapping = delta > 0 && current === 0 && groupCount === group.maxSelect;
     const nextGroupCount = groupCount + delta - (swapping ? 1 : 0);
     if (nextCount < 0 || nextGroupCount < group.minSelect || nextGroupCount > group.maxSelect
       || selectedComboOptionIds.length + delta - (swapping ? 1 : 0) > 30) {
@@ -849,8 +849,15 @@ function CustomerApp() {
     if (!option?.childProduct.isAvailable) {
       setDetailError("Món này trong combo đang tạm hết."); return;
     }
-    const remaining = selectedComboOptionIds.filter(id =>
-      swapping ? !ids.has(id) : id !== optionId);
+    const remaining = [...selectedComboOptionIds];
+    if (swapping) {
+      const replaced = remaining.findIndex(id => ids.has(id));
+      if (replaced >= 0) remaining.splice(replaced, 1);
+    } else {
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        if (remaining[i] === optionId) remaining.splice(i, 1);
+      }
+    }
     setSelectedComboOptionIds([...remaining, ...Array(nextCount).fill(optionId)]);
     setDetailError("");
   }
@@ -1286,7 +1293,7 @@ function CustomerApp() {
                   {group.options.filter(option => option.childProduct.isAvailable).map(option => {
                     const count = selectedComboOptionIds.filter(id => id === option.id).length;
                     const atMax = groupCount >= group.maxSelect;
-                    const wouldSwap = group.maxSelect === 1 && groupCount === 1 && count === 0;
+                    const wouldSwap = groupCount === group.maxSelect && count === 0;
                     return <View key={option.id} style={styles.comboChoiceRow}>
                       {safeProductImageUrl(option.childProduct.imageKey)
                         ? <Image source={{ uri: safeProductImageUrl(option.childProduct.imageKey)! }}
