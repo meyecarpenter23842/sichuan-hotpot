@@ -153,7 +153,7 @@ test("kitchen can prepare and mark ready, but cannot confirm or reject customer 
   await client.patch(url).set(headers(kitchen.token))
     .send({ expectedStatus: "PREPARING", toStatus: "READY" }).expect(200);
   await client.patch(url).set(headers(kitchen.token))
-    .send({ expectedStatus: "READY", toStatus: "DELIVERING" }).expect(400);
+    .send({ expectedStatus: "READY", toStatus: "DELIVERING" }).expect(409);
   const row = await db.order.findUniqueOrThrow({ where: { id: kitchenId } });
   assert.equal(row.status, "READY");
   assert.equal(await db.orderStatusHistory.count({ where: { orderId: kitchenId } }), 3);
@@ -180,4 +180,137 @@ test("rejection requires reason and reason is retained in history; no status mut
     .set(headers(manager.token)).send({
       expectedStatus: "PENDING", toStatus: "CONFIRMED",
     }).expect(403);
+});
+
+
+test("OWNER/MANAGER can finish store self-delivery and COD settles atomically", async () => {
+  const ready = await order("READY");
+  await db.payment.create({
+    data: { orderId: ready.id, method: "COD", status: "PENDING", amountVnd: 140000 },
+  });
+  const url = branchBase() + "/" + ready.id + "/status";
+  await client.patch(url).set(headers(manager.token))
+    .send({ expectedStatus: "READY", toStatus: "DELIVERING" }).expect(200);
+  await client.patch(url).set(headers(manager.token))
+    .send({ expectedStatus: "DELIVERING", toStatus: "DELIVERED" }).expect(200);
+
+  const finished = await db.order.findUniqueOrThrow({
+    where: { id: ready.id }, include: { payment: true },
+  });
+  assert.equal(finished.status, "DELIVERED");
+  assert.equal(finished.payment.status, "CONFIRMED");
+  const history = await db.orderStatusHistory.findMany({
+    where: { orderId: ready.id }, orderBy: { createdAt: "asc" },
+  });
+  assert.deepEqual(history.slice(-2).map(row => row.toStatus), ["DELIVERING", "DELIVERED"]);
+
+  await client.patch(url).set(headers(owner.token))
+    .send({ expectedStatus: "DELIVERED", toStatus: "DELIVERING" }).expect(409);
+});
+
+test("QR is never auto-confirmed by delivery completion and failed delivery requires reason", async () => {
+  const delivering = await order("DELIVERING");
+  await db.payment.create({
+    data: { orderId: delivering.id, method: "QR", status: "PENDING", amountVnd: 140000 },
+  });
+  const url = branchBase() + "/" + delivering.id + "/status";
+  await client.patch(url).set(headers(owner.token))
+    .send({ expectedStatus: "DELIVERING", toStatus: "DELIVERY_FAILED" }).expect(400);
+  await client.patch(url).set(headers(owner.token))
+    .send({
+      expectedStatus: "DELIVERING", toStatus: "DELIVERY_FAILED",
+      reason: "Khách không nghe máy",
+    }).expect(200);
+  await client.patch(url).set(headers(manager.token))
+    .send({ expectedStatus: "DELIVERY_FAILED", toStatus: "DELIVERING" }).expect(200);
+  await client.patch(url).set(headers(manager.token))
+    .send({ expectedStatus: "DELIVERING", toStatus: "DELIVERED" }).expect(200);
+
+  const payment = await db.payment.findUniqueOrThrow({ where: { orderId: delivering.id } });
+  assert.equal(payment.status, "PENDING");
+});
+
+test("manager edits pending/confirmed order with authoritative catalog pricing and immutable audit", async () => {
+  const category = await db.catalogCategory.create({
+    data: { branchId, name: "Món sửa " + randomUUID(), sortOrder: 99 },
+  });
+  const product = await db.product.create({
+    data: {
+      categoryId: category.id, name: "Lẩu thay thế", priceVnd: 100000,
+      variants: { create: [{ name: "Lớn", priceDeltaVnd: 20000 }] },
+      modifierGroups: { create: [{
+        name: "Topping sửa", minSelect: 0, maxSelect: 2,
+        options: { create: [{ name: "Bò thêm", priceDeltaVnd: 10000 }] },
+      }] },
+    },
+    include: { variants: true, modifierGroups: { include: { options: true } } },
+  });
+  const variant = product.variants[0];
+  const option = product.modifierGroups[0].options[0];
+
+  const editable = await order("CONFIRMED");
+  await db.payment.create({
+    data: { orderId: editable.id, method: "COD", status: "PENDING", amountVnd: 140000 },
+  });
+  const detail = await client.get(branchBase() + "/" + editable.id)
+    .set(headers(manager.token)).expect(200);
+
+  const url = branchBase() + "/" + editable.id + "/items";
+  const payload = {
+    expectedStatus: "CONFIRMED",
+    expectedUpdatedAt: detail.body.updatedAt,
+    reason: "Món cũ hết, khách đồng ý đổi",
+    items: [{
+      productId: product.id, variantId: variant.id,
+      modifierIds: [option.id, option.id], quantity: 1, pricingMode: "SEPARATE",
+    }],
+  };
+  await client.put(url).set(headers(manager.token)).send(payload).expect(200);
+
+  const changed = await db.order.findUniqueOrThrow({
+    where: { id: editable.id },
+    include: { items: { include: { modifiers: true } }, payment: true, edits: true },
+  });
+  assert.equal(changed.subtotalVnd, 140000);
+  assert.equal(changed.deliveryFeeVnd, 15000);
+  assert.equal(changed.totalVnd, 155000);
+  assert.equal(changed.payment.amountVnd, 155000);
+  assert.equal(changed.items.length, 1);
+  assert.equal(changed.items[0].productId, product.id);
+  assert.equal(changed.items[0].variantId, variant.id);
+  assert.equal(changed.items[0].pricingMode, "SEPARATE");
+  assert.equal(changed.items[0].modifiers.length, 2);
+  assert.ok(changed.items[0].modifiers.every(row => row.optionId === option.id));
+  assert.equal(changed.edits.length, 1);
+  assert.equal(changed.edits[0].reason, "Món cũ hết, khách đồng ý đổi");
+  assert.equal(changed.edits[0].beforeTotalVnd, 140000);
+  assert.equal(changed.edits[0].afterTotalVnd, 155000);
+
+  await client.put(url).set(headers(manager.token)).send(payload).expect(409);
+  await client.put(url).set(headers(kitchen.token)).send({
+    ...payload, expectedUpdatedAt: changed.updatedAt.toISOString(),
+  }).expect(403);
+});
+
+test("order edit rejects unavailable catalog data and settled payments without mutating items", async () => {
+  const category = await db.catalogCategory.create({
+    data: { branchId, name: "Hết hàng " + randomUUID(), sortOrder: 100 },
+  });
+  const unavailable = await db.product.create({
+    data: { categoryId: category.id, name: "Món hết", priceVnd: 90000, isAvailable: false },
+  });
+  const editable = await order("PENDING");
+  await db.payment.create({
+    data: { orderId: editable.id, method: "QR", status: "CONFIRMED", amountVnd: 140000 },
+  });
+  const detail = await client.get(branchBase() + "/" + editable.id)
+    .set(headers(owner.token)).expect(200);
+  await client.put(branchBase() + "/" + editable.id + "/items")
+    .set(headers(owner.token)).send({
+      expectedStatus: "PENDING", expectedUpdatedAt: detail.body.updatedAt,
+      reason: "Thử thay món đã hết",
+      items: [{ productId: unavailable.id, variantId: null, modifierIds: [], quantity: 1 }],
+    }).expect(409);
+  assert.equal(await db.orderItem.count({ where: { orderId: editable.id } }), 1);
+  assert.equal(await db.orderEditAudit.count({ where: { orderId: editable.id } }), 0);
 });
