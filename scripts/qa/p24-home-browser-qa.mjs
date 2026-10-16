@@ -14,6 +14,8 @@ const seedBranch=await db.branch.findFirst({
 });
 assert.ok(seedBranch,"P22 disposable branch required for Home QA");
 const offerId=randomUUID();
+const popupIds=[randomUUID(),randomUUID()];
+const popupKeys=popupIds.map(id=>"catalog-media/"+seedBranch.id+"/popup/"+id+"/"+randomUUID()+".webp");
 await db.homeOffer.create({data:{
   id:offerId,branchId:seedBranch.id,title:"Ưu đãi QA cuối tuần",
   summary:"Tặng lời chúc cuối tuần",body:"L04 kiểm tra popup nội dung thật từ API.",
@@ -21,6 +23,15 @@ await db.homeOffer.create({data:{
   enabled:true,sortOrder:0,ctaTarget:"MENU",
   startAt:new Date(Date.now()-3600000),endAt:new Date(Date.now()+3600000),
 }});
+await db.homePopupConfig.upsert({
+  where:{branchId:seedBranch.id},
+  create:{branchId:seedBranch.id,enabled:true,repeatIntervalMinutes:30,slideDwellMs:2000,revision:11},
+  update:{enabled:true,repeatIntervalMinutes:30,slideDwellMs:2000,revision:{increment:11}},
+});
+await db.homePopupSlide.createMany({data:popupIds.map((id,index)=>({
+  id,branchId:seedBranch.id,imageKey:popupKeys[index],altText:"Popup QA "+(index+1),
+  enabled:true,sortOrder:index,
+}))});
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 const directory = "apps/customer/qa-artifacts";
 mkdirSync(directory, { recursive: true });
@@ -29,24 +40,47 @@ try {
   for (const [width, height] of [[320, 640], [360, 740], [390, 844], [428, 926], [768, 1024]]) {
     const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
+    const tinyPng=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR42mNkYGD4z8DAwMDAAAAEAQEABn0C/QAAAABJRU5ErkJggg==","base64");
+    await page.route("https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/catalog-media/"+seedBranch.id+"/popup/**",
+      route=>route.fulfill({status:200,contentType:"image/png",body:tinyPng}));
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(web, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
+    const earlyPopup=page.getByTestId("home-promo-popup");
+    if(await earlyPopup.isVisible().catch(()=>false))
+      await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
     // P22 seeded this exact product into disposable CI PostgreSQL. Select its
     // branch so homepage screenshots exercise the real carousel, not only empty state.
     await page.getByRole("tab", { name: "Thực đơn" }).click();
+    await db.homePopupConfig.update({where:{branchId:seedBranch.id},data:{revision:{increment:1}}});
     await page.getByRole("button", { name: /^P22 QA / }).first().click();
     await page.getByRole("button", { name: "Xem món Lẩu QA vị Tứ Xuyên" }).waitFor();
     await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("tab", { name: "Trang chủ" }).waitFor();
     await page.getByTestId("home-feature-carousel").waitFor();
+    const promoPopup=page.getByTestId("home-promo-popup");
+    await promoPopup.waitFor();
+    const promoCard=page.getByTestId("home-promo-card");
+    const promoRect=await promoCard.boundingBox();
+    assert.ok(promoRect&&promoRect.x>=0&&promoRect.y>=0&&
+      promoRect.x+promoRect.width<=width+1&&promoRect.y+promoRect.height<=height+1,
+      "Home popup clipped at "+width+"x"+height);
+    if(width===320){
+      await page.screenshot({path:directory+"/p24-home-popup-"+width+"x"+height+".png"});
+      await page.getByTestId("home-promo-slide-0").waitFor();
+      await page.getByTestId("home-promo-slide-1").waitFor({timeout:3500});
+      assert.equal(await page.getByTestId("home-promo-slide-1").count(),1,
+        "Home popup must auto-slide horizontally using configured dwell time");
+    }
+    await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
+    await promoPopup.waitFor({state:"hidden",timeout:3000});
     const promotion=page.getByRole("button",{name:"Xem ưu đãi Ưu đãi QA cuối tuần"});
     await promotion.waitFor();
     await promotion.click();
     await page.getByText("L04 kiểm tra popup nội dung thật từ API.").waitFor();
-    assert.equal(await page.getByText("Tặng lời chúc cuối tuần").count(),2,
-      "Offer tile and popup must both show live API text");
+    assert.equal(await page.getByText("Tặng lời chúc cuối tuần").count(),1,
+      "Offer summary must stay in details popup, not cover Home photography");
     await page.getByRole("button",{name:"Đóng popup ưu đãi"}).click();
     assert.equal(await page.getByText("L04 kiểm tra popup nội dung thật từ API.").count(),0,
       "Popup must close without changing Home or dropping scroll position");
@@ -91,6 +125,8 @@ try {
     console.log("PASS: Home reference categories, fixed tabs, menu search and artwork", width, height);
   }
 } finally {
+  await db.homePopupSlide.deleteMany({where:{id:{in:popupIds}}});
+  await db.homePopupConfig.deleteMany({where:{branchId:seedBranch.id}});
   await db.homeOffer.deleteMany({where:{id:offerId}});
   await db.$disconnect();
   await browser.close();

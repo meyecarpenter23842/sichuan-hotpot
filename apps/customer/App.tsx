@@ -13,7 +13,7 @@ import {
 } from "../../packages/shared/src/cart";
 import {
   apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
-  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses, type HomeOffer, type HomeHeroPayload,
+  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses, type HomeOffer, type HomeHeroPayload, type HomePopupPayload,
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
@@ -25,6 +25,7 @@ import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { HomeHeroCarousel } from "./src/components/HomeHeroCarousel";
+import { HomePromoPopup } from "./src/components/HomePromoPopup";
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
@@ -184,6 +185,7 @@ function CustomerApp() {
   const [homeHero,setHomeHero]=useState<HomeHeroPayload|null>(null);
   const [heroLoading,setHeroLoading]=useState(false);
   const [heroError,setHeroError]=useState("");
+  const [homePopup,setHomePopup]=useState<HomePopupPayload|null>(null);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -226,6 +228,7 @@ function CustomerApp() {
   const currentBranch = useRef("");
   const loadedOffersForBranch=useRef("");
   const loadedHeroForBranch=useRef("");
+  const loadedPopupForBranch=useRef("");
 
   // Catalog is an independently changing server resource. Recheck branch
   // visibility and products, including after the Admin toggles availability.
@@ -250,6 +253,8 @@ function CustomerApp() {
         loadedOffersForBranch.current="";
         setOfferError("");
         setHomeHero(null);loadedHeroForBranch.current="";setHeroError("");
+      setHomePopup(null);loadedPopupForBranch.current="";
+        setHomePopup(null);loadedPopupForBranch.current="";
         setBranchId("");
         setCategoryId("");
         setCatalogError("");
@@ -297,6 +302,17 @@ function CustomerApp() {
         setHeroError(error instanceof Error?error.message:"Không tải được banner trang chủ.");
       }).finally(()=>{
         if(requestId===catalogueRequest.current)setHeroLoading(false);
+      });
+      if(loadedPopupForBranch.current!==activeBranch){
+        loadedPopupForBranch.current=activeBranch;setHomePopup(null);
+      }
+      void apiRequest<HomePopupPayload>("/catalog/branches/"+
+        encodeURIComponent(activeBranch)+"/popup").then(result=>{
+        if(requestId!==catalogueRequest.current)return;
+        setHomePopup(result);
+      }).catch(()=>{
+        if(requestId!==catalogueRequest.current)return;
+        setHomePopup(null);
       });
       setCategoryId(old => response.categories.some(cat => cat.id === old)
         ? old : "");
@@ -1088,8 +1104,7 @@ function CustomerApp() {
                     source={{uri:safeProductImageUrl(offer.imageKey)!}}
                     style={styles.homeOfferImage}/>}
                   <View style={styles.homeOfferCardShade}>
-                    <Text style={styles.homeOfferCardTitle} numberOfLines={2}>{offer.title}</Text>
-                    <Text style={styles.homeOfferCardSummary} numberOfLines={2}>{offer.summary}</Text>
+                    <Text style={styles.homeOfferCardTitle} numberOfLines={1}>{offer.title}</Text>
                   </View>
                 </Pressable>)}
               </ScrollView>:<View style={styles.homeOfferEmpty}>
@@ -1668,6 +1683,7 @@ function CustomerApp() {
             </View>}
           </View>
         )}
+        <HomePromoPopup branchId={branchId} payload={homePopup} active={screen==="home"}/>
         <Modal visible={!!selectedOffer} transparent animationType="fade"
           onRequestClose={()=>setSelectedOffer(null)}>
           <View style={styles.offerModalOverlay}>
@@ -1974,8 +1990,8 @@ const styles = StyleSheet.create({
     padding:13,borderTopWidth:1,borderColor:"#EAECF0"},
   homeOfferCard: { flexGrow: 0, flexShrink: 0, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
   homeOfferCardShade: { position: "absolute", left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(60,0,0,0.64)", paddingHorizontal: 9, paddingVertical: 9 },
-  homeOfferCardTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+    backgroundColor: "rgba(60,0,0,0.64)", paddingHorizontal: 9, paddingVertical: 7 },
+  homeOfferCardTitle: { color: "#FFFFFF", fontSize: 13, lineHeight: 17, fontWeight: "800" },
   homeOfferNote: { color: palette.muted, fontSize: 11, marginHorizontal: 15,
     paddingTop: 3 },
   hero: { backgroundColor: brand, borderRadius: 0, minHeight: 190, paddingHorizontal: 21, paddingVertical: 21, justifyContent: "center", gap: 9 },
