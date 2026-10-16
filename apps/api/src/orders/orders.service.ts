@@ -18,7 +18,19 @@ export interface CheckoutRequest {
   addressId: string;
   idempotencyKey: string;
   paymentMethod: "COD" | "QR";
+  customerNote?: string | null;
   items: DeliveryCartItem[];
+}
+function cleanCustomerNote(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const normalized = value.normalize("NFC").replace(/\r\n?/g, "\n");
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(normalized)) {
+    throw new BadRequestException("INVALID_ORDER_NOTE");
+  }
+  const clean = normalized.split("\n").map(line => line.trimEnd()).join("\n")
+    .replace(/\n{3,}/g, "\n\n").trim();
+  if (Array.from(clean).length > 500) throw new BadRequestException("ORDER_NOTE_TOO_LONG");
+  return clean || null;
 }
 const existingSelect = {
   id: true, requestHash: true, status: true, totalVnd: true,
@@ -60,9 +72,11 @@ export class OrdersService {
       ...(item.pricingMode === "SEPARATE" ? {pricingMode:"SEPARATE" as const} : {}),
     }));
     normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    const customerNote = cleanCustomerNote(input.customerNote);
     const fingerprint = JSON.stringify({
       branchId: input.branchId, addressId: input.addressId,
       method: input.paymentMethod, items: normalized,
+      ...(customerNote ? { customerNote } : {}),
     });
     return createHash("sha256").update(fingerprint).digest("hex");
   }
@@ -83,7 +97,8 @@ export class OrdersService {
 
   async checkout(authorization: string | undefined, input: CheckoutRequest) {
     const customerId = await this.customerId(authorization);
-    const hash = this.requestHash(input);
+    const customerNote = cleanCustomerNote(input.customerNote);
+    const hash = this.requestHash({ ...input, customerNote });
     const key = { customerId, idempotencyKey: input.idempotencyKey };
     const db = this.prisma.database;
     // Fast retry: don't reroute/reprice after a successful checkout.
@@ -185,7 +200,7 @@ export class OrdersService {
               branchId: input.branchId, customerId,
               deliveryPolicyVersionId: policy.id,
               idempotencyKey: input.idempotencyKey, requestHash: hash,
-              phoneSnapshot: user.phoneE164, status: "PENDING",
+              phoneSnapshot: user.phoneE164, customerNote, status: "PENDING",
               subtotalVnd: priced.subtotalVnd, deliveryFeeVnd: currentFee.feeVnd,
               totalVnd: currentFee.totalVnd,
               pricingMode: policy.pricingMode,
@@ -207,8 +222,9 @@ export class OrdersService {
                     optionId: modifier.optionId, name: modifier.name, priceVnd: modifier.priceVnd,
                   })) },
                   comboItems: { create: line.comboItems.map(component => ({
-                    productId: component.productId, kind: component.kind,
-                    groupName: component.groupName, productName: component.productName,
+                    productId: component.productId, variantId: component.variantId,
+                    kind: component.kind, groupName: component.groupName,
+                    productName: component.productName, variantName: component.variantName,
                     quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
                     sortOrder: component.sortOrder,
                   })) },
@@ -279,7 +295,7 @@ export class OrdersService {
       select: {
         id: true, branchId: true, status: true, createdAt: true,
         subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
-        roadDistanceMeters: true, addressLineSnapshot: true,
+        roadDistanceMeters: true, addressLineSnapshot: true, customerNote: true,
         pricingMode: true, zoneNameSnapshot: true, provinceCodeSnapshot: true,
         wardCodeSnapshot: true, catalogVersionSnapshot: true,
         payment: { select: { method: true, status: true, amountVnd: true,
@@ -291,8 +307,8 @@ export class OrdersService {
           comboItems: {
             orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
             select: {
-              productId: true, kind: true, groupName: true, productName: true,
-              quantity: true, priceDeltaVnd: true,
+              productId: true, variantId: true, kind: true, groupName: true,
+              productName: true, variantName: true, quantity: true, priceDeltaVnd: true,
             },
           },
         } },
