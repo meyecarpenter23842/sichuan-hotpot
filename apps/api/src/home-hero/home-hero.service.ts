@@ -35,6 +35,9 @@ function optionalText(value:string|null|undefined,max:number){
   if(clean.length>max)throw new BadRequestException("INVALID_HERO_TEXT");
   return clean||null;
 }
+function nullableText(value:string|null,max:number):string|null{
+  return optionalText(value,max)??null;
+}
 function validateConfig(input:HeroConfigChanges){
   if(!Number.isInteger(input.dwellMs)||input.dwellMs<2000||input.dwellMs>10000||
     !Number.isInteger(input.transitionDurationMs)||input.transitionDurationMs<250||
@@ -102,7 +105,7 @@ export class HomeHeroService {
     await this.owner(auth,branchId);
     return this.db.homeHeroSlide.create({data:{
       branchId,altText:tidy(input.altText,"ALT",200),
-      title:optionalText(input.title,160),subtitle:optionalText(input.subtitle,280),
+      title:nullableText(input.title??null,160),subtitle:nullableText(input.subtitle??null,280),
       ctaTarget:input.ctaTarget??null,sortOrder:input.sortOrder,enabled:false,
     }});
   }
@@ -113,8 +116,8 @@ export class HomeHeroService {
     if(input.enabled===true&&!current.imageKey)throw new ConflictException("HERO_IMAGE_REQUIRED");
     const data={
       ...(input.altText===undefined?{}:{altText:tidy(input.altText,"ALT",200)}),
-      ...(input.title===undefined?{}:{title:optionalText(input.title,160)}),
-      ...(input.subtitle===undefined?{}:{subtitle:optionalText(input.subtitle,280)}),
+      ...(input.title===undefined?{}:{title:nullableText(input.title,160)}),
+      ...(input.subtitle===undefined?{}:{subtitle:nullableText(input.subtitle,280)}),
       ...(input.ctaTarget===undefined?{}:{ctaTarget:input.ctaTarget}),
       ...(input.enabled===undefined?{}:{enabled:input.enabled}),
       revision:{increment:1},
