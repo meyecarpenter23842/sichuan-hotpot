@@ -41,6 +41,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum OrderItemPricingMode {
+  LEGACY
+  SEPARATE
+}
+
 enum DeliveryPricingMode {
   DISTANCE
   ZONE
@@ -58,6 +63,7 @@ model User {
   orders             Order[]              @relation("CustomerOrders")
   assignedDeliveries DeliveryAssignment[] @relation("AssignedDriver")
   statusChanges      OrderStatusHistory[] @relation("StatusActor")
+  orderEdits         OrderEditAudit[]      @relation("OrderEditActor")
   authIdentities     AuthIdentity[]
   localCredential    LocalCredential?
   authSessions       AuthSession[]
@@ -211,6 +217,7 @@ model ProductVariant {
   priceDeltaVnd Int       @default(0)
   isAvailable   Boolean   @default(true)
   product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderItems    OrderItem[]
 
   @@unique([productId, name])
 }
@@ -258,6 +265,7 @@ model ModifierOption {
   isAvailable   Boolean        @default(true)
   imageKey      String?        @db.VarChar(512)
   group         ModifierGroup  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  orderSnapshots OrderItemModifierSnapshot[]
 
   @@unique([groupId, name])
 }
@@ -310,6 +318,7 @@ model Order {
   zone                     DeliveryZone?          @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   items                    OrderItem[]
   statusHistory            OrderStatusHistory[]
+  edits                    OrderEditAudit[]
   deliveryAssignment       DeliveryAssignment?
   payment                  Payment?
 
@@ -323,26 +332,33 @@ model OrderItem {
   id            String                      @id @default(uuid()) @db.Uuid
   orderId       String                      @db.Uuid
   productId     String?                     @db.Uuid
+  variantId     String?                     @db.Uuid
   productName   String                      @db.VarChar(200)
   variantName   String?                     @db.VarChar(160)
+  pricingMode   OrderItemPricingMode        @default(LEGACY)
   quantity      Int
   unitPriceVnd  Int
   lineTotalVnd  Int
   order         Order                       @relation(fields: [orderId], references: [id], onDelete: Restrict)
   product       Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant       ProductVariant?             @relation(fields: [variantId], references: [id], onDelete: SetNull)
   modifiers     OrderItemModifierSnapshot[]
 
   @@index([orderId])
+  @@index([variantId])
 }
 
 model OrderItemModifierSnapshot {
-  id           String    @id @default(uuid()) @db.Uuid
-  orderItemId  String    @db.Uuid
-  name         String    @db.VarChar(160)
+  id           String          @id @default(uuid()) @db.Uuid
+  orderItemId  String          @db.Uuid
+  optionId     String?         @db.Uuid
+  name         String          @db.VarChar(160)
   priceVnd     Int
-  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  orderItem    OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  option       ModifierOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
 
   @@index([orderItemId])
+  @@index([optionId])
 }
 
 model OrderStatusHistory {
@@ -357,6 +373,26 @@ model OrderStatusHistory {
   actor      User?        @relation("StatusActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([orderId, createdAt])
+}
+
+model OrderEditAudit {
+  id                String      @id @default(uuid()) @db.Uuid
+  orderId           String      @db.Uuid
+  actorId           String?     @db.Uuid
+  reason            String      @db.VarChar(500)
+  status            OrderStatus
+  beforeSubtotalVnd Int
+  afterSubtotalVnd  Int
+  beforeTotalVnd    Int
+  afterTotalVnd     Int
+  beforeItems       Json        @db.JsonB
+  afterItems        Json        @db.JsonB
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  order             Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor             User?       @relation("OrderEditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model DeliveryAssignment {
