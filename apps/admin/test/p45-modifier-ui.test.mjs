@@ -46,7 +46,7 @@ test("L03 avoids opening a group picker above the product-details modal",()=>{
 });
 test("L03 keeps new photo and topping drafts in a single active edit modal",()=>{
   assert.match(library,/Gắn nhóm vào món \(\{selectedProducts\.length\} đã chọn\)/);
-  assert.match(library,/Đã tạo bản nháp\. Tiếp tục gắn ảnh/);
+  assert.match(library,/Đã tạo bản nháp, gắn vào/);
   assert.match(library,/Lưu & tiếp tục/);
   assert.match(library,/pickMedia\(editing\.kind==="group"\?"groups":"options"/);
   assert.match(library,/product-assignments/);
@@ -69,4 +69,11 @@ test("L03 editing groups has required selector, independent photos and mobile-si
   assert.match(library,/Ảnh \{editing\.kind==="group"/);
   assert.match(library,/checkBox:\{width:28,height:28/);
   assert.match(library,/checkRow:\{minHeight:56/);
+});
+
+test("group editing verifies assigned product edges on refreshed server catalog",()=>{
+  assert.match(library,/const latest=await request<AdminCatalog>\(root,token\)/);
+  assert.match(library,/const verified=await request<AdminCatalog>\(root,token\)/);
+  assert.match(library,/Liên kết nhóm chưa được xác nhận trên máy chủ/);
+  assert.match(library,/bật bán để xuất hiện trong app khách/);
 });
