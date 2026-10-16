@@ -15,10 +15,12 @@ function Photo({ imageKey, label }: {imageKey:string|null|undefined;label:string
  return uri?<Image source={{uri}} accessibilityLabel={label} style={s.photo}/>
   :<View style={s.placeholder}><Text style={s.placeholderText}>Ảnh</Text></View>;
 }
-export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onAssign}:{
+export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onFeedback,onAssign}:{
  catalog:AdminCatalog;token:string;root:string;reload:()=>Promise<void>;
- onPickImage:(kind:"categories"|"groups"|"options",id:string)=>void;
+ onPickImage:(kind:"categories"|"groups"|"options",id:string,
+   onResult?:(message:string,error:boolean)=>void)=>void;
  onRemoveImage:(kind:"categories"|"groups"|"options",id:string)=>void;
+ onFeedback:(message:string,error:boolean)=>void;
  onAssign:(product:CatalogProduct)=>void;
 }) {
  const [expanded,setExpanded]=useState<string|null>(null);
@@ -27,6 +29,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [query,setQuery]=useState("");
+ const [selectedProducts,setSelectedProducts]=useState<string[]>([]);
  const [confirmImpact,setConfirmImpact]=useState(false);
  const [pendingToggle,setPendingToggle]=useState<{kind:"group"|"option";id:string;enabled:boolean;usedBy:number}|null>(null);
  const products=catalog.categories.flatMap(cat=>cat.products);
@@ -39,16 +42,41 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
      groupId:group?.id,name:kind==="group"?group?.name??"":option?.name??"",
      price:String(option?.priceDeltaVnd??0),min:String(group?.minSelect??0),
      max:String(group?.maxSelect??1),order:String(group?.sortOrder??0),usedBy:n});
-   setError("");setConfirmImpact(false);
+   setSelectedProducts(group?.usedByProductIds??[]);
+   setError("");setNotice("");setConfirmImpact(false);
  }
  async function call(path:string,method:"POST"|"PATCH",payload:unknown){
    if(busy)return;
    setBusy(true);setError("");setNotice("");
-   try{await request(root+path,token,method,payload);await reload();setEditing(null);
-    setNotice("Đã cập nhật thư viện topping. Các món gắn nhóm sẽ dùng giá hiện tại.");}
-   catch(e){setError(e instanceof Error?e.message:"Không thể lưu nhóm/topping.");}
-   finally{setBusy(false);}
+   try{
+     const result=await request<{id?:string}>(root+path,token,method,payload);
+     const edited=editing;
+     const savedGroupId=edited?.kind==="group" ? (result.id??edited.id) : null;
+     if(savedGroupId){
+       const before=(catalog.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds??[];
+       if(before.length!==selectedProducts.length || before.some(id=>!selectedProducts.includes(id))){
+         await request(root+"/library/groups/"+savedGroupId+"/product-assignments",token,"PUT",
+           {productIds:selectedProducts,revision:catalog.catalogRevision});
+       }
+     }
+     await reload();
+     if(method==="POST" && result.id && edited){
+       setEditing(old=>old?{...old,id:result.id}:old);
+       setExpanded(edited.kind==="group"?result.id:edited.groupId??null);
+       setQuery("");
+       setNotice("Đã tạo bản nháp. Tiếp tục gắn ảnh, thêm topping rồi bật bán.");
+     }else{
+       setEditing(null);
+       setNotice("Đã lưu thay đổi. Danh sách món đã được đồng bộ.");
+       onFeedback("Đã lưu thay đổi nhóm / topping.",false);
+     }
+   }catch(e){
+     const message=e instanceof Error?e.message:"Không thể lưu nhóm/topping.";
+     setError(message);onFeedback(message,true);
+     void reload().catch(()=>undefined);
+   }finally{setBusy(false);}
  }
+
  function save(){
   if(!editing||busy)return;
   const {kind,name,id,groupId}=editing;
