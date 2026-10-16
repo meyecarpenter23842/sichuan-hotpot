@@ -153,7 +153,7 @@ const s=StyleSheet.create({
   wrap:{alignItems:"center"},frame:{overflow:"hidden",borderRadius:18,backgroundColor:"#6D1710"},
   slide:{position:"relative",overflow:"hidden"},wipe:{position:"absolute",left:0,top:0,overflow:"hidden"},
   fallbackImage:{position:"absolute"},copy:{position:"absolute",left:0,right:0,bottom:0,
-    paddingHorizontal:16,paddingTop:28,paddingBottom:13,gap:4,
+    paddingHorizontal:16,paddingTop:28,paddingBottom:46,gap:4,
     backgroundColor:"rgba(43,4,2,0.52)"},
   title:{color:"#FFF8EA",fontSize:20,lineHeight:24,fontWeight:"900",maxWidth:"86%"},
   subtitle:{color:"#FFF8EA",fontSize:12,lineHeight:17,fontWeight:"600",maxWidth:"88%"},
