@@ -338,3 +338,70 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
     assert.equal(await db.order.count({where:{customerId:userId,idempotencyKey:outsideKey}}),0);
   } finally { route.drivingMeters = old; }
 });
+
+
+test("real combo checkout stores immutable fixed and chosen component snapshots", async () => {
+  const base = await db.product.findUniqueOrThrow({
+    where: { id: productId }, select: { categoryId: true },
+  });
+  const [fixedChild, choiceChild] = await Promise.all([
+    db.product.create({ data: {
+      categoryId: base.categoryId, name: "Mì combo " + randomUUID(),
+      priceVnd: 10000, kind: "STANDARD", isAvailable: true,
+    } }),
+    db.product.create({ data: {
+      categoryId: base.categoryId, name: "Bò combo " + randomUUID(),
+      priceVnd: 30000, kind: "STANDARD", isAvailable: true,
+    } }),
+  ]);
+  const combo = await db.product.create({ data: {
+    categoryId: base.categoryId, name: "Combo CI " + randomUUID(),
+    priceVnd: 100000, kind: "COMBO", isAvailable: true,
+  } });
+  await db.productComboFixedItem.create({ data: {
+    comboProductId: combo.id, childProductId: fixedChild.id, quantity: 1, sortOrder: 0,
+  } });
+  const group = await db.productComboGroup.create({ data: {
+    comboProductId: combo.id, name: "Chọn thịt", minSelect: 1, maxSelect: 1, sortOrder: 1,
+  } });
+  const option = await db.productComboOption.create({ data: {
+    groupId: group.id, childProductId: choiceChild.id, quantity: 2,
+    priceDeltaVnd: 5000, sortOrder: 0,
+  } });
+
+  const result = await request({
+    branchId, addressId, idempotencyKey: randomUUID(), paymentMethod: "COD",
+    items: [{
+      productId: combo.id, variantId: null, modifierIds: [],
+      comboOptionIds: [option.id], quantity: 1, pricingMode: "SEPARATE",
+    }],
+  }).expect(201);
+  assert.equal(result.body.totalVnd, 120000);
+
+  const saved = await db.order.findUniqueOrThrow({
+    where: { id: result.body.orderId },
+    include: { items: { include: { comboItems: { orderBy: { sortOrder: "asc" } } } } },
+  });
+  assert.equal(saved.subtotalVnd, 105000);
+  assert.equal(saved.items.length, 1);
+  assert.deepEqual(saved.items[0].comboItems.map(component => ({
+    kind: component.kind, productId: component.productId,
+    productName: component.productName, quantity: component.quantity,
+    priceDeltaVnd: component.priceDeltaVnd,
+  })), [
+    {
+      kind: "FIXED", productId: fixedChild.id, productName: fixedChild.name,
+      quantity: 1, priceDeltaVnd: 0,
+    },
+    {
+      kind: "CHOICE", productId: choiceChild.id, productName: choiceChild.name,
+      quantity: 2, priceDeltaVnd: 5000,
+    },
+  ]);
+
+  const detail = await client.get("/customer/orders/" + result.body.orderId)
+    .set("Authorization", "Bearer " + token).expect(200);
+  assert.equal(detail.body.items[0].comboItems.length, 2);
+  assert.equal(detail.body.items[0].comboItems[1].groupName, "Chọn thịt");
+  assert.equal(detail.body.items[0].comboItems[1].productId, choiceChild.id);
+});
