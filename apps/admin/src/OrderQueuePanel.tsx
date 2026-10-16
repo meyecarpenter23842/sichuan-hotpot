@@ -1,5 +1,5 @@
 import { displayAdministrativeSelection } from "../../../packages/shared/src/vietnam-admin";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, AppState, Modal, Pressable, ScrollView, StyleSheet,
   Text, View,
@@ -7,7 +7,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
 import { Icon } from "./Icon";
-import { request } from "./api";
+import {
+  request, type AdminCatalog, type CatalogGroup, type CatalogProduct,
+} from "./api";
 import { markNewOrderAlerted, playOrderChime } from "./order-notifications";
 import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
@@ -16,16 +18,24 @@ import { adminDensity } from "./density";
 export type OrderStatus =
   "PENDING" | "CONFIRMED" | "PREPARING" | "READY" |
   "DELIVERING" | "DELIVERED" | "CANCELED" | "DELIVERY_FAILED";
-type ActionStatus = "CONFIRMED" | "CANCELED" | "PREPARING" | "READY";
+type ActionStatus =
+  "CONFIRMED" | "CANCELED" | "PREPARING" | "READY" |
+  "DELIVERING" | "DELIVERED" | "DELIVERY_FAILED";
+type EditLine = {
+  key: string; productId: string; variantId: string | null;
+  modifierIds: string[]; quantity: number; pricingMode?: "SEPARATE";
+};
 
 export interface StaffOrder {
   id: string; branchId: string; status: OrderStatus; createdAt: string; updatedAt: string;
   subtotalVnd?: number; deliveryFeeVnd?: number; totalVnd?: number;
-  payment?: { method: "COD" | "QR"; status: string } | null;
+  payment?: { method: "COD" | "QR"; status: string; amountVnd?: number } | null;
   items: {
+    id?: string; productId?: string | null; variantId?: string | null;
+    pricingMode?: "LEGACY" | "SEPARATE";
     productName: string; variantName: string | null; quantity: number;
     unitPriceVnd?: number; lineTotalVnd?: number;
-    modifiers: { name: string; priceVnd?: number }[];
+    modifiers: { optionId?: string | null; name: string; priceVnd?: number }[];
   }[];
 }
 interface OrderDetail extends StaffOrder {
@@ -36,6 +46,10 @@ interface OrderDetail extends StaffOrder {
   statusHistory: {
     fromStatus: OrderStatus | null; toStatus: OrderStatus;
     createdAt: string; reason: string | null;
+  }[];
+  edits?: {
+    reason: string; status: OrderStatus; beforeSubtotalVnd: number; afterSubtotalVnd: number;
+    beforeTotalVnd: number; afterTotalVnd: number; createdAt: string;
   }[];
 }
 
@@ -62,6 +76,16 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
   if (status === "PREPARING" && kitchen) return [
     { value: "READY", label: "Báo món đã sẵn sàng" },
   ];
+  if (status === "READY" && manager) return [
+    { value: "DELIVERING", label: "Bắt đầu giao" },
+  ];
+  if (status === "DELIVERING" && manager) return [
+    { value: "DELIVERED", label: "Đã giao thành công" },
+    { value: "DELIVERY_FAILED", label: "Giao thất bại" },
+  ];
+  if (status === "DELIVERY_FAILED" && manager) return [
+    { value: "DELIVERING", label: "Giao lại" },
+  ];
   return [];
 }
 const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
@@ -85,6 +109,14 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState<"active" | "all">("active");
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [editCatalog, setEditCatalog] = useState<AdminCatalog | null>(null);
+  const [editLines, setEditLines] = useState<EditLine[]>([]);
+  const [editReason, setEditReason] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
   const requestId = useRef(0);
   const lastIds = useRef<Set<string> | null>(null);
   const pendingAlerts = useRef<Set<string>>(new Set());
@@ -162,6 +194,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
 
   const openDetail = async (id: string) => {
     setOpening(true); setNotice(""); setSelected(null); setAction(null); setReason("");
+    setEditingOrder(false); setEditCatalog(null); setEditLines([]); setEditReason("");
+    setEditError(""); setAddingProduct(false); setProductSearch("");
     try {
       const detail = await request<OrderDetail>("/admin/orders/" + branchId + "/" + id, token);
       setSelected(detail);
@@ -171,14 +205,17 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   };
   const save = async () => {
     if (!selected || !action || saving) return;
-    if (action === "CANCELED" && reason.trim().length < 5) {
-      setError("Cần nhập lý do hủy/từ chối ít nhất 5 ký tự."); return;
+    if ((action === "CANCELED" || action === "DELIVERY_FAILED") && reason.trim().length < 5) {
+      setError(action === "DELIVERY_FAILED"
+        ? "Cần nhập lý do giao thất bại ít nhất 5 ký tự."
+        : "Cần nhập lý do hủy/từ chối ít nhất 5 ký tự."); return;
     }
     setSaving(true); setError("");
     try {
       await request("/admin/orders/" + branchId + "/" + selected.id + "/status",
         token, "PATCH", { expectedStatus: selected.status, toStatus: action,
-          ...(action === "CANCELED" ? { reason: reason.trim() } : {}) });
+          ...(["CANCELED", "DELIVERY_FAILED"].includes(action)
+            ? { reason: reason.trim() } : {}) });
       setSelected(null); setAction(null); setReason("");
       setNotice("Đã cập nhật trạng thái đơn và ghi lịch sử.");
       await sync();
@@ -187,6 +224,124 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
       setError(message + " Hãy tải lại đơn để kiểm tra trạng thái hiện tại.");
       setAction(null); setSelected(null); await sync();
     } finally { setSaving(false); }
+  };
+
+  const manager = role === "OWNER" || role === "MANAGER";
+  const catalogProducts = useMemo(() =>
+    editCatalog?.categories.flatMap(category => category.products) ?? [], [editCatalog]);
+  const addableProducts = useMemo(() => {
+    const query = productSearch.trim().toLocaleLowerCase("vi");
+    return catalogProducts.filter(product => product.isAvailable
+      && (!query || product.name.toLocaleLowerCase("vi").includes(query))).slice(0, 20);
+  }, [catalogProducts, productSearch]);
+
+  const productFor = (line: EditLine): CatalogProduct | undefined =>
+    catalogProducts.find(product => product.id === line.productId);
+
+  function groupsFor(product: CatalogProduct): CatalogGroup[] {
+    return product.modifierGroups.filter(group => group.isAvailable !== false);
+  }
+
+  const beginEdit = async () => {
+    if (!selected || !manager || !["PENDING", "CONFIRMED"].includes(selected.status)) return;
+    setEditBusy(true); setEditError("");
+    try {
+      const catalog = await request<AdminCatalog>(
+        "/admin/branches/" + branchId + "/catalog", token);
+      const products = catalog.categories.flatMap(category => category.products);
+      const draft: EditLine[] = selected.items.map((item, index) => {
+        if (!item.productId) throw Error(
+          "Đơn cũ thiếu mã món để sửa an toàn. Hãy hủy đơn và tạo lại thay vì đoán giá.");
+        const product = products.find(candidate => candidate.id === item.productId);
+        if (!product) throw Error("Một món trong đơn không còn thuộc chi nhánh này.");
+        let variantId = item.variantId ?? null;
+        if (!variantId && item.variantName) {
+          const match = product.variants.filter(v => v.name === item.variantName);
+          if (match.length !== 1) throw Error(
+            "Không xác định được khẩu phần cũ. Không thể tự đoán khi sửa đơn.");
+          variantId = match[0]!.id;
+        }
+        const modifierIds: string[] = [];
+        for (const modifier of item.modifiers) {
+          if (modifier.optionId) { modifierIds.push(modifier.optionId); continue; }
+          const matches = groupsFor(product).flatMap(group => group.options)
+            .filter(option => option.name === modifier.name
+              && (modifier.priceVnd === undefined || option.priceDeltaVnd === modifier.priceVnd));
+          if (matches.length !== 1) throw Error(
+            "Đơn cũ có topping không xác định được ID. Không thể tự đoán khi sửa đơn.");
+          modifierIds.push(matches[0]!.id);
+        }
+        return {
+          key: item.id ?? "existing-" + index,
+          productId: item.productId, variantId, modifierIds,
+          quantity: item.quantity,
+          ...(item.pricingMode === "SEPARATE" ? { pricingMode: "SEPARATE" as const } : {}),
+        };
+      });
+      setEditCatalog(catalog); setEditLines(draft); setEditingOrder(true);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Không mở được chế độ sửa đơn.");
+    } finally { setEditBusy(false); }
+  };
+
+  const addProduct = (product: CatalogProduct) => {
+    setEditLines(lines => [...lines, {
+      key: "new-" + Date.now() + "-" + product.id,
+      productId: product.id, variantId: null, modifierIds: [], quantity: 1,
+      pricingMode: "SEPARATE",
+    }]);
+    setAddingProduct(false); setProductSearch("");
+  };
+
+  const updateLine = (index: number, change: Partial<EditLine>) =>
+    setEditLines(lines => lines.map((line, current) =>
+      current === index ? { ...line, ...change } : line));
+
+  const changeModifier = (lineIndex: number, group: CatalogGroup, optionId: string, delta: number) => {
+    setEditLines(lines => lines.map((line, index) => {
+      if (index !== lineIndex) return line;
+      const ids = [...line.modifierIds];
+      const optionIds = new Set(group.options.map(option => option.id));
+      const groupCount = ids.filter(id => optionIds.has(id)).length;
+      if (delta > 0) {
+        if (groupCount >= group.maxSelect) return line;
+        ids.push(optionId);
+      } else {
+        const at = ids.lastIndexOf(optionId);
+        if (at >= 0) ids.splice(at, 1);
+      }
+      return { ...line, modifierIds: ids };
+    }));
+  };
+
+  const saveEdit = async () => {
+    if (!selected || editBusy) return;
+    if (editReason.trim().length < 5) {
+      setEditError("Nhập lý do sửa đơn ít nhất 5 ký tự để lưu lịch sử."); return;
+    }
+    if (editLines.length === 0) {
+      setEditError("Đơn phải còn ít nhất một món. Nếu không phục vụ được, hãy hủy đơn."); return;
+    }
+    setEditBusy(true); setEditError("");
+    try {
+      await request("/admin/orders/" + branchId + "/" + selected.id + "/items",
+        token, "PUT", {
+          expectedStatus: selected.status, expectedUpdatedAt: selected.updatedAt,
+          reason: editReason.trim(),
+          items: editLines.map(line => ({
+            productId: line.productId, variantId: line.variantId,
+            modifierIds: line.modifierIds, quantity: line.quantity,
+            ...(line.pricingMode === "SEPARATE" ? { pricingMode: "SEPARATE" } : {}),
+          })),
+        });
+      setNotice("Đã sửa đơn, tính lại giá trên máy chủ và lưu lịch sử thay đổi.");
+      setEditingOrder(false); setEditCatalog(null); setEditLines([]); setEditReason("");
+      await sync();
+      await openDetail(selected.id);
+    } catch (e) {
+      setEditError((e instanceof Error ? e.message : "Không sửa được đơn.")
+        + " Kiểm tra món hết hàng, lựa chọn bắt buộc hoặc tải lại đơn.");
+    } finally { setEditBusy(false); }
   };
 
   const visible = orders.filter(order => {
@@ -207,7 +362,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
         <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp"
           : mode === "delivery" ? "Giao hàng" : "Đơn hàng"}</Text>
         <Text style={s.note}>{mode === "delivery"
-          ? "Trạng thái đơn từ máy chủ. Phân công tài xế triển khai ở P5."
+          ? "Cửa hàng có thể tự giao: bắt đầu giao, hoàn thành hoặc ghi nhận giao thất bại."
           : "Đơn thật · cập nhật tức thời khi có kết nối, đồng bộ dự phòng 10 giây"}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
@@ -309,8 +464,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
           <View style={s.sheetHead}>
             <Text style={s.title}>Đơn #{selected?.id.slice(0, 8).toUpperCase()}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết đơn"
-              disabled={saving} onPress={() => { setSelected(null); setAction(null); }}
-              style={s.close}>
+              disabled={saving || editBusy} onPress={() => {
+                setSelected(null); setAction(null); setEditingOrder(false);
+              }} style={s.close}>
               <Icon name="close" size={19} color={c.ink} />
             </Pressable>
           </View>
@@ -339,20 +495,127 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                   </View>;
                 })}
               </View>
-              <Text style={s.detailSectionTitle}>Danh sách món ({selected.items.length} dòng món)</Text>
-              {selected.items.map((item, i) => <View key={i} style={s.item}>
-                <View style={s.itemOrdinal}><Text style={s.itemOrdinalLabel}>{i + 1}</Text></View>
-                <View style={s.rowTop}>
-                  <Text style={s.itemName}>{item.quantity} × {item.productName}</Text>
-                  {!kitchenOnly && item.lineTotalVnd !== undefined &&
-                    <Text style={s.products}>{money(item.lineTotalVnd)}</Text>}
-                </View>
-                {!!item.variantName && <Text style={s.note}>{item.variantName}</Text>}
-                {item.modifiers.map((m,j) =>
-                  <Text key={j} style={s.note}>+ {m.name}
-                    {!kitchenOnly && m.priceVnd !== undefined ? " (" + money(m.priceVnd) + ")" : ""}
-                  </Text>)}
-              </View>)}
+              <View style={s.detailSectionRow}>
+                <Text style={s.detailSectionTitle}>Danh sách món ({selected.items.length} dòng món)</Text>
+                {manager && ["PENDING", "CONFIRMED"].includes(selected.status) && !editingOrder &&
+                  <Pressable accessibilityRole="button" accessibilityLabel="Sửa món trong đơn"
+                    disabled={editBusy} onPress={() => void beginEdit()} style={s.inlineEdit}>
+                    <Text style={s.inlineEditText}>{editBusy ? "Đang mở…" : "Sửa đơn"}</Text>
+                  </Pressable>}
+              </View>
+              {!!editError && <Notice error text={editError} />}
+              {editingOrder && editCatalog ? <View style={s.editPanel}>
+                <Text style={s.editHint}>
+                  Chỉ OWNER/MANAGER sửa được trước khi bếp bắt đầu nấu. Giá được tính lại từ catalog trên máy chủ.
+                </Text>
+                {editLines.map((line, lineIndex) => {
+                  const product = productFor(line);
+                  if (!product) return <Notice key={line.key} error text="Món không còn trong catalog." />;
+                  return <View key={line.key} style={s.editLine}>
+                    <View style={s.rowTop}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.itemName}>{product.name}</Text>
+                        {!product.isAvailable && <Text style={s.editWarning}>Món đang hết hàng — hãy xóa hoặc thay.</Text>}
+                      </View>
+                      <Pressable accessibilityRole="button" accessibilityLabel={"Xóa " + product.name}
+                        style={s.removeLine} onPress={() =>
+                          setEditLines(lines => lines.filter((_, index) => index !== lineIndex))}>
+                        <Text style={s.removeLineText}>Xóa</Text>
+                      </Pressable>
+                    </View>
+                    <View style={s.quantityRow}>
+                      <Text style={s.note}>Số lượng</Text>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng"
+                        style={s.qtyButton} onPress={() =>
+                          updateLine(lineIndex, { quantity: Math.max(1, line.quantity - 1) })}>
+                        <Text style={s.qtyText}>−</Text>
+                      </Pressable>
+                      <Text style={s.qtyValue}>{line.quantity}</Text>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng"
+                        style={s.qtyButton} onPress={() =>
+                          updateLine(lineIndex, { quantity: Math.min(99, line.quantity + 1) })}>
+                        <Text style={s.qtyText}>＋</Text>
+                      </Pressable>
+                    </View>
+                    {product.variants.length > 0 && <View style={s.editChoices}>
+                      <Text style={s.note}>Khẩu phần</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <Pill label="Mặc định" active={line.variantId === null}
+                          onPress={() => updateLine(lineIndex, { variantId: null })} />
+                        {product.variants.filter(v => v.isAvailable).map(variant =>
+                          <Pill key={variant.id} label={variant.name}
+                            active={line.variantId === variant.id}
+                            onPress={() => updateLine(lineIndex, { variantId: variant.id })} />)}
+                      </ScrollView>
+                    </View>}
+                    {groupsFor(product).map(group => {
+                      const allowed = new Set(group.options.map(option => option.id));
+                      const selectedCount = line.modifierIds.filter(id => allowed.has(id)).length;
+                      return <View key={group.id} style={s.editChoices}>
+                        <Text style={s.note}>{group.name} · chọn {group.minSelect}–{group.maxSelect}
+                          {" · hiện "}{selectedCount}</Text>
+                        {group.options.filter(option => option.isAvailable).map(option => {
+                          const count = line.modifierIds.filter(id => id === option.id).length;
+                          return <View key={option.id} style={s.modifierRow}>
+                            <Text style={s.modifierName}>{option.name}
+                              {option.priceDeltaVnd ? " · +" + money(option.priceDeltaVnd) : ""}
+                            </Text>
+                            <Pressable accessibilityRole="button"
+                              accessibilityLabel={"Giảm " + option.name} disabled={count === 0}
+                              style={[s.qtyButton, count === 0 && s.disabledButton]}
+                              onPress={() => changeModifier(lineIndex, group, option.id, -1)}>
+                              <Text style={s.qtyText}>−</Text>
+                            </Pressable>
+                            <Text style={s.qtyValue}>{count}</Text>
+                            <Pressable accessibilityRole="button"
+                              accessibilityLabel={"Thêm " + option.name}
+                              disabled={selectedCount >= group.maxSelect}
+                              style={[s.qtyButton, selectedCount >= group.maxSelect && s.disabledButton]}
+                              onPress={() => changeModifier(lineIndex, group, option.id, 1)}>
+                              <Text style={s.qtyText}>＋</Text>
+                            </Pressable>
+                          </View>;
+                        })}
+                      </View>;
+                    })}
+                  </View>;
+                })}
+                {addingProduct ? <View style={s.addProductPanel}>
+                  <Field label="Tìm món để thêm" value={productSearch}
+                    onChangeText={setProductSearch} placeholder="Tên món" />
+                  {addableProducts.map(product =>
+                    <Pressable key={product.id} accessibilityRole="button"
+                      style={s.productPick} onPress={() => addProduct(product)}>
+                      <Text style={s.itemName}>{product.name}</Text>
+                      <Text style={s.products}>{money(product.priceVnd)}</Text>
+                    </Pressable>)}
+                  {addableProducts.length === 0 && <Text style={s.note}>Không tìm thấy món đang bán.</Text>}
+                  <Action secondary label="Đóng danh sách" onPress={() => setAddingProduct(false)} />
+                </View> :
+                  <Action secondary label="＋ Thêm món" onPress={() => setAddingProduct(true)} />}
+                <Field label="Lý do sửa đơn" value={editReason} onChangeText={setEditReason}
+                  placeholder="Ví dụ: món hết, khách đồng ý đổi món" multiline />
+                <Action label={editBusy ? "Đang lưu…" : "Lưu đơn đã sửa"}
+                  disabled={editBusy || editLines.length === 0 || editReason.trim().length < 5}
+                  onPress={() => void saveEdit()} />
+                <Action secondary label="Hủy chỉnh sửa" disabled={editBusy}
+                  onPress={() => { setEditingOrder(false); setEditCatalog(null); setEditLines([]);
+                    setEditReason(""); setEditError(""); }} />
+              </View> : <>
+                {selected.items.map((item, i) => <View key={item.id ?? i} style={s.item}>
+                  <View style={s.itemOrdinal}><Text style={s.itemOrdinalLabel}>{i + 1}</Text></View>
+                  <View style={s.rowTop}>
+                    <Text style={s.itemName}>{item.quantity} × {item.productName}</Text>
+                    {!kitchenOnly && item.lineTotalVnd !== undefined &&
+                      <Text style={s.products}>{money(item.lineTotalVnd)}</Text>}
+                  </View>
+                  {!!item.variantName && <Text style={s.note}>{item.variantName}</Text>}
+                  {item.modifiers.map((m,j) =>
+                    <Text key={j} style={s.note}>+ {m.name}
+                      {!kitchenOnly && m.priceVnd !== undefined ? " (" + money(m.priceVnd) + ")" : ""}
+                    </Text>)}
+                </View>)}
+              </>}
               {!kitchenOnly && selected.subtotalVnd !== undefined &&
                 selected.deliveryFeeVnd !== undefined && selected.totalVnd !== undefined &&
                 <View style={s.totals}>
@@ -375,6 +638,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                 }) : ""}</Text>
                 {!!selected.phoneSnapshot && <Text style={s.note}>{selected.phoneSnapshot}</Text>}
               </>}
+              {!!selected.edits?.length && <>
+                <Text style={s.detailSectionTitle}>Lịch sử sửa đơn</Text>
+                {selected.edits.map((edit, i) =>
+                  <Text key={i} style={s.note}>
+                    {when(edit.createdAt)} · {edit.reason} · {money(edit.beforeTotalVnd)} → {money(edit.afterTotalVnd)}
+                  </Text>)}
+              </>}
               <Text style={s.detailSectionTitle}>Lịch sử trạng thái</Text>
               {selected.statusHistory.map((h,i) =>
                 <Text key={i} style={s.note}>
@@ -386,11 +656,17 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                   <Action key={a.value} label={a.label}
                     secondary={a.value === "CANCELED"} onPress={() => setAction(a.value)} />) : <>
                   <Text style={s.itemName}>Xác nhận: {statusName[action]}?</Text>
-                  {action === "CANCELED" && <Field label="Lý do bắt buộc"
+                  {["CANCELED", "DELIVERY_FAILED"].includes(action) && <Field
+                    label={action === "DELIVERY_FAILED" ? "Lý do giao thất bại" : "Lý do bắt buộc"}
                     value={reason} onChangeText={setReason}
-                    placeholder="Nêu rõ lý do cho khách" multiline />}
+                    placeholder={action === "DELIVERY_FAILED"
+                      ? "Ví dụ: khách không nghe máy" : "Nêu rõ lý do cho khách"} multiline />}
+                  {action === "DELIVERED" && selected.payment?.method === "COD"
+                    && selected.payment.status === "PENDING" &&
+                    <Text style={s.editHint}>Xác nhận đã giao sẽ đồng thời ghi nhận COD đã thu.</Text>}
                   <Action label={saving ? "Đang cập nhật..." : "Xác nhận cập nhật"}
-                    disabled={saving || (action === "CANCELED" && reason.trim().length < 5)}
+                    disabled={saving || (["CANCELED", "DELIVERY_FAILED"].includes(action)
+                      && reason.trim().length < 5)}
                     onPress={() => void save()} />
                   <Action label="Quay lại" secondary disabled={saving}
                     onPress={() => setAction(null)} />
@@ -481,6 +757,32 @@ const s = StyleSheet.create({
   timelineClock: { color: c.secondary, fontSize: 10 },
   detailSectionTitle: { fontSize: 15, fontWeight: "800", color: c.ink,
     paddingLeft: 9, borderLeftWidth: 4, borderLeftColor: c.red },
+  detailSectionRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  inlineEdit: { marginLeft: "auto", minHeight: 44, justifyContent: "center",
+    paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#FCE6E7" },
+  inlineEditText: { color: c.redDeep, fontWeight: "800", fontSize: 12 },
+  editPanel: { gap: 10, paddingVertical: 4 },
+  editHint: { fontSize: font.note, lineHeight: 18, color: c.secondary,
+    backgroundColor: "#FFF8EC", padding: 9, borderRadius: 9 },
+  editLine: { gap: 8, borderWidth: 1, borderColor: c.line, borderRadius: 12,
+    padding: 10, backgroundColor: c.white },
+  editWarning: { color: c.red, fontSize: font.note, fontWeight: "700", marginTop: 2 },
+  removeLine: { minHeight: 44, justifyContent: "center", paddingHorizontal: 10 },
+  removeLineText: { color: c.red, fontWeight: "800", fontSize: 12 },
+  quantityRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  qtyButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#F5EFE6",
+    alignItems: "center", justifyContent: "center" },
+  disabledButton: { opacity: 0.35 },
+  qtyText: { fontSize: 19, fontWeight: "800", color: c.redDeep },
+  qtyValue: { minWidth: 28, textAlign: "center", fontWeight: "800", color: c.ink },
+  editChoices: { gap: 6 },
+  modifierRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6,
+    borderBottomWidth: 1, borderBottomColor: c.line },
+  modifierName: { flex: 1, fontSize: font.note, color: c.ink, fontWeight: "600" },
+  addProductPanel: { gap: 6, borderTopWidth: 1, borderColor: c.line, paddingTop: 8 },
+  productPick: { minHeight: 44, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", gap: 8, paddingHorizontal: 8,
+    borderBottomWidth: 1, borderBottomColor: c.line },
   itemOrdinal: { alignItems: "center", justifyContent: "center", width: 24, height: 24,
     borderRadius: 12, backgroundColor: "#FCE5E7" },
   itemOrdinalLabel: { fontSize: 12, fontWeight: "800", color: c.red },
