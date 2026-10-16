@@ -126,7 +126,7 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
     </View>}
   </View>;
 
-  if(!current)return fallback;
+  if(!current)return <View style={s.wrap}>{fallback}<View style={s.dotsSlot}/></View>;
   return <View style={s.wrap}>
     <View style={[s.frame,{width:heroWidth,height:heroHeight}]} {...pan.panHandlers}
       testID="home-live-hero" accessibilityLabel={"Banner "+(index+1)+" trên "+slides.length}>
@@ -137,13 +137,13 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
         </Animated.View>
         :<Animated.View style={[StyleSheet.absoluteFill,incoming]}>{renderContent(current)}</Animated.View>}
     </View>
-    {slides.length>1&&<View style={s.dots} accessibilityRole="tablist">
-      {slides.map((slide,dot)=><Pressable key={slide.id} accessibilityRole="tab"
+    <View style={s.dotsSlot} accessibilityRole="tablist">
+      {slides.length>1&&slides.map((slide,dot)=><Pressable key={slide.id} accessibilityRole="tab"
         accessibilityLabel={"Banner "+(dot+1)} accessibilityState={{selected:dot===index}}
         onPress={()=>goTo(dot,true)} style={s.dotTap}>
         <View style={[s.dot,dot===index&&s.dotActive]}/>
       </Pressable>)}
-    </View>}
+    </View>
   </View>;
 }
 const s=StyleSheet.create({
@@ -157,7 +157,7 @@ const s=StyleSheet.create({
   cta:{minHeight:44,alignSelf:"flex-start",justifyContent:"center",marginTop:4,
     paddingHorizontal:16,borderRadius:22,backgroundColor:"#FFF0D3"},
   ctaText:{fontSize:13,fontWeight:"900",color:"#A31E1B"},
-  dots:{height:44,flexDirection:"row",alignItems:"center",justifyContent:"center",marginBottom:-6},
+  dotsSlot:{height:38,flexDirection:"row",alignItems:"center",justifyContent:"center"},
   dotTap:{width:44,height:44,alignItems:"center",justifyContent:"center"},
   dot:{width:7,height:7,borderRadius:7,backgroundColor:"rgba(255,255,255,.45)"},
   dotActive:{width:18,backgroundColor:"#FFFFFF"},
