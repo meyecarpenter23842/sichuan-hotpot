@@ -190,6 +190,7 @@ function CustomerApp() {
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
   const [detailError, setDetailError] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [expandedCartGroups,setExpandedCartGroups]=useState<string[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [notice, setNotice] = useState("");
   const [accessToken, setAccessToken] = useState("");
@@ -1300,6 +1301,10 @@ function CustomerApp() {
                       const groupIds=new Set(group.options.map(o=>o.id));
                       const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
                       const mandatory=group.minSelect>0;
+                      const cartGroupKey=line.key+"|"+group.id;
+                      const expanded=expandedCartGroups.includes(cartGroupKey);
+                      const hasOtherOptions=group.options.some(o=>o.isAvailable
+                        &&cartModifierCount(line.selection,o.id)===0);
                       return <View key={group.id} style={styles.cartGroup}>
                         <View style={styles.choiceGroupHeading}>
                           <Text style={styles.cartGroupTitle}>{group.name}</Text>
@@ -1307,8 +1312,8 @@ function CustomerApp() {
                             {mandatory?"Bắt buộc":"Tùy chọn"}
                           </Text>
                         </View>
-                        {group.options.filter(option=>option.isAvailable
-                          ||cartModifierCount(line.selection,option.id)>0).map(option=>{
+                        {group.options.filter(option=>cartModifierCount(line.selection,option.id)>0
+                          ||(expanded&&option.isAvailable)).map(option=>{
                           const count=cartModifierCount(line.selection,option.id);
                           const atMax=groupCount>=group.maxSelect;
                           const wouldSwap=group.maxSelect===1&&atMax&&count===0;
@@ -1344,6 +1349,16 @@ function CustomerApp() {
                             </View>
                           </View>;
                         })}
+                        {(hasOtherOptions||expanded)&&
+                          <Pressable accessibilityRole="button"
+                            accessibilityLabel={(expanded?"Thu gọn":"Thêm hoặc đổi")+" topping "+group.name}
+                            style={styles.cartToppingManage}
+                            onPress={()=>setExpandedCartGroups(old=>expanded
+                              ?old.filter(id=>id!==cartGroupKey):[...old,cartGroupKey])}>
+                            <Text style={styles.cartToppingManageText}>
+                              {expanded?"Thu gọn lựa chọn":"＋ Thêm / đổi topping"}
+                            </Text>
+                          </Pressable>}
                         {groupCount<group.minSelect&&<Text style={styles.warning}>
                           Cần tối thiểu {group.minSelect} topping để đặt món.
                         </Text>}
@@ -1935,6 +1950,9 @@ const styles = StyleSheet.create({
   cartToppingImage: { width:34,height:34,borderRadius:7 },
   cartToppingPlaceholder: { width:34,height:34,borderRadius:7,backgroundColor:"#F2F4F7" },
   cartToppingName: { fontWeight:"700",fontSize:12,color:"#20252B" },
+  cartToppingManage: { minHeight:44,alignSelf:"flex-start",paddingHorizontal:6,
+    justifyContent:"center" },
+  cartToppingManageText: { color:"#B3262D",fontWeight:"800",fontSize:12 },
   cartLineFooter: { flexDirection:"row",alignItems:"center",justifyContent:"space-between",
     gap:10,borderTopWidth:1,borderTopColor:"#EAECF0",paddingTop:9 },
 
