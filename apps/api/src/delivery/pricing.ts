@@ -139,10 +139,11 @@ export function priceCart(
       }
       const knownCombo = new Set<string>();
       for (const group of product.comboGroups) {
+        const modifierOptions = group.modifierOptions ?? [];
         for (const option of group.options) knownCombo.add(option.id);
-        for (const option of group.modifierOptions) knownCombo.add(option.id);
+        for (const option of modifierOptions) knownCombo.add(option.id);
         const chosenProducts = group.options.filter(option => selectedCombo.has(option.id));
-        const chosenToppings = group.modifierOptions.filter(option => selectedCombo.has(option.id));
+        const chosenToppings = modifierOptions.filter(option => selectedCombo.has(option.id));
         const count = [...chosenProducts, ...chosenToppings]
           .reduce((sum, option) => sum + (selectedCombo.get(option.id) ?? 0), 0);
         if (group.minSelect < 0 || group.maxSelect < group.minSelect || group.maxSelect > 30
