@@ -165,6 +165,58 @@ export class ModifierLibraryService {
     }
   }
 
+  /**
+   * Idempotent single-toggle API: adding one group never overwrites another
+   * product's existing assignments, and repeated taps cannot create duplicates.
+   * The caller receives the committed membership to verify against a fresh GET.
+   */
+  async setProductGroupMembership(
+    authorization: string | undefined, branchId: string,
+    productId: string, groupId: string, attached: boolean,
+  ) {
+    await this.access(authorization, branchId);
+    if (typeof attached !== "boolean") throw new BadRequestException("INVALID_GROUP_MEMBERSHIP");
+    try {
+      return await this.prisma.database.$transaction(async tx => {
+        const product = await tx.product.findFirst({
+          where: { id: productId, category: { branchId } }, select: { id: true },
+        });
+        if (!product) throw new NotFoundException("PRODUCT_NOT_FOUND");
+        const group = await tx.modifierGroup.findFirst({
+          where: { id: groupId, branchId }, select: { id: true, sortOrder: true },
+        });
+        if (!group) throw new NotFoundException("GROUP_NOT_FOUND");
+        const key = { productId_groupId: { productId, groupId } };
+        if (attached) {
+          await tx.productModifierGroupAssignment.upsert({
+            where: key, create: { productId, groupId, sortOrder: group.sortOrder },
+            update: {},
+          });
+        } else {
+          await tx.productModifierGroupAssignment.deleteMany({
+            where: { productId, groupId },
+          });
+        }
+        const persisted = await tx.productModifierGroupAssignment.findUnique({
+          where: key, select: { productId: true },
+        });
+        if (Boolean(persisted) !== attached) {
+          throw new ConflictException("GROUP_MEMBERSHIP_NOT_PERSISTED");
+        }
+        await tx.branch.update({
+          where: { id: branchId }, data: { catalogRevision: { increment: 1 } },
+        });
+        return { productId, groupId, attached: Boolean(persisted) };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError
+        && ["P2002", "P2034"].includes(error.code)) {
+        throw new ConflictException("GROUP_MEMBERSHIP_RETRY");
+      }
+      throw error;
+    }
+  }
+
   async attach(auth: string | undefined, branchId: string, productId: string,
     groupIds: string[], revision: number) {
     await this.access(auth, branchId);
