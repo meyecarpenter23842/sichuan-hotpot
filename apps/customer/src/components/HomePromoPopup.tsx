@@ -137,7 +137,7 @@ export function HomePromoPopup({branchId,payload,active}:{
       <View style={[s.card,{width:frameWidth}]} testID="home-promo-card">
         <View style={[s.frame,{width:frameWidth,height:frameHeight}]} {...pan.panHandlers}>
           {previous&&<View style={StyleSheet.absoluteFill}>{image(previous)}</View>}
-          {current&&<Animated.View style={[StyleSheet.absoluteFill,incoming]}>{image(current)}</Animated.View>}
+          {current&&<Animated.View testID={"home-promo-slide-"+index} style={[StyleSheet.absoluteFill,incoming]}>{image(current)}</Animated.View>}
           <Pressable accessibilityRole="button" accessibilityLabel="Đóng popup"
             hitSlop={6} style={s.close} onPress={()=>setVisible(false)}>
             <Text style={s.closeText}>×</Text>
