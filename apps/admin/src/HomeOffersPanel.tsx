@@ -51,6 +51,8 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [unsaved,setUnsaved]=useState(false);
+ const [discardArmed,setDiscardArmed]=useState(false);
  const root="/admin/branches/"+branchId+"/offers";
  const load=useCallback(async()=>{
    const list=await request<HomeOffer[]>(root,token);
@@ -71,7 +73,8 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
    return ()=>{active=false;};
  },[root,token]);
  const change=(values:Partial<Editor>)=>{
-   setEditor(old=>old?{...old,...values}:old);onDirtyChange(true);
+   setEditor(old=>old?{...old,...values}:old);setUnsaved(true);
+   setDiscardArmed(false);onDirtyChange(true);
  };
  const run=async(action:()=>Promise<void>,success:string)=>{
    if(busy)return;
@@ -98,7 +101,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
          ...data,sortOrder:offers.length,enabled:false});
        setEditor(fromOffer(created));
      }
-     onDirtyChange(false);
+     setUnsaved(false);onDirtyChange(false);
    },"Đã lưu nội dung ưu đãi lên máy chủ. Thêm ảnh và bật hiển thị khi sẵn sàng.");
  };
  const toggle=(offer:HomeOffer,value:boolean)=>void run(async()=>{
@@ -116,9 +119,8 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
  const deleteOffer=(offer:HomeOffer)=>void run(async()=>{
    // Two-tap confirmation avoids a browser-native confirm/modal over the settings modal.
    if(editor?.id!==offer.id)throw Error("Chọn Sửa ưu đãi cần xóa trước.");
-   if(!deleteArmed){setDeleteArmed(true);throw Error("Chạm Xóa một lần nữa để xác nhận.");}
    await request(root+"/"+offer.id,token,"DELETE");
-   setEditor(null);setDeleteArmed(false);onDirtyChange(false);
+   setEditor(null);setDeleteArmed(false);setUnsaved(false);onDirtyChange(false);
  },"Đã xóa ưu đãi, ảnh cũ được đưa vào hàng chờ dọn an toàn.");
  const [deleteArmed,setDeleteArmed]=useState(false);
  async function doUpload(id:string,blob:Blob|{uri:string;size:number;mime:string},mime:string){
@@ -174,6 +176,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
    {!editor?<View style={s.list}>
      <Action label="＋ Tạo ưu đãi" disabled={busy} onPress={()=>{
        setEditor(empty());setError("");setNotice("");setDeleteArmed(false);
+       setDiscardArmed(false);setUnsaved(false);
      }}/>
      {!loading&&offers.length===0&&<Text style={s.hint}>
        Chưa có chương trình nào. Tạo ưu đãi đầu tiên để xuất hiện trên trang chủ khách.</Text>}
@@ -184,7 +187,8 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
          <Text style={s.hint} numberOfLines={1}>{offer.enabled?"Đang bật":"Bản nháp / đã tắt"}</Text>
          <View style={s.tools}>
            <Pressable accessibilityRole="button" accessibilityLabel={"Sửa "+offer.title}
-             style={s.tool} onPress={()=>{setEditor(fromOffer(offer));setDeleteArmed(false);setError("");}}>
+             style={s.tool} onPress={()=>{setEditor(fromOffer(offer));setDeleteArmed(false);
+               setDiscardArmed(false);setUnsaved(false);setError("");}}>
              <Text style={s.link}>Sửa / ảnh</Text>
            </Pressable>
            <Pressable accessibilityRole="button" accessibilityLabel={"Đưa "+offer.title+" lên"}
@@ -203,7 +207,10 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
      </View>)}
    </View>:<View style={s.edit}>
      <Pressable accessibilityRole="button" style={s.back} onPress={()=>{
-       setEditor(null);setDeleteArmed(false);onDirtyChange(false);}}>
+       if(unsaved&&!discardArmed){setDiscardArmed(true);
+         setNotice("Có thay đổi chưa lưu. Chạm Quay lại lần nữa để bỏ.");return;}
+       setEditor(null);setDeleteArmed(false);setDiscardArmed(false);
+       setUnsaved(false);onDirtyChange(false);}}>
        <Text style={s.link}>← Danh sách ưu đãi</Text>
      </Pressable>
      <Field label="Tên chương trình" value={editor.title}
@@ -232,12 +239,21 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
          disabled={busy} onPress={()=>void run(()=>request(root+"/"+editor.id+"/image",
            token,"DELETE").then(()=>undefined),"Đã gỡ ảnh.")}/>}
        <Text style={s.hint}>Ảnh tối đa 2MB; ưu đãi chỉ công khai sau khi bật hiển thị.</Text>
+       <View style={s.offerPreview}>
+         <Text style={s.hint}>XEM TRƯỚC NỘI DUNG POPUP</Text>
+         <Text style={s.name}>{editor.title||"Tên chương trình"}</Text>
+         <Text style={s.link}>{editor.summary||"Mô tả ngắn"}</Text>
+         <Text style={s.hint}>{editor.body||"Nội dung chi tiết ưu đãi"}</Text>
+       </View>
        <StatusSwitch label="Hiển thị ưu đãi" value={current?.enabled??false} busy={busy}
          disabled={!current?.imageKey} onValueChange={value=>{
            if(current)toggle(current,value);
          }}/>
        {current&&<Action dangerous label={deleteArmed?"Xác nhận xóa ưu đãi":"Xóa ưu đãi"}
-         disabled={busy} onPress={()=>deleteOffer(current)}/>}
+         disabled={busy} onPress={()=>{
+           if(!deleteArmed){setDeleteArmed(true);setNotice("Chạm Xác nhận xóa để xóa ưu đãi.");return;}
+           deleteOffer(current);
+         }}/>}
      </View>}
    </View>}
  </View>;
@@ -251,4 +267,5 @@ const s=StyleSheet.create({
  edit:{gap:12},back:{minHeight:44,justifyContent:"center"},check:{minHeight:48,
    justifyContent:"center"},media:{gap:11,paddingTop:13,borderTopWidth:1,borderColor:c.line},
  preview:{width:"100%",height:164,borderRadius:12,backgroundColor:c.pale},
+ offerPreview:{gap:9,padding:13,borderRadius:11,borderWidth:1,borderColor:c.line,backgroundColor:c.white},
 });
