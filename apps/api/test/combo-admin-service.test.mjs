@@ -31,7 +31,9 @@ function fixture(children = [
         return null;
       },
       findMany: async input => {
-        writes.push(["children", input]); return children;
+        writes.push(["children", input]);
+        const ids = new Set(input.where?.id?.in ?? []);
+        return children.filter(child => ids.has(child.id));
       },
     },
     productVariant: {
