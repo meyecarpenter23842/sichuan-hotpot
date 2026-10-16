@@ -26,3 +26,12 @@ test("cart and order history expose selected combo composition instead of a myst
   assert.match(orders, /item\.comboItems\.map/);
   assert.match(orders, /component\.groupName/);
 });
+
+test("customer combo composition exposes configured size and blocks unavailable size", () => {
+  assert.match(api, /variant: Variant \| null/);
+  assert.match(app, /fixed\.variant \? " · " \+ fixed\.variant\.name/);
+  assert.match(app, /option\.variant \? " · " \+ option\.variant\.name/);
+  assert.match(combo, /item\.variant != null && !item\.variant\.isAvailable/);
+  assert.match(combo, /option\.variant != null && !option\.variant\.isAvailable/);
+  assert.match(orders, /component\.variantName/);
+});
