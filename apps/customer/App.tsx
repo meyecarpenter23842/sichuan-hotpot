@@ -224,6 +224,7 @@ function CustomerApp() {
 
   const catalogueRequest = useRef(0);
   const currentBranch = useRef("");
+  const loadedOffersForBranch=useRef("");
 
   // Catalog is an independently changing server resource. Recheck branch
   // visibility and products, including after the Admin toggles availability.
@@ -245,6 +246,7 @@ function CustomerApp() {
       if (!activeBranch) {
         setMenu(null);
         setOffers([]);
+        loadedOffersForBranch.current="";
         setOfferError("");
         setBranchId("");
         setCategoryId("");
@@ -261,7 +263,13 @@ function CustomerApp() {
       setMenu(response);
       setCatalogError("");
       // Editorial promos load independently: failure may not hide menu/checkout.
-      setOfferLoading(true);setSelectedOffer(null);setOffers([]);
+      setOfferLoading(true);
+      if(loadedOffersForBranch.current!==activeBranch){
+        // Do not flicker the carousel during 30s/foreground refresh.
+        // Only reset it when the customer actually switches branches.
+        loadedOffersForBranch.current=activeBranch;
+        setSelectedOffer(null);setOffers([]);
+      }
       void apiRequest<HomeOffer[]>("/catalog/branches/"+
         encodeURIComponent(activeBranch)+"/offers").then(list=>{
         if(requestId!==catalogueRequest.current)return;
@@ -284,7 +292,8 @@ function CustomerApp() {
       setCatalogError(error instanceof Error ? error.message : apiMissingMessage);
       // Fail closed, never imply that stale stock/prices are currently for sale.
       setMenu(null);
-      setOffers([]);setOfferError("");setSelectedOffer(null);
+      setOffers([]);loadedOffersForBranch.current="";
+      setOfferError("");setSelectedOffer(null);
     } finally {
       if (requestId === catalogueRequest.current) setCatalogLoading(false);
     }
