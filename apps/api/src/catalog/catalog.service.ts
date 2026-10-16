@@ -94,17 +94,21 @@ export class CatalogService {
         const combined = new Map(product.modifierGroups.filter(g => g.branchId == null)
           .map(g => [g.id, g] as const));
         for (const a of product.modifierAssignments ?? []) combined.set(a.group.id, a.group);
-        const comboConfigured = product.comboFixedItems.length > 0 || product.comboGroups.length > 0;
+        const comboFixedItems = product.comboFixedItems ?? [];
+        const comboGroups = product.comboGroups ?? [];
+        const comboConfigured = comboFixedItems.length > 0 || comboGroups.length > 0;
         const comboSellable = product.kind !== "COMBO" || (
           comboConfigured
-          && product.comboFixedItems.every(item =>
+          && comboFixedItems.every(item =>
             item.childProduct.kind === "STANDARD" && item.childProduct.isAvailable)
-          && product.comboGroups.every(group =>
-            group.minSelect === 0 || group.options.some(option =>
-              option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable))
+          && comboGroups.every(group =>
+            group.maxSelect >= group.minSelect
+            && (group.minSelect === 0 || group.options.some(option =>
+              option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable)))
         );
         return { ...product,
-          isAvailable: product.isAvailable && comboSellable,
+          comboFixedItems, comboGroups,
+          isAvailable: product.isAvailable !== false && comboSellable,
           modifierGroups: [...combined.values()].filter(g => g.isAvailable !== false),
           modifierAssignments: undefined };
       }),
