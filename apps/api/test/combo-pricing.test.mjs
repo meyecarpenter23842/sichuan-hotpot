@@ -12,6 +12,8 @@ const choiceId = randomUUID();
 const optionId = randomUUID();
 const fixedVariantId = randomUUID();
 const choiceVariantId = randomUUID();
+const toppingChoiceId = randomUUID();
+const modifierOptionId = randomUUID();
 
 function combo(overrides = {}) {
   return {
@@ -110,4 +112,59 @@ test("combo rejects configured child size that is unavailable or belongs to anot
       }],
     }],
   })]), error => error.getStatus?.() === 422);
+});
+
+
+test("shared topping combo choice is priced authoritatively and snapshotted by modifier ID", () => {
+  const toppingCombo = combo({
+    comboGroups: [{
+      id: randomUUID(), name: "Chọn topping", minSelect: 1, maxSelect: 1, sortOrder: 1,
+      options: [],
+      modifierOptions: [{
+        id: toppingChoiceId, quantity: 2, priceDeltaVnd: 7000, sortOrder: 0,
+        modifierOption: {
+          id: modifierOptionId, name: "Bò cuộn", isAvailable: true,
+          group: { isAvailable: true },
+        },
+      }],
+    }],
+  });
+  const priced = priceCart([line([toppingChoiceId])], [toppingCombo]);
+  assert.equal(priced.subtotalVnd, 214000);
+  assert.equal(priced.lines[0].unitPriceVnd, 107000);
+  assert.deepEqual(priced.lines[0].comboItems.map(item => ({
+    kind: item.kind, productId: item.productId, modifierOptionId: item.modifierOptionId,
+    productName: item.productName, quantity: item.quantity, priceDeltaVnd: item.priceDeltaVnd,
+  })), [
+    {
+      kind: "FIXED", productId: fixedId, modifierOptionId: null,
+      productName: "Mì tươi", quantity: 1, priceDeltaVnd: 0,
+    },
+    {
+      kind: "CHOICE", productId: null, modifierOptionId,
+      productName: "Bò cuộn", quantity: 2, priceDeltaVnd: 7000,
+    },
+  ]);
+});
+
+test("shared topping combo choice is rejected when topping or source group is unavailable", () => {
+  const make = (optionAvailable, groupAvailable) => combo({
+    comboGroups: [{
+      id: randomUUID(), name: "Chọn topping", minSelect: 1, maxSelect: 1, sortOrder: 1,
+      options: [],
+      modifierOptions: [{
+        id: toppingChoiceId, quantity: 1, priceDeltaVnd: 0, sortOrder: 0,
+        modifierOption: {
+          id: modifierOptionId, name: "Bò cuộn", isAvailable: optionAvailable,
+          group: { isAvailable: groupAvailable },
+        },
+      }],
+    }],
+  });
+  assert.throws(() => priceCart([line([toppingChoiceId])], [make(false, true)]),
+    error => error.getStatus?.() === 422);
+  assert.throws(() => priceCart([line([toppingChoiceId])], [make(true, false)]),
+    error => error.getStatus?.() === 422);
+  assert.throws(() => priceCart([line([randomUUID()])], [make(true, true)]),
+    error => error.getStatus?.() === 422);
 });
