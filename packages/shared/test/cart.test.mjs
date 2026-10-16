@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addCartLine, cartItemCount, cartLineKey, checkoutCartItems,
-  normalizeCartSelection, setCartQuantity, cartModifierCount,
+  normalizeCartSelection, setCartQuantity, cartModifierCount, cartComboOptionCount,
   setCartModifierQuantity, replaceCartLineSelection, CartInputError,
 } from "../dist/cart.js";
 
@@ -69,4 +69,21 @@ test("checkout payload contains IDs and quantities, never frontend prices", () =
 test("tampered persisted cart key is rejected before checkout", () => {
   const cart = addCartLine([], base, 1);
   assert.throws(() => checkoutCartItems([{ ...cart[0], key: "wrong" }]), /CART_KEY_MISMATCH/);
+});
+
+
+test("combo choices are part of cart identity and checkout sends only IDs", () => {
+  const comboA = { ...base, comboOptionIds: ["drink-a", "topping-a"] };
+  const comboB = { ...base, comboOptionIds: ["topping-a", "drink-a"] };
+  const comboC = { ...base, comboOptionIds: ["drink-b", "topping-a"] };
+  assert.equal(cartLineKey(comboA), cartLineKey(comboB));
+  assert.notEqual(cartLineKey(comboA), cartLineKey(comboC));
+  assert.equal(cartComboOptionCount(comboA, "drink-a"), 1);
+  const cart = addCartLine([], comboA, 2);
+  const payload = checkoutCartItems(cart)[0];
+  assert.deepEqual(payload.comboOptionIds, ["drink-a", "topping-a"]);
+  assert.equal(JSON.stringify(payload).includes("price"), false);
+  assert.throws(() => addCartLine([], {
+    ...base, comboOptionIds: Array(31).fill("x"),
+  }), CartInputError);
 });
