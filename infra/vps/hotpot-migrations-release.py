@@ -255,6 +255,7 @@ def isolated_restore(cipher):
                 restore = subprocess.Popen([
                     "/usr/bin/pg_restore", "--exit-on-error",
                     "--clean", "--if-exists", "--no-owner", "--no-acl",
+                    "--dbname", name,
                 ], env=database_process_env(name),
                    stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
                    stderr=restore_errors)
