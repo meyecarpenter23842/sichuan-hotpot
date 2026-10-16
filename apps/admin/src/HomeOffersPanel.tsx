@@ -102,7 +102,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
        setEditor(fromOffer(saved));
      }else{
        const created=await request<HomeOffer>(root,token,"POST",{
-         ...data,sortOrder:offers.length,enabled:false});
+         ...data,sortOrder:offers.length});
        setEditor(fromOffer(created));
      }
      setUnsaved(false);onDirtyChange(false);
