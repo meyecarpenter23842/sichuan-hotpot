@@ -53,6 +53,7 @@ export class OrdersService {
       variantId: item.variantId,
       modifierIds: [...item.modifierIds].sort(),
       quantity: item.quantity,
+      pricingMode: item.pricingMode ?? "LEGACY",
     }));
     normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const fingerprint = JSON.stringify({
