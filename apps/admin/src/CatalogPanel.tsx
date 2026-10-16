@@ -663,7 +663,11 @@ export function CatalogPanel({ catalog, token, reload }: {
                 <Pill label="Món thường" active={editor.values.productKind === "STANDARD"}
                   onPress={() => change("productKind", "STANDARD")} />
                 <Pill label="Combo" active={editor.values.productKind === "COMBO"}
-                  onPress={() => change("productKind", "COMBO")} />
+                  onPress={() => setEditor(current => !current ? current : ({
+                    ...current, values: {
+                      ...current.values, productKind: "COMBO", isAvailable: false,
+                    },
+                  }))} />
               </View>
               {editor.values.productKind === "COMBO" && !editor.id &&
                 <Notice text="Combo mới sẽ lưu ở trạng thái tạm hết. Sau khi lưu, mở chi tiết món → Thiết lập combo rồi bật bán." />}
