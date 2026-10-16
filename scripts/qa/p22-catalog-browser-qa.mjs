@@ -46,6 +46,7 @@ try {
   await db.modifierOption.createMany({ data: [
     { groupId: spice.id, name: "Cay vừa", priceDeltaVnd: 0 },
     { groupId: spice.id, name: "Cay nhiều", priceDeltaVnd: 0 },
+    { groupId: spice.id, name: "Rất cay", priceDeltaVnd: 0 },
   ] });
   const extra = await db.modifierGroup.create({ data: {
     productId: product.id, name: "Topping", minSelect: 0, maxSelect: 2, sortOrder: 2,
