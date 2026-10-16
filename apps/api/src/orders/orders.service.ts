@@ -206,6 +206,12 @@ export class OrdersService {
                   modifiers: { create: line.modifiers.map(modifier => ({
                     optionId: modifier.optionId, name: modifier.name, priceVnd: modifier.priceVnd,
                   })) },
+                  comboItems: { create: line.comboItems.map(component => ({
+                    productId: component.productId, kind: component.kind,
+                    groupName: component.groupName, productName: component.productName,
+                    quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
+                    sortOrder: component.sortOrder,
+                  })) },
                 })),
               },
               statusHistory: { create: { toStatus: "PENDING", actorId: customerId } },
@@ -282,6 +288,13 @@ export class OrdersService {
           productId: true, productName: true, variantName: true, quantity: true,
           unitPriceVnd: true, lineTotalVnd: true,
           modifiers: { select: { name: true, priceVnd: true } },
+          comboItems: {
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+            select: {
+              productId: true, kind: true, groupName: true, productName: true,
+              quantity: true, priceDeltaVnd: true,
+            },
+          },
         } },
         statusHistory: { orderBy: { createdAt: "asc" },
           select: { fromStatus: true, toStatus: true, createdAt: true, reason: true } },
