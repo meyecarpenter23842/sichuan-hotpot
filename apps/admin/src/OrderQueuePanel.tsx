@@ -249,25 +249,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
 
   const beginEdit = async () => {
     if (!selected || !manager || !["PENDING", "CONFIRMED"].includes(selected.status)) return;
-    for (const line of editLines) {
-      const product = productFor(line);
-      if (!product) {
-        setEditError("Có món không còn trong thực đơn. Hãy tải lại đơn."); return;
-      }
-      if (product.kind === "COMBO") {
-        for (const group of product.comboGroups) {
-          const ids = new Set(group.options.map(option => option.id));
-          const count = line.comboOptionIds.filter(id => ids.has(id)).length;
-          if (count < group.minSelect || count > group.maxSelect) {
-            setEditError("Combo “" + product.name + "” · nhóm “" + group.name
-              + "” cần chọn " + group.minSelect + "–" + group.maxSelect + " món.");
-            return;
-          }
-        }
-      } else if (line.comboOptionIds.length) {
-        setEditError("Món thường không thể chứa lựa chọn combo."); return;
-      }
-    }
     setEditBusy(true); setEditError("");
     try {
       const catalog = await request<AdminCatalog>(
@@ -392,6 +373,25 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     }
     if (editLines.length === 0) {
       setEditError("Đơn phải còn ít nhất một món. Nếu không phục vụ được, hãy hủy đơn."); return;
+    }
+    for (const line of editLines) {
+      const product = productFor(line);
+      if (!product) {
+        setEditError("Có món không còn trong thực đơn. Hãy tải lại đơn."); return;
+      }
+      if (product.kind === "COMBO") {
+        for (const group of product.comboGroups) {
+          const ids = new Set(group.options.map(option => option.id));
+          const count = line.comboOptionIds.filter(id => ids.has(id)).length;
+          if (count < group.minSelect || count > group.maxSelect) {
+            setEditError("Combo “" + product.name + "” · nhóm “" + group.name
+              + "” cần chọn " + group.minSelect + "–" + group.maxSelect + " món.");
+            return;
+          }
+        }
+      } else if (line.comboOptionIds.length) {
+        setEditError("Món thường không thể chứa lựa chọn combo."); return;
+      }
     }
     setEditBusy(true); setEditError("");
     try {
