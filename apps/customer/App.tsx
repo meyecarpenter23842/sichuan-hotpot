@@ -145,25 +145,6 @@ function ProductArtwork({ product, large = false }: { product: Product; large?: 
     accessibilityLabel={"Ảnh món " + product.name} onError={() => setBroken(true)} />;
 }
 
-// Use only the photography inside the approved mockup; do not display
-// mockup discounts or prices, which are not production catalogue facts.
-function HomeLifestylePhoto({ kind, width, height }: {
-  kind: "hotpot" | "milkTea"; width: number; height: number;
-}) {
-  const x = kind === "hotpot" ? 315 : 690;
-  const y = 1312;
-  const cropWidth = kind === "hotpot" ? 165 : 180;
-  const scale = width / cropWidth;
-  return (
-    <View style={{ width, height, overflow: "hidden" }}>
-      <Image source={require("./assets/home-reference.png")} resizeMode="stretch"
-        accessibilityLabel={kind === "hotpot" ? "Ảnh lẩu Tứ Xuyên" : "Ảnh trà sữa"}
-        style={{ position: "absolute", width: 941 * scale, height: 1672 * scale,
-          left: -x * scale, top: -y * scale }} />
-    </View>
-  );
-}
-
 /** Optional toppings are purchased independently from the dish counter.
  * Required preparation choices apply to every dish portion. */
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
@@ -280,7 +261,7 @@ function CustomerApp() {
       setMenu(response);
       setCatalogError("");
       // Editorial promos load independently: failure may not hide menu/checkout.
-      setOfferLoading(true);setSelectedOffer(null);
+      setOfferLoading(true);setSelectedOffer(null);setOffers([]);
       void apiRequest<HomeOffer[]>("/catalog/branches/"+
         encodeURIComponent(activeBranch)+"/offers").then(list=>{
         if(requestId!==catalogueRequest.current)return;
@@ -1083,7 +1064,7 @@ function CustomerApp() {
                 contentContainerStyle={styles.homeOfferGrid} testID="home-live-offers">
                 {offers.map(offer=><Pressable key={offer.id} accessibilityRole="button"
                   accessibilityLabel={"Xem ưu đãi "+offer.title}
-                  style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58))}]}
+                  style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58)),flex:0}]}
                   onPress={()=>setSelectedOffer(offer)}>
                   {safeProductImageUrl(offer.imageKey)&&<Image resizeMode="cover"
                     source={{uri:safeProductImageUrl(offer.imageKey)!}}
