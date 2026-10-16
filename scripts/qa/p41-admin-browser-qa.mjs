@@ -203,11 +203,9 @@ try {
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
   const optionSwitch = page.getByRole("switch", { name: "Bán topping Cay vừa" });
-  const rejected = page.waitForResponse(response => response.url().includes(
-    "/library/options/" + savedOption.id) && response.request().method() === "PATCH");
-  await optionSwitch.click();
-  assert.equal((await rejected).status(), 409,
-    "Disabling the only required topping must be rejected by the backend");
+  assert.equal(await optionSwitch.isDisabled(), true,
+    "UI must disable the only required topping instead of sending doomed 409 requests");
+  await page.getByText("Bắt buộc", {exact:true}).waitFor();
   assert.equal((await db.modifierOption.findUniqueOrThrow({ where: {
     id: savedOption.id,
   } })).isAvailable, true, "Required topping cannot be disabled");
