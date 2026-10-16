@@ -137,6 +137,10 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
                 provinceCode: detail.provinceCodeSnapshot,
                 wardCode: detail.wardCodeSnapshot,
               }) : ""}</Text>
+              {!!detail.customerNote && <View style={styles.noteBox}>
+                <Text style={styles.noteTitle}>Ghi chú cho cửa hàng</Text>
+                <Text style={styles.text}>{detail.customerNote}</Text>
+              </View>}
               {detail.items.map((item, index) => (
                 <View key={index} style={styles.line}>
                   <View style={styles.fill}>
@@ -147,6 +151,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
                         <Text key={componentIndex} style={styles.muted}>
                           {component.kind === "FIXED" ? "• " : "• " + (component.groupName ? component.groupName + ": " : "")}
                           {component.quantity} × {component.productName}
+                          {component.variantName ? " · " + component.variantName : ""}
                           {component.priceDeltaVnd > 0 ? " · +" + vnd(component.priceDeltaVnd) : ""}
                         </Text>)}
                     </View>}
@@ -219,6 +224,9 @@ const styles = StyleSheet.create({
   line: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
   fill: { flex: 1 },
   comboSnapshot: { gap: 2, paddingTop: 3 },
+  noteBox: { gap: 4, padding: 10, borderRadius: 9, backgroundColor: "#FFF8EC",
+    borderWidth: 1, borderColor: "#F1E2C7" },
+  noteTitle: { color: palette.red, fontSize: typeScale.small, fontWeight: "800" },
   text: { fontSize: typeScale.body, color: palette.text, fontWeight: "600", lineHeight: 19 },
   status: { color: palette.red, fontSize: typeScale.small, marginTop: 4, fontWeight: "700" },
   price: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
