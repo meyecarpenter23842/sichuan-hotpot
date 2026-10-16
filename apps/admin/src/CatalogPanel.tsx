@@ -329,6 +329,7 @@ export function CatalogPanel({ catalog, token, reload }: {
   async function uploadCatalogMedia(
     kind:"categories"|"groups"|"options", itemId:string, blob:Blob, contentType:string,
     onResult?: (message:string, error:boolean)=>void,
+    onStart?:()=>void,
   ) {
     if (busyRef.current) return;
     busyRef.current=true;setBusy(true);setError("");setNotice("");
@@ -337,6 +338,7 @@ export function CatalogPanel({ catalog, token, reload }: {
         blob.size<1 || blob.size>2097152) {
         throw Error("Ảnh phải là JPEG/PNG/WebP và sau tối ưu không quá 2MB.");
       }
+      onStart?.();
       const endpoint=root+"/media/"+kind+"/"+itemId;
       const ticket=await request<{key:string;uploadUrl:string;contentType:string}>(
         endpoint+"/ticket",token,"POST",{contentType,byteSize:blob.size});
@@ -353,7 +355,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     }finally{busyRef.current=false;setBusy(false);}
   }
   function pickCatalogMedia(kind:"categories"|"groups"|"options",itemId:string,
-    onResult?: (message:string,error:boolean)=>void) {
+    onResult?: (message:string,error:boolean)=>void, onStart?:()=>void) {
     if(busyRef.current)return;
     if(Platform.OS!=="web"){
       // Native Android gallery selector. No arbitrary path/key can reach the backend.
@@ -373,6 +375,7 @@ export function CatalogPanel({ catalog, token, reload }: {
           setError("Ảnh trên thiết bị phải nhỏ hơn 2MB. Hãy chọn ảnh khác.");return;
         }
         if(busyRef.current)return;
+        onStart?.();
         busyRef.current=true;setBusy(true);setError("");setNotice("");
         try{
           const endpoint=root+"/media/"+kind+"/"+itemId;
@@ -396,7 +399,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     input.onchange=()=>{
       const file=input.files?.[0];if(!file)return;
       void prepareProductImage(file)
-        .then(prepared=>uploadCatalogMedia(kind,itemId,prepared.blob,prepared.contentType,onResult))
+        .then(prepared=>uploadCatalogMedia(kind,itemId,prepared.blob,prepared.contentType,onResult,onStart))
         .catch(e=>{const message=e instanceof Error?e.message:"Không thể tối ưu ảnh.";
           setError(message);onResult?.(message,true);});
     };
