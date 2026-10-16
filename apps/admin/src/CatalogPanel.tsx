@@ -20,11 +20,13 @@ type Kind = "category" | "product" | "variant" | "group" | "option";
 type Values = {
   name: string; categoryId: string; price: string; sortOrder: string;
   minSelect: string; maxSelect: string; isAvailable: boolean;
+  description: string; ingredients: string; productNotes: string; allergenNotice: string;
 };
 type Editor = { kind: Kind; id?: string; parentId?: string; values: Values };
 const empty: Values = {
   name: "", categoryId: "", price: "0", sortOrder: "0",
   minSelect: "0", maxSelect: "1", isAvailable: true,
+  description: "", ingredients: "", productNotes: "", allergenNotice: "",
 };
 const title: Record<Kind, string> = {
   category: "danh mục", product: "món", variant: "khẩu phần",
@@ -111,6 +113,10 @@ export function CatalogPanel({ catalog, token, reload }: {
         minSelect: String(obj?.minSelect ?? 0),
         maxSelect: String(obj?.maxSelect ?? 1),
         isAvailable: obj?.isAvailable ?? true,
+        description: obj?.description ?? "",
+        ingredients: obj?.ingredients ?? "",
+        productNotes: obj?.productNotes ?? "",
+        allergenNotice: obj?.allergenNotice ?? "",
       },
     });
     setError("");
@@ -151,8 +157,14 @@ export function CatalogPanel({ catalog, token, reload }: {
           break;
         case "product":
           if (!v.categoryId) throw Error("Vui lòng chọn danh mục.");
-          data = { categoryId: v.categoryId, name, priceVnd: int(v.price, 100000000),
-            isAvailable: v.isAvailable };
+          data = {
+            categoryId: v.categoryId, name, priceVnd: int(v.price, 100000000),
+            description: v.description.trim() || null,
+            ingredients: v.ingredients.trim() || null,
+            productNotes: v.productNotes.trim() || null,
+            allergenNotice: v.allergenNotice.trim() || null,
+            isAvailable: v.isAvailable,
+          };
           path = id ? "/products/" + id : "/products";
           break;
         case "variant":
@@ -616,6 +628,39 @@ export function CatalogPanel({ catalog, token, reload }: {
                     onPress={() => change("categoryId", cat.id)} />)}
               </View>
             </>}
+            {editor.kind === "product" && <View style={st.contentFields}>
+              <Text style={st.contentHeading}>Nội dung khách sẽ thấy</Text>
+              <Field label="Mô tả món" multiline maxLength={1200}
+                value={editor.values.description} onChangeText={text => change("description", text)}
+                placeholder="Đặc điểm, hương vị, cách dùng..."
+                helper={editor.values.description.length + "/1200 · Có thể để trống"} />
+              <Field label="Thành phần" multiline maxLength={1200}
+                value={editor.values.ingredients} onChangeText={text => change("ingredients", text)}
+                placeholder="Ví dụ: bò, nấm, cải thìa..."
+                helper={editor.values.ingredients.length + "/1200 · Khách mở bằng “Xem thành phần”"} />
+              <Field label="Lưu ý" multiline maxLength={800}
+                value={editor.values.productNotes} onChangeText={text => change("productNotes", text)}
+                placeholder="Lưu ý phục vụ hoặc sử dụng món..."
+                helper={editor.values.productNotes.length + "/800 · Đây là nội dung hiển thị khách"} />
+              <Field label="Thông tin dị ứng" multiline maxLength={800}
+                value={editor.values.allergenNotice} onChangeText={text => change("allergenNotice", text)}
+                placeholder="Chỉ nhập thông tin cửa hàng đã xác nhận"
+                helper={editor.values.allergenNotice.length + "/800 · Không dùng để cam kết an toàn dị ứng"} />
+              {(editor.values.description.trim() || editor.values.ingredients.trim() ||
+                editor.values.productNotes.trim() || editor.values.allergenNotice.trim()) &&
+                <View style={st.contentPreview}>
+                  <Text style={st.previewLabel}>Xem trước vị trí hiển thị</Text>
+                  <Text style={st.previewName}>{editor.values.name.trim() || "Tên món"}</Text>
+                  {!!editor.values.description.trim() &&
+                    <Text style={st.previewText} numberOfLines={3}>{editor.values.description.trim()}</Text>}
+                  {!!editor.values.ingredients.trim() &&
+                    <Text style={st.previewLink}>Xem thành phần ›</Text>}
+                  {!!editor.values.productNotes.trim() &&
+                    <Text style={st.previewText} numberOfLines={2}>Lưu ý: {editor.values.productNotes.trim()}</Text>}
+                  {!!editor.values.allergenNotice.trim() &&
+                    <Text style={st.previewWarning} numberOfLines={2}>Dị ứng: {editor.values.allergenNotice.trim()}</Text>}
+                </View>}
+            </View>}
             {["product", "variant", "option"].includes(editor.kind) &&
               <Field label={editor.kind === "product" ? "Giá bán (VND)" : "Phụ thu (VND)"}
                 numeric value={editor.values.price} onChangeText={text => change("price", text)} />}
@@ -822,5 +867,13 @@ const st = StyleSheet.create({
   modalBody: { padding: 12, gap: 9, paddingBottom: 22 },
   modalActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   smallLabel: { color: c.ink, fontSize: font.note, fontWeight: "700" },
+  contentFields: { gap: 9, paddingTop: 4 },
+  contentHeading: { color: c.ink, fontSize: font.body, fontWeight: "800" },
+  contentPreview: { gap: 4, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 9 },
+  previewLabel: { color: c.secondary, fontSize: 11, fontWeight: "700" },
+  previewName: { color: c.ink, fontSize: font.body, fontWeight: "800" },
+  previewText: { color: c.secondary, fontSize: font.note, lineHeight: 18 },
+  previewLink: { color: c.red, fontSize: font.note, fontWeight: "800" },
+  previewWarning: { color: "#9B2C2C", fontSize: font.note, lineHeight: 18 },
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 });

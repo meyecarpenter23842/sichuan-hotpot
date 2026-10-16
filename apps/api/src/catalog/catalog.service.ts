@@ -37,6 +37,7 @@ export class CatalogService {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
                 id: true, name: true, priceVnd: true, isAvailable: true,
+                description: true, ingredients: true, productNotes: true, allergenNotice: true,
                 isFeatured: true, sortOrder: true, imageKey: true,
                 modifierGroups: {
                   orderBy: [{ sortOrder: "asc" }, { name: "asc" }],

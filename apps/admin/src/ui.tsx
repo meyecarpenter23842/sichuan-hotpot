@@ -15,17 +15,19 @@ export function Action({ label, onPress, secondary = false, dangerous = false, d
   </Pressable>;
 }
 export function Field({ label, value, onChangeText, placeholder, numeric = false,
-  secure = false, multiline = false, decimal = false }: {
+  secure = false, multiline = false, decimal = false, maxLength, helper }: {
   label: string; value: string; onChangeText: (value: string) => void;
   placeholder?: string; numeric?: boolean; secure?: boolean; multiline?: boolean; decimal?: boolean;
+  maxLength?: number; helper?: string;
 }) {
   return <View style={s.field}>
     <Text style={s.fieldLabel}>{label}</Text>
     <TextInput style={[s.input, multiline && s.multiline]} accessibilityLabel={label}
       value={value} placeholder={placeholder} placeholderTextColor="#98A2B3"
       onChangeText={onChangeText} keyboardType={decimal ? "decimal-pad" : numeric ? "number-pad" : "default"}
-      secureTextEntry={secure} autoCapitalize="none"
+      secureTextEntry={secure} autoCapitalize="none" maxLength={maxLength}
       multiline={multiline} />
+    {!!helper && <Text style={s.fieldHelper}>{helper}</Text>}
   </View>;
 }
 export function Pill({ label, active = false, onPress }: {
@@ -51,6 +53,7 @@ export const s = StyleSheet.create({
   actionLabelSecondary: { color: c.ink }, actionLabelDanger: { color: c.red },
   disabled: { opacity: 0.45 }, pressed: { opacity: 0.78 },
   field: { gap: 5 }, fieldLabel: { fontSize: font.note, color: c.ink, fontWeight: "700" },
+  fieldHelper: { fontSize: 11, lineHeight: 16, color: c.secondary },
   input: { minHeight: 44, borderWidth: 1, borderColor: "#D6DBE1",
     borderRadius: 9, paddingHorizontal: 12, paddingVertical: 7, color: c.ink,
     backgroundColor: c.white, fontSize: 16 },

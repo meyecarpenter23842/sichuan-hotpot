@@ -6,12 +6,33 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 
 export interface CategoryInput { name: string; sortOrder: number }
-export interface ProductInput { categoryId: string; name: string; priceVnd: number; isAvailable: boolean; isFeatured?: boolean }
+export interface ProductInput {
+  categoryId: string; name: string; priceVnd: number; isAvailable: boolean; isFeatured?: boolean;
+  description?: string | null; ingredients?: string | null;
+  productNotes?: string | null; allergenNotice?: string | null;
+}
 export interface VariantInput { name: string; priceDeltaVnd: number; isAvailable: boolean }
 export interface ModifierGroupInput { name: string; minSelect: number; maxSelect: number; sortOrder: number }
 export interface ModifierOptionInput { name: string; priceDeltaVnd: number; isAvailable: boolean }
 export interface OpeningHourInput {
   weekday: number; opensAt: string; closesAt: string; isClosed: boolean;
+}
+const PRODUCT_TEXT_LIMITS = {
+  description: 1200, ingredients: 1200, productNotes: 800, allergenNotice: 800,
+} as const;
+type ProductTextField = keyof typeof PRODUCT_TEXT_LIMITS;
+function cleanProductText(value: string | null, field: ProductTextField): string | null {
+  if (value === null) return null;
+  const normalized = value.normalize("NFC").replace(/\r\n?/g, "\n");
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(normalized)) {
+    throw new BadRequestException("INVALID_PRODUCT_TEXT");
+  }
+  const clean = normalized.split("\n").map(line => line.trimEnd()).join("\n")
+    .replace(/\n{3,}/g, "\n\n").trim();
+  if (Array.from(clean).length > PRODUCT_TEXT_LIMITS[field]) {
+    throw new BadRequestException("PRODUCT_TEXT_TOO_LONG");
+  }
+  return clean || null;
 }
 
 @Injectable()
@@ -78,6 +99,7 @@ export class AdminCatalogService {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
                 id: true, categoryId: true, name: true, priceVnd: true,
+                description: true, ingredients: true, productNotes: true, allergenNotice: true,
                 isAvailable: true, isFeatured: true, sortOrder: true, imageKey: true,
                 variants: { orderBy: { name: "asc" },
                   select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
@@ -210,9 +232,15 @@ export class AdminCatalogService {
     await this.authorize(auth, branchId);
     await this.category(branchId, input.categoryId);
     return this.change(() => this.prisma.database.product.create({
-      data: { categoryId: input.categoryId, name: input.name.trim(),
+      data: {
+        categoryId: input.categoryId, name: input.name.trim(),
+        description: cleanProductText(input.description ?? null, "description"),
+        ingredients: cleanProductText(input.ingredients ?? null, "ingredients"),
+        productNotes: cleanProductText(input.productNotes ?? null, "productNotes"),
+        allergenNotice: cleanProductText(input.allergenNotice ?? null, "allergenNotice"),
         priceVnd: input.priceVnd, isAvailable: input.isAvailable,
-        isFeatured: input.isFeatured ?? false },
+        isFeatured: input.isFeatured ?? false,
+      },
     }));
   }
   async updateProduct(auth: string | undefined, branchId: string, id: string,
@@ -225,6 +253,14 @@ export class AdminCatalogService {
       data: {
         ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
         ...(input.name === undefined ? {} : { name: input.name.trim() }),
+        ...(input.description === undefined ? {} :
+          { description: cleanProductText(input.description ?? null, "description") }),
+        ...(input.ingredients === undefined ? {} :
+          { ingredients: cleanProductText(input.ingredients ?? null, "ingredients") }),
+        ...(input.productNotes === undefined ? {} :
+          { productNotes: cleanProductText(input.productNotes ?? null, "productNotes") }),
+        ...(input.allergenNotice === undefined ? {} :
+          { allergenNotice: cleanProductText(input.allergenNotice ?? null, "allergenNotice") }),
         ...(input.priceVnd === undefined ? {} : { priceVnd: input.priceVnd }),
         ...(input.isAvailable === undefined ? {} : { isAvailable: input.isAvailable }),
         ...(input.isFeatured === undefined ? {} : { isFeatured: input.isFeatured }),
