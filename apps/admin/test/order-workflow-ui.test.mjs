@@ -63,3 +63,13 @@ test("staff order detail shows customer note and combo child size snapshot", () 
   assert.match(service, /customerNote: true/);
   assert.match(service, /variantName: true/);
 });
+
+
+test("Admin order editor reconstructs and edits shared topping combo snapshots safely", () => {
+  assert.match(orders, /modifierOptionId/);
+  assert.match(orders, /comboChoices\(group\)/);
+  assert.match(orders, /sourceType === "TOPPING"/);
+  assert.match(orders, /snapshot\.modifierOptionId/);
+  assert.match(orders, /Topping đang tạm hết/);
+  assert.match(service, /modifierOptionId: component\.modifierOptionId/);
+});
