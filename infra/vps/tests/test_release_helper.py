@@ -88,6 +88,56 @@ class ArchiveTests(unittest.TestCase):
                 release.valid_sha(value)
 
 
+class ExistingReleaseRetryTests(unittest.TestCase):
+    def test_same_sha_with_new_archive_digest_reuses_only_identical_source_payload(self):
+        original_root = release.ROOT
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                release.ROOT = Path(directory)
+                sha = "a" * 40
+                target = release.ROOT / "releases" / sha
+                target.mkdir(parents=True)
+                files = {
+                    "package.json": b'{"name":"same-source"}',
+                    "apps/api/dist/main.js": b"console.log('same');",
+                }
+                for name, data in files.items():
+                    path = target / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                (target / "release.json").write_text(json.dumps({
+                    "sha": sha, "digest": "1" * 64,
+                }))
+                self.assertEqual(
+                    release.prepare(sha, "2" * 64, files), target,
+                    "same reviewed source may resume after a nondeterministic archive retry",
+                )
+                (target / "apps/api/dist/main.js").write_bytes(b"changed")
+                with self.assertRaisesRegex(release.ReleaseError, "existing_release_mismatch"):
+                    release.prepare(sha, "3" * 64, files)
+        finally:
+            release.ROOT = original_root
+
+    def test_existing_release_rejects_symlinked_source_even_when_bytes_match(self):
+        original_root = release.ROOT
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                release.ROOT = Path(directory)
+                sha = "b" * 40
+                target = release.ROOT / "releases" / sha
+                target.mkdir(parents=True)
+                real = release.ROOT / "real-package.json"
+                real.write_bytes(b"{}")
+                (target / "package.json").symlink_to(real)
+                (target / "release.json").write_text(json.dumps({
+                    "sha": sha, "digest": "1" * 64,
+                }))
+                with self.assertRaisesRegex(release.ReleaseError, "existing_release_mismatch"):
+                    release.prepare(sha, "2" * 64, {"package.json": b"{}"})
+        finally:
+            release.ROOT = original_root
+
+
 class RollbackTests(unittest.TestCase):
     def test_unhealthy_release_restores_previous_pointer_and_checks_health(self):
         with tempfile.TemporaryDirectory() as directory:

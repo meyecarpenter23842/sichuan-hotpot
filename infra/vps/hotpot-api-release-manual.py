@@ -176,9 +176,21 @@ def prepare(sha, digest, files):
     target = ROOT / "releases" / sha
     marker = target / "release.json"
     if target.exists():
-        require(not target.is_symlink() and marker.is_file(), "incomplete_existing_release")
+        require(not target.is_symlink() and target.is_dir()
+                and marker.is_file() and not marker.is_symlink(),
+                "incomplete_existing_release")
         metadata = json.loads(marker.read_text())
-        require(metadata == {"sha": sha, "digest": digest}, "existing_release_mismatch")
+        require(metadata.get("sha") == sha, "existing_release_mismatch")
+        if metadata.get("digest") != digest:
+            # Archive byte digests can differ across retries when tar/gzip metadata
+            # changes even though the reviewed source payload is identical.
+            # Reuse an already prepared SHA only when every allowlisted source file
+            # is a regular non-symlink file and byte-for-byte equals this archive.
+            for name, data in files.items():
+                existing = target / name
+                require(existing.is_file() and not existing.is_symlink(),
+                        "existing_release_mismatch")
+                require(existing.read_bytes() == data, "existing_release_mismatch")
         return target
     build = pwd.getpwnam("hotpot-build")
     temporary = Path(tempfile.mkdtemp(prefix="prepare-", dir=ROOT / "staging"))
