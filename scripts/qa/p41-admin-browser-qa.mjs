@@ -150,19 +150,38 @@ try {
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
   }), 1, "Creating a shared group with selected products must persist immediately");
-  // The new draft must already be linked to its selected product.
-  // Reopen the picker to verify the checked persisted state without reassigning.
+  // Reopen the group picker: it must reflect persisted DB links rather than an
+  // unsaved local checkbox. One tap must commit immediately without a Save button.
   await page.getByRole("button", { name: "Gắn nhóm cho Lẩu QA P4.1" }).click();
-  await page.getByRole("checkbox", { name: /Độ cay/ }).waitFor();
+  const groupCheckbox = page.getByRole("checkbox", { name: "Gắn nhóm Độ cay" });
+  await groupCheckbox.waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll('[role="checkbox"]')].some(
-    node => node.textContent?.includes("Độ cay") && node.getAttribute("aria-checked") === "true"
+    node => node.getAttribute("aria-label") === "Gắn nhóm Độ cay"
+      && node.getAttribute("aria-checked") === "true"
   ));
-  assert.equal(await page.getByRole("checkbox", { name: /Độ cay/ }).getAttribute("aria-checked"), "true");
-  await page.getByRole("button", { name: "Hủy" }).click();
-  await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
+  await groupCheckbox.click();
+  await page.getByText("Đã bỏ gắn Độ cay khỏi Lẩu QA P4.1.").waitFor();
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
-  }), 1);
+  }), 0, "Single click must detach immediately in PostgreSQL");
+  assert.equal(await groupCheckbox.getAttribute("aria-checked"),"false");
+  await groupCheckbox.click();
+  await page.getByText("Đã gắn Độ cay vào Lẩu QA P4.1.").waitFor();
+  assert.equal(await db.productModifierGroupAssignment.count({
+    where: { productId: savedProduct.id, groupId: savedGroup.id },
+  }), 1, "Single click must attach immediately in PostgreSQL");
+  assert.equal(await groupCheckbox.getAttribute("aria-checked"),"true");
+  await page.getByRole("button", { name: "Xong" }).click();
+  await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
+  // The detail-modal entry must use the SAME confirmed assignment flow.
+  await page.getByRole("tab", { name: "Món", exact: true }).click();
+  await page.getByRole("button", { name: "Xem chi tiết Lẩu QA P4.1" }).click();
+  await page.getByRole("button", { name: "＋ Gắn nhóm đã có" }).click();
+  await page.getByRole("checkbox", { name: "Gắn nhóm Độ cay" }).waitFor();
+  assert.equal(await page.getByRole("checkbox", { name: "Gắn nhóm Độ cay" }).getAttribute("aria-checked"),"true");
+  await page.getByRole("button", { name: "Xong" }).click();
+  await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
+  await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
 
   // Fixture: previously verified image keys on disposable PostgreSQL ONLY. Actual
   // R2 ticket + HEAD checks are covered by the API service, not this browser fixture.
