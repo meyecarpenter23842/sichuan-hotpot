@@ -44,14 +44,15 @@ export function optionSelectionError(groups: readonly {
   readonly name: string; readonly minSelect: number; readonly maxSelect: number;
   readonly options: readonly { readonly id: string; readonly isAvailable: boolean }[];
 }[], chosen: readonly string[]): string | null {
-  if (chosen.length > 30 || new Set(chosen).size !== chosen.length) return "Tùy chọn món không hợp lệ.";
+  if (chosen.length > 30) return "Tổng số topping tối đa là 30 cho mỗi phần.";
   const allowed = new Set(groups.flatMap(group => group.options.map(opt => opt.id)));
   if (chosen.some(id => !allowed.has(id))) return "Tùy chọn món không hợp lệ.";
   for (const group of groups) {
     const accepted = group.options.filter(option => chosen.includes(option.id));
+    const selectedUnits = chosen.filter(id => group.options.some(option => option.id === id)).length;
     if (accepted.some(option => !option.isAvailable)) return "Tùy chọn đã hết hàng.";
-    if (accepted.length < group.minSelect) return "Vui lòng chọn đủ tùy chọn: " + group.name;
-    if (accepted.length > group.maxSelect) return "Chọn quá số tùy chọn: " + group.name;
+    if (selectedUnits < group.minSelect) return "Vui lòng chọn đủ tùy chọn: " + group.name;
+    if (selectedUnits > group.maxSelect) return "Chọn quá số tùy chọn: " + group.name;
   }
   return null;
 }
