@@ -30,3 +30,15 @@ test("combo backend has explicit schema and rejects nested/cross-branch composit
   assert.match(service, /PRODUCT_USED_BY_COMBO_CANNOT_NEST/);
   assert.match(service, /TransactionIsolationLevel\.Serializable/);
 });
+
+test("Admin combo editor chooses a concrete child size and sends only IDs", () => {
+  assert.match(editor, /Size \/ khẩu phần/);
+  assert.match(editor, /variantId: row\.variantId/);
+  assert.match(editor, /variantId: option\.variantId/);
+  assert.match(editor, /choose\(item, variant\.id\)/);
+  assert.match(api, /variantId\?: string \| null/);
+  assert.match(service, /COMBO_VARIANT_MUST_MATCH_CHILD/);
+  assert.match(schema, /ProductComboFixedItem[\s\S]*variantId/);
+  assert.match(schema, /ProductComboOption[\s\S]*variantId/);
+  assert.match(schema, /OrderItemComboSnapshot[\s\S]*variantName/);
+});
