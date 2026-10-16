@@ -1025,9 +1025,35 @@ function CustomerApp() {
       if (optionSelectionError(product.modifierGroups, modifierIds)) {
         return "Tùy chọn đơn cũ không còn hợp lệ, vui lòng chọn lại.";
       }
+      const comboOptionIds: string[] = [];
+      if (product.kind === "COMBO") {
+        for (const snapshot of item.comboItems.filter(component => component.kind === "CHOICE")) {
+          const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
+          if (!group) return "Nhóm lựa chọn combo cũ đã thay đổi, vui lòng chọn lại.";
+          const matches = group.options.filter(option => snapshot.productId
+            ? option.childProduct.id === snapshot.productId
+            : option.childProduct.name === snapshot.productName);
+          if (matches.length !== 1) return "Món trong combo cũ đã thay đổi, vui lòng chọn lại.";
+          const option = matches[0]!;
+          if (option.quantity < 1 || snapshot.quantity % option.quantity !== 0) {
+            return "Số lượng thành phần combo cũ đã thay đổi, vui lòng chọn lại.";
+          }
+          const count = snapshot.quantity / option.quantity;
+          if (!Number.isSafeInteger(count) || count < 1 || count > 30) {
+            return "Lựa chọn combo cũ không còn hợp lệ, vui lòng chọn lại.";
+          }
+          comboOptionIds.push(...Array(count).fill(option.id));
+        }
+      } else if (item.comboItems.length) {
+        return "Sản phẩm combo cũ đã thay đổi, vui lòng chọn lại.";
+      }
+      if (comboSelectionError(product, comboOptionIds)) {
+        return "Thành phần combo cũ không còn hợp lệ, vui lòng chọn lại.";
+      }
       try {
         updated = addCartLine(updated, {
-          productId: product.id, variantId: variants[0]?.id ?? null, modifierIds,
+          productId: product.id, variantId: variants[0]?.id ?? null,
+          modifierIds, comboOptionIds,
         }, item.quantity);
       } catch {
         return "Giỏ hàng đã đầy hoặc số lượng vượt giới hạn.";
