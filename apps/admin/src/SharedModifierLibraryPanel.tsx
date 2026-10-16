@@ -161,7 +161,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        <Text style={s.arrow}>{open?"⌃":"⌄"}</Text>
      </Pressable>
      <Pressable accessibilityRole="button" accessibilityLabel={"Sửa nhóm "+group.name}
-       style={s.iconAction} onPress={()=>begin("group",group)}><Text style={s.edit}>✎</Text></Pressable>
+       style={s.iconAction} onPress={()=>begin("group",group)}><Text style={s.edit}>Sửa</Text></Pressable>
     </View>
     {open&&<View style={s.expanded}>
       <View style={s.actions}>
@@ -253,12 +253,17 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
                  :"Khách được bỏ qua nhóm này"}</Text>
              </View>
            </Pressable>
+           {Number(editing.min)>0&&<Field label="Chọn tối thiểu" numeric value={editing.min}
+             onChangeText={min=>setEditing(old=>old?{...old,min}:old)}/>}
            <Field label="Chọn tối đa" numeric value={editing.max}
              onChangeText={max=>setEditing(old=>old?{...old,max}:old)}/>
            <Field label="Thứ tự" numeric value={editing.order}
              onChangeText={order=>setEditing(old=>old?{...old,order}:old)}/>
-         </>:<Field label="Giá topping (VND)" numeric value={editing.price}
-           onChangeText={price=>setEditing(old=>old?{...old,price}:old)}/>}
+         </>:<View style={{gap:5}}>
+           <Field label="Giá topping (VND)" numeric value={editing.price}
+             onChangeText={price=>setEditing(old=>old?{...old,price}:old)}/>
+           <Text style={s.hint}>Có thể nhập 0 cho độ cay hoặc topping miễn phí.</Text>
+         </View>}
          {editing.kind==="group"&&<>
            <Text style={s.name}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
            <Text style={s.hint}>Chọn món dùng nhóm này. Lưu cập nhật liên kết trong một giao dịch.</Text>
@@ -274,7 +279,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
            </Pressable>)}
          </>}
          {editing.id&&<>
-           <Text style={s.title}>Ảnh {editing.kind==="group"?"nhóm":"topping"}</Text>
+           <Text style={s.name}>Ảnh {editing.kind==="group"?"nhóm":"topping"} riêng</Text>
            <View style={s.line}>
              <Photo imageKey={editing.kind==="group"
                ?groups.find(g=>g.id===editing.id)?.imageKey
