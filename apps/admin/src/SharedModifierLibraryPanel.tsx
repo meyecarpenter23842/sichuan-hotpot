@@ -83,10 +83,20 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
      }
      const savedGroupId=edited?.kind==="group" ? (result.id??edited.id) : null;
      if(savedGroupId){
-       const before=(catalog.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds??[];
+       // The library editor may have been open while another admin changed the
+       // catalogue. Read the newest revision before writing, then verify the
+       // committed edge set before claiming any groups were attached.
+       const latest=await request<AdminCatalog>(root,token);
+       const before=(latest.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds??[];
        if(before.length!==selectedProducts.length || before.some(id=>!selectedProducts.includes(id))){
          await request(root+"/library/groups/"+savedGroupId+"/product-assignments",token,"PUT",
-           {productIds:selectedProducts,revision:catalog.catalogRevision});
+           {productIds:selectedProducts,revision:latest.catalogRevision});
+       }
+       const verified=await request<AdminCatalog>(root,token);
+       const assigned=(verified.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds;
+       if(!assigned||assigned.length!==selectedProducts.length
+         ||assigned.some(id=>!selectedProducts.includes(id))){
+         throw new Error("Liên kết nhóm chưa được xác nhận trên máy chủ. Hãy thử lưu lại.");
        }
      }
      await reload();
@@ -94,7 +104,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        setEditing(old=>old?{...old,id:result.id}:old);
        setExpanded(edited.kind==="group"?result.id:edited.groupId??null);
        setQuery("");
-       setNotice("Đã tạo bản nháp. Tiếp tục gắn ảnh, thêm topping rồi bật bán.");
+       setNotice("Đã tạo bản nháp, gắn vào "+selectedProducts.length+" món. Thêm ảnh và topping, bật bán để xuất hiện trong app khách.");
      }else{
        setEditing(null);
        setNotice("Đã lưu thay đổi. Danh sách món đã được đồng bộ.");

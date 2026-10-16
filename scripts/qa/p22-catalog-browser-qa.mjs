@@ -74,8 +74,13 @@ try {
   await page.getByRole("button", { name: /Thêm vào giỏ/ }).click();
   await page.getByText("Vui lòng chọn đủ tùy chọn: Độ cay").waitFor();
   await page.getByRole("radio", { name: /Cay vừa/ }).click();
-  await page.getByRole("checkbox", { name: /Nấm kim châm/ }).click();
-  await page.getByRole("radio", { name: /Khẩu phần 2 người/ }).click();
+  // Every optional topping has its own counter, not a one-time checkbox.
+  await page.getByRole("button", { name: "Thêm Nấm kim châm" }).click();
+  await page.getByRole("radio", { name: /Size Khẩu phần 2 người/ }).click();
+  assert.equal(await page.getByRole("radio",{name:/Size Khẩu phần 2 người/})
+    .getAttribute("aria-checked"),"true");
+  assert.equal(await page.getByRole("radio",{name:"Cay vừa"})
+    .getAttribute("aria-checked"),"true");
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-detail-390.png", fullPage: true });
   await page.getByRole("button", { name: /Thêm vào giỏ/ }).click();
   // P4.6: adding a product returns to Menu to let guests continue shopping.
@@ -86,7 +91,16 @@ try {
     await page.getByText(/Nấm kim châm/).waitFor({ timeout: 1500 });
   });
   assert.ok(await page.getByText("Cay vừa", { exact: false }).count());
+  // Modify an existing topping inside the cart: no duplicate dish and prices
+  // must immediately reflect two toppings on one portion.
+  await page.getByRole("button", { name:"Thêm topping Nấm kim châm" }).click();
+  await page.getByText("2 cho 1 phần",{exact:false}).waitFor();
+  assert.ok(await page.getByText("232.000 ₫",{exact:false}).count(),
+    "159000 base + 49000 size + 2 x 12000 topping");
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-390.png", fullPage: true });
+  await page.setViewportSize({width:320,height:700});
+  await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-320.png", fullPage: true });
+  await page.setViewportSize({width:390,height:844});
   console.log("PASS: real PostgreSQL catalogue, mandatory spice, topping, variant and cart");
 
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -94,7 +108,8 @@ try {
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   await page.getByRole("button", { name: "Giỏ hàng", exact: true }).click();
   await page.getByText(productName).waitFor();
-  console.log("PASS: cart survives reload with modifier selections");
+  await page.getByText("2 cho 1 phần",{exact:false}).waitFor();
+  console.log("PASS: cart survives reload with size, required spice and two optional toppings");
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).click();
   await page.getByRole("button", { name: "Đăng ký" }).click();
   const username = "p22" + randomUUID().replaceAll("-", "").slice(0, 18);

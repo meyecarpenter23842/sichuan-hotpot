@@ -55,7 +55,7 @@ try {
     assert.deepEqual(errors, [], "browser errors at " + width);
     await page.screenshot({ path: directory + "/p24-home-" + width + "x" + height + ".png" });
     await page.getByRole("button", { name: "Chọn tùy chọn Lẩu QA vị Tứ Xuyên" }).click();
-    await page.getByText("Khẩu phần / kích cỡ").waitFor();
+    await page.getByText("Khẩu phần / size").waitFor();
     await page.getByRole("tab", { name: "Trang chủ" }).click();
     await page.getByRole("button", { name: "Xem danh mục Trà sữa" }).click();
     await page.getByRole("tab", { name: "Thực đơn" }).waitFor();

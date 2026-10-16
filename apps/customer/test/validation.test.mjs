@@ -48,6 +48,18 @@ test("P2.2 option selection enforces required, max and unavailable options", asy
   assert.match(optionSelectionError(groups, ["unknown"]) ?? "", /không hợp lệ/);
 });
 
+test("modifier validation counts toppings per portion, with optional and mandatory groups",async()=>{
+  const {optionSelectionError}=await import("../src/validation.ts");
+  const optional=[{name:"Topping thêm",minSelect:0,maxSelect:3,options:[
+    {id:"beef",isAvailable:true},{id:"tofu",isAvailable:true},
+  ]}];
+  assert.equal(optionSelectionError(optional,[]),null);
+  assert.equal(optionSelectionError(optional,["beef","beef","tofu"]),null);
+  assert.match(optionSelectionError(optional,["beef","beef","beef","tofu"])??"",/Chọn quá/);
+  const mandatory=[{...optional[0],name:"Độ cay",minSelect:2,maxSelect:3}];
+  assert.match(optionSelectionError(mandatory,["beef"])??"",/Vui lòng chọn đủ/);
+  assert.equal(optionSelectionError(mandatory,["beef","beef"]),null);
+});
 test("login-first responsive UI and red-white PWA viewport contract", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");

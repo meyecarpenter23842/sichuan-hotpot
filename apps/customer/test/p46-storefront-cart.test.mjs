@@ -28,3 +28,21 @@ test("websocket teardown does not close a pending handshake", () => {
   assert.match(realtime, /pending\.onopen = \(\) => pending\.close\(\)/);
   assert.doesNotMatch(realtime, /socket\.onerror = \(\) => socket\?\.close\(\)/);
 });
+
+test("size is a single horizontal strip, mandatory groups come before optional toppings",()=>{
+  assert.match(app,/contentContainerStyle=\{styles\.sizeStrip\}/);
+  assert.match(app,/horizontal showsHorizontalScrollIndicator=\{false\}/);
+  assert.match(app,/Number\(b\.minSelect>0\)-Number\(a\.minSelect>0\)/);
+  assert.match(app,/styles\.choiceWrap/);
+  assert.match(app,/styles\.requiredTile/);
+});
+test("cart exposes each real topping with per-portion quantity and server-repriced subtotal",()=>{
+  assert.match(app,/function changeCartTopping\(/);
+  assert.match(app,/replaceCartLineSelection\(cart,line\.key/);
+  assert.match(app,/cartModifierCount\(line\.selection,option\.id\)/);
+  assert.match(app,/accessibilityLabel=\{"Thêm topping "\+option\.name\}/);
+  assert.match(app,/accessibilityLabel=\{"Bớt topping "\+option\.name\}/);
+  assert.match(app,/unit\*line\.quantity/);
+  assert.match(checkout,/checkoutCartItems\(cart\)/);
+  assert.doesNotMatch(checkout,/modifierPriceVnd\s*:/);
+});

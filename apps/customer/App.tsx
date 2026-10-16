@@ -8,7 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
 import {
-  addCartLine, setCartQuantity,
+  addCartLine, setCartQuantity, cartModifierCount, replaceCartLineSelection,
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
@@ -165,9 +165,9 @@ function HomeLifestylePhoto({ kind, width, height }: {
 }
 
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
-  return (product.modifierGroups ?? []).flatMap(group => group.options)
-    .filter(option => ids.includes(option.id))
-    .reduce((total, option) => total + option.priceDeltaVnd, 0);
+  const catalog = new Map((product.modifierGroups ?? []).flatMap(group => group.options)
+    .map(option => [option.id, option.priceDeltaVnd] as const));
+  return ids.reduce((sum,id)=>sum+(catalog.get(id)??0),0);
 }
 
 function CustomerApp() {
@@ -190,6 +190,7 @@ function CustomerApp() {
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
   const [detailError, setDetailError] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [expandedCartGroups,setExpandedCartGroups]=useState<string[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [notice, setNotice] = useState("");
   const [accessToken, setAccessToken] = useState("");
@@ -743,6 +744,56 @@ function CustomerApp() {
     setScreen("detail");
   }
 
+  function changeDetailTopping(group: ModifierGroup, optionId: string, delta: number) {
+    const inGroup = new Set(group.options.map(option => option.id));
+    const currentGroupUnits = selectedModifierIds.filter(id => inGroup.has(id)).length;
+    const currentUnits = selectedModifierIds.filter(id => id === optionId).length;
+    const nextUnits = currentUnits + delta;
+    if (nextUnits < 0 || (delta > 0 && (currentGroupUnits >= group.maxSelect ||
+        selectedModifierIds.length >= 30))) {
+      setDetailError("Nhóm "+group.name+" chỉ được chọn tối đa "+group.maxSelect+" topping.");
+      return;
+    }
+    if (delta < 0 && currentGroupUnits <= group.minSelect) {
+      setDetailError("Nhóm "+group.name+" cần tối thiểu "+group.minSelect+" topping.");
+      return;
+    }
+    setDetailError("");
+    setSelectedModifierIds(old => delta > 0
+      ? [...old, optionId]
+      : [...old.slice(0,old.indexOf(optionId)), ...old.slice(old.indexOf(optionId)+1)]);
+  }
+
+  function changeCartTopping(line:CartLine, group:ModifierGroup, optionId:string, delta:number) {
+    const current=cartModifierCount(line.selection,optionId);
+    const option=group.options.find(x=>x.id===optionId);
+    if(!option || (delta>0&&!option.isAvailable)){ setNotice("Topping này không còn bán.");return; }
+    const ids=new Set(group.options.map(x=>x.id));
+    const groupUnits=line.selection.modifierIds.filter(id=>ids.has(id)).length;
+    const newCount=current+delta;
+    const swapping=delta>0&&group.maxSelect===1&&groupUnits===1&&current===0;
+    const nextGroupCount=groupUnits+delta-(swapping?1:0);
+    if(newCount<0 || nextGroupCount<group.minSelect || nextGroupCount>group.maxSelect ||
+        line.selection.modifierIds.length+delta-(swapping?1:0)>30) {
+      setNotice("Nhóm "+group.name+" yêu cầu từ "+group.minSelect+
+        " đến "+group.maxSelect+" topping trên mỗi phần.");
+      return;
+    }
+    const remaining=line.selection.modifierIds.filter(id=>
+      swapping?!ids.has(id):id!==optionId);
+    const modifierIds=[...remaining,...Array(newCount).fill(optionId)];
+    const product=productsById.get(line.selection.productId);
+    if(!product) {setNotice("Món không còn bán.");return;}
+    const error=optionSelectionError(product.modifierGroups,modifierIds);
+    if(error){setNotice(error);return;}
+    try {
+      setCart(replaceCartLineSelection(cart,line.key,{...line.selection,modifierIds}));
+      setNotice("Đã cập nhật topping trong giỏ. Tiền sẽ được máy chủ kiểm tra lại.");
+    } catch(e) {
+      setNotice(e instanceof Error?e.message:"Không cập nhật được topping.");
+    }
+  }
+
   function addSelectedProduct() {
     if (!selectedProduct || !selectedProduct.isAvailable) return;
     const selectionError = optionSelectionError(selectedProduct.modifierGroups ?? [], selectedModifierIds);
@@ -868,13 +919,12 @@ function CustomerApp() {
       }
       const modifierIds: string[] = [];
       const available = product.modifierGroups.flatMap(group => group.options);
-      const used = new Set<string>();
       for (const modifier of item.modifiers) {
         const matches = available.filter(v => v.name === modifier.name
-          && v.isAvailable && !used.has(v.id));
+          && v.isAvailable && v.priceDeltaVnd === modifier.priceVnd);
         if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
+        // Duplicate snapshot rows preserve extra topping quantities.
         modifierIds.push(matches[0]!.id);
-        used.add(matches[0]!.id);
       }
       if (optionSelectionError(product.modifierGroups, modifierIds)) {
         return "Tùy chọn đơn cũ không còn hợp lệ, vui lòng chọn lại.";
@@ -1071,80 +1121,119 @@ function CustomerApp() {
             <Text style={styles.detailTitle}>{item.name}</Text>
             <Text style={styles.detailPrice}>{vnd(total)}</Text>
             <Text style={styles.muted}>Giá hiển thị để tham khảo. Máy chủ sẽ xác nhận lại giá khi đặt hàng.</Text>
-            {item.variants.length > 0 && (
-              <View style={styles.group}>
-                <Text style={styles.sectionTitle}>Khẩu phần / kích cỡ</Text>
-                <Pressable style={styles.option} accessibilityRole="radio"
-                  accessibilityState={{ checked: selectedVariantId === null }}
-                  onPress={() => setSelectedVariantId(null)}>
-                  <Text style={styles.optionText}>{selectedVariantId === null ? "◉" : "◯"} Mặc định</Text>
-                  <Text>{vnd(item.priceVnd)}</Text>
-                </Pressable>
-                {item.variants.filter(v => v.isAvailable).map(v => (
-                  <Pressable key={v.id} style={styles.option} accessibilityRole="radio"
-                    accessibilityState={{ checked: selectedVariantId === v.id }}
-                    aria-checked={selectedVariantId === v.id}
-                    onPress={() => setSelectedVariantId(v.id)}>
-                    <View pointerEvents="none" style={[styles.choiceIndicator,styles.radioIndicator,
-                      selectedVariantId===v.id&&styles.choiceIndicatorSelected]}>
-                      <Text style={styles.choiceIndicatorGlyph}>{selectedVariantId===v.id?"✓":""}</Text>
-                    </View>
-                    <Text style={styles.optionText}>{v.name}</Text>
-                    <Text>{vnd(item.priceVnd + v.priceDeltaVnd)}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            {(item.modifierGroups ?? []).map((group: ModifierGroup) => (
-              <View key={group.id} style={styles.group}>
-                <View style={{flexDirection:"row",alignItems:"center",gap:9}}>
-                  {safeProductImageUrl(group.imageKey)
-                    ? <Image source={{uri:safeProductImageUrl(group.imageKey)!}}
-                        style={{width:38,height:38,borderRadius:7}} accessibilityLabel={"Ảnh nhóm "+group.name}/>
-                    : <View style={{width:38,height:38,borderRadius:7,
-                        backgroundColor:"#EFF0F3",justifyContent:"center",alignItems:"center"}}>
-                        <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
-                  <Text style={styles.sectionTitle}>{group.name}</Text>
-                </View>
-                <Text style={styles.muted}>{group.minSelect > 0 ? "Bắt buộc chọn tối thiểu " + group.minSelect : "Tùy chọn"} · Tối đa {group.maxSelect}</Text>
-                {group.options.map(option => {
-                  const selected = selectedModifierIds.includes(option.id);
-                  return <Pressable key={option.id} style={[styles.option, !option.isAvailable && styles.optionUnavailable]}
-                    disabled={!option.isAvailable}
-                    accessibilityRole={group.maxSelect === 1 ? "radio" : "checkbox"}
-                    accessibilityState={{ checked: selected, disabled: !option.isAvailable }}
-                    aria-checked={selected}
-                    onPress={() => {
-                      setDetailError("");
-                      setSelectedModifierIds(current => {
-                        if (selected) return current.filter(id => id !== option.id);
-                        const ids = new Set(group.options.map(o => o.id));
-                        if (group.maxSelect === 1) return [...current.filter(id => !ids.has(id)), option.id];
-                        if (current.filter(id => ids.has(id)).length >= group.maxSelect) {
-                          setDetailError("Đã chọn tối đa " + group.maxSelect + " cho " + group.name);
-                          return current;
-                        }
-                        return [...current, option.id];
-                      });
-                    }}>
-                    {safeProductImageUrl(option.imageKey)
-                      ? <Image source={{uri:safeProductImageUrl(option.imageKey)!}}
-                          style={{width:40,height:40,borderRadius:8,marginRight:5}}
-                          accessibilityLabel={"Ảnh topping "+option.name}/>
-                      : <View style={{width:40,height:40,borderRadius:8,marginRight:5,
-                          backgroundColor:"#F1F2F4",alignItems:"center",justifyContent:"center"}}>
-                          <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
-                    <View pointerEvents="none" style={[styles.choiceIndicator,
-                      group.maxSelect===1&&styles.radioIndicator,
-                      selected&&styles.choiceIndicatorSelected]}>
-                      <Text style={styles.choiceIndicatorGlyph}>{selected?"✓":""}</Text>
-                    </View>
-                    <Text style={styles.optionText} numberOfLines={2}>{option.name}{option.isAvailable ? "" : " · Hết"}</Text>
-                    <Text style={styles.optionPrice}>{option.priceDeltaVnd>0?"+ "+vnd(option.priceDeltaVnd):"0 ₫"}</Text>
+            {item.variants.length > 0 && <View style={styles.group}>
+              <Text style={styles.sectionTitle}>Khẩu phần / size</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.sizeStrip}>
+                {[{id:null,name:"Mặc định",priceDeltaVnd:0},...item.variants.filter(v=>v.isAvailable)]
+                  .map(variant=>{
+                  const chosen=selectedVariantId===variant.id;
+                  return <Pressable key={variant.id??"default"} accessibilityRole="radio"
+                    accessibilityLabel={"Size "+variant.name}
+                    accessibilityState={{checked:chosen}} aria-checked={chosen}
+                    style={[styles.sizeTile,chosen&&styles.sizeTileSelected]}
+                    onPress={()=>setSelectedVariantId(variant.id)}>
+                    <Text style={[styles.sizeLabel,chosen&&styles.sizeLabelSelected]}>
+                      {variant.name}</Text>
+                    <Text style={[styles.sizePrice,chosen&&styles.sizeLabelSelected]}>
+                      {variant.id===null?"Giá gốc":vnd(item.priceVnd+variant.priceDeltaVnd)}
+                    </Text>
                   </Pressable>;
                 })}
-              </View>
-            ))}
+              </ScrollView>
+            </View>}
+            {[...(item.modifierGroups??[])].sort((a,b)=>
+              Number(b.minSelect>0)-Number(a.minSelect>0)).map((group:ModifierGroup)=>{
+              const mandatory=group.minSelect>0;
+              const ids=new Set(group.options.map(o=>o.id));
+              const groupCount=selectedModifierIds.filter(id=>ids.has(id)).length;
+              return <View key={group.id} style={styles.group}>
+                <View style={styles.choiceGroupHeading}>
+                  <Text style={styles.sectionTitle}>{group.name}</Text>
+                  <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
+                    {mandatory?"Bắt buộc":"Không bắt buộc"}
+                  </Text>
+                </View>
+                <Text style={styles.muted}>
+                  {mandatory?"Chọn ít nhất "+group.minSelect:"Có thể bỏ qua"} · Tối đa
+                  {" "+group.maxSelect} topping mỗi phần
+                </Text>
+                {mandatory?<View style={styles.choiceWrap}>
+                  {group.options.filter(option=>option.isAvailable).map(option=>{
+                    const count=selectedModifierIds.filter(id=>id===option.id).length;
+                    return <View key={option.id} style={[styles.requiredTile,
+                      count>0&&styles.requiredTileSelected]}>
+                      <Pressable style={styles.requiredTilePick}
+                        accessibilityRole={group.maxSelect===1?"radio":"checkbox"}
+                        accessibilityLabel={option.name}
+                        accessibilityState={{checked:count>0}} aria-checked={count>0}
+                        onPress={()=>{
+                          if(group.maxSelect===1){
+                            setSelectedModifierIds(old=>[...old.filter(id=>!ids.has(id)),option.id]);
+                            setDetailError("");
+                          }else changeDetailTopping(group,option.id,count>0?-1:1);
+                        }}>
+                        {safeProductImageUrl(option.imageKey)&&<Image
+                          source={{uri:safeProductImageUrl(option.imageKey)!}}
+                          style={styles.requiredImage}/>}
+                        <Text style={styles.requiredTileName} numberOfLines={2}>{option.name}</Text>
+                        <Text style={styles.sizePrice}>{option.priceDeltaVnd>0
+                          ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                        {group.maxSelect===1&&<Text style={styles.tileCheck}>{count>0?"✓":"○"}</Text>}
+                      </Pressable>
+                      {group.maxSelect>1&&<View style={styles.tileStepper}>
+                        <Pressable style={styles.tileQtyButton} accessibilityRole="button"
+                          accessibilityLabel={"Bớt "+option.name}
+                          disabled={!count||groupCount<=group.minSelect}
+                          onPress={()=>changeDetailTopping(group,option.id,-1)}>
+                          <Text style={styles.stepText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.qtyText}>{count}</Text>
+                        <Pressable style={styles.tileQtyButton} accessibilityRole="button"
+                          accessibilityLabel={"Thêm "+option.name}
+                          disabled={groupCount>=group.maxSelect||selectedModifierIds.length>=30}
+                          onPress={()=>changeDetailTopping(group,option.id,1)}>
+                          <Text style={styles.stepText}>+</Text>
+                        </Pressable>
+                      </View>}
+                    </View>;
+                  })}
+                </View>:group.options.filter(option=>option.isAvailable).map(option=>{
+                  const count=selectedModifierIds.filter(id=>id===option.id).length;
+                  return <View key={option.id} style={styles.toppingRow}>
+                    {safeProductImageUrl(option.imageKey)
+                      ?<Image source={{uri:safeProductImageUrl(option.imageKey)!}}
+                        style={styles.toppingImage}/>
+                      :<View style={styles.toppingPlaceholder}/>}
+                    <View style={styles.toppingCopy}>
+                      <Text style={styles.optionText} numberOfLines={2}>{option.name}</Text>
+                      <Text style={styles.optionPrice}>{option.priceDeltaVnd>0
+                        ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                    </View>
+                    <View style={styles.quantityStepper}>
+                      <Pressable style={styles.step} accessibilityRole="button"
+                        accessibilityLabel={"Bớt "+option.name} disabled={count===0}
+                        onPress={()=>changeDetailTopping(group,option.id,-1)}>
+                        <Text style={styles.stepText}>−</Text>
+                      </Pressable>
+                      <Text style={styles.qtyText}>{count}</Text>
+                      <Pressable style={styles.step} accessibilityRole="button"
+                        accessibilityLabel={"Thêm "+option.name}
+                        disabled={(groupCount>=group.maxSelect
+                          &&!(group.maxSelect===1&&count===0))
+                          ||selectedModifierIds.length>=30}
+                        onPress={()=>{
+                          if(group.maxSelect===1&&groupCount===1){
+                            setSelectedModifierIds(old=>[...old.filter(id=>!ids.has(id)),option.id]);
+                          }else changeDetailTopping(group,option.id,1);
+                        }}>
+                        <Text style={styles.stepText}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>;
+                })}
+              </View>;
+            })}
             {!!detailError && <Notice message={detailError} error />}
             <View style={styles.quantityLine}>
               <Text style={styles.sectionTitle}>Số lượng</Text>
@@ -1174,41 +1263,117 @@ function CustomerApp() {
             ) : (
               <>
                 {cart.map(line => {
-                  const product = productsById.get(line.selection.productId);
-                  const variant = product?.variants.find(v => v.id === line.selection.variantId);
-                  const groups = product?.modifierGroups ?? [];
-                  const options = groups.flatMap(group => group.options)
-                    .filter(option => line.selection.modifierIds.includes(option.id));
-                  const unavailable = !product || !product.isAvailable
-                    || (line.selection.variantId !== null && (!variant || !variant.isAvailable))
-                    || optionSelectionError(groups, line.selection.modifierIds) !== null;
-                  const price = product ? product.priceVnd + (variant?.priceDeltaVnd ?? 0)
-                    + selectedModifierPrice(product, line.selection.modifierIds) : 0;
-                  return (
-                    <View key={line.key} style={styles.cartLine}>
+                  const product=productsById.get(line.selection.productId);
+                  const variant=product?.variants.find(v=>v.id===line.selection.variantId);
+                  const groups=product?.modifierGroups??[];
+                  const unavailable=!product||!product.isAvailable
+                    ||(line.selection.variantId!==null&&(!variant||!variant.isAvailable))
+                    ||optionSelectionError(groups,line.selection.modifierIds)!==null;
+                  const unit=product?product.priceVnd+(variant?.priceDeltaVnd??0)
+                    +selectedModifierPrice(product,line.selection.modifierIds):0;
+                  return <View key={line.key} style={styles.cartLine}>
+                    <View style={styles.cartLineHeading}>
                       <View style={styles.cartLineDetails}>
-                        <Text style={styles.productName}>{product?.name ?? "Món không còn trong thực đơn"}</Text>
-                        {variant && <Text style={styles.muted}>{variant.name}</Text>}
-                        {options.length > 0 && <Text style={styles.muted}>{options.map(o => o.name).join(" · ")}</Text>}
-                        <Text style={styles.price}>{product ? vnd(price * line.quantity) : "Cần chọn món khác"}</Text>
-                        {unavailable && <Text style={styles.warning}>Món hoặc tùy chọn không còn bán</Text>}
+                        <Text style={styles.productName}>
+                          {product?.name??"Món không còn trong thực đơn"}</Text>
+                        <Text style={styles.muted}>
+                          Size: {variant?.name??"Mặc định"} · Đơn giá {vnd(unit)}
+                        </Text>
                       </View>
                       <View style={styles.quantityStepper}>
-                        <Pressable style={styles.step} accessibilityRole="button" accessibilityLabel="Giảm hoặc xóa món"
-                          onPress={() => setCart(old => setCartQuantity(old, line.key, Math.max(0, line.quantity - 1)))}>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Giảm số lượng món "+(product?.name??"")}
+                          onPress={()=>setCart(old=>setCartQuantity(old,line.key,
+                            Math.max(0,line.quantity-1)))}>
                           <Text style={styles.stepText}>−</Text>
                         </Pressable>
                         <Text style={styles.qtyText}>{line.quantity}</Text>
-                        <Pressable style={styles.step} accessibilityRole="button" accessibilityLabel="Tăng số lượng"
-                          onPress={() => {
-                            try { setCart(old => setCartQuantity(old, line.key, Math.min(99, line.quantity + 1))); }
-                            catch { setNotice("Số lượng tối đa là 99."); }
-                          }}>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Tăng số lượng món "+(product?.name??"")}
+                          disabled={line.quantity>=99}
+                          onPress={()=>setCart(old=>setCartQuantity(old,line.key,
+                            Math.min(99,line.quantity+1)))}>
                           <Text style={styles.stepText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                  );
+                    {groups.map(group=>{
+                      const groupIds=new Set(group.options.map(o=>o.id));
+                      const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
+                      const mandatory=group.minSelect>0;
+                      const cartGroupKey=line.key+"|"+group.id;
+                      const expanded=expandedCartGroups.includes(cartGroupKey);
+                      const hasOtherOptions=group.options.some(o=>o.isAvailable
+                        &&cartModifierCount(line.selection,o.id)===0);
+                      return <View key={group.id} style={styles.cartGroup}>
+                        <View style={styles.choiceGroupHeading}>
+                          <Text style={styles.cartGroupTitle}>{group.name}</Text>
+                          <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
+                            {mandatory?"Bắt buộc":"Tùy chọn"}
+                          </Text>
+                        </View>
+                        {group.options.filter(option=>cartModifierCount(line.selection,option.id)>0
+                          ||(expanded&&option.isAvailable)).map(option=>{
+                          const count=cartModifierCount(line.selection,option.id);
+                          const atMax=groupCount>=group.maxSelect;
+                          const wouldSwap=group.maxSelect===1&&atMax&&count===0;
+                          return <View key={option.id} style={styles.cartToppingRow}>
+                            {safeProductImageUrl(option.imageKey)
+                              ?<Image source={{uri:safeProductImageUrl(option.imageKey)!}}
+                                style={styles.cartToppingImage}/>
+                              :<View style={styles.cartToppingPlaceholder}/>}
+                            <View style={styles.toppingCopy}>
+                              <Text style={styles.cartToppingName} numberOfLines={2}>
+                                {option.name}</Text>
+                              <Text style={styles.muted}>
+                                {vnd(option.priceDeltaVnd)} mỗi topping ·
+                                {" "+(count*line.quantity)} cho {line.quantity} phần
+                              </Text>
+                            </View>
+                            <View style={styles.quantityStepper}>
+                              <Pressable style={styles.step} accessibilityRole="button"
+                                accessibilityLabel={"Bớt topping "+option.name}
+                                disabled={!product||!product.isAvailable||count===0||groupCount<=group.minSelect}
+                                onPress={()=>changeCartTopping(line,group,option.id,-1)}>
+                                <Text style={styles.stepText}>−</Text>
+                              </Pressable>
+                              <Text style={styles.qtyText}>{count}</Text>
+                              <Pressable style={styles.step} accessibilityRole="button"
+                                accessibilityLabel={"Thêm topping "+option.name}
+                                disabled={!product||!product.isAvailable||!option.isAvailable
+                                  ||(!wouldSwap&&atMax)
+                                  ||(line.selection.modifierIds.length>=30&&!wouldSwap)}
+                                onPress={()=>changeCartTopping(line,group,option.id,1)}>
+                                <Text style={styles.stepText}>+</Text>
+                              </Pressable>
+                            </View>
+                          </View>;
+                        })}
+                        {(hasOtherOptions||expanded)&&
+                          <Pressable accessibilityRole="button"
+                            accessibilityLabel={(expanded?"Thu gọn":"Thêm hoặc đổi")+" topping "+group.name}
+                            style={styles.cartToppingManage}
+                            onPress={()=>setExpandedCartGroups(old=>expanded
+                              ?old.filter(id=>id!==cartGroupKey):[...old,cartGroupKey])}>
+                            <Text style={styles.cartToppingManageText}>
+                              {expanded?"Thu gọn lựa chọn":"＋ Thêm / đổi topping"}
+                            </Text>
+                          </Pressable>}
+                        {groupCount<group.minSelect&&<Text style={styles.warning}>
+                          Cần tối thiểu {group.minSelect} topping để đặt món.
+                        </Text>}
+                      </View>;
+                    })}
+                    <View style={styles.cartLineFooter}>
+                      <Text style={styles.muted}>Tổng món đã chọn</Text>
+                      <Text style={styles.price}>
+                        {product?vnd(unit*line.quantity):"Cần chọn món khác"}
+                      </Text>
+                    </View>
+                    {unavailable&&<Text style={styles.warning}>
+                      Món hoặc tùy chọn đã thay đổi. Hãy chọn lại trên thực đơn.
+                    </Text>}
+                  </View>;
                 })}
                 <Text style={styles.sectionTitle}>Tạm tính (không phải báo giá đặt hàng)</Text>
                 <Text style={styles.detailPrice}>{vnd(cart.reduce((sum, line) => {
@@ -1749,6 +1914,48 @@ const styles = StyleSheet.create({
   detailTitle: { fontSize: typeScale.page, fontWeight: "800", color: "#20252B" },
   detailPrice: { color: brand, fontSize: 19, fontWeight: "900" },
   group: { marginTop: 8, gap: 9, paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
+  sizeStrip: { flexDirection:"row",alignItems:"stretch",gap:8,paddingVertical:4,paddingRight:12 },
+  sizeTile: { minWidth:106,minHeight:60,alignItems:"center",justifyContent:"center",
+    paddingHorizontal:14,paddingVertical:9,borderRadius:12,borderWidth:1,
+    borderColor:"#D0D5DD",backgroundColor:"#FFFFFF",gap:3 },
+  sizeTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFF2F2",borderWidth:2 },
+  sizeLabel: { color:"#20252B",fontSize:13,fontWeight:"800" },
+  sizeLabelSelected: { color:"#B3262D" },
+  sizePrice: { color:"#667085",fontSize:12,fontWeight:"700" },
+  choiceGroupHeading: { flexDirection:"row",alignItems:"center",gap:9,flexWrap:"wrap" },
+  choiceRequirement: { color:"#667085",fontSize:11,fontWeight:"700",
+    borderRadius:7,paddingHorizontal:7,paddingVertical:3,backgroundColor:"#F3F4F6" },
+  choiceRequired: { color:"#B3262D",backgroundColor:"#FFF0F1" },
+  choiceWrap: { flexDirection:"row",flexWrap:"wrap",gap:9 },
+  requiredTile: { width:"48%",minWidth:130,borderWidth:1,borderColor:"#E4E7EC",
+    borderRadius:12,backgroundColor:"#FFFFFF",overflow:"hidden" },
+  requiredTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFF7F7" },
+  requiredTilePick: { minHeight:66,alignItems:"center",justifyContent:"center",
+    paddingHorizontal:8,paddingVertical:8,gap:3 },
+  requiredImage: { width:42,height:42,borderRadius:8 },
+  requiredTileName: { color:"#20252B",fontWeight:"800",fontSize:13,textAlign:"center" },
+  tileCheck: { color:"#B3262D",fontSize:20,fontWeight:"800" },
+  tileStepper: { flexDirection:"row",alignItems:"center",justifyContent:"space-around",
+    borderTopWidth:1,borderTopColor:"#E4E7EC" },
+  tileQtyButton: { minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center" },
+  toppingRow: { minHeight:62,flexDirection:"row",gap:8,alignItems:"center",
+    borderBottomWidth:1,borderBottomColor:"#F0F1F3",paddingVertical:6 },
+  toppingImage: { width:42,height:42,borderRadius:9 },
+  toppingPlaceholder: { width:42,height:42,borderRadius:9,backgroundColor:"#F1F2F4" },
+  toppingCopy: { flex:1,minWidth:0,gap:3 },
+  cartLineHeading: { flexDirection:"row",alignItems:"center",gap:7 },
+  cartGroup: { gap:5,borderTopWidth:1,borderTopColor:"#EAECF0",paddingTop:9 },
+  cartGroupTitle: { fontWeight:"800",fontSize:13,color:"#20252B" },
+  cartToppingRow: { minHeight:54,flexDirection:"row",gap:6,alignItems:"center" },
+  cartToppingImage: { width:34,height:34,borderRadius:7 },
+  cartToppingPlaceholder: { width:34,height:34,borderRadius:7,backgroundColor:"#F2F4F7" },
+  cartToppingName: { fontWeight:"700",fontSize:12,color:"#20252B" },
+  cartToppingManage: { minHeight:44,alignSelf:"flex-start",paddingHorizontal:6,
+    justifyContent:"center" },
+  cartToppingManageText: { color:"#B3262D",fontWeight:"800",fontSize:12 },
+  cartLineFooter: { flexDirection:"row",alignItems:"center",justifyContent:"space-between",
+    gap:10,borderTopWidth:1,borderTopColor:"#EAECF0",paddingTop:9 },
+
   option: { flexDirection: "row", alignItems: "center",gap:10,
     paddingVertical: 10, paddingHorizontal:6, minHeight: 58, borderBottomWidth: 1,
     borderBottomColor: "#E4E7EC" },
@@ -1810,7 +2017,7 @@ const styles = StyleSheet.create({
   step: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   stepText: { fontSize: 18, color: brand, fontWeight: "800" },
   qtyText: { textAlign: "center", minWidth: 24, fontWeight: "800", color: "#20252B" },
-  cartLine: { backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: "#E4E7EC", padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  cartLine: { backgroundColor: "white", borderRadius: 15, borderWidth: 1, borderColor: "#E4E7EC", padding: 12, flexDirection: "column", gap: 9 },
   cartLineDetails: { flex: 1, gap: 6 },
   empty: { gap: 14, alignItems: "stretch", paddingVertical: 20 },
   emptyTitle: { fontSize: typeScale.section, fontWeight: "800", color: "#20252B" },
