@@ -38,9 +38,15 @@ export interface ComboOption {
   id: string; variantId: string | null; quantity: number; priceDeltaVnd: number; sortOrder: number;
   variant: Variant | null; childProduct: ComboChildProduct;
 }
+export interface ComboModifierOption {
+  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  modifierOption: ModifierOption & {
+    group: { id: string; name: string; isAvailable: boolean; imageKey?: string | null };
+  };
+}
 export interface ComboGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
-  options: ComboOption[];
+  options: ComboOption[]; modifierOptions: ComboModifierOption[];
 }
 export interface Product {
   id: string;
