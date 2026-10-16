@@ -119,7 +119,8 @@ jobs:
             apps/api/prisma/schema.prisma apps/api/prisma/migrations \
             apps/customer/package.json apps/admin/package.json \
             packages/shared/package.json packages/shared/dist packages/ui/package.json
-          gzip -n "$archive_tar"
+          gzip -n -c "$archive_tar" > "$archive_tgz"
+          rm -f "$archive_tar"
           test -s "$archive_tgz"
           sha256sum "$archive_tgz" | awk '{print $1}' > "$RUNNER_TEMP/api.sha256"
       - name: Verified artifact, live generic backup/migration, then API activation

@@ -43,6 +43,8 @@ class OwnerReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("-o ServerAliveInterval=20 -o ServerAliveCountMax=3", workflow)
         self.assertIn('release_status != 0', workflow)
         self.assertIn("git rev-parse origin/main", workflow)
+        self.assertIn('gzip -n -c "$archive_tar" > "$archive_tgz"', workflow)
+        self.assertIn('test -s "$archive_tgz"', workflow)
 
     def test_does_not_auto_release_or_migrate(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
