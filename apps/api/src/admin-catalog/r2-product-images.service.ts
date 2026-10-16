@@ -92,6 +92,7 @@ export class R2ProductImagesService implements OnModuleInit, OnModuleDestroy {
           await this.prisma.database.catalogCategory.count({ where: { imageKey: item.key } })
           + await this.prisma.database.modifierGroup.count({ where: { imageKey: item.key } })
           + await this.prisma.database.modifierOption.count({ where: { imageKey: item.key } })
+          + await this.prisma.database.homeOffer.count({ where: { imageKey: item.key } })
         ) : await this.prisma.database.product.count({ where: { imageKey: item.key } });
         if (references > 0) continue; // Never delete an image still in use.
         try {
