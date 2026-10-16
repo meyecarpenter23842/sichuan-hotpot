@@ -7,6 +7,7 @@ export const productSelect = {
   comboFixedItems: {
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     select: { sortOrder: true, quantity: true,
+      variant: { select: { id: true, productId: true, name: true, isAvailable: true } },
       childProduct: { select: { id: true, name: true, kind: true, isAvailable: true } } },
   },
   comboGroups: {
@@ -16,6 +17,7 @@ export const productSelect = {
       options: {
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
         select: { id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+          variant: { select: { id: true, productId: true, name: true, isAvailable: true } },
           childProduct: { select: { id: true, name: true, kind: true, isAvailable: true } } },
       },
     },
@@ -49,8 +51,9 @@ export interface PricedOrderLine {
     readonly optionId: string; readonly name: string; readonly priceVnd: number;
   }[];
   readonly comboItems: readonly {
-    readonly productId: string; readonly kind: "FIXED" | "CHOICE";
-    readonly groupName: string | null; readonly productName: string;
+    readonly productId: string; readonly variantId: string | null;
+    readonly kind: "FIXED" | "CHOICE"; readonly groupName: string | null;
+    readonly productName: string; readonly variantName: string | null;
     readonly quantity: number; readonly priceDeltaVnd: number; readonly sortOrder: number;
   }[];
 }
@@ -88,8 +91,9 @@ export function priceCart(
     const baseUnit = amount(product.priceVnd);
     let dishUnit = baseUnit;
     const comboItems: {
-      productId: string; kind: "FIXED" | "CHOICE"; groupName: string | null;
-      productName: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+      productId: string; variantId: string | null; kind: "FIXED" | "CHOICE";
+      groupName: string | null; productName: string; variantName: string | null;
+      quantity: number; priceDeltaVnd: number; sortOrder: number;
     }[] = [];
 
     const productKind = product.kind ?? "STANDARD";
@@ -103,12 +107,15 @@ export function priceCart(
       }
       for (const fixed of product.comboFixedItems) {
         if (fixed.quantity < 1 || fixed.quantity > 99
-          || fixed.childProduct.kind !== "STANDARD" || !fixed.childProduct.isAvailable) {
+          || fixed.childProduct.kind !== "STANDARD" || !fixed.childProduct.isAvailable
+          || (fixed.variant !== null
+            && (fixed.variant.productId !== fixed.childProduct.id || !fixed.variant.isAvailable))) {
           throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
         }
         comboItems.push({
-          productId: fixed.childProduct.id, kind: "FIXED", groupName: null,
-          productName: fixed.childProduct.name, quantity: fixed.quantity,
+          productId: fixed.childProduct.id, variantId: fixed.variant?.id ?? null,
+          kind: "FIXED", groupName: null, productName: fixed.childProduct.name,
+          variantName: fixed.variant?.name ?? null, quantity: fixed.quantity,
           priceDeltaVnd: 0, sortOrder: fixed.sortOrder,
         });
       }
@@ -129,14 +136,17 @@ export function priceCart(
         for (const option of chosen) {
           const units = selectedCombo.get(option.id) ?? 0;
           if (units < 1 || option.quantity < 1 || option.quantity > 99
-            || option.childProduct.kind !== "STANDARD" || !option.childProduct.isAvailable) {
+            || option.childProduct.kind !== "STANDARD" || !option.childProduct.isAvailable
+            || (option.variant !== null
+              && (option.variant.productId !== option.childProduct.id || !option.variant.isAvailable))) {
             throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
           }
           const delta = amount(option.priceDeltaVnd);
           dishUnit = amount(dishUnit + amount(delta * units));
           comboItems.push({
-            productId: option.childProduct.id, kind: "CHOICE", groupName: group.name,
-            productName: option.childProduct.name, quantity: option.quantity * units,
+            productId: option.childProduct.id, variantId: option.variant?.id ?? null,
+            kind: "CHOICE", groupName: group.name, productName: option.childProduct.name,
+            variantName: option.variant?.name ?? null, quantity: option.quantity * units,
             priceDeltaVnd: delta * units,
             sortOrder: group.sortOrder * 1000 + option.sortOrder,
           });
