@@ -142,6 +142,14 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
                   <View style={styles.fill}>
                     <Text style={styles.text}>{item.productName} × {item.quantity}</Text>
                     {!!item.variantName && <Text style={styles.muted}>{item.variantName}</Text>}
+                    {!!item.comboItems.length && <View style={styles.comboSnapshot}>
+                      {item.comboItems.map((component, componentIndex) =>
+                        <Text key={componentIndex} style={styles.muted}>
+                          {component.kind === "FIXED" ? "• " : "• " + (component.groupName ? component.groupName + ": " : "")}
+                          {component.quantity} × {component.productName}
+                          {component.priceDeltaVnd > 0 ? " · +" + vnd(component.priceDeltaVnd) : ""}
+                        </Text>)}
+                    </View>}
                     {!!item.modifiers.length && <Text style={styles.muted}>{item.modifiers.map(x => x.name).join(" · ")}</Text>}
                   </View>
                   <Text style={styles.text}>{vnd(item.lineTotalVnd)}</Text>
@@ -210,6 +218,7 @@ const styles = StyleSheet.create({
   order: { borderRadius: 10, borderWidth: 1, borderColor: palette.line, padding: 12 },
   line: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
   fill: { flex: 1 },
+  comboSnapshot: { gap: 2, paddingTop: 3 },
   text: { fontSize: typeScale.body, color: palette.text, fontWeight: "600", lineHeight: 19 },
   status: { color: palette.red, fontSize: typeScale.small, marginTop: 4, fontWeight: "700" },
   price: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
