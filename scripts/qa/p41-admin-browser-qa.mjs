@@ -164,8 +164,11 @@ try {
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
   const optionSwitch = page.getByRole("switch", { name: "Bán topping Cay vừa" });
+  const rejected = page.waitForResponse(response => response.url().includes(
+    "/library/options/" + savedOption.id) && response.request().method() === "PATCH");
   await optionSwitch.click();
-  await page.getByText("GROUP_MIN_SELECTION_UNAVAILABLE", { exact: false }).waitFor();
+  assert.equal((await rejected).status(), 409,
+    "Disabling the only required topping must be rejected by the backend");
   assert.equal((await db.modifierOption.findUniqueOrThrow({ where: {
     id: savedOption.id,
   } })).isAvailable, true, "Required topping cannot be disabled");
