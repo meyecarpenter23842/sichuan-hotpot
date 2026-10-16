@@ -6,6 +6,8 @@ export interface CartSelection {
   readonly productId: string;
   readonly variantId: string | null;
   readonly modifierIds: readonly string[];
+  /** Nondefault count per selected topping; missing entries mean one per dish. */
+  readonly modifierQuantities?: readonly { readonly id: string; readonly quantity: number }[];
 }
 export interface CartLine {
   readonly key: string;
@@ -42,12 +44,25 @@ export function normalizeCartSelection(selection: CartSelection): CartSelection 
   const variantId = selection.variantId === null ? null : nonempty(selection.variantId, "VARIANT");
   if (selection.modifierIds.length > 30) throw new CartInputError("TOO_MANY_MODIFIERS");
   const modifierIds = [...new Set(selection.modifierIds.map(id => nonempty(id, "MODIFIER")))].sort();
-  return { productId, variantId, modifierIds };
+  const counts = selection.modifierQuantities ?? [];
+  if (!Array.isArray(counts) || counts.length > 30) throw new CartInputError("INVALID_TOPPING_QUANTITY");
+  const seen = new Set<string>();
+  const modifierQuantities = counts.map(row => {
+    if (!row || typeof row !== "object") throw new CartInputError("INVALID_TOPPING_QUANTITY");
+    const id = nonempty(row.id, "MODIFIER");
+    if (seen.has(id) || !modifierIds.includes(id) || !Number.isSafeInteger(row.quantity)
+      || row.quantity < 1 || row.quantity > 20) throw new CartInputError("INVALID_TOPPING_QUANTITY");
+    seen.add(id);
+    return { id, quantity: row.quantity };
+  }).filter(row => row.quantity !== 1).sort((a,b) => a.id.localeCompare(b.id));
+  return { productId, variantId, modifierIds,
+    ...(modifierQuantities.length ? { modifierQuantities } : {}) };
 }
 
 export function cartLineKey(selection: CartSelection): string {
   const clean = normalizeCartSelection(selection);
-  return JSON.stringify([clean.productId, clean.variantId, clean.modifierIds]);
+  return JSON.stringify([clean.productId, clean.variantId, clean.modifierIds,
+    ...(clean.modifierQuantities?.length ? [clean.modifierQuantities] : [])]);
 }
 
 export function addCartLine(
@@ -76,6 +91,28 @@ export function setCartQuantity(cart: readonly CartLine[], key: string, quantity
   return cart.map(line => line.key === key ? { ...line, quantity } : line);
 }
 
+/** Edit one topping count for a cart line; never change another dish or its toppings. */
+export function setCartToppingQuantity(
+  cart: readonly CartLine[], key: string, toppingId: string, quantity: number,
+): CartLine[] {
+  if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > 20)
+    throw new CartInputError("INVALID_TOPPING_QUANTITY");
+  const line = cart.find(item => item.key === key);
+  if (!line) throw new CartInputError("CART_LINE_NOT_FOUND");
+  if (!line.selection.modifierIds.includes(toppingId))
+    throw new CartInputError("TOPPING_NOT_SELECTED");
+  const selection = normalizeCartSelection(line.selection);
+  const nextIds = quantity === 0
+    ? selection.modifierIds.filter(id => id !== toppingId) : [...selection.modifierIds];
+  const nextCounts = (selection.modifierQuantities ?? [])
+    .filter(row => row.id !== toppingId);
+  if (quantity > 1) nextCounts.push({ id:toppingId, quantity });
+  const next = normalizeCartSelection({ ...selection, modifierIds:nextIds,
+    modifierQuantities: nextCounts });
+  const without = cart.filter(item => item.key !== key);
+  return addCartLine(without, next, line.quantity);
+}
+
 export function cartItemCount(cart: readonly CartLine[]): number {
   return cart.reduce((sum, line) => sum + line.quantity, 0);
 }
@@ -86,6 +123,7 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
   variantId: string | null;
   modifierIds: string[];
   quantity: number;
+  modifierQuantities?: { id: string; quantity: number }[];
 }[] {
   if (cart.length === 0) throw new CartInputError("EMPTY_CART");
   return cart.map(line => {
@@ -96,6 +134,8 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
       productId: selection.productId,
       variantId: selection.variantId,
       modifierIds: [...selection.modifierIds],
+      ...(selection.modifierQuantities?.length ? { modifierQuantities:
+        selection.modifierQuantities.map(({id,quantity}) => ({id,quantity})) } : {}),
       quantity: line.quantity,
     };
   });
