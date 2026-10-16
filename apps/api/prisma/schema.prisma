@@ -230,14 +230,17 @@ model ProductComboFixedItem {
   id             String   @id @default(uuid()) @db.Uuid
   comboProductId String   @db.Uuid
   childProductId String   @db.Uuid
+  variantId      String?  @db.Uuid
   quantity       Int      @default(1)
   sortOrder      Int      @default(0)
   comboProduct   Product  @relation("ComboParentFixed", fields: [comboProductId], references: [id], onDelete: Restrict)
   childProduct   Product  @relation("ComboChildFixed", fields: [childProductId], references: [id], onDelete: Restrict)
+  variant        ProductVariant? @relation("ComboFixedVariant", fields: [variantId], references: [id], onDelete: Restrict)
 
   @@unique([comboProductId, childProductId])
   @@index([comboProductId, sortOrder])
   @@index([childProductId])
+  @@index([variantId])
 }
 
 model ProductComboGroup {
@@ -258,15 +261,18 @@ model ProductComboOption {
   id             String            @id @default(uuid()) @db.Uuid
   groupId        String            @db.Uuid
   childProductId String            @db.Uuid
+  variantId      String?           @db.Uuid
   quantity       Int               @default(1)
   priceDeltaVnd  Int               @default(0)
   sortOrder      Int               @default(0)
   group          ProductComboGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
   childProduct   Product           @relation(fields: [childProductId], references: [id], onDelete: Restrict)
+  variant        ProductVariant?   @relation("ComboOptionVariant", fields: [variantId], references: [id], onDelete: Restrict)
 
   @@unique([groupId, childProductId])
   @@index([groupId, sortOrder])
   @@index([childProductId])
+  @@index([variantId])
 }
 
 model ProductVariant {
@@ -277,6 +283,9 @@ model ProductVariant {
   isAvailable   Boolean   @default(true)
   product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
   orderItems    OrderItem[]
+  comboFixedItems ProductComboFixedItem[] @relation("ComboFixedVariant")
+  comboOptions ProductComboOption[] @relation("ComboOptionVariant")
+  orderComboSnapshots OrderItemComboSnapshot[] @relation("OrderComboVariant")
 
   @@unique([productId, name])
 }
@@ -355,6 +364,7 @@ model Order {
   idempotencyKey           String                 @db.VarChar(128)
   requestHash              String?                @db.VarChar(64)
   phoneSnapshot            String?                @db.VarChar(20)
+  customerNote             String?                @db.VarChar(500)
   status                   OrderStatus            @default(PENDING)
   subtotalVnd              Int
   deliveryFeeVnd           Int
@@ -425,17 +435,21 @@ model OrderItemComboSnapshot {
   id           String            @id @default(uuid()) @db.Uuid
   orderItemId  String            @db.Uuid
   productId    String?           @db.Uuid
+  variantId    String?           @db.Uuid
   kind         ComboSnapshotKind
   groupName    String?           @db.VarChar(160)
   productName  String            @db.VarChar(200)
+  variantName  String?           @db.VarChar(160)
   quantity     Int
   priceDeltaVnd Int              @default(0)
   sortOrder    Int               @default(0)
   orderItem    OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
   product      Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant      ProductVariant?   @relation("OrderComboVariant", fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([orderItemId, sortOrder])
   @@index([productId])
+  @@index([variantId])
 }
 
 model OrderStatusHistory {
