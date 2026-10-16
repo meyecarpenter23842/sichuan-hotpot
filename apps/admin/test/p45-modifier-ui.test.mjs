@@ -19,7 +19,7 @@ test("L03 provides actual branch-scoped reusable groups and accessible controls"
 });
 test("L03 attaches shared groups to multiple products without duplicate creation", () => {
   assert.match(library, /group-assignments/);
-  assert.match(library, /catalog\.catalogRevision/);
+  assert.match(library, /revision:latest\.catalogRevision/);
   assert.match(catalog, /setAssignProductId/);
   assert.match(library, /pickMedia\("options"/);
   assert.match(library, /pickMedia\("groups"/);
