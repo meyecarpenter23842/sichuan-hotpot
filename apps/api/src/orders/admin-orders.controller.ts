@@ -35,7 +35,7 @@ class OrderEditLineInput {
   productId!: string;
 
   @IsOptional() @IsUUID("4")
-  variantId?: string | null;
+  variantId!: string | null;
 
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true })
   modifierIds!: string[];
