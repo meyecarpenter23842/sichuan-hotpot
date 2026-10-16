@@ -770,13 +770,16 @@ function CustomerApp() {
     const ids=new Set(group.options.map(x=>x.id));
     const groupUnits=line.selection.modifierIds.filter(id=>ids.has(id)).length;
     const newCount=current+delta;
-    if(newCount<0 || groupUnits+delta<group.minSelect || groupUnits+delta>group.maxSelect ||
-        line.selection.modifierIds.length+delta>30) {
+    const swapping=delta>0&&group.maxSelect===1&&groupUnits===1&&current===0;
+    const nextGroupCount=groupUnits+delta-(swapping?1:0);
+    if(newCount<0 || nextGroupCount<group.minSelect || nextGroupCount>group.maxSelect ||
+        line.selection.modifierIds.length+delta-(swapping?1:0)>30) {
       setNotice("Nhóm "+group.name+" yêu cầu từ "+group.minSelect+
         " đến "+group.maxSelect+" topping trên mỗi phần.");
       return;
     }
-    const remaining=line.selection.modifierIds.filter(id=>id!==optionId);
+    const remaining=line.selection.modifierIds.filter(id=>
+      swapping?!ids.has(id):id!==optionId);
     const modifierIds=[...remaining,...Array(newCount).fill(optionId)];
     const product=productsById.get(line.selection.productId);
     if(!product) {setNotice("Món không còn bán.");return;}
@@ -1215,7 +1218,9 @@ function CustomerApp() {
                       <Text style={styles.qtyText}>{count}</Text>
                       <Pressable style={styles.step} accessibilityRole="button"
                         accessibilityLabel={"Thêm "+option.name}
-                        disabled={groupCount>=group.maxSelect||selectedModifierIds.length>=30}
+                        disabled={(groupCount>=group.maxSelect
+                          &&!(group.maxSelect===1&&count===0))
+                          ||selectedModifierIds.length>=30}
                         onPress={()=>{
                           if(group.maxSelect===1&&groupCount===1){
                             setSelectedModifierIds(old=>[...old.filter(id=>!ids.has(id)),option.id]);
