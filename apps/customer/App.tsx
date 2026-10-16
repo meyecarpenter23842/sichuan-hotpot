@@ -1064,7 +1064,7 @@ function CustomerApp() {
                 contentContainerStyle={styles.homeOfferGrid} testID="home-live-offers">
                 {offers.map(offer=><Pressable key={offer.id} accessibilityRole="button"
                   accessibilityLabel={"Xem ưu đãi "+offer.title}
-                  style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58)),flex:0}]}
+                  style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58))}]}
                   onPress={()=>setSelectedOffer(offer)}>
                   {safeProductImageUrl(offer.imageKey)&&<Image resizeMode="cover"
                     source={{uri:safeProductImageUrl(offer.imageKey)!}}
@@ -1954,7 +1954,7 @@ const styles = StyleSheet.create({
   offerModalBody:{fontSize:14,lineHeight:22,color:"#20252B"},
   offerModalActions:{flexDirection:"row",gap:9,justifyContent:"flex-end",
     padding:13,borderTopWidth:1,borderColor:"#EAECF0"},
-  homeOfferCard: { flex: 1, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
+  homeOfferCard: { flexGrow: 0, flexShrink: 0, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
   homeOfferCardShade: { position: "absolute", left: 0, right: 0, bottom: 0,
     backgroundColor: "rgba(60,0,0,0.64)", paddingHorizontal: 9, paddingVertical: 9 },
   homeOfferCardTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
