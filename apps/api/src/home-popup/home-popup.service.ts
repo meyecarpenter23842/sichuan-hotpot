@@ -3,6 +3,7 @@ import {
   NotFoundException,ServiceUnavailableException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { signedR2Url } from "../admin-catalog/r2-product-images.service";
@@ -51,7 +52,7 @@ export class HomePopupService {
     if(!row)throw new NotFoundException("POPUP_SLIDE_NOT_FOUND");
     return row;
   }
-  private async touch(tx:any,branchId:string){
+  private async touch(tx:Prisma.TransactionClient,branchId:string){
     await tx.homePopupConfig.upsert({
       where:{branchId},
       create:{branchId,revision:1},
