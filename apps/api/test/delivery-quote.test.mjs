@@ -142,6 +142,14 @@ test("independent toppings stay fixed when increasing soup portions",async()=>{
   f.db.deliveryPolicyVersion.findFirst=async query=>({
     ...(await policy(query)),minSubtotalVnd:0,
   });
+  // Fixture's default modifier is mandatory; model an actual optional topping
+  // for this test. Mandatory selections are correctly applied per dish.
+  const readProducts=f.db.product.findMany;
+  f.db.product.findMany=async query=>{
+    const products=await readProducts(query);
+    products[0].modifierGroups[0].minSelect=0;
+    return products;
+  };
   const separate={...item(),pricingMode:"SEPARATE"};
   const one=await f.service.calculate("Bearer valid",{
     ...f.input,items:[{...separate,quantity:1}],
