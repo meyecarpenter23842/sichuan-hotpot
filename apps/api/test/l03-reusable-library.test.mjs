@@ -58,6 +58,39 @@ test("L03: R2 media keys cannot escape requested entity or branch",async()=>{
  await assert.rejects(service.attach("token",branchId,"categories",productId,
    "catalog-media/other/categories/"+productId+"/file.png"),x=>x.getStatus()===400);
 });
+test("L03: bulk group assignment updates several products in one transaction",async()=>{
+ const secondProductId="dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+ const calls=[];
+ let allowAll=true,revision=7;
+ const db={
+   branch:{findUnique:async()=>({id:branchId}),
+     updateMany:async()=>({count:revision===7?1:0})},
+   modifierGroup:{findFirst:async()=>({id:groupId,sortOrder:3})},
+   product:{findMany:async()=>allowAll?[{id:productId},{id:secondProductId}]:[{id:productId}]},
+   productModifierGroupAssignment:{
+     deleteMany:async args=>{calls.push(["remove",args]);return {count:0}},
+     createMany:async args=>{calls.push(["create",args]);return {count:args.data.length}},
+   },
+   $transaction:async fn=>fn(db),
+ };
+ const svc=new ModifierLibraryService({database:db},auth);
+ const result=await svc.setGroupProducts("token",branchId,groupId,
+   [productId,secondProductId],7);
+ assert.deepEqual(result,{groupId,productIds:[productId,secondProductId],revision:8});
+ assert.equal(calls.length,2);
+ assert.deepEqual(calls[0],["remove",{where:{groupId}}]);
+ assert.deepEqual(calls[1][1].data,[
+   {productId,groupId,sortOrder:3},{productId:secondProductId,groupId,sortOrder:3},
+ ]);
+ calls.length=0;allowAll=false;
+ await assert.rejects(svc.setGroupProducts("token",branchId,groupId,
+   [productId,secondProductId],7),error=>error.getStatus()===403);
+ assert.equal(calls.length,0,"foreign-branch product must not mutate links");
+ allowAll=true;revision=8;
+ await assert.rejects(svc.setGroupProducts("token",branchId,groupId,
+   [productId,secondProductId],7),error=>error.getStatus()===409);
+ assert.equal(calls.length,0,"stale catalog revision must not mutate links");
+});
 test("L03: additive migration backfills links without changing original option IDs or order snapshots",()=>{
  const sql=readFileSync(new URL("../prisma/migrations/20261015150000_l03_reusable_modifiers/migration.sql",import.meta.url),"utf8");
  assert.match(sql,/INSERT INTO "ProductModifierGroupAssignment"/);
