@@ -1,0 +1,79 @@
+name: Finalize Neon cutover on VPS (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  finalize:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/finalize-hotpot-neon' &&
+      github.actor == 'meyecarpenter23842'
+    environment: production-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require owner command, pinned SSH and current protected main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          test -n "$VPS_HOST" && test -n "$VPS_KNOWN_HOSTS" && test -n "$VPS_DEPLOY_SSH_KEY"
+          echo "::add-mask::$VPS_HOST"
+          test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/main | cut -f1)"
+      - name: Verify Neon, add swap guard, then disable local PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          chmod 600 "$RUNNER_TEMP/key" "$RUNNER_TEMP/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/key" >/dev/null
+          ssh-keygen -l -f "$RUNNER_TEMP/known_hosts" >/dev/null
+          ssh_options=(-p "$VPS_PORT" -i "$RUNNER_TEMP/key" -o IdentitiesOnly=yes
+            -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10
+            -o ServerAliveInterval=20 -o ServerAliveCountMax=3)
+          ssh -T "${ssh_options[@]}" "$VPS_USER@$VPS_HOST"             'sudo -n /usr/bin/python3 -'             < infra/vps/hotpot-neon-cutover.py > "$RUNNER_TEMP/result" 2>/dev/null || {
+              echo "::error::Neon cutover finalizer blocked; inspect production before retry."
+              exit 1
+            }
+          python3 - "$RUNNER_TEMP/result" <<'PY'
+          import re,sys
+          expected = {
+              "neon_database": "PASS",
+              "swap_guard": "PASS",
+              "local_postgresql": "DISABLED",
+              "api_health": "PASS",
+          }
+          got = {}
+          for line in open(sys.argv[1], encoding="utf8"):
+              key, sep, value = line.strip().partition("=")
+              if not sep or key not in expected or key in got or not re.fullmatch(r"[A-Z_]+", value):
+                  raise SystemExit("Invalid cutover response; output withheld.")
+              got[key] = value
+          if got != expected:
+              raise SystemExit("Incomplete cutover response; output withheld.")
+          for key in expected:
+              print(key + "=" + got[key])
+          PY
+      - name: Remove ephemeral SSH files
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/key" "$RUNNER_TEMP/known_hosts" "$RUNNER_TEMP/result"

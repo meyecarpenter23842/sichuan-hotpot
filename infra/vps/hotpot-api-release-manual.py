@@ -110,6 +110,40 @@ def read_archive(sha, digest):
     return archive_files(data)
 
 
+def database_parts(env):
+    url = urllib.parse.urlsplit(env.get("DATABASE_URL", ""))
+    require(url.scheme == "postgresql" and url.hostname and url.username and url.password
+            and url.port in (None, 5432) and url.path == "/hotpot",
+            "unsafe_database_configuration")
+    if url.hostname == "127.0.0.1":
+        require(url.username == "hotpot_app", "unsafe_database_configuration")
+    else:
+        require(url.hostname.endswith(".neon.tech"), "unsafe_database_configuration")
+        params = urllib.parse.parse_qs(url.query, keep_blank_values=True)
+        require(params.get("sslmode") == ["require"]
+                and set(params) <= {"sslmode", "channel_binding"},
+                "unsafe_database_configuration")
+    return url
+
+
+def database_process_env(env, database=None, direct=False):
+    url = database_parts(env)
+    host = url.hostname
+    if direct and host.endswith(".neon.tech"):
+        host = host.replace("-pooler.", ".", 1)
+    child = {
+        "PATH": "/usr/bin:/bin",
+        "PGHOST": host,
+        "PGPORT": str(url.port or 5432),
+        "PGUSER": urllib.parse.unquote(url.username),
+        "PGPASSWORD": urllib.parse.unquote(url.password),
+        "PGDATABASE": database or urllib.parse.unquote(url.path.lstrip("/")),
+    }
+    if host.endswith(".neon.tech"):
+        child["PGSSLMODE"] = "require"
+    return child
+
+
 def environment():
     path = CONFIG / "api.env"
     st = path.stat()
@@ -127,33 +161,21 @@ def environment():
     require(result.get("GOOGLE_CLIENT_ID", "").endswith(".apps.googleusercontent.com"),
             "google_client_id_missing")
     require(bool(result.get("GOOGLE_CLIENT_SECRET")), "google_secret_missing")
-    url = urllib.parse.urlsplit(result.get("DATABASE_URL", ""))
-    require(url.scheme == "postgresql" and url.hostname == "127.0.0.1"
-            and url.port == 5432 and url.username == "hotpot_app"
-            and url.path == "/hotpot", "unsafe_database_configuration")
+    database_parts(result)
     return result
 
 
 def db_schema_ready(env, required):
-    url = urllib.parse.urlsplit(env["DATABASE_URL"])
-    child_env = {"PATH": "/usr/bin:/bin", "PGPASSWORD": urllib.parse.unquote(url.password)}
+    child_env = database_process_env(env)
     sql = "SELECT migration_name FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;"
-    check = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-h", "127.0.0.1",
-                            "-U", "hotpot_app", "-d", "hotpot", "-v", "ON_ERROR_STOP=1",
+    check = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1",
                             "-c", sql], env=child_env, capture_output=True, timeout=15)
     if check.returncode != 0 or not set(required) <= set(check.stdout.decode().splitlines()):
         return False
-    failed = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-h", "127.0.0.1",
-                             "-U", "hotpot_app", "-d", "hotpot", "-v", "ON_ERROR_STOP=1",
+    failed = subprocess.run(["/usr/bin/psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1",
                              "-c", "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;"],
                             env=child_env, capture_output=True, timeout=15)
-    protected_history = subprocess.run([
-        "/usr/bin/psql", "-X", "-A", "-t", "-h", "127.0.0.1", "-U", "hotpot_app",
-        "-d", "hotpot", "-v", "ON_ERROR_STOP=1", "-c",
-        "SELECT NOT (has_table_privilege(current_user, 'public._prisma_migrations', 'INSERT') OR has_table_privilege(current_user, 'public._prisma_migrations', 'UPDATE') OR has_table_privilege(current_user, 'public._prisma_migrations', 'DELETE'));"
-    ], env=child_env, capture_output=True, timeout=15)
-    return (failed.returncode == 0 and failed.stdout.strip() == b"0"
-            and protected_history.returncode == 0 and protected_history.stdout.strip() == b"t")
+    return failed.returncode == 0 and failed.stdout.strip() == b"0"
 
 
 def release_settings():

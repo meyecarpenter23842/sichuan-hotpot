@@ -46,6 +46,30 @@ class MigrationManifestTests(unittest.TestCase):
         self.assertIn("20270101000000_new_feature", release.migration_names(files))
 
 
+class DatabaseConfigurationTests(unittest.TestCase):
+    def test_neon_pooler_is_accepted_and_direct_host_can_be_derived(self):
+        env = {
+            "DATABASE_URL": (
+                "postgresql://hotpot_owner:test%40secret@"
+                "ep-test-pooler.c-6.us-east-2.aws.neon.tech/hotpot?sslmode=require"
+            )
+        }
+        self.assertEqual(release.database_parts(env).hostname,
+                         "ep-test-pooler.c-6.us-east-2.aws.neon.tech")
+        child = release.database_process_env(env, direct=True)
+        self.assertEqual(child["PGHOST"], "ep-test.c-6.us-east-2.aws.neon.tech")
+        self.assertEqual(child["PGDATABASE"], "hotpot")
+        self.assertEqual(child["PGPASSWORD"], "test@secret")
+        self.assertEqual(child["PGSSLMODE"], "require")
+
+    def test_unknown_remote_database_host_is_rejected(self):
+        env = {
+            "DATABASE_URL": "postgresql://u:p@db.example.com:5432/hotpot?sslmode=require"
+        }
+        with self.assertRaisesRegex(release.ReleaseError, "unsafe_database_configuration"):
+            release.database_parts(env)
+
+
 class SilentBuildSafetyTests(unittest.TestCase):
     def test_preparation_has_bounded_sanitized_stages(self):
         source = (Path(__file__).parents[1] / "hotpot-api-release-manual.py").read_text()

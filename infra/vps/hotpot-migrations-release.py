@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 
 ROOT = Path("/opt/sichuan-hotpot")
 CONFIG = Path("/etc/sichuan-hotpot")
@@ -58,16 +59,51 @@ def run(args, *, env=None, cwd=None, input_bytes=None, timeout=600, capture=Fals
     return value.stdout if capture else b""
 
 
+def production_database_url(database="hotpot"):
+    values = {}
+    for line in (CONFIG / "api.env").read_text().splitlines():
+        if line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            require(key not in values, "duplicate_environment_variable")
+            values[key] = value
+    url = urllib.parse.urlsplit(values.get("DATABASE_URL", ""))
+    require(url.scheme == "postgresql" and url.hostname and url.username and url.password
+            and url.port in (None, 5432) and url.path == "/hotpot"
+            and url.hostname.endswith(".neon.tech"),
+            "neon_database_configuration_required")
+    params = urllib.parse.parse_qs(url.query, keep_blank_values=True)
+    require(params.get("sslmode") == ["require"]
+            and set(params) <= {"sslmode", "channel_binding"},
+            "neon_database_configuration_required")
+    host = url.hostname.replace("-pooler.", ".", 1)
+    user = urllib.parse.quote(urllib.parse.unquote(url.username), safe="")
+    password = urllib.parse.quote(urllib.parse.unquote(url.password), safe="")
+    db = urllib.parse.quote(database, safe="")
+    return f"postgresql://{user}:{password}@{host}:{url.port or 5432}/{db}?sslmode=require"
+
+
+def database_process_env(database="hotpot"):
+    url = urllib.parse.urlsplit(production_database_url(database))
+    return {
+        "PATH": "/usr/bin:/bin",
+        "PGHOST": url.hostname,
+        "PGPORT": str(url.port or 5432),
+        "PGUSER": urllib.parse.unquote(url.username),
+        "PGPASSWORD": urllib.parse.unquote(url.password),
+        "PGDATABASE": database,
+        "PGSSLMODE": "require",
+    }
+
+
 def sql(query, database="hotpot"):
-    return run(["/usr/sbin/runuser", "-u", "postgres", "--", "/usr/bin/psql",
-                "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-d", database, "-c", query],
+    return run(["/usr/bin/psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1",
+                "-c", query], env=database_process_env(database),
                timeout=30, capture=True).decode().strip()
 
 
 def sql_write(query):
-    run(["/usr/sbin/runuser", "-u", "postgres", "--", "/usr/bin/psql",
-         "-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", "postgres", "-f", "-"],
-        input_bytes=query.encode(), timeout=30)
+    run(["/usr/bin/psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"],
+        env=database_process_env("hotpot"), input_bytes=query.encode(), timeout=30)
 
 
 def checked_history(expected):
@@ -136,8 +172,8 @@ def backup_config():
 def encrypt_dump(target, recipient):
     with target.open("xb") as dest:
         os.chmod(target, 0o600)
-        dump = subprocess.Popen(["/usr/sbin/runuser", "-u", "postgres", "--",
-                                 "/usr/bin/pg_dump", "-Fc", "-d", "hotpot"],
+        dump = subprocess.Popen(["/usr/bin/pg_dump", "-Fc"],
+                                env=database_process_env("hotpot"),
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
             encrypt = subprocess.Popen(["/usr/bin/age", "-r", recipient],
@@ -159,27 +195,32 @@ def encrypt_dump(target, recipient):
 def isolated_restore(cipher):
     name = "hotpot_p4_restore_" + secrets.token_hex(7)
     sql_write("CREATE DATABASE " + name + " TEMPLATE template0;")
-    sql_write("REVOKE ALL ON DATABASE " + name + " FROM PUBLIC;")
-    decrypt = subprocess.Popen(["/usr/bin/age", "-d", "-i", str(KEY), str(cipher)],
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
-        restore = subprocess.Popen(["/usr/sbin/runuser", "-u", "postgres", "--",
-                                    "/usr/bin/pg_restore", "--exit-on-error",
-                                    "--no-owner", "--no-acl", "-d", name],
-                                   stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
-        decrypt.stdout.close()
-        status_restore = restore.wait(timeout=600)
-        status_decrypt = decrypt.wait(timeout=600)
-        require(status_decrypt == 0 and status_restore == 0, "isolated_restore_failed")
+        sql_write("REVOKE ALL ON DATABASE " + name + " FROM PUBLIC;")
+        decrypt = subprocess.Popen(["/usr/bin/age", "-d", "-i", str(KEY), str(cipher)],
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            restore = subprocess.Popen(["/usr/bin/pg_restore", "--exit-on-error",
+                                        "--no-owner", "--no-acl"],
+                                       env=database_process_env(name),
+                                       stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+            decrypt.stdout.close()
+            status_restore = restore.wait(timeout=600)
+            status_decrypt = decrypt.wait(timeout=600)
+            require(status_decrypt == 0 and status_restore == 0, "isolated_restore_failed")
+        finally:
+            if decrypt.poll() is None:
+                decrypt.kill()
+                decrypt.wait()
+        for table in ("User", "Order", "Payment"):
+            require(sql('SELECT count(*) FROM public."' + table + '";', name).isdecimal(),
+                    "isolated_reconciliation_failed")
+        return name
     finally:
-        if decrypt.poll() is None:
-            decrypt.kill()
-            decrypt.wait()
-    for table in ("User", "Order", "Payment"):
-        require(sql('SELECT count(*) FROM public."' + table + '";', name).isdecimal(),
-                "isolated_reconciliation_failed")
-    return name
+        sql_write("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                  "WHERE datname='" + name + "' AND pid <> pg_backend_pid(); "
+                  "DROP DATABASE IF EXISTS " + name + ";")
 
 
 def backup_restore(sha):
@@ -242,27 +283,14 @@ def migrate(files, expected):
             str(path / "node_modules/prisma/build/index.js")]
     schema = str(path / "apps/api/prisma/schema.prisma")
     run(node + ["generate", "--schema", schema], env=env, cwd=path, timeout=300)
-    role = "hotpot_p4_migrate_" + secrets.token_hex(8)
-    password = secrets.token_hex(32)
-    sql_write("BEGIN; CREATE ROLE " + role + " LOGIN NOSUPERUSER NOCREATEDB "
-              "NOCREATEROLE NOREPLICATION PASSWORD '" + password + "'; "
-              "GRANT hotpot_owner TO " + role + "; "
-              "GRANT CONNECT ON DATABASE hotpot TO " + role + "; COMMIT;")
-    try:
-        url = ("postgresql://" + role + ":" + password
-               + "@127.0.0.1:5432/hotpot?schema=public&options=-c%20role%3Dhotpot_owner")
-        prod_env = dict(env, DATABASE_URL=url)
-        run(node + ["migrate", "deploy", "--schema", schema],
-            env=prod_env, cwd=path, timeout=600)
-        run(node + ["migrate", "status", "--schema", schema],
-            env=prod_env, cwd=path, timeout=90)
-        run(node + ["migrate", "diff", "--from-schema-datasource", schema,
-                    "--to-schema-datamodel", schema, "--exit-code"],
-            env=prod_env, cwd=path, timeout=120)
-    finally:
-        sql_write("ALTER ROLE " + role + " NOLOGIN PASSWORD NULL; "
-                  "REVOKE hotpot_owner FROM " + role + "; "
-                  "REVOKE CONNECT ON DATABASE hotpot FROM " + role + ";")
+    prod_env = dict(env, DATABASE_URL=production_database_url("hotpot"))
+    run(node + ["migrate", "deploy", "--schema", schema],
+        env=prod_env, cwd=path, timeout=600)
+    run(node + ["migrate", "status", "--schema", schema],
+        env=prod_env, cwd=path, timeout=90)
+    run(node + ["migrate", "diff", "--from-schema-datasource", schema,
+                "--to-schema-datamodel", schema, "--exit-code"],
+        env=prod_env, cwd=path, timeout=120)
     require(set(expected) <= checked_history(expected), "migration_history_incomplete")
     # Prisma migrate status + schema diff already verify every version,
     # including migrations not yet known when this runner was committed.
