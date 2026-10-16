@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
