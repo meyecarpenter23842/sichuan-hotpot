@@ -49,3 +49,21 @@ test("database errors propagate as server errors instead of fabricated empty men
   const fake = { database: { branch: { findFirst: async () => { throw Error("db down"); } } } };
   await assert.rejects(new CatalogService(fake).menu("broken"), /db down/);
 });
+
+test("mandatory shared group attached to a product appears for customers only when published",async()=>{
+  const required={id:"required",name:"Độ cay",minSelect:1,maxSelect:1,
+    isAvailable:true,branchId:"branch-1",options:[{id:"mild",name:"Không cay",
+      priceDeltaVnd:0,isAvailable:true,imageKey:"catalog-media/test/options/mild/a.png"}]};
+  const product={id:"hotpot",name:"Lẩu",modifierGroups:[],
+    modifierAssignments:[{group:required}]};
+  const branch={id:"branch-1",isActive:true,categories:[{id:"food",products:[product]}]};
+  const service=new CatalogService({database:{branch:{findFirst:async()=>branch}}});
+  const active=await service.menu("branch-1");
+  assert.equal(active.categories[0].products[0].modifierGroups[0].minSelect,1);
+  assert.equal(active.categories[0].products[0].modifierGroups[0].options[0].priceDeltaVnd,0);
+  required.isAvailable=false;
+  const draft=await service.menu("branch-1");
+  assert.equal(draft.categories[0].products[0].modifierGroups.length,0,
+    "an assigned but unpublished group is invisible to guests, not detached");
+  assert.equal(product.modifierAssignments.length,1,"publishing status never deletes links");
+});
