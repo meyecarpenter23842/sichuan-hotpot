@@ -22,8 +22,11 @@ test("L05 popup frequency is branch/revision aware and does not reopen every ref
   const popup=read("../src/components/HomePromoPopup.tsx");
   assert.match(popup,/hotpot\.home-popup\.v1:/);
   assert.match(popup,/receipt\.revision!==revision/);
-  assert.match(popup,/Date\.now\(\)-receipt\.shownAt>=repeatMs/);
-  assert.match(popup,/shownSession\.current===sessionToken/);
+  assert.match(popup,/const elapsed=receipt&&receipt\.revision===revision\?Date\.now\(\)-receipt\.shownAt:repeatMs/);
+  assert.match(popup,/elapsed>=repeatMs/);
+  assert.match(popup,/memoryReceipt\.current/);
+  assert.match(popup,/setEligibilityEpoch/);
+  assert.match(popup,/repeatMs-elapsed/);
   assert.match(popup,/AsyncStorage\.setItem/);
 });
 
