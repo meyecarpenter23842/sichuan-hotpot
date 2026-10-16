@@ -17,7 +17,7 @@ type FixedDraft = {
 type OptionDraft = {
   key: string; sourceType: "PRODUCT" | "TOPPING";
   productId: string | null; modifierOptionId: string | null;
-  variantId: string | null; quantity: number; priceDelta: string;
+  variantId: string | null; quantity: number; priceDelta: string; sortOrder?: number;
 };
 type GroupDraft = {
   key: string; name: string; minSelect: string; maxSelect: string; options: OptionDraft[];
@@ -97,7 +97,7 @@ export function ComboEditorModal({
         quantity: option.quantity, priceDelta: String(option.priceDeltaVnd),
         sortOrder: option.sortOrder,
       })),
-    ].sort((a, b) => a.sortOrder - b.sortOrder).map(({ sortOrder: _sortOrder, ...option }) => option),
+    ].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
   })) ?? []);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [search, setSearch] = useState("");
