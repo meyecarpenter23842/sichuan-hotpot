@@ -355,7 +355,7 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
       <View style={s.actions}>
         <Action label={busy?"Đang lưu...":"Xong"} disabled={busy} onPress={onClose}/>
       </View>
-    </View>
+    </View></View>
   </Modal>;
 }
 const s=StyleSheet.create({
