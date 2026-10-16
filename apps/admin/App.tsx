@@ -378,13 +378,13 @@ export default function AdminApp() {
       setCatalog(data);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Không tải được thực đơn quản trị.");
-      setCatalog(null);
+      throw e;
     } finally { setLoading(false); }
   }, [token, branchId, branches]);
 
   useEffect(() => {
     setCatalog(null);
-    if (token && branchId) void reload();
+    if (token && branchId) void reload().catch(() => undefined);
   }, [token, branchId, reload]);
 
   async function signOut() {
@@ -594,7 +594,7 @@ export default function AdminApp() {
             <Text style={styles.caption}>Đang tải dữ liệu chi nhánh...</Text>
           </View> : loadError || !catalog ? <View style={styles.center}>
             <Notice text={loadError || "Không tìm thấy dữ liệu chi nhánh."} error />
-            <Action label="Tải lại" onPress={() => void reload()} />
+            <Action label="Tải lại" onPress={() => void reload().catch(() => undefined)} />
           </View> : (
             <>
               {tab === "overview" && <Overview catalog={catalog} token={token} branchId={branchId!} onChangeTab={setTab} />}

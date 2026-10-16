@@ -15,10 +15,12 @@ function Photo({ imageKey, label }: {imageKey:string|null|undefined;label:string
  return uri?<Image source={{uri}} accessibilityLabel={label} style={s.photo}/>
   :<View style={s.placeholder}><Text style={s.placeholderText}>Ảnh</Text></View>;
 }
-export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onAssign}:{
+export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onFeedback,onAssign}:{
  catalog:AdminCatalog;token:string;root:string;reload:()=>Promise<void>;
- onPickImage:(kind:"categories"|"groups"|"options",id:string)=>void;
+ onPickImage:(kind:"categories"|"groups"|"options",id:string,
+   onResult?:(message:string,error:boolean)=>void,onStart?:()=>void)=>void;
  onRemoveImage:(kind:"categories"|"groups"|"options",id:string)=>void;
+ onFeedback:(message:string,error:boolean)=>void;
  onAssign:(product:CatalogProduct)=>void;
 }) {
  const [expanded,setExpanded]=useState<string|null>(null);
@@ -27,28 +29,69 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [query,setQuery]=useState("");
+ const [selectedProducts,setSelectedProducts]=useState<string[]>([]);
+ const [showProducts,setShowProducts]=useState(false);
  const [confirmImpact,setConfirmImpact]=useState(false);
  const [pendingToggle,setPendingToggle]=useState<{kind:"group"|"option";id:string;enabled:boolean;usedBy:number}|null>(null);
  const products=catalog.categories.flatMap(cat=>cat.products);
  const groups=catalog.modifierLibrary??[];
  const visible=groups.filter(g=>(g.name+" "+g.options.map(o=>o.name).join(" "))
    .toLocaleLowerCase("vi").includes(query.trim().toLocaleLowerCase("vi")));
+ function pickMedia(kind:"groups"|"options",id:string){
+   onPickImage(kind,id,(message,failed)=>{
+     setError(failed?message:"");
+     setNotice(failed?"":message);
+     onFeedback(message,failed);
+   },()=>{
+     setError("");
+     setNotice("Đang tối ưu và tải ảnh. Vui lòng đợi...");
+   });
+ }
  function begin(kind:"group"|"option", group?:CatalogGroup, option?:CatalogOption){
    const n=group?.usedByProductIds?.length??0;
    setEditing({kind,id:kind==="group"?group?.id:option?.id,
      groupId:group?.id,name:kind==="group"?group?.name??"":option?.name??"",
      price:String(option?.priceDeltaVnd??0),min:String(group?.minSelect??0),
      max:String(group?.maxSelect??1),order:String(group?.sortOrder??0),usedBy:n});
-   setError("");setConfirmImpact(false);
+   setSelectedProducts(group?.usedByProductIds??[]);setShowProducts(false);
+   setError("");setNotice("");setConfirmImpact(false);
  }
  async function call(path:string,method:"POST"|"PATCH",payload:unknown){
    if(busy)return;
    setBusy(true);setError("");setNotice("");
-   try{await request(root+path,token,method,payload);await reload();setEditing(null);
-    setNotice("Đã cập nhật thư viện topping. Các món gắn nhóm sẽ dùng giá hiện tại.");}
-   catch(e){setError(e instanceof Error?e.message:"Không thể lưu nhóm/topping.");}
-   finally{setBusy(false);}
+   try{
+     const result=await request<{id?:string}>(root+path,token,method,payload);
+     const edited=editing;
+     if(method==="POST" && result.id && edited){
+       // An assignment retry must PATCH this draft, not create another one.
+       setEditing(old=>old?{...old,id:result.id}:old);
+     }
+     const savedGroupId=edited?.kind==="group" ? (result.id??edited.id) : null;
+     if(savedGroupId){
+       const before=(catalog.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds??[];
+       if(before.length!==selectedProducts.length || before.some(id=>!selectedProducts.includes(id))){
+         await request(root+"/library/groups/"+savedGroupId+"/product-assignments",token,"PUT",
+           {productIds:selectedProducts,revision:catalog.catalogRevision});
+       }
+     }
+     await reload();
+     if(method==="POST" && result.id && edited){
+       setEditing(old=>old?{...old,id:result.id}:old);
+       setExpanded(edited.kind==="group"?result.id:edited.groupId??null);
+       setQuery("");
+       setNotice("Đã tạo bản nháp. Tiếp tục gắn ảnh, thêm topping rồi bật bán.");
+     }else{
+       setEditing(null);
+       setNotice("Đã lưu thay đổi. Danh sách món đã được đồng bộ.");
+       onFeedback("Đã lưu thay đổi nhóm / topping.",false);
+     }
+   }catch(e){
+     const message=e instanceof Error?e.message:"Không thể lưu nhóm/topping.";
+     setError(message);onFeedback(message,true);
+     void reload().catch(()=>undefined);
+   }finally{setBusy(false);}
  }
+
  function save(){
   if(!editing||busy)return;
   const {kind,name,id,groupId}=editing;
@@ -84,7 +127,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
   </View>
   <Field label="Tìm nhóm hoặc topping" value={query} onChangeText={setQuery}
     placeholder="Tìm theo tên..." />
-  {!!notice&&<Notice text={notice}/>}
+  {!!notice&&!editing&&<Notice text={notice}/>}
   {!!error&&!editing&&<Notice text={error} error/>}
   {visible.length===0&&<Text style={s.hint}>Chưa có nhóm phù hợp. Thêm nhóm để bắt đầu.</Text>}
   {visible.map(group=>{
@@ -105,7 +148,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
     </View>
     {open&&<View style={s.expanded}>
       <View style={s.actions}>
-       <Action label="Ảnh nhóm" secondary onPress={()=>onPickImage("groups",group.id)}/>
+       <Action label="Ảnh nhóm" secondary onPress={()=>pickMedia("groups",group.id)}/>
        {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>onRemoveImage("groups",group.id)}/>}
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
@@ -120,7 +163,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
           <Text style={s.hint}>+{money(option.priceDeltaVnd)}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={"Ảnh topping "+option.name}
-          style={s.iconAction} onPress={()=>onPickImage("options",option.id)}>
+          style={s.iconAction} onPress={()=>pickMedia("options",option.id)}>
           <Text style={s.edit}>▧</Text></Pressable>
         {!!option.imageKey&&<Pressable accessibilityRole="button" accessibilityLabel={"Gỡ ảnh topping "+option.name}
           style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
@@ -161,7 +204,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        <View style={s.heading}>
          <Text style={s.title}>{editing?.id?"Sửa":"Thêm"} {editing?.kind==="group"?"nhóm topping":"topping"}</Text>
          <Pressable accessibilityRole="button" accessibilityLabel="Đóng chỉnh sửa topping"
-           style={s.iconAction} onPress={()=>setEditing(null)}><Text style={s.edit}>✕</Text></Pressable>
+           style={s.iconAction} disabled={busy} onPress={()=>setEditing(null)}><Text style={s.edit}>✕</Text></Pressable>
        </View>
        {editing&&<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.form}>
          <Field label="Tên hiển thị" value={editing.name}
@@ -175,7 +218,40 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
              onChangeText={order=>setEditing(old=>old?{...old,order}:old)}/>
          </>:<Field label="Giá topping (VND)" numeric value={editing.price}
            onChangeText={price=>setEditing(old=>old?{...old,price}:old)}/>}
-         <Text style={s.hint}>Lưu nháp trước, sau đó gắn ảnh R2 và bật bán. Thay đổi thư viện áp dụng cho các món đã gắn; đơn cũ giữ giá chụp lúc đặt.</Text>
+         {editing.kind==="group"&&<>
+           <Text style={s.title}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
+           <Text style={s.hint}>Chọn món dùng nhóm này. Lưu cập nhật liên kết trong một giao dịch.</Text>
+           <Action label={showProducts?"Thu gọn danh sách món":"Chọn món sử dụng"} secondary
+             onPress={()=>setShowProducts(old=>!old)}/>
+           {showProducts&&products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
+             accessibilityState={{checked:selectedProducts.includes(product.id)}}
+             aria-checked={selectedProducts.includes(product.id)} style={s.line}
+             onPress={()=>setSelectedProducts(old=>old.includes(product.id)
+               ?old.filter(id=>id!==product.id):[...old,product.id])}>
+             <Text style={s.flex} numberOfLines={2}>{product.name}</Text>
+             <Text style={s.edit}>{selectedProducts.includes(product.id)?"☑":"☐"}</Text>
+           </Pressable>)}
+         </>}
+         {editing.id&&<>
+           <Text style={s.title}>Ảnh {editing.kind==="group"?"nhóm":"topping"}</Text>
+           <View style={s.line}>
+             <Photo imageKey={editing.kind==="group"
+               ?groups.find(g=>g.id===editing.id)?.imageKey
+               :groups.flatMap(g=>g.options).find(o=>o.id===editing.id)?.imageKey}
+               label="Ảnh đã lưu"/>
+             <Action label="Chọn / thay ảnh" secondary disabled={busy} onPress={()=>pickMedia(editing.kind==="group"?"groups":"options",editing.id!)}/>
+           </View>
+           {editing.kind==="group"&&<Action label="＋ Thêm topping vào nhóm" secondary
+             onPress={()=>begin("option",{id:editing.id!,name:editing.name,
+               minSelect:Number(editing.min),maxSelect:Number(editing.max),
+               sortOrder:Number(editing.order),isAvailable:false,options:[]})}/>}
+           {editing.kind==="option"&&<Action label="← Quay lại nhóm" secondary
+             onPress={()=>{const group=groups.find(g=>g.id===editing.groupId);
+               if(group)begin("group",group);else setEditing(null);}}/>}
+         </>}
+         {!editing.id&&<Text style={s.hint}>Lưu bản nháp để cấp mã ảnh an toàn. Popup vẫn mở để gắn ảnh.</Text>}
+         {!!notice&&<Notice text={notice}/>}
+         
          {editing.usedBy>1&&<Pressable accessibilityRole="checkbox"
            accessibilityState={{checked:confirmImpact}} style={s.line}
            onPress={()=>setConfirmImpact(old=>!old)}>
@@ -183,23 +259,26 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
            <Text style={s.flex}>Tôi xác nhận thay đổi áp dụng cho {editing.usedBy} món</Text>
          </Pressable>}
          {!!error&&<Notice text={error} error/>}
-         <View style={s.actions}><Action label="Hủy" secondary onPress={()=>setEditing(null)}/>
-           <Action label={busy?"Đang lưu...":"Lưu"} disabled={busy} onPress={save}/></View>
+         <View style={s.actions}><Action label={editing.id?"Đóng":"Hủy"} secondary disabled={busy} onPress={()=>setEditing(null)}/>
+           <Action label={busy?"Đang lưu...":editing.id?"Lưu thay đổi":"Lưu & tiếp tục"} disabled={busy} onPress={save}/></View>
        </ScrollView>}
       </View>
     </KeyboardAvoidingView>
   </Modal>
  </View>;
 }
-export function ProductGroupAssignmentModal({catalog,product,token,root,reload,onClose}:{
+export function ProductGroupAssignmentModal({catalog,product,token,root,reload,onClose,onFeedback}:{
  catalog:AdminCatalog;product:CatalogProduct|null;token:string;root:string;
  reload:()=>Promise<void>;onClose:()=>void;
+ onFeedback?:(message:string,error:boolean)=>void;
 }) {
  const [draft,setDraft]=useState<string[]>([]);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [search,setSearch]=useState("");
- React.useEffect(()=>{
+ React.useLayoutEffect(()=>{
+   // Sync selection before the newly opened picker is painted; a stale empty
+   // checkbox is misleading when the server already linked this group.
    setDraft(product?.modifierGroups.map(g=>g.id)??[]);setError("");setSearch("");
  },[product?.id]);
  async function save(){
@@ -208,8 +287,9 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
   try{
    await request(root+"/products/"+product.id+"/group-assignments",token,"PUT",
     {groupIds:draft,revision:catalog.catalogRevision});
-   await reload();onClose();
-  }catch(e){setError(e instanceof Error?e.message:"Lưu nhóm thất bại.");}
+   await reload();onClose();onFeedback?.("Đã gắn nhóm vào món.",false);
+  }catch(e){const message=e instanceof Error?e.message:"Lưu nhóm thất bại.";
+   setError(message);onFeedback?.(message,true);}
   finally{setBusy(false);}
  }
  return <Modal visible={!!product} transparent animationType="slide" onRequestClose={onClose}>
@@ -225,7 +305,8 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
     {(catalog.modifierLibrary??[]).filter(g=>g.name.toLocaleLowerCase("vi")
       .includes(search.trim().toLocaleLowerCase("vi"))).map(g=>
       <Pressable key={g.id} accessibilityRole="checkbox"
-       accessibilityState={{checked:draft.includes(g.id)}} style={s.line}
+       accessibilityState={{checked:draft.includes(g.id)}}
+        aria-checked={draft.includes(g.id)} style={s.line}
        onPress={()=>setDraft(old=>old.includes(g.id)?old.filter(x=>x!==g.id):[...old,g.id])}>
        <Photo imageKey={g.imageKey} label={"Ảnh nhóm "+g.name}/>
        <Text style={s.flex} numberOfLines={2}>{g.name} · {g.options.length} topping</Text>

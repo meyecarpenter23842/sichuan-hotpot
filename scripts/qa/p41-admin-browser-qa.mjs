@@ -125,13 +125,18 @@ try {
   await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Độ cay");
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("1");
   await page.getByRole("textbox", { name: "Chọn tối đa" }).fill("1");
-  await page.getByRole("button", { name: "Lưu", exact: true }).click();
-  await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
-  await page.getByRole("button", { name: "＋ Topping" }).click();
+  // L03 flow: choose participating products before saving, then stay inside
+  // the same modal to add toppings and their images without stacked dialogs.
+  await page.getByRole("button", { name: "Chọn món sử dụng" }).click();
+  await page.getByRole("checkbox", { name: /Lẩu QA P4.1/ }).click();
+  await page.getByRole("button", { name: "Lưu & tiếp tục" }).click();
+  await page.getByRole("button", { name: "＋ Thêm topping vào nhóm" }).waitFor();
+  await page.getByRole("button", { name: "＋ Thêm topping vào nhóm" }).click();
   await page.getByRole("textbox", { name: "Tên hiển thị" }).fill("Cay vừa");
   await page.getByRole("textbox", { name: "Giá topping (VND)" }).fill("5000");
-  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Lưu & tiếp tục" }).click();
+  await page.getByRole("button", { name: "Chọn / thay ảnh" }).waitFor();
+  await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).click();
   await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
   const savedGroup = await db.modifierGroup.findFirstOrThrow({
     where: { name: "Độ cay", branchId: branch.id },
@@ -141,9 +146,19 @@ try {
   });
   assert.equal(savedGroup.isAvailable, false, "Unpictured new group starts as a draft");
   assert.equal(savedOption.isAvailable, false, "Unpictured new option starts as a draft");
+  // Assert the association in PostgreSQL first, independently of modal paint.
+  assert.equal(await db.productModifierGroupAssignment.count({
+    where: { productId: savedProduct.id, groupId: savedGroup.id },
+  }), 1, "Creating a shared group with selected products must persist immediately");
+  // The new draft must already be linked to its selected product.
+  // Reopen the picker to verify the checked persisted state without reassigning.
   await page.getByRole("button", { name: "Gắn nhóm cho Lẩu QA P4.1" }).click();
-  await page.getByRole("checkbox", { name: /Độ cay/ }).click();
-  await page.getByRole("button", { name: "Lưu nhóm gắn" }).click();
+  await page.getByRole("checkbox", { name: /Độ cay/ }).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="checkbox"]')].some(
+    node => node.textContent?.includes("Độ cay") && node.getAttribute("aria-checked") === "true"
+  ));
+  assert.equal(await page.getByRole("checkbox", { name: /Độ cay/ }).getAttribute("aria-checked"), "true");
+  await page.getByRole("button", { name: "Hủy" }).click();
   await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
@@ -175,7 +190,7 @@ try {
 
   await page.getByRole("button", { name: "Sửa nhóm Độ cay" }).click();
   await page.getByRole("textbox", { name: "Chọn tối thiểu" }).fill("0");
-  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByRole("button", { name: "Lưu thay đổi" }).click();
   await page.getByRole("button", { name: "Đóng chỉnh sửa topping" }).waitFor({ state: "hidden" });
   await optionSwitch.click();
   await page.waitForFunction(() =>

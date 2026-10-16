@@ -114,8 +114,10 @@ export function CatalogPanel({ catalog, token, reload }: {
       },
     });
     setError("");
+    setNotice("");
     setConfirmDelete(false);
     setExpandedId(null);
+    setAssignProductId(null);
   }
   function change<K extends keyof Values>(key: K, value: Values[K]) {
     setEditor(old => old ? { ...old, values: { ...old.values, [key]: value } } : old);
@@ -239,7 +241,38 @@ export function CatalogPanel({ catalog, token, reload }: {
   function pickImage(productId: string) {
     if (busy) return;
     if (Platform.OS !== "web") {
-      setError("Chọn ảnh đang hỗ trợ trên Admin PWA. Android cần quyền chọn ảnh riêng.");
+      void (async () => {
+        const chosen = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"], allowsEditing: true, quality: 0.6,
+        });
+        if (chosen.canceled || !chosen.assets[0]) return;
+        const asset = chosen.assets[0];
+        const mime = (asset.mimeType ?? "image/jpeg").toLowerCase();
+        if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+          setError("Ảnh phải là JPG, PNG hoặc WebP."); return;
+        }
+        const info = await FileSystem.getInfoAsync(asset.uri);
+        const byteSize = info.exists ? info.size : undefined;
+        if (!byteSize || byteSize > 2097152) {
+          setError("Ảnh trên máy phải nhỏ hơn 2MB."); return;
+        }
+        setBusy(true); setError(""); setNotice("");
+        try {
+          const ticket = await request<{key:string;uploadUrl:string;contentType:string}>(
+            root + "/products/" + productId + "/images/ticket", token, "POST",
+            {contentType:mime,byteSize});
+          const uploaded = await FileSystem.uploadAsync(ticket.uploadUrl,asset.uri,{
+            httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
+            headers:{"Content-Type":ticket.contentType},
+          });
+          if (uploaded.status < 200 || uploaded.status >= 300) throw Error("R2 từ chối ảnh.");
+          await request(root + "/products/" + productId + "/images/attach", token, "POST",
+            {key:ticket.key});
+          await reload();
+          setNotice("Đã lưu ảnh món vào cửa hàng.");
+        } catch (e) {setError(e instanceof Error ? e.message : "Không tải được ảnh món.");}
+        finally {setBusy(false);}
+      })().catch(e => setError(e instanceof Error ? e.message : "Không mở được thư viện ảnh."));
       return;
     }
     const input = document.createElement("input");
@@ -295,6 +328,8 @@ export function CatalogPanel({ catalog, token, reload }: {
 
   async function uploadCatalogMedia(
     kind:"categories"|"groups"|"options", itemId:string, blob:Blob, contentType:string,
+    onResult?: (message:string, error:boolean)=>void,
+    onStart?:()=>void,
   ) {
     if (busyRef.current) return;
     busyRef.current=true;setBusy(true);setError("");setNotice("");
@@ -303,6 +338,7 @@ export function CatalogPanel({ catalog, token, reload }: {
         blob.size<1 || blob.size>2097152) {
         throw Error("Ảnh phải là JPEG/PNG/WebP và sau tối ưu không quá 2MB.");
       }
+      onStart?.();
       const endpoint=root+"/media/"+kind+"/"+itemId;
       const ticket=await request<{key:string;uploadUrl:string;contentType:string}>(
         endpoint+"/ticket",token,"POST",{contentType,byteSize:blob.size});
@@ -311,12 +347,15 @@ export function CatalogPanel({ catalog, token, reload }: {
       if(!response.ok)throw Error("R2 từ chối ảnh. Hãy kiểm tra mạng hoặc CORS bucket media.");
       await request(endpoint+"/attach",token,"POST",{key:ticket.key});
       await reload();
-      setNotice("Đã lưu ảnh "+(kind==="categories"?"danh mục":kind==="groups"?"nhóm":"topping")+".");
+      const message="Đã lưu ảnh "+(kind==="categories"?"danh mục":kind==="groups"?"nhóm":"topping")+".";
+      setNotice(message); onResult?.(message,false);
     }catch(e){
-      setError(e instanceof Error?e.message:"Không thể tải ảnh R2.");
+      const message=e instanceof Error?e.message:"Không thể tải ảnh R2.";
+      setError(message); onResult?.(message,true);
     }finally{busyRef.current=false;setBusy(false);}
   }
-  function pickCatalogMedia(kind:"categories"|"groups"|"options",itemId:string) {
+  function pickCatalogMedia(kind:"categories"|"groups"|"options",itemId:string,
+    onResult?: (message:string,error:boolean)=>void, onStart?:()=>void) {
     if(busyRef.current)return;
     if(Platform.OS!=="web"){
       // Native Android gallery selector. No arbitrary path/key can reach the backend.
@@ -336,6 +375,7 @@ export function CatalogPanel({ catalog, token, reload }: {
           setError("Ảnh trên thiết bị phải nhỏ hơn 2MB. Hãy chọn ảnh khác.");return;
         }
         if(busyRef.current)return;
+        onStart?.();
         busyRef.current=true;setBusy(true);setError("");setNotice("");
         try{
           const endpoint=root+"/media/"+kind+"/"+itemId;
@@ -348,8 +388,10 @@ export function CatalogPanel({ catalog, token, reload }: {
           if(sent.status<200||sent.status>=300)throw Error("R2 từ chối ảnh. Kiểm tra kết nối.");
           await request(endpoint+"/attach",token,"POST",{key:ticket.key});
           await reload();setNotice("Đã lưu ảnh từ thư viện Android.");
+          onResult?.("Đã lưu ảnh từ thư viện Android.",false);
         }finally{busyRef.current=false;setBusy(false);}
-      })().catch(e=>setError(e instanceof Error?e.message:"Không thể chọn ảnh trên Android."));
+      })().catch(e=>{const message=e instanceof Error?e.message:"Không thể chọn ảnh trên Android.";
+        setError(message);onResult?.(message,true);});
       return;
     }
     const input=document.createElement("input");
@@ -357,8 +399,9 @@ export function CatalogPanel({ catalog, token, reload }: {
     input.onchange=()=>{
       const file=input.files?.[0];if(!file)return;
       void prepareProductImage(file)
-        .then(prepared=>uploadCatalogMedia(kind,itemId,prepared.blob,prepared.contentType))
-        .catch(e=>setError(e instanceof Error?e.message:"Không thể tối ưu ảnh."));
+        .then(prepared=>uploadCatalogMedia(kind,itemId,prepared.blob,prepared.contentType,onResult,onStart))
+        .catch(e=>{const message=e instanceof Error?e.message:"Không thể tối ưu ảnh.";
+          setError(message);onResult?.(message,true);});
     };
     input.click();
   }
@@ -465,7 +508,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                 <Icon name="edit" size={19} color={c.red} />
               </Pressable>
             </View>
-            {expanded && <Modal visible animationType="slide" transparent
+            {expanded && assignProductId === null && <Modal visible animationType="slide" transparent
               onRequestClose={() => { if (!busy) { setExpandedId(null); setError(""); } }}>
               <View style={st.backdrop}>
                 <View style={st.modal}>
@@ -480,12 +523,12 @@ export function CatalogPanel({ catalog, token, reload }: {
                       <Icon name="close" size={19} color={c.secondary} />
                     </Pressable>
                   </View>
+                  {!!notice && <Notice text={notice} />}
+                  {!!error && <Notice text={error} error />}
+                  {busy && <Text style={st.emptyNote}>Đang lưu / tải ảnh, vui lòng đợi...</Text>}
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
-                    
-             {!!error && <Notice text={error} error />}
-                    {busy && <Text style={st.emptyNote}>Đang xử lý và tải ảnh. Vui lòng đợi...</Text>}
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Khẩu phần / size</Text>
                 <Action label="＋ Size" secondary onPress={() => open("variant", undefined, product.id)} />
@@ -505,31 +548,17 @@ export function CatalogPanel({ catalog, token, reload }: {
               <View style={st.detailHead}>
                 <Text style={st.detailHeading}>Topping / tùy chọn</Text>
                 <Action label="＋ Gắn nhóm đã có" secondary
-                  onPress={() => setAssignProductId(product.id)} />
+                  onPress={() => {setExpandedId(null);setError("");setNotice("");setAssignProductId(product.id);}} />
               </View>
               {product.modifierGroups.length === 0 && <Text style={st.emptyNote}>Chưa có nhóm tùy chọn.</Text>}
               {product.modifierGroups.map(group => <View key={group.id} style={st.group}>
-                <View style={st.detailHead}>
-                  <Text style={st.groupName}>{group.name} ({group.minSelect}–{group.maxSelect})</Text>
-                  <Action label="Sửa nhóm" secondary onPress={() =>
-                    open("group", group.id, product.id, group)} />
-                  <Action label="＋ Chọn" secondary onPress={() =>
-                    open("option", undefined, group.id)} />
-                </View>
-                {group.options.map(option => <View key={option.id} style={st.optionRow}>
-                  <Text style={st.optionName}>{option.name} · +{toPrice(option.priceDeltaVnd)}</Text>
-                  <StatusSwitch value={option.isAvailable} busy={busy}
-                    label={"Bán " + option.name}
-                    onValueChange={next => void flipOption("option", option, next)} />
-                  <Pressable accessibilityRole="button"
-                    accessibilityLabel={"Sửa tùy chọn " + option.name}
-                    style={st.optionAction} onPress={() => open("option", option.id, group.id, option)}>
-                    <Icon name="edit" size={17} color={c.red} />
-                  </Pressable>
-                </View>)}
+                <Text style={st.groupName}>{group.name} · {group.options.length} topping</Text>
+                <Text style={st.emptyNote}>{group.isAvailable ? "Đang bán" : "Chưa bật bán"} · Quản lý tại thư viện chung</Text>
               </View>)}
-              {Platform.OS === "web" && <Action label="Chọn ảnh (tự tối ưu trước khi tải)" secondary
-                disabled={busy} onPress={() => pickImage(product.id)} />}
+              {product.modifierGroups.length > 0 && <Action label="Quản lý thư viện nhóm" secondary
+                onPress={() => {setExpandedId(null);setTab("modifiers");setError("");setNotice("");}} />}
+              <Action label="Chọn / thay ảnh món" secondary
+                disabled={busy} onPress={() => pickImage(product.id)} />
               {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
                 disabled={busy} onPress={() => void mutate(
                   "/products/" + product.id + "/images", "DELETE")} />}
@@ -545,7 +574,8 @@ export function CatalogPanel({ catalog, token, reload }: {
     </>}
     {tab === "modifiers" && <SharedModifierLibraryPanel catalog={catalog} token={token}
       root={root} reload={reload} onPickImage={pickCatalogMedia} onRemoveImage={(kind,id)=>void removeCatalogMedia(kind,id)}
-      onAssign={product => setAssignProductId(product.id)} />}
+      onFeedback={(message,failed)=>announce(message,failed)}
+      onAssign={product => {setExpandedId(null);setEditor(null);setAssignProductId(product.id);}} />}
       </ScrollView>
       {toast && <View style={st.toastLayer} pointerEvents="box-none">
         <View style={[st.toast, toast.error && st.toastError]} accessibilityRole="alert" pointerEvents="box-none">
@@ -560,7 +590,8 @@ export function CatalogPanel({ catalog, token, reload }: {
     </View>
     <ProductGroupAssignmentModal catalog={catalog}
       product={allProducts.find(p => p.id === assignProductId) ?? null}
-      token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)} />
+      token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)}
+      onFeedback={(message,failed)=>announce(message,failed)} />
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -604,6 +635,8 @@ export function CatalogPanel({ catalog, token, reload }: {
                   label="Cho phép bán" onValueChange={next => change("isAvailable", next)} />
               </View>}
             {!!error && <Notice text={error} error />}
+            {!!notice && <Notice text={notice} />}
+            {busy && <Text style={st.emptyNote}>Đang lưu / tải ảnh, vui lòng đợi...</Text>}
             {editor.id && ["category","group","option"].includes(editor.kind) && <>
                <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
                  onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"

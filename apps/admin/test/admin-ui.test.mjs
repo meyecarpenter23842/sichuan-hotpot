@@ -135,7 +135,7 @@ test("Settings is reached through the hero icon and remains a dedicated screen, 
 });
 
 test("Catalog keeps product list flat and moves sizes, toppings and images into a detail modal", () => {
-  assert.match(catalog, /\{expanded && <Modal visible animationType="slide" transparent/);
+  assert.match(catalog, /\{expanded && assignProductId === null && <Modal visible animationType="slide" transparent/);
   assert.match(catalog, /<Icon name="edit" size=\{19\}/);
   assert.match(catalog, /setExpandedId\(null\)/);
   assert.doesNotMatch(catalog, /\{expanded && <View style=\{st\.details\}>/);

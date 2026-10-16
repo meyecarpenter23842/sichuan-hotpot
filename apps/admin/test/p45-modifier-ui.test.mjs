@@ -21,8 +21,8 @@ test("L03 attaches shared groups to multiple products without duplicate creation
   assert.match(library, /group-assignments/);
   assert.match(library, /catalog\.catalogRevision/);
   assert.match(catalog, /setAssignProductId/);
-  assert.match(library, /onPickImage\("options"/);
-  assert.match(library, /onPickImage\("groups"/);
+  assert.match(library, /pickMedia\("options"/);
+  assert.match(library, /pickMedia\("groups"/);
   assert.match(catalog, /busyRef\.current = true/);
   assert.match(catalog, /request\(root \+ path, token, method, body\)/);
 });
@@ -36,4 +36,20 @@ test("L05 displays server and selection errors in both tabs", () => {
   assert.match(catalog, /4200/);
   assert.match(catalog, /accessibilityLabel="Đóng thông báo"/);
   assert.match(catalog, /remaining < group\.minSelect/);
+});
+
+test("L03 avoids opening a group picker above the product-details modal",()=>{
+  assert.match(catalog,/expanded && assignProductId === null && <Modal/);
+  assert.match(catalog,/setExpandedId\(null\)/);
+  assert.doesNotMatch(catalog,/onPress=\{\(\) => open\("group", group\.id, product\.id, group\)\}/);
+  assert.match(catalog,/Quản lý thư viện nhóm/);
+});
+test("L03 keeps new photo and topping drafts in a single active edit modal",()=>{
+  assert.match(library,/Gắn nhóm vào món \(\{selectedProducts\.length\} đã chọn\)/);
+  assert.match(library,/Đã tạo bản nháp\. Tiếp tục gắn ảnh/);
+  assert.match(library,/Lưu & tiếp tục/);
+  assert.match(library,/pickMedia\(editing\.kind==="group"\?"groups":"options"/);
+  assert.match(library,/product-assignments/);
+  assert.match(catalog,/Chọn \/ thay ảnh món/);
+  assert.match(catalog,/!!notice && <Notice text=\{notice\} \/>/);
 });
