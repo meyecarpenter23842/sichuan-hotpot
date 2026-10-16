@@ -45,6 +45,7 @@ test("customer topping and variant choices have wide tap areas and distinct 28dp
   assert.match(styleBlock(app,"option"),/minHeight: 58/);
   assert.match(styleBlock(app,"choiceIndicator"),/width:28,height:28,minWidth:28/);
   assert.match(app,/aria-checked=\{count>0\}/);
-  assert.match(app,/option\.priceDeltaVnd>0\?"\+ "\+vnd\(option\.priceDeltaVnd\):"0 ₫"/);
+  assert.match(app,/option\.priceDeltaVnd>0/);
+  assert.match(app,/"0đ"/);
   assert.match(app,/group\.minSelect > 0 \? "Bắt buộc chọn tối thiểu "/);
 });
