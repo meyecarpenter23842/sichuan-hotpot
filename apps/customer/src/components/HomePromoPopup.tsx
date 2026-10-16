@@ -21,7 +21,8 @@ export function HomePromoPopup({branchId,payload,active}:{
   const [reducedMotion,setReducedMotion]=useState(false);
   const progress=useRef(new Animated.Value(1)).current;
   const transitionLock=useRef(false);
-  const shownSession=useRef("");
+  const memoryReceipt=useRef<{branchId:string;revision:number;shownAt:number}|null>(null);
+  const [eligibilityEpoch,setEligibilityEpoch]=useState(0);
 
   useEffect(()=>{
     let mounted=true;
@@ -48,26 +49,36 @@ export function HomePromoPopup({branchId,payload,active}:{
 
   useEffect(()=>{
     if(!active||!branchId||!enabled||slides.length===0){setVisible(false);return;}
-    const sessionToken=branchId+":"+revision;
-    if(shownSession.current===sessionToken)return;
+    if(visible)return;
     let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>|undefined;
     void AsyncStorage.getItem(receiptKey(branchId)).then(raw=>{
       if(cancelled)return;
-      let receipt:Receipt|null=null;
-      try{receipt=raw?JSON.parse(raw) as Receipt:null;}catch{receipt=null;}
+      let stored:Receipt|null=null;
+      try{stored=raw?JSON.parse(raw) as Receipt:null;}catch{stored=null;}
+      const memory=memoryReceipt.current;
+      const receipt=memory&&memory.branchId===branchId&&memory.revision===revision
+        &&(!stored||stored.revision!==revision||memory.shownAt>stored.shownAt)
+        ?{revision:memory.revision,shownAt:memory.shownAt}:stored;
       const repeatMs=(payload?.settings.repeatIntervalMinutes??360)*60000;
-      const due=!receipt||receipt.revision!==revision||Date.now()-receipt.shownAt>=repeatMs;
-      if(!due)return;
-      shownSession.current=sessionToken;
-      setIndex(0);setPreviousIndex(null);setVisible(true);
-      const next:Receipt={revision,shownAt:Date.now()};
-      void AsyncStorage.setItem(receiptKey(branchId),JSON.stringify(next)).catch(()=>undefined);
+      const elapsed=receipt&&receipt.revision===revision?Date.now()-receipt.shownAt:repeatMs;
+      if(!receipt||receipt.revision!==revision||elapsed>=repeatMs){
+        const shownAt=Date.now();
+        memoryReceipt.current={branchId,revision,shownAt};
+        setIndex(0);setPreviousIndex(null);setVisible(true);
+        const next:Receipt={revision,shownAt};
+        void AsyncStorage.setItem(receiptKey(branchId),JSON.stringify(next)).catch(()=>undefined);
+        return;
+      }
+      timer=setTimeout(()=>setEligibilityEpoch(value=>value+1),Math.max(250,repeatMs-elapsed));
     }).catch(()=>{
       if(cancelled)return;
-      shownSession.current=sessionToken;setIndex(0);setVisible(true);
+      const shownAt=Date.now();
+      memoryReceipt.current={branchId,revision,shownAt};setIndex(0);setVisible(true);
     });
-    return()=>{cancelled=true;};
-  },[active,branchId,enabled,payload?.settings.repeatIntervalMinutes,revision,slides.length]);
+    return()=>{cancelled=true;if(timer)clearTimeout(timer);};
+  },[active,branchId,eligibilityEpoch,enabled,payload?.settings.repeatIntervalMinutes,
+    revision,slides.length,visible]);
 
   const goTo=useCallback((target:number)=>{
     if(slides.length<2||transitionLock.current)return;
