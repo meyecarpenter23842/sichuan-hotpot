@@ -74,11 +74,12 @@ export function priceCart(
   const lines: PricedOrderLine[] = [];
   let subtotalVnd = 0;
   for (const item of items) {
+    const comboOptionIds = item.comboOptionIds ?? [];
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 99
       || !Array.isArray(item.modifierIds) || item.modifierIds.length > 30
       || item.modifierIds.some(id => typeof id !== "string" || !id.trim())
-      || !Array.isArray(item.comboOptionIds) || item.comboOptionIds.length > 30
-      || item.comboOptionIds.some(id => typeof id !== "string" || !id.trim())) {
+      || !Array.isArray(comboOptionIds) || comboOptionIds.length > 30
+      || comboOptionIds.some(id => typeof id !== "string" || !id.trim())) {
       throw new BadRequestException("INVALID_CART_LINE");
     }
     const product = catalog.get(item.productId);
@@ -92,7 +93,7 @@ export function priceCart(
     }[] = [];
 
     if (product.kind === "STANDARD") {
-      if (item.comboOptionIds.length) {
+      if (comboOptionIds.length) {
         throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
       }
     } else {
@@ -112,7 +113,7 @@ export function priceCart(
       }
 
       const selectedCombo = new Map<string, number>();
-      for (const id of item.comboOptionIds) {
+      for (const id of comboOptionIds) {
         selectedCombo.set(id, (selectedCombo.get(id) ?? 0) + 1);
       }
       const knownCombo = new Set<string>();
@@ -140,7 +141,7 @@ export function priceCart(
           });
         }
       }
-      if (item.comboOptionIds.some(id => !knownCombo.has(id))) {
+      if (comboOptionIds.some(id => !knownCombo.has(id))) {
         throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
       }
     }
