@@ -31,11 +31,12 @@ export interface ComboChildProduct {
   isAvailable: boolean; imageKey: string | null;
 }
 export interface ComboFixedItem {
-  id: string; quantity: number; sortOrder: number; childProduct: ComboChildProduct;
+  id: string; variantId: string | null; quantity: number; sortOrder: number;
+  variant: Variant | null; childProduct: ComboChildProduct;
 }
 export interface ComboOption {
-  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
-  childProduct: ComboChildProduct;
+  id: string; variantId: string | null; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  variant: Variant | null; childProduct: ComboChildProduct;
 }
 export interface ComboGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
@@ -137,6 +138,7 @@ export interface CustomerOrderDetail extends CustomerOrderSummary {
   zoneNameSnapshot: string | null; provinceCodeSnapshot: string | null;
   wardCodeSnapshot: string | null; catalogVersionSnapshot: string | null;
   addressLineSnapshot: string;
+  customerNote: string | null;
   payment: { method: "COD" | "QR"; status: string; amountVnd: number;
     qr: QrPaymentInstructions | null } | null;
   items: {
@@ -144,8 +146,10 @@ export interface CustomerOrderDetail extends CustomerOrderSummary {
     quantity: number; unitPriceVnd: number; lineTotalVnd: number;
     modifiers: { name: string; priceVnd: number }[];
     comboItems: {
-      productId: string | null; kind: "FIXED" | "CHOICE"; groupName: string | null;
-      productName: string; quantity: number; priceDeltaVnd: number;
+      productId: string | null; variantId: string | null;
+      kind: "FIXED" | "CHOICE"; groupName: string | null;
+      productName: string; variantName: string | null;
+      quantity: number; priceDeltaVnd: number;
     }[];
   }[];
   statusHistory: {
