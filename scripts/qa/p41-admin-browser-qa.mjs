@@ -148,6 +148,11 @@ try {
     where: { name: "Cay vừa", groupId: savedGroup.id },
   });
   assert.equal(savedGroup.isAvailable, false, "Unpictured new group starts as a draft");
+  const emptyGroupSwitch=page.getByRole("switch",{name:"Hiển thị nhóm Độ cay"});
+  await emptyGroupSwitch.waitFor();
+  assert.equal(await emptyGroupSwitch.isDisabled(),true,
+    "A draft missing photos/options must be visibly locked instead of returning HTTP 409");
+  await page.getByText(/Để bật nhóm:/).waitFor();
   assert.equal(savedOption.isAvailable, false, "Unpictured new option starts as a draft");
   assert.equal(savedGroup.minSelect,1,"Required group must enforce at least one selection");
   assert.equal(savedOption.priceDeltaVnd,0,"Free topping price must be accepted and persisted");
