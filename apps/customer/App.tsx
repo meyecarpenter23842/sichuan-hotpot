@@ -1117,80 +1117,117 @@ function CustomerApp() {
             <Text style={styles.detailTitle}>{item.name}</Text>
             <Text style={styles.detailPrice}>{vnd(total)}</Text>
             <Text style={styles.muted}>Giá hiển thị để tham khảo. Máy chủ sẽ xác nhận lại giá khi đặt hàng.</Text>
-            {item.variants.length > 0 && (
-              <View style={styles.group}>
-                <Text style={styles.sectionTitle}>Khẩu phần / kích cỡ</Text>
-                <Pressable style={styles.option} accessibilityRole="radio"
-                  accessibilityState={{ checked: selectedVariantId === null }}
-                  onPress={() => setSelectedVariantId(null)}>
-                  <Text style={styles.optionText}>{selectedVariantId === null ? "◉" : "◯"} Mặc định</Text>
-                  <Text>{vnd(item.priceVnd)}</Text>
-                </Pressable>
-                {item.variants.filter(v => v.isAvailable).map(v => (
-                  <Pressable key={v.id} style={styles.option} accessibilityRole="radio"
-                    accessibilityState={{ checked: selectedVariantId === v.id }}
-                    aria-checked={selectedVariantId === v.id}
-                    onPress={() => setSelectedVariantId(v.id)}>
-                    <View pointerEvents="none" style={[styles.choiceIndicator,styles.radioIndicator,
-                      selectedVariantId===v.id&&styles.choiceIndicatorSelected]}>
-                      <Text style={styles.choiceIndicatorGlyph}>{selectedVariantId===v.id?"✓":""}</Text>
-                    </View>
-                    <Text style={styles.optionText}>{v.name}</Text>
-                    <Text>{vnd(item.priceVnd + v.priceDeltaVnd)}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            {(item.modifierGroups ?? []).map((group: ModifierGroup) => (
-              <View key={group.id} style={styles.group}>
-                <View style={{flexDirection:"row",alignItems:"center",gap:9}}>
-                  {safeProductImageUrl(group.imageKey)
-                    ? <Image source={{uri:safeProductImageUrl(group.imageKey)!}}
-                        style={{width:38,height:38,borderRadius:7}} accessibilityLabel={"Ảnh nhóm "+group.name}/>
-                    : <View style={{width:38,height:38,borderRadius:7,
-                        backgroundColor:"#EFF0F3",justifyContent:"center",alignItems:"center"}}>
-                        <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
-                  <Text style={styles.sectionTitle}>{group.name}</Text>
-                </View>
-                <Text style={styles.muted}>{group.minSelect > 0 ? "Bắt buộc chọn tối thiểu " + group.minSelect : "Tùy chọn"} · Tối đa {group.maxSelect}</Text>
-                {group.options.map(option => {
-                  const selected = selectedModifierIds.includes(option.id);
-                  return <Pressable key={option.id} style={[styles.option, !option.isAvailable && styles.optionUnavailable]}
-                    disabled={!option.isAvailable}
-                    accessibilityRole={group.maxSelect === 1 ? "radio" : "checkbox"}
-                    accessibilityState={{ checked: selected, disabled: !option.isAvailable }}
-                    aria-checked={selected}
-                    onPress={() => {
-                      setDetailError("");
-                      setSelectedModifierIds(current => {
-                        if (selected) return current.filter(id => id !== option.id);
-                        const ids = new Set(group.options.map(o => o.id));
-                        if (group.maxSelect === 1) return [...current.filter(id => !ids.has(id)), option.id];
-                        if (current.filter(id => ids.has(id)).length >= group.maxSelect) {
-                          setDetailError("Đã chọn tối đa " + group.maxSelect + " cho " + group.name);
-                          return current;
-                        }
-                        return [...current, option.id];
-                      });
-                    }}>
-                    {safeProductImageUrl(option.imageKey)
-                      ? <Image source={{uri:safeProductImageUrl(option.imageKey)!}}
-                          style={{width:40,height:40,borderRadius:8,marginRight:5}}
-                          accessibilityLabel={"Ảnh topping "+option.name}/>
-                      : <View style={{width:40,height:40,borderRadius:8,marginRight:5,
-                          backgroundColor:"#F1F2F4",alignItems:"center",justifyContent:"center"}}>
-                          <Text style={{fontSize:10,color:"#777"}}>Ảnh</Text></View>}
-                    <View pointerEvents="none" style={[styles.choiceIndicator,
-                      group.maxSelect===1&&styles.radioIndicator,
-                      selected&&styles.choiceIndicatorSelected]}>
-                      <Text style={styles.choiceIndicatorGlyph}>{selected?"✓":""}</Text>
-                    </View>
-                    <Text style={styles.optionText} numberOfLines={2}>{option.name}{option.isAvailable ? "" : " · Hết"}</Text>
-                    <Text style={styles.optionPrice}>{option.priceDeltaVnd>0?"+ "+vnd(option.priceDeltaVnd):"0 ₫"}</Text>
+            {item.variants.length > 0 && <View style={styles.group}>
+              <Text style={styles.sectionTitle}>Khẩu phần / size</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.sizeStrip}>
+                {[{id:null,name:"Mặc định",priceDeltaVnd:0},...item.variants.filter(v=>v.isAvailable)]
+                  .map(variant=>{
+                  const chosen=selectedVariantId===variant.id;
+                  return <Pressable key={variant.id??"default"} accessibilityRole="radio"
+                    accessibilityLabel={"Size "+variant.name}
+                    accessibilityState={{checked:chosen}} aria-checked={chosen}
+                    style={[styles.sizeTile,chosen&&styles.sizeTileSelected]}
+                    onPress={()=>setSelectedVariantId(variant.id)}>
+                    <Text style={[styles.sizeLabel,chosen&&styles.sizeLabelSelected]}>
+                      {variant.name}</Text>
+                    <Text style={[styles.sizePrice,chosen&&styles.sizeLabelSelected]}>
+                      {variant.id===null?"Giá gốc":vnd(item.priceVnd+variant.priceDeltaVnd)}
+                    </Text>
                   </Pressable>;
                 })}
-              </View>
-            ))}
+              </ScrollView>
+            </View>}
+            {[...(item.modifierGroups??[])].sort((a,b)=>
+              Number(b.minSelect>0)-Number(a.minSelect>0)).map((group:ModifierGroup)=>{
+              const mandatory=group.minSelect>0;
+              const ids=new Set(group.options.map(o=>o.id));
+              const groupCount=selectedModifierIds.filter(id=>ids.has(id)).length;
+              return <View key={group.id} style={styles.group}>
+                <View style={styles.choiceGroupHeading}>
+                  <Text style={styles.sectionTitle}>{group.name}</Text>
+                  <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
+                    {mandatory?"Bắt buộc":"Không bắt buộc"}
+                  </Text>
+                </View>
+                <Text style={styles.muted}>
+                  {mandatory?"Chọn ít nhất "+group.minSelect:"Có thể bỏ qua"} · Tối đa
+                  {" "+group.maxSelect} topping mỗi phần
+                </Text>
+                {mandatory?<View style={styles.choiceWrap}>
+                  {group.options.filter(option=>option.isAvailable).map(option=>{
+                    const count=selectedModifierIds.filter(id=>id===option.id).length;
+                    return <View key={option.id} style={[styles.requiredTile,
+                      count>0&&styles.requiredTileSelected]}>
+                      <Pressable style={styles.requiredTilePick}
+                        accessibilityRole={group.maxSelect===1?"radio":"checkbox"}
+                        accessibilityLabel={option.name}
+                        accessibilityState={{checked:count>0}} aria-checked={count>0}
+                        onPress={()=>{
+                          if(group.maxSelect===1){
+                            setSelectedModifierIds(old=>[...old.filter(id=>!ids.has(id)),option.id]);
+                            setDetailError("");
+                          }else changeDetailTopping(group,option.id,count>0?-1:1);
+                        }}>
+                        {safeProductImageUrl(option.imageKey)&&<Image
+                          source={{uri:safeProductImageUrl(option.imageKey)!}}
+                          style={styles.requiredImage}/>}
+                        <Text style={styles.requiredTileName} numberOfLines={2}>{option.name}</Text>
+                        <Text style={styles.sizePrice}>{option.priceDeltaVnd>0
+                          ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                        {group.maxSelect===1&&<Text style={styles.tileCheck}>{count>0?"✓":"○"}</Text>}
+                      </Pressable>
+                      {group.maxSelect>1&&<View style={styles.tileStepper}>
+                        <Pressable style={styles.tileQtyButton} accessibilityRole="button"
+                          accessibilityLabel={"Bớt "+option.name}
+                          disabled={!count||groupCount<=group.minSelect}
+                          onPress={()=>changeDetailTopping(group,option.id,-1)}>
+                          <Text style={styles.stepText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.qtyText}>{count}</Text>
+                        <Pressable style={styles.tileQtyButton} accessibilityRole="button"
+                          accessibilityLabel={"Thêm "+option.name}
+                          disabled={groupCount>=group.maxSelect||selectedModifierIds.length>=30}
+                          onPress={()=>changeDetailTopping(group,option.id,1)}>
+                          <Text style={styles.stepText}>+</Text>
+                        </Pressable>
+                      </View>}
+                    </View>;
+                  })}
+                </View>:group.options.filter(option=>option.isAvailable).map(option=>{
+                  const count=selectedModifierIds.filter(id=>id===option.id).length;
+                  return <View key={option.id} style={styles.toppingRow}>
+                    {safeProductImageUrl(option.imageKey)
+                      ?<Image source={{uri:safeProductImageUrl(option.imageKey)!}}
+                        style={styles.toppingImage}/>
+                      :<View style={styles.toppingPlaceholder}/>}
+                    <View style={styles.toppingCopy}>
+                      <Text style={styles.optionText} numberOfLines={2}>{option.name}</Text>
+                      <Text style={styles.optionPrice}>{option.priceDeltaVnd>0
+                        ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                    </View>
+                    <View style={styles.quantityStepper}>
+                      <Pressable style={styles.step} accessibilityRole="button"
+                        accessibilityLabel={"Bớt "+option.name} disabled={count===0}
+                        onPress={()=>changeDetailTopping(group,option.id,-1)}>
+                        <Text style={styles.stepText}>−</Text>
+                      </Pressable>
+                      <Text style={styles.qtyText}>{count}</Text>
+                      <Pressable style={styles.step} accessibilityRole="button"
+                        accessibilityLabel={"Thêm "+option.name}
+                        disabled={groupCount>=group.maxSelect||selectedModifierIds.length>=30}
+                        onPress={()=>{
+                          if(group.maxSelect===1&&groupCount===1){
+                            setSelectedModifierIds(old=>[...old.filter(id=>!ids.has(id)),option.id]);
+                          }else changeDetailTopping(group,option.id,1);
+                        }}>
+                        <Text style={styles.stepText}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>;
+                })}
+              </View>;
+            })}
             {!!detailError && <Notice message={detailError} error />}
             <View style={styles.quantityLine}>
               <Text style={styles.sectionTitle}>Số lượng</Text>
