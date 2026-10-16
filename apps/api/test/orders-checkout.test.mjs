@@ -341,6 +341,9 @@ test("P0 zone: COD/QR use saved ward, no routing, immutable fee and idempotency"
 
 
 test("real combo checkout stores immutable fixed and chosen component snapshots", async () => {
+  // Prior zone-pricing test intentionally leaves the address outside service;
+  // restore a valid saved ward so this test isolates combo behavior.
+  await db.address.update({ where: { id: addressId }, data: { wardCode: "25747" } });
   const base = await db.product.findUniqueOrThrow({
     where: { id: productId }, select: { categoryId: true },
   });
@@ -376,7 +379,7 @@ test("real combo checkout stores immutable fixed and chosen component snapshots"
       comboOptionIds: [option.id], quantity: 1, pricingMode: "SEPARATE",
     }],
   }).expect(201);
-  assert.equal(result.body.totalVnd, 120000);
+  assert.equal(result.body.totalVnd, 125000);
 
   const saved = await db.order.findUniqueOrThrow({
     where: { id: result.body.orderId },
