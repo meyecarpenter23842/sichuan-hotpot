@@ -24,11 +24,12 @@ export interface CatalogComboChild {
   isAvailable: boolean; imageKey: string | null;
 }
 export interface CatalogComboFixedItem {
-  id: string; quantity: number; sortOrder: number; childProduct: CatalogComboChild;
+  id: string; variantId: string | null; quantity: number; sortOrder: number;
+  variant: CatalogVariant | null; childProduct: CatalogComboChild;
 }
 export interface CatalogComboOption {
-  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
-  childProduct: CatalogComboChild;
+  id: string; variantId: string | null; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  variant: CatalogVariant | null; childProduct: CatalogComboChild;
 }
 export interface CatalogComboGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
