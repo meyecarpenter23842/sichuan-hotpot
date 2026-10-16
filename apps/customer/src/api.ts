@@ -144,8 +144,8 @@ export interface CustomerOrderDetail extends CustomerOrderSummary {
     quantity: number; unitPriceVnd: number; lineTotalVnd: number;
     modifiers: { name: string; priceVnd: number }[];
     comboItems: {
-      kind: "FIXED" | "CHOICE"; groupName: string | null; productName: string;
-      quantity: number; priceDeltaVnd: number;
+      productId: string | null; kind: "FIXED" | "CHOICE"; groupName: string | null;
+      productName: string; quantity: number; priceDeltaVnd: number;
     }[];
   }[];
   statusHistory: {
