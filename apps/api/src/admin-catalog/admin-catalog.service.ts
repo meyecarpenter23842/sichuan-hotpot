@@ -408,8 +408,17 @@ export class AdminCatalogService {
         && (current._count.comboFixedItems > 0 || current._count.comboGroups > 0)) {
         throw new ConflictException("COMBO_CONFIG_REMOVE_BEFORE_KIND_CHANGE");
       }
-      if (input.kind === "COMBO" && input.isAvailable === true) {
-        throw new ConflictException("COMBO_CONFIG_REQUIRED_BEFORE_ENABLE");
+      if (input.kind === "COMBO") {
+        const [fixedUse, optionUse] = await Promise.all([
+          this.prisma.database.productComboFixedItem.count({ where: { childProductId: id } }),
+          this.prisma.database.productComboOption.count({ where: { childProductId: id } }),
+        ]);
+        if (fixedUse || optionUse) {
+          throw new ConflictException("PRODUCT_USED_BY_COMBO_CANNOT_NEST");
+        }
+        if (input.isAvailable === true) {
+          throw new ConflictException("COMBO_CONFIG_REQUIRED_BEFORE_ENABLE");
+        }
       }
     }
     if (input.isAvailable === true && (input.kind ?? current.kind) === "COMBO") {
