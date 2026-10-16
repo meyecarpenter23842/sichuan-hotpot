@@ -128,6 +128,7 @@ class LiveP4SafetyTests(unittest.TestCase):
 
     def test_backup_or_isolated_restore_failure_blocks_migration(self):
         for reason in ("backup_encryption_failed", "offsite_download_checksum_mismatch",
+                       "isolated_database_not_ready", "isolated_decrypt_failed",
                        "isolated_restore_failed"):
             self.assertEqual(self.invoke(set(self.migrations[:1]), p4.GateError(reason)), (1, 0))
 
@@ -170,6 +171,9 @@ class LiveP4SafetyTests(unittest.TestCase):
         self.assertIn("production_database_url", source)
         self.assertNotIn('@127.0.0.1:5432/hotpot', source)
         self.assertNotIn('runuser", "-u", "postgres"', source)
+        self.assertIn("wait_for_database(name)", source)
+        self.assertIn('"--clean", "--if-exists"', source)
+        self.assertIn('"--single-transaction"', source)
 
     def test_invalid_arguments_rejected(self):
         with patch.object(p4.os, "geteuid", return_value=0):
