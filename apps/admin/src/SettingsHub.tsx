@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BranchPanel } from "./BranchPanel";
 import { HoursPanel } from "./HoursPanel";
 import { DeliveryPolicyPanel } from "./DeliveryPolicyPanel";
+import { HomeOffersPanel } from "./HomeOffersPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { StatusSwitch } from "./StatusSwitch";
@@ -13,11 +14,12 @@ import { playOrderChime } from "./order-notifications";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
 
-type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts";
+type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
   { id: "alerts", label: "Thông báo", icon: "bell", hint: "Âm báo đơn hàng", owner: false },
   { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, vị trí GPS", owner: true },
   { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
+  { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", hint: "Ảnh, nội dung, lịch hiển thị", owner: true },
   { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Km, phụ phí, giá trị đơn", owner: true },
   { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
   { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
@@ -116,6 +118,8 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
             {selected === "delivery" && <DeliveryPolicyPanel key={branch.id + ":delivery"}
               token={token} branchId={branch.id} active={branch.isActive}
               mode="delivery" onDirtyChange={setDirty} />}
+            {selected === "offers" && <HomeOffersPanel key={branch.id} token={token}
+              branchId={branch.id} onDirtyChange={setDirty} />}
             {selected === "orders" && <DeliveryPolicyPanel key={branch.id + ":orders"}
               token={token} branchId={branch.id} active={branch.isActive}
               mode="orders" onDirtyChange={setDirty} />}

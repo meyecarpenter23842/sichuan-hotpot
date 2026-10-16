@@ -13,7 +13,7 @@ import {
 } from "../../packages/shared/src/cart";
 import {
   apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
-  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses,
+  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses, type HomeOffer,
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
@@ -145,25 +145,6 @@ function ProductArtwork({ product, large = false }: { product: Product; large?: 
     accessibilityLabel={"Ảnh món " + product.name} onError={() => setBroken(true)} />;
 }
 
-// Use only the photography inside the approved mockup; do not display
-// mockup discounts or prices, which are not production catalogue facts.
-function HomeLifestylePhoto({ kind, width, height }: {
-  kind: "hotpot" | "milkTea"; width: number; height: number;
-}) {
-  const x = kind === "hotpot" ? 315 : 690;
-  const y = 1312;
-  const cropWidth = kind === "hotpot" ? 165 : 180;
-  const scale = width / cropWidth;
-  return (
-    <View style={{ width, height, overflow: "hidden" }}>
-      <Image source={require("./assets/home-reference.png")} resizeMode="stretch"
-        accessibilityLabel={kind === "hotpot" ? "Ảnh lẩu Tứ Xuyên" : "Ảnh trà sữa"}
-        style={{ position: "absolute", width: 941 * scale, height: 1672 * scale,
-          left: -x * scale, top: -y * scale }} />
-    </View>
-  );
-}
-
 /** Optional toppings are purchased independently from the dish counter.
  * Required preparation choices apply to every dish portion. */
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
@@ -199,6 +180,10 @@ function CustomerApp() {
   const [menu, setMenu] = useState<BranchMenu | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
+  const [offers,setOffers]=useState<HomeOffer[]>([]);
+  const [offerLoading,setOfferLoading]=useState(false);
+  const [offerError,setOfferError]=useState("");
+  const [selectedOffer,setSelectedOffer]=useState<HomeOffer|null>(null);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -239,6 +224,7 @@ function CustomerApp() {
 
   const catalogueRequest = useRef(0);
   const currentBranch = useRef("");
+  const loadedOffersForBranch=useRef("");
 
   // Catalog is an independently changing server resource. Recheck branch
   // visibility and products, including after the Admin toggles availability.
@@ -259,6 +245,9 @@ function CustomerApp() {
         ?? list.find(branch => branch.id === savedId)?.id ?? list[0]?.id;
       if (!activeBranch) {
         setMenu(null);
+        setOffers([]);
+        loadedOffersForBranch.current="";
+        setOfferError("");
         setBranchId("");
         setCategoryId("");
         setCatalogError("");
@@ -273,6 +262,25 @@ function CustomerApp() {
       setBranchId(activeBranch);
       setMenu(response);
       setCatalogError("");
+      // Editorial promos load independently: failure may not hide menu/checkout.
+      setOfferLoading(true);
+      if(loadedOffersForBranch.current!==activeBranch){
+        // Do not flicker the carousel during 30s/foreground refresh.
+        // Only reset it when the customer actually switches branches.
+        loadedOffersForBranch.current=activeBranch;
+        setSelectedOffer(null);setOffers([]);
+      }
+      void apiRequest<HomeOffer[]>("/catalog/branches/"+
+        encodeURIComponent(activeBranch)+"/offers").then(list=>{
+        if(requestId!==catalogueRequest.current)return;
+        setOffers(list);setOfferError("");
+      }).catch(error=>{
+        if(requestId!==catalogueRequest.current)return;
+        setOffers([]);
+        setOfferError(error instanceof Error?error.message:"Không tải được ưu đãi.");
+      }).finally(()=>{
+        if(requestId===catalogueRequest.current)setOfferLoading(false);
+      });
       setCategoryId(old => response.categories.some(cat => cat.id === old)
         ? old : "");
       await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
@@ -284,6 +292,8 @@ function CustomerApp() {
       setCatalogError(error instanceof Error ? error.message : apiMissingMessage);
       // Fail closed, never imply that stale stock/prices are currently for sale.
       setMenu(null);
+      setOffers([]);loadedOffersForBranch.current="";
+      setOfferError("");setSelectedOffer(null);
     } finally {
       if (requestId === catalogueRequest.current) setCatalogLoading(false);
     }
@@ -1055,43 +1065,34 @@ function CustomerApp() {
             <View style={styles.homeOffers}>
               <View style={styles.homeSectionHead}>
                 <View style={styles.homeSectionTitleRow}>
-                  <HomeCategoryIcon name="combo" size={26} />
+                  <HomeCategoryIcon name="combo" size={26}/>
                   <Text style={styles.homeSectionTitle}>Ưu đãi hôm nay</Text>
                 </View>
-                <Pressable accessibilityRole="button" accessibilityLabel="Xem danh mục ưu đãi"
-                  style={styles.homeSeeAll}
-                  onPress={() => {
-                    const offer = menu?.categories.find(cat =>
-                      /ưu đãi|khuyến mãi|giảm giá/i.test(cat.name));
-                    setCategoryId(offer?.id ?? "");
-                    setScreen("menu");
-                  }}><Text style={styles.linkText}>Xem tất cả  ›</Text></Pressable>
               </View>
-              <View style={styles.homeOfferGrid}>
-                {([
-                  { kind: "hotpot", title: "Khám phá lẩu", term: "lẩu" },
-                  { kind: "milkTea", title: "Trà sữa thơm ngon", term: "trà" },
-                ] as const).map(promo => {
-                  const tileWidth = (Math.min(viewportWidth, 620) - 40) / 2;
-                  return (
-                    <Pressable key={promo.kind} accessibilityRole="button"
-                      accessibilityLabel={promo.title} style={styles.homeOfferCard}
-                      onPress={() => {
-                        const match = menu?.categories.find(cat =>
-                          cat.name.toLocaleLowerCase("vi").includes(promo.term));
-                        setCategoryId(match?.id ?? "");
-                        setSearch("");
-                        setScreen("menu");
-                      }}>
-                      <HomeLifestylePhoto kind={promo.kind} width={tileWidth} height={112} />
-                      <View style={styles.homeOfferCardShade}>
-                        <Text style={styles.homeOfferCardTitle}>{promo.title}</Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <Text style={styles.homeOfferNote}>Ưu đãi và giá thực tế theo thông tin cửa hàng.</Text>
+              {offers.length>0?<ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.homeOfferGrid} testID="home-live-offers">
+                {offers.map(offer=><Pressable key={offer.id} accessibilityRole="button"
+                  accessibilityLabel={"Xem ưu đãi "+offer.title}
+                  style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58))}]}
+                  onPress={()=>setSelectedOffer(offer)}>
+                  {safeProductImageUrl(offer.imageKey)&&<Image resizeMode="cover"
+                    source={{uri:safeProductImageUrl(offer.imageKey)!}}
+                    style={styles.homeOfferImage}/>}
+                  <View style={styles.homeOfferCardShade}>
+                    <Text style={styles.homeOfferCardTitle} numberOfLines={2}>{offer.title}</Text>
+                    <Text style={styles.homeOfferCardSummary} numberOfLines={2}>{offer.summary}</Text>
+                  </View>
+                </Pressable>)}
+              </ScrollView>:<View style={styles.homeOfferEmpty}>
+                <Text style={styles.muted}>
+                  {offerLoading?"Đang tải ưu đãi…":offerError
+                    ?"Không tải được ưu đãi. Thực đơn vẫn hoạt động bình thường."
+                    :"Hiện chưa có chương trình ưu đãi đang diễn ra."}
+                </Text>
+                {!!offerError&&<Button alternate label="Thử tải ưu đãi"
+                  onPress={()=>void refreshCatalogue(undefined,true)}/>}
+              </View>}
+              <Text style={styles.homeOfferNote}>Nội dung chương trình do cửa hàng công bố. Giá đặt món được xác nhận trong giỏ.</Text>
             </View>
           </View>
         );
@@ -1658,6 +1659,40 @@ function CustomerApp() {
             </View>}
           </View>
         )}
+        <Modal visible={!!selectedOffer} transparent animationType="fade"
+          onRequestClose={()=>setSelectedOffer(null)}>
+          <View style={styles.offerModalOverlay}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng chi tiết ưu đãi"
+              style={StyleSheet.absoluteFill} onPress={()=>setSelectedOffer(null)}/>
+            <SafeAreaView edges={["bottom"]} style={styles.offerModalCard}>
+              <View style={styles.offerModalHeading}>
+                <Text style={styles.offerModalTitle} numberOfLines={2}>{selectedOffer?.title}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Đóng popup ưu đãi"
+                  style={styles.offerModalClose} onPress={()=>setSelectedOffer(null)}>
+                  <Text style={styles.offerModalCloseText}>✕</Text>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.offerModalScroll}
+                contentContainerStyle={styles.offerModalContent} keyboardShouldPersistTaps="handled">
+                {selectedOffer&&safeProductImageUrl(selectedOffer.imageKey)&&
+                  <Image source={{uri:safeProductImageUrl(selectedOffer.imageKey)!}}
+                    resizeMode="cover" style={styles.offerModalPhoto}/>}
+                <Text style={styles.offerModalSummary}>{selectedOffer?.summary}</Text>
+                <Text style={styles.offerModalBody}>{selectedOffer?.body}</Text>
+                {selectedOffer?.endAt&&<Text style={styles.muted}>
+                  Kết thúc: {new Date(selectedOffer.endAt).toLocaleString("vi-VN",
+                    {timeZone:"Asia/Ho_Chi_Minh"})}
+                </Text>}
+                <Text style={styles.muted}>Ưu đãi thông tin; không tự thay đổi giá món trong giỏ.</Text>
+              </ScrollView>
+              <View style={styles.offerModalActions}>
+                {selectedOffer?.ctaTarget==="MENU"&&<Button label="Xem thực đơn"
+                  onPress={()=>{setSelectedOffer(null);setCategoryId("");setScreen("menu");}}/>}
+                <Button label="Đóng" alternate onPress={()=>setSelectedOffer(null)}/>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
         <Modal visible={!!pendingDeleteAddress} transparent animationType="fade"
           onRequestClose={() => { if (!addressSaving) setPendingDeleteAddress(null); }}>
           <View style={styles.deleteModalBackdrop}>
@@ -1907,8 +1942,28 @@ const styles = StyleSheet.create({
   homeEmpty: { marginHorizontal: 15, backgroundColor: palette.graySurface, padding: 16,
     borderRadius: 13, gap: 10, alignItems: "stretch" },
   homeOffers: { paddingTop: 8, paddingBottom: 16, gap: 4 },
-  homeOfferGrid: { flexDirection: "row", gap: 10, marginHorizontal: 15 },
-  homeOfferCard: { flex: 1, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
+  homeOfferGrid: { flexDirection: "row", gap: 10, paddingHorizontal: 15 },
+  homeOfferImage: { ...StyleSheet.absoluteFillObject },
+  homeOfferCardSummary: { fontSize:11,fontWeight:"600",color:"#FFFFFF" },
+  homeOfferEmpty: { marginHorizontal:15,minHeight:72,justifyContent:"center",
+    backgroundColor:"#F9FAFB",borderRadius:12,padding:12,gap:8 },
+  offerModalOverlay: { flex:1,backgroundColor:"rgba(17,24,39,.52)",
+    alignItems:"center",justifyContent:"center",paddingHorizontal:14,paddingVertical:30 },
+  offerModalCard: {width:"100%",maxWidth:510,maxHeight:"92%",backgroundColor:"#FFFFFF",
+    borderRadius:18,overflow:"hidden"},
+  offerModalHeading: {flexDirection:"row",alignItems:"center",justifyContent:"space-between",
+    gap:10,paddingHorizontal:16,paddingVertical:10,borderBottomWidth:1,borderColor:"#EAECF0"},
+  offerModalTitle:{flex:1,fontSize:18,fontWeight:"900",color:"#20252B"},
+  offerModalClose:{width:48,height:48,alignItems:"center",justifyContent:"center"},
+  offerModalCloseText:{fontSize:21,color:"#667085"},
+  offerModalScroll:{minHeight:0,flexShrink:1},
+  offerModalContent:{gap:13,padding:16,paddingBottom:25},
+  offerModalPhoto:{width:"100%",height:188,borderRadius:11,backgroundColor:"#F3F4F6"},
+  offerModalSummary:{fontSize:16,fontWeight:"800",color:"#B3262D",lineHeight:23},
+  offerModalBody:{fontSize:14,lineHeight:22,color:"#20252B"},
+  offerModalActions:{flexDirection:"row",gap:9,justifyContent:"flex-end",
+    padding:13,borderTopWidth:1,borderColor:"#EAECF0"},
+  homeOfferCard: { flexGrow: 0, flexShrink: 0, borderRadius: 13, height: 112, overflow: "hidden", backgroundColor: "#6F2318" },
   homeOfferCardShade: { position: "absolute", left: 0, right: 0, bottom: 0,
     backgroundColor: "rgba(60,0,0,0.64)", paddingHorizontal: 9, paddingVertical: 9 },
   homeOfferCardTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },

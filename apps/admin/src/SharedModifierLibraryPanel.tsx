@@ -77,10 +77,9 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
    try{
      const result=await request<{id?:string}>(root+path,token,method,payload);
      const edited=editing;
-     if(method==="POST" && result.id && edited){
-       // An assignment retry must PATCH this draft, not create another one.
-       setEditing(old=>old?{...old,id:result.id}:old);
-     }
+     // Keep draft editing locked through attachment and reload. Exposing an ID
+     // early lets the user open "Add topping" before reload finishes; the
+     // late completion otherwise corrupts the topping editor with a group ID.
      const savedGroupId=edited?.kind==="group" ? (result.id??edited.id) : null;
      if(savedGroupId){
        // The library editor may have been open while another admin changed the
@@ -101,7 +100,8 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
      }
      await reload();
      if(method==="POST" && result.id && edited){
-       setEditing(old=>old?{...old,id:result.id}:old);
+       setEditing(old=>old&&old.kind===edited.kind
+         ?{...old,id:result.id}:old);
        setExpanded(edited.kind==="group"?result.id:edited.groupId??null);
        setQuery("");
        setNotice("Đã tạo bản nháp, gắn vào "+selectedProducts.length+" món. Thêm ảnh và topping, bật bán để xuất hiện trong app khách.");
