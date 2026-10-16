@@ -268,56 +268,95 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  </View>;
 }
 export function ProductGroupAssignmentModal({catalog,product,token,root,reload,onClose,onFeedback}:{
- catalog:AdminCatalog;product:CatalogProduct|null;token:string;root:string;
- reload:()=>Promise<void>;onClose:()=>void;
- onFeedback?:(message:string,error:boolean)=>void;
+  catalog:AdminCatalog;product:CatalogProduct|null;token:string;root:string;
+  reload:()=>Promise<void>;onClose:()=>void;
+  onFeedback?:(message:string,error:boolean)=>void;
 }) {
- const [draft,setDraft]=useState<string[]>([]);
- const [busy,setBusy]=useState(false);
- const [error,setError]=useState("");
- const [search,setSearch]=useState("");
- React.useLayoutEffect(()=>{
-   // Sync selection before the newly opened picker is painted; a stale empty
-   // checkbox is misleading when the server already linked this group.
-   setDraft(product?.modifierGroups.map(g=>g.id)??[]);setError("");setSearch("");
- },[product?.id]);
- async function save(){
-  if(!product||busy)return;
-  setBusy(true);setError("");
-  try{
-   await request(root+"/products/"+product.id+"/group-assignments",token,"PUT",
-    {groupIds:draft,revision:catalog.catalogRevision});
-   await reload();onClose();onFeedback?.("Đã gắn nhóm vào món.",false);
-  }catch(e){const message=e instanceof Error?e.message:"Lưu nhóm thất bại.";
-   setError(message);onFeedback?.(message,true);}
-  finally{setBusy(false);}
- }
- return <Modal visible={!!product} transparent animationType="slide" onRequestClose={onClose}>
-  <View style={s.backdrop}><View style={s.modal}>
-   <View style={s.heading}>
-    <Text style={s.title}>Gắn nhóm · {product?.name}</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn nhóm"
-      style={s.iconAction} onPress={onClose}><Text style={s.edit}>✕</Text></Pressable>
-   </View>
-   <Field label="Tìm nhóm" value={search} onChangeText={setSearch}
-     placeholder="Nhập tên nhóm đã tạo..." />
-   <ScrollView style={{minHeight:0}} keyboardShouldPersistTaps="handled">
-    {(catalog.modifierLibrary??[]).filter(g=>g.name.toLocaleLowerCase("vi")
-      .includes(search.trim().toLocaleLowerCase("vi"))).map(g=>
-      <Pressable key={g.id} accessibilityRole="checkbox"
-       accessibilityState={{checked:draft.includes(g.id)}}
-        aria-checked={draft.includes(g.id)} style={s.line}
-       onPress={()=>setDraft(old=>old.includes(g.id)?old.filter(x=>x!==g.id):[...old,g.id])}>
-       <Photo imageKey={g.imageKey} label={"Ảnh nhóm "+g.name}/>
-       <Text style={s.flex} numberOfLines={2}>{g.name} · {g.options.length} topping</Text>
-       <Text style={s.edit}>{draft.includes(g.id)?"☑":"☐"}</Text>
-      </Pressable>)}
-   </ScrollView>
-   {!!error&&<Notice text={error} error/>}
-   <View style={s.actions}><Action label="Hủy" secondary onPress={onClose}/>
-     <Action label={busy?"Đang lưu...":"Lưu nhóm gắn"} disabled={busy} onPress={()=>void save()}/></View>
-  </View></View>
- </Modal>;
+  const [confirmed,setConfirmed]=useState<string[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const [search,setSearch]=useState("");
+  React.useLayoutEffect(()=>{
+    setConfirmed(product?.modifierGroups.map(g=>g.id)??[]);
+    setError("");setNotice("");setSearch("");
+  },[product?.id]);
+
+  // A selection is not "saved" until the API confirms the transaction and
+  // a separate fresh catalog GET confirms the association exists.
+  async function setMembership(group:CatalogGroup){
+    if(!product||busy)return;
+    const target=product;
+    const next=!confirmed.includes(group.id);
+    setBusy(true);setError("");setNotice("");
+    try{
+      const result=await request<{productId:string;groupId:string;attached:boolean}>(
+        root+"/products/"+target.id+"/group-assignments/"+group.id,
+        token,"PATCH",{attached:next});
+      if(result.productId!==target.id||result.groupId!==group.id||result.attached!==next){
+        throw Error("Máy chủ chưa xác nhận liên kết nhóm. Vui lòng thử lại.");
+      }
+      const snapshot=await request<AdminCatalog>(root,token);
+      const serverProduct=snapshot.categories.flatMap(c=>c.products)
+        .find(p=>p.id===target.id);
+      if(!serverProduct||serverProduct.modifierGroups.some(g=>g.id===group.id)!==next){
+        throw Error("Liên kết chưa xuất hiện trong dữ liệu mới. Vui lòng tải lại.");
+      }
+      setConfirmed(serverProduct.modifierGroups.map(g=>g.id));
+      await reload();
+      const message=(next?"Đã gắn ":"Đã bỏ gắn ")+group.name+" "+(next?"vào ":"khỏi ")+target.name+".";
+      setNotice(message);
+      onFeedback?.(message,false);
+    }catch(e){
+      const message=e instanceof Error?e.message:"Không lưu được nhóm. Vui lòng thử lại.";
+      setError(message);
+      onFeedback?.(message,true);
+    }finally{setBusy(false);}
+  }
+
+  return <Modal visible={!!product} transparent animationType="slide"
+    onRequestClose={()=>{if(!busy)onClose();}}>
+    <View style={s.backdrop}><View style={s.modal}>
+      <View style={s.heading}>
+        <View style={s.flex}>
+          <Text style={s.title}>Nhóm của món · {product?.name}</Text>
+          <Text style={s.hint}>{confirmed.length} nhóm đã gắn · Chạm một lần để lưu ngay</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn nhóm"
+          style={s.iconAction} disabled={busy} onPress={onClose}>
+          <Text style={s.edit}>✕</Text>
+        </Pressable>
+      </View>
+      <Field label="Tìm nhóm" value={search} onChangeText={setSearch}
+        placeholder="Tìm nhóm trong thư viện..." />
+      <ScrollView style={{minHeight:0}} keyboardShouldPersistTaps="handled">
+        {(catalog.modifierLibrary??[]).filter(g=>g.name.toLocaleLowerCase("vi")
+          .includes(search.trim().toLocaleLowerCase("vi"))).map(group=>{
+          const attached=confirmed.includes(group.id);
+          return <Pressable key={group.id} accessibilityRole="checkbox"
+            accessibilityLabel={"Gắn nhóm "+group.name}
+            accessibilityState={{checked:attached,disabled:busy}}
+            aria-checked={attached}
+            disabled={busy} style={s.line}
+            onPress={()=>void setMembership(group)}>
+            <Photo imageKey={group.imageKey} label={"Ảnh nhóm "+group.name}/>
+            <View style={s.flex}>
+              <Text style={s.name} numberOfLines={2}>{group.name}</Text>
+              <Text style={s.hint}>{group.options.length} topping
+                {group.isAvailable?" · Đang bán":" · Chưa bật bán"}</Text>
+            </View>
+            <Text style={s.edit}>{attached?"☑":"☐"}</Text>
+          </Pressable>;
+        })}
+      </ScrollView>
+      {busy&&<Notice text="Đang lưu và kiểm tra nhóm trên máy chủ..."/>}
+      {!!notice&&!busy&&<Notice text={notice}/>}
+      {!!error&&!busy&&<Notice text={error} error/>}
+      <View style={s.actions}>
+        <Action label={busy?"Đang lưu...":"Xong"} disabled={busy} onPress={onClose}/>
+      </View>
+    </View>
+  </Modal>;
 }
 const s=StyleSheet.create({
  root:{gap:10},heading:{minHeight:44,flexDirection:"row",alignItems:"center",gap:10},
