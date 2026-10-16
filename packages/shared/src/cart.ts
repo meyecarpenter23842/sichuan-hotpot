@@ -103,6 +103,15 @@ export function setCartModifierQuantity(
     ...current.selection,
     modifierIds: [...remaining, ...Array(count).fill(id)],
   });
+  return replaceCartLineSelection(cart, key, selection);
+}
+
+/** Replace a line's configuration, merging with any identical line. */
+export function replaceCartLineSelection(cart: readonly CartLine[], key: string,
+  next: CartSelection): CartLine[] {
+  const current = cart.find(line => line.key === key);
+  if (!current) throw new CartInputError("CART_LINE_NOT_FOUND");
+  const selection = normalizeCartSelection(next);
   const nextKey = cartLineKey(selection);
   const existing = cart.find(line => line.key === nextKey && line.key !== key);
   if (existing && existing.quantity + current.quantity > MAX_QUANTITY) {
