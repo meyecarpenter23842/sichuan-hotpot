@@ -41,7 +41,10 @@ export function normalizeCartSelection(selection: CartSelection): CartSelection 
   const productId = nonempty(selection.productId, "PRODUCT");
   const variantId = selection.variantId === null ? null : nonempty(selection.variantId, "VARIANT");
   if (selection.modifierIds.length > 30) throw new CartInputError("TOO_MANY_MODIFIERS");
-  const modifierIds = [...new Set(selection.modifierIds.map(id => nonempty(id, "MODIFIER")))].sort();
+  // Repeated IDs represent counts of the same topping on ONE portion.
+  // Preserve multiplicity throughout cart, quote and checkout. Sorting keeps
+  // the cart key stable regardless of the order toppings were added.
+  const modifierIds = selection.modifierIds.map(id => nonempty(id, "MODIFIER")).sort();
   return { productId, variantId, modifierIds };
 }
 
@@ -74,6 +77,44 @@ export function setCartQuantity(cart: readonly CartLine[], key: string, quantity
   if (quantity === 0) return cart.filter(line => line.key !== key);
   if (!cart.some(line => line.key === key)) throw new CartInputError("CART_LINE_NOT_FOUND");
   return cart.map(line => line.key === key ? { ...line, quantity } : line);
+}
+
+/** Count a topping on a single portion, not the number of whole dishes. */
+export function cartModifierCount(selection: CartSelection, modifierId: string): number {
+  return selection.modifierIds.filter(id => id === modifierId).length;
+}
+
+/** Change topping quantity immutably. Identity changes with the selection;
+ * merge two equivalent cart lines safely without losing quantities. The caller
+ * must validate group min/max on the current catalog before invoking this.
+ */
+export function setCartModifierQuantity(
+  cart: readonly CartLine[], key: string, modifierId: string, count: number,
+): CartLine[] {
+  if (!Number.isSafeInteger(count) || count < 0 || count > 30) {
+    throw new CartInputError("INVALID_MODIFIER_QUANTITY");
+  }
+  const current = cart.find(line => line.key === key);
+  if (!current) throw new CartInputError("CART_LINE_NOT_FOUND");
+  const id = nonempty(modifierId, "MODIFIER");
+  const remaining = current.selection.modifierIds.filter(option => option !== id);
+  if (remaining.length + count > 30) throw new CartInputError("TOO_MANY_MODIFIERS");
+  const selection = normalizeCartSelection({
+    ...current.selection,
+    modifierIds: [...remaining, ...Array(count).fill(id)],
+  });
+  const nextKey = cartLineKey(selection);
+  const existing = cart.find(line => line.key === nextKey && line.key !== key);
+  if (existing && existing.quantity + current.quantity > MAX_QUANTITY) {
+    throw new CartInputError("INVALID_QUANTITY");
+  }
+  return cart.flatMap(line => {
+    if (line.key === key) return existing ? [] : [{ ...current, key: nextKey, selection }];
+    if (existing && line.key === nextKey) {
+      return [{ ...line, quantity: line.quantity + current.quantity }];
+    }
+    return [line];
+  });
 }
 
 export function cartItemCount(cart: readonly CartLine[]): number {
