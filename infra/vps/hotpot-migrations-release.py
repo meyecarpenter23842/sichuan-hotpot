@@ -192,23 +192,43 @@ def encrypt_dump(target, recipient):
     return sha256_file(target)
 
 
+def wait_for_database(database, timeout=30):
+    """Neon database routing can lag briefly after CREATE DATABASE."""
+    deadline = time.monotonic() + timeout
+    env = database_process_env(database)
+    while time.monotonic() < deadline:
+        probe = subprocess.run(
+            ["/usr/bin/psql", "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1",
+             "-c", "SELECT 1;"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        if probe.returncode == 0:
+            return
+        time.sleep(1)
+    raise GateError("isolated_database_not_ready")
+
+
 def isolated_restore(cipher):
     name = "hotpot_p4_restore_" + secrets.token_hex(7)
     sql_write("CREATE DATABASE " + name + " TEMPLATE template0;")
     try:
+        wait_for_database(name)
         sql_write("REVOKE ALL ON DATABASE " + name + " FROM PUBLIC;")
         decrypt = subprocess.Popen(["/usr/bin/age", "-d", "-i", str(KEY), str(cipher)],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            restore = subprocess.Popen(["/usr/bin/pg_restore", "--exit-on-error",
-                                        "--no-owner", "--no-acl"],
-                                       env=database_process_env(name),
-                                       stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
-                                       stderr=subprocess.DEVNULL)
+            restore = subprocess.Popen([
+                "/usr/bin/pg_restore", "--exit-on-error", "--single-transaction",
+                "--clean", "--if-exists", "--no-owner", "--no-acl",
+            ], env=database_process_env(name),
+               stdin=decrypt.stdout, stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL)
             decrypt.stdout.close()
             status_restore = restore.wait(timeout=600)
             status_decrypt = decrypt.wait(timeout=600)
-            require(status_decrypt == 0 and status_restore == 0, "isolated_restore_failed")
+            require(status_decrypt == 0, "isolated_decrypt_failed")
+            require(status_restore == 0, "isolated_restore_failed")
         finally:
             if decrypt.poll() is None:
                 decrypt.kill()
