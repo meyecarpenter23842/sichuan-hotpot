@@ -1262,41 +1262,102 @@ function CustomerApp() {
             ) : (
               <>
                 {cart.map(line => {
-                  const product = productsById.get(line.selection.productId);
-                  const variant = product?.variants.find(v => v.id === line.selection.variantId);
-                  const groups = product?.modifierGroups ?? [];
-                  const options = groups.flatMap(group => group.options)
-                    .filter(option => line.selection.modifierIds.includes(option.id));
-                  const unavailable = !product || !product.isAvailable
-                    || (line.selection.variantId !== null && (!variant || !variant.isAvailable))
-                    || optionSelectionError(groups, line.selection.modifierIds) !== null;
-                  const price = product ? product.priceVnd + (variant?.priceDeltaVnd ?? 0)
-                    + selectedModifierPrice(product, line.selection.modifierIds) : 0;
-                  return (
-                    <View key={line.key} style={styles.cartLine}>
+                  const product=productsById.get(line.selection.productId);
+                  const variant=product?.variants.find(v=>v.id===line.selection.variantId);
+                  const groups=product?.modifierGroups??[];
+                  const unavailable=!product||!product.isAvailable
+                    ||(line.selection.variantId!==null&&(!variant||!variant.isAvailable))
+                    ||optionSelectionError(groups,line.selection.modifierIds)!==null;
+                  const unit=product?product.priceVnd+(variant?.priceDeltaVnd??0)
+                    +selectedModifierPrice(product,line.selection.modifierIds):0;
+                  return <View key={line.key} style={styles.cartLine}>
+                    <View style={styles.cartLineHeading}>
                       <View style={styles.cartLineDetails}>
-                        <Text style={styles.productName}>{product?.name ?? "Món không còn trong thực đơn"}</Text>
-                        {variant && <Text style={styles.muted}>{variant.name}</Text>}
-                        {options.length > 0 && <Text style={styles.muted}>{options.map(o => o.name).join(" · ")}</Text>}
-                        <Text style={styles.price}>{product ? vnd(price * line.quantity) : "Cần chọn món khác"}</Text>
-                        {unavailable && <Text style={styles.warning}>Món hoặc tùy chọn không còn bán</Text>}
+                        <Text style={styles.productName}>
+                          {product?.name??"Món không còn trong thực đơn"}</Text>
+                        <Text style={styles.muted}>
+                          Size: {variant?.name??"Mặc định"} · Đơn giá {vnd(unit)}
+                        </Text>
                       </View>
                       <View style={styles.quantityStepper}>
-                        <Pressable style={styles.step} accessibilityRole="button" accessibilityLabel="Giảm hoặc xóa món"
-                          onPress={() => setCart(old => setCartQuantity(old, line.key, Math.max(0, line.quantity - 1)))}>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Giảm số lượng món "+(product?.name??"")}
+                          onPress={()=>setCart(old=>setCartQuantity(old,line.key,
+                            Math.max(0,line.quantity-1)))}>
                           <Text style={styles.stepText}>−</Text>
                         </Pressable>
                         <Text style={styles.qtyText}>{line.quantity}</Text>
-                        <Pressable style={styles.step} accessibilityRole="button" accessibilityLabel="Tăng số lượng"
-                          onPress={() => {
-                            try { setCart(old => setCartQuantity(old, line.key, Math.min(99, line.quantity + 1))); }
-                            catch { setNotice("Số lượng tối đa là 99."); }
-                          }}>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Tăng số lượng món "+(product?.name??"")}
+                          disabled={line.quantity>=99}
+                          onPress={()=>setCart(old=>setCartQuantity(old,line.key,
+                            Math.min(99,line.quantity+1)))}>
                           <Text style={styles.stepText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                  );
+                    {groups.map(group=>{
+                      const groupIds=new Set(group.options.map(o=>o.id));
+                      const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
+                      const mandatory=group.minSelect>0;
+                      return <View key={group.id} style={styles.cartGroup}>
+                        <View style={styles.choiceGroupHeading}>
+                          <Text style={styles.cartGroupTitle}>{group.name}</Text>
+                          <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
+                            {mandatory?"Bắt buộc":"Tùy chọn"}
+                          </Text>
+                        </View>
+                        {group.options.filter(option=>option.isAvailable
+                          ||cartModifierCount(line.selection,option.id)>0).map(option=>{
+                          const count=cartModifierCount(line.selection,option.id);
+                          const atMax=groupCount>=group.maxSelect;
+                          const wouldSwap=group.maxSelect===1&&atMax&&count===0;
+                          return <View key={option.id} style={styles.cartToppingRow}>
+                            {safeProductImageUrl(option.imageKey)
+                              ?<Image source={{uri:safeProductImageUrl(option.imageKey)!}}
+                                style={styles.cartToppingImage}/>
+                              :<View style={styles.cartToppingPlaceholder}/>}
+                            <View style={styles.toppingCopy}>
+                              <Text style={styles.cartToppingName} numberOfLines={2}>
+                                {option.name}</Text>
+                              <Text style={styles.muted}>
+                                {vnd(option.priceDeltaVnd)} mỗi topping ·
+                                {" "+(count*line.quantity)} cho {line.quantity} phần
+                              </Text>
+                            </View>
+                            <View style={styles.quantityStepper}>
+                              <Pressable style={styles.step} accessibilityRole="button"
+                                accessibilityLabel={"Bớt topping "+option.name}
+                                disabled={unavailable||count===0||groupCount<=group.minSelect}
+                                onPress={()=>changeCartTopping(line,group,option.id,-1)}>
+                                <Text style={styles.stepText}>−</Text>
+                              </Pressable>
+                              <Text style={styles.qtyText}>{count}</Text>
+                              <Pressable style={styles.step} accessibilityRole="button"
+                                accessibilityLabel={"Thêm topping "+option.name}
+                                disabled={unavailable||(!wouldSwap&&atMax)
+                                  ||line.selection.modifierIds.length>=30}
+                                onPress={()=>changeCartTopping(line,group,option.id,1)}>
+                                <Text style={styles.stepText}>+</Text>
+                              </Pressable>
+                            </View>
+                          </View>;
+                        })}
+                        {groupCount<group.minSelect&&<Text style={styles.warning}>
+                          Cần tối thiểu {group.minSelect} topping để đặt món.
+                        </Text>}
+                      </View>;
+                    })}
+                    <View style={styles.cartLineFooter}>
+                      <Text style={styles.muted}>Tổng món đã chọn</Text>
+                      <Text style={styles.price}>
+                        {product?vnd(unit*line.quantity):"Cần chọn món khác"}
+                      </Text>
+                    </View>
+                    {unavailable&&<Text style={styles.warning}>
+                      Món hoặc tùy chọn đã thay đổi. Hãy chọn lại trên thực đơn.
+                    </Text>}
+                  </View>;
                 })}
                 <Text style={styles.sectionTitle}>Tạm tính (không phải báo giá đặt hàng)</Text>
                 <Text style={styles.detailPrice}>{vnd(cart.reduce((sum, line) => {
