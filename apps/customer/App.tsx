@@ -13,7 +13,7 @@ import {
 } from "../../packages/shared/src/cart";
 import {
   apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
-  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses, type HomeOffer,
+  type Principal, type Product, type ModifierGroup, type SavedAddress, type SavedAddresses, type HomeOffer, type HomeHeroPayload,
   type CheckoutReceipt, type CustomerOrderDetail,
 } from "./src/api";
 import { addressError, optionSelectionError, phoneError, vnd } from "./src/validation";
@@ -24,6 +24,7 @@ import { PurchasedProductsScreen } from "./src/screens/PurchasedProductsScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
+import { HomeHeroCarousel } from "./src/components/HomeHeroCarousel";
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
@@ -170,10 +171,6 @@ function cartPriceParts(product: Product, variantId: string|null,
 
 function CustomerApp() {
   const { width: viewportWidth } = useWindowDimensions();
-  // The approved static Home artwork has a 829x321 panel inside 01-home.png.
-  // Match the panel aspect ratio at every viewport; all other UI remains interactive.
-  const heroWidth = Math.min(viewportWidth, 620) - 24;
-  const heroScale = heroWidth / 829;
   const [screen, setScreen] = useState<Screen>("login");
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [branchId, setBranchId] = useState("");
@@ -184,6 +181,9 @@ function CustomerApp() {
   const [offerLoading,setOfferLoading]=useState(false);
   const [offerError,setOfferError]=useState("");
   const [selectedOffer,setSelectedOffer]=useState<HomeOffer|null>(null);
+  const [homeHero,setHomeHero]=useState<HomeHeroPayload|null>(null);
+  const [heroLoading,setHeroLoading]=useState(false);
+  const [heroError,setHeroError]=useState("");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -225,6 +225,7 @@ function CustomerApp() {
   const catalogueRequest = useRef(0);
   const currentBranch = useRef("");
   const loadedOffersForBranch=useRef("");
+  const loadedHeroForBranch=useRef("");
 
   // Catalog is an independently changing server resource. Recheck branch
   // visibility and products, including after the Admin toggles availability.
@@ -248,6 +249,7 @@ function CustomerApp() {
         setOffers([]);
         loadedOffersForBranch.current="";
         setOfferError("");
+        setHomeHero(null);loadedHeroForBranch.current="";setHeroError("");
         setBranchId("");
         setCategoryId("");
         setCatalogError("");
@@ -281,6 +283,21 @@ function CustomerApp() {
       }).finally(()=>{
         if(requestId===catalogueRequest.current)setOfferLoading(false);
       });
+      setHeroLoading(true);
+      if(loadedHeroForBranch.current!==activeBranch){
+        loadedHeroForBranch.current=activeBranch;setHomeHero(null);
+      }
+      void apiRequest<HomeHeroPayload>("/catalog/branches/"+
+        encodeURIComponent(activeBranch)+"/hero").then(result=>{
+        if(requestId!==catalogueRequest.current)return;
+        setHomeHero(result);setHeroError("");
+      }).catch(error=>{
+        if(requestId!==catalogueRequest.current)return;
+        setHomeHero(null);
+        setHeroError(error instanceof Error?error.message:"Không tải được banner trang chủ.");
+      }).finally(()=>{
+        if(requestId===catalogueRequest.current)setHeroLoading(false);
+      });
       setCategoryId(old => response.categories.some(cat => cat.id === old)
         ? old : "");
       await AsyncStorage.setItem(BRANCH_KEY, activeBranch).catch(() => {
@@ -294,6 +311,7 @@ function CustomerApp() {
       setMenu(null);
       setOffers([]);loadedOffersForBranch.current="";
       setOfferError("");setSelectedOffer(null);
+      setHomeHero(null);loadedHeroForBranch.current="";setHeroError("");
     } finally {
       if (requestId === catalogueRequest.current) setCatalogLoading(false);
     }
@@ -987,19 +1005,10 @@ function CustomerApp() {
         ];
         return (
           <View style={styles.homePage}>
-            <View style={styles.homeHeroRegion}>
-              <Pressable style={[styles.homeBanner, { height: heroWidth * 321 / 829 }]}
-                accessibilityRole="button" testID="home-approved-hero"
-                accessibilityLabel="Khám phá thực đơn lẩu Tứ Xuyên và trà sữa" onPress={() => {
-                  setCategoryId(""); setScreen("menu");
-                }}>
-                <Image source={require("./assets/home-reference.png")} resizeMode="stretch"
-                  accessibilityLabel="Ảnh banner quảng bá theo mẫu đã duyệt"
-                  style={[styles.homeBannerImage, {
-                    left: -58 * heroScale, top: -232 * heroScale,
-                    width: 941 * heroScale, height: 1672 * heroScale,
-                  }]} />
-              </Pressable>
+            <View style={styles.homeHeroRegion} testID="home-approved-hero">
+              <HomeHeroCarousel payload={homeHero} loading={heroLoading} error={heroError}
+                active={screen==="home"} onRetry={()=>void refreshCatalogue(undefined,true)}
+                onMenu={()=>{setCategoryId("");setScreen("menu");}}/>
             </View>
             <View style={styles.quickMenu}>
               {quick.map((item, index) => (

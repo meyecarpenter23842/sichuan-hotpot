@@ -81,6 +81,8 @@ model Branch {
   categories        CatalogCategory[]
   modifierLibrary   ModifierGroup[]
   homeOffers        HomeOffer[]
+  homeHeroConfig    HomeHeroConfig?
+  homeHeroSlides    HomeHeroSlide[]
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
@@ -460,4 +462,35 @@ model HomeOffer {
 
   @@index([branchId, enabled, sortOrder])
   @@index([branchId, startAt, endAt])
+}
+
+
+// Branch-scoped Home hero slider. Animation runs on the customer device; VPS only serves config.
+model HomeHeroConfig {
+  branchId             String   @id @db.Uuid
+  autoplay             Boolean  @default(true)
+  dwellMs              Int      @default(5000)
+  transitionType       String   @default("fade") @db.VarChar(16)
+  transitionDurationMs Int      @default(450)
+  revision             Int      @default(0)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+  branch               Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+model HomeHeroSlide {
+  id         String   @id @default(uuid()) @db.Uuid
+  branchId   String   @db.Uuid
+  imageKey   String?  @db.VarChar(512)
+  altText    String   @db.VarChar(200)
+  title      String?  @db.VarChar(160)
+  subtitle   String?  @db.VarChar(280)
+  ctaTarget  String?  @db.VarChar(16)
+  enabled    Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  revision   Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([branchId, enabled, sortOrder])
 }

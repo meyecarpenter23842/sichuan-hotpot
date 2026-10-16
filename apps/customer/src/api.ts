@@ -49,6 +49,16 @@ export interface HomeOffer {
   id:string; title:string; summary:string; body:string; imageKey:string;
   ctaTarget:"MENU"|null; startAt:string|null; endAt:string|null; sortOrder:number;
 }
+export type HomeHeroTransition="fade"|"slide"|"wipe";
+export interface HomeHeroSettings {
+  autoplay:boolean;dwellMs:number;transitionType:HomeHeroTransition;
+  transitionDurationMs:number;revision:number;updatedAt:string|null;
+}
+export interface HomeHeroSlide {
+  id:string;imageKey:string;altText:string;title:string|null;subtitle:string|null;
+  ctaTarget:"MENU"|null;sortOrder:number;
+}
+export interface HomeHeroPayload { settings:HomeHeroSettings; slides:HomeHeroSlide[]; }
 export interface BranchMenu extends BranchSummary {
   categories: Category[];
 }
