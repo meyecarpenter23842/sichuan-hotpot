@@ -27,8 +27,8 @@ const selectOrder = {
     lineTotalVnd: true,
     modifiers: { select: { optionId: true, name: true, priceVnd: true } },
     comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-      select: { productId: true, variantId: true, kind: true, groupName: true,
-        productName: true, variantName: true,
+      select: { productId: true, variantId: true, modifierOptionId: true,
+        kind: true, groupName: true, productName: true, variantName: true,
         quantity: true, priceDeltaVnd: true, sortOrder: true } },
   } },
 } as const satisfies Prisma.OrderSelect;
@@ -256,8 +256,8 @@ export class AdminOrdersService {
                 },
                 comboItems: {
                   orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-                  select: { productId: true, variantId: true, kind: true,
-                    groupName: true, productName: true, variantName: true,
+                  select: { productId: true, variantId: true, modifierOptionId: true,
+                    kind: true, groupName: true, productName: true, variantName: true,
                     quantity: true, priceDeltaVnd: true, sortOrder: true },
                 },
               },
@@ -320,6 +320,7 @@ export class AdminOrdersService {
               comboItems: {
                 create: line.comboItems.map(component => ({
                   productId: component.productId, variantId: component.variantId,
+                  modifierOptionId: component.modifierOptionId,
                   kind: component.kind, groupName: component.groupName,
                   productName: component.productName, variantName: component.variantName,
                   quantity: component.quantity, priceDeltaVnd: component.priceDeltaVnd,
