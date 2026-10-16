@@ -25,6 +25,10 @@ class OptionPatchDto {
   @IsOptional() @IsInt() @Min(0) @Max(100000000) priceDeltaVnd?: number;
   @IsOptional() @IsBoolean() isAvailable?: boolean;
 }
+class SetGroupProductsDto {
+  @IsArray() @ArrayMaxSize(200) @IsUUID("4",{each:true}) productIds!: string[];
+  @IsInt() @Min(0) revision!: number;
+}
 class SetGroupAssignmentsDto {
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", {each:true}) groupIds!: string[];
   @IsInt() @Min(0) revision!: number;
@@ -49,6 +53,12 @@ export class ModifierLibraryController {
   updateOption(@Headers("authorization") auth: string | undefined,
     @Param("branchId",uuid) branchId: string,@Param("optionId",uuid) optionId:string,
     @Body() dto:OptionPatchDto) {return this.lib.updateOption(auth,branchId,optionId,dto);}
+  @Put("library/groups/:groupId/product-assignments")
+  setGroupProducts(@Headers("authorization") auth:string|undefined,
+    @Param("branchId",uuid) branchId:string,@Param("groupId",uuid) groupId:string,
+    @Body() dto:SetGroupProductsDto){
+    return this.lib.setGroupProducts(auth,branchId,groupId,dto.productIds,dto.revision);
+  }
   @Put("products/:productId/group-assignments")
   attach(@Headers("authorization") auth: string | undefined,
     @Param("branchId",uuid) branchId: string,@Param("productId",uuid) productId:string,
