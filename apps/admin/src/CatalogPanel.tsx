@@ -659,7 +659,9 @@ export function CatalogPanel({ catalog, token, reload }: {
               onChangeText={text => change("name", text)} placeholder="Tên hiển thị cho khách" />
             {editor.kind === "product" && <>
               <Text style={st.smallLabel}>Loại sản phẩm</Text>
-              <View style={st.pills}>
+              {editor.id ? <Text style={st.sub}>
+                {editor.values.productKind === "COMBO" ? "Combo" : "Món thường"} · loại được cố định sau khi tạo
+              </Text> : <View style={st.pills}>
                 <Pill label="Món thường" active={editor.values.productKind === "STANDARD"}
                   onPress={() => change("productKind", "STANDARD")} />
                 <Pill label="Combo" active={editor.values.productKind === "COMBO"}
@@ -668,7 +670,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                       ...current.values, productKind: "COMBO", isAvailable: false,
                     },
                   }))} />
-              </View>
+              </View>}
               {editor.values.productKind === "COMBO" && !editor.id &&
                 <Notice text="Combo mới sẽ lưu ở trạng thái tạm hết. Sau khi lưu, mở chi tiết món → Thiết lập combo rồi bật bán." />}
               <Text style={st.smallLabel}>Danh mục</Text>
