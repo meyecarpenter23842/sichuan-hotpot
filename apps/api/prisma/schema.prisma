@@ -80,6 +80,7 @@ model Branch {
   memberships       BranchMember[]
   categories        CatalogCategory[]
   modifierLibrary   ModifierGroup[]
+  homeOffers        HomeOffer[]
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
@@ -436,4 +437,27 @@ model EmailChallenge {
 
   @@unique([email, purpose])
   @@index([expiresAt])
+}
+
+ 
+// Branch-scoped editorial promotions. These NEVER alter cart/checkout prices.
+model HomeOffer {
+  id          String    @id @default(uuid()) @db.Uuid
+  branchId    String    @db.Uuid
+  title       String    @db.VarChar(160)
+  summary     String    @db.VarChar(360)
+  body        String    @db.VarChar(4000)
+  imageKey    String?   @db.VarChar(512)
+  sortOrder   Int       @default(0)
+  enabled     Boolean   @default(false)
+  startAt     DateTime? @db.Timestamptz(6)
+  endAt       DateTime? @db.Timestamptz(6)
+  ctaTarget   String?   @db.VarChar(16)
+  revision    Int       @default(0)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([branchId, enabled, sortOrder])
+  @@index([branchId, startAt, endAt])
 }
