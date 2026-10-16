@@ -144,6 +144,7 @@ try {
   await page.getByRole("button", { name: "Gắn nhóm cho Lẩu QA P4.1" }).click();
   await page.getByRole("checkbox", { name: /Độ cay/ }).click();
   await page.getByRole("button", { name: "Lưu nhóm gắn" }).click();
+  await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
   }), 1);
