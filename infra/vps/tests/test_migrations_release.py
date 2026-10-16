@@ -129,6 +129,9 @@ class LiveP4SafetyTests(unittest.TestCase):
     def test_backup_or_isolated_restore_failure_blocks_migration(self):
         for reason in ("backup_encryption_failed", "offsite_download_checksum_mismatch",
                        "isolated_database_not_ready", "isolated_decrypt_failed",
+                       "isolated_restore_permission", "isolated_restore_conflict",
+                       "isolated_restore_compatibility", "isolated_restore_database_missing",
+                       "isolated_restore_connection", "isolated_restore_query_failed",
                        "isolated_restore_failed"):
             self.assertEqual(self.invoke(set(self.migrations[:1]), p4.GateError(reason)), (1, 0))
 
@@ -172,8 +175,23 @@ class LiveP4SafetyTests(unittest.TestCase):
         self.assertNotIn('@127.0.0.1:5432/hotpot', source)
         self.assertNotIn('runuser", "-u", "postgres"', source)
         self.assertIn("wait_for_database(name)", source)
+        self.assertIn("verify_decryption(cipher)", source)
         self.assertIn('"--clean", "--if-exists"', source)
-        self.assertIn('"--single-transaction"', source)
+        self.assertIn("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;", source)
+        self.assertNotIn('"--single-transaction"', source)
+
+    def test_restore_error_classification_is_sanitized(self):
+        cases = {
+            b"pg_restore: error: permission denied for schema public": "isolated_restore_permission",
+            b"pg_restore: error: relation x already exists": "isolated_restore_conflict",
+            b"ERROR: unrecognized configuration parameter foo": "isolated_restore_compatibility",
+            b"FATAL: database x does not exist": "isolated_restore_database_missing",
+            b"server closed the connection unexpectedly": "isolated_restore_connection",
+            b"pg_restore: error: could not execute query": "isolated_restore_query_failed",
+            b"other failure": "isolated_restore_failed",
+        }
+        for stderr, expected in cases.items():
+            self.assertEqual(p4.restore_failure_reason(stderr), expected)
 
     def test_invalid_arguments_rejected(self):
         with patch.object(p4.os, "geteuid", return_value=0):
