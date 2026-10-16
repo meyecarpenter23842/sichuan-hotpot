@@ -37,10 +37,14 @@ export function canTransitionOrder(request: OrderTransitionRequest): boolean {
     case "PREPARING":
       return to === "READY" && kitchen.includes(role);
     case "READY":
-      return to === "DELIVERING" && role === "DRIVER" && isAssignedDriver;
+      // The shop can self-deliver before dedicated driver dispatch (P5) is configured.
+      // Assigned DRIVERs remain scoped to their own deliveries.
+      return to === "DELIVERING" && (
+        managers.includes(role) || (role === "DRIVER" && isAssignedDriver)
+      );
     case "DELIVERING":
       if (to === "DELIVERED" || to === "DELIVERY_FAILED") {
-        return role === "DRIVER" && isAssignedDriver;
+        return managers.includes(role) || (role === "DRIVER" && isAssignedDriver);
       }
       return false;
     case "DELIVERY_FAILED":
