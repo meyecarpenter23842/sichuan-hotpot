@@ -258,10 +258,10 @@ export class AdminCatalogService {
         && (option.variant === null
           || (option.variant.productId === option.childProduct.id && option.variant.isAvailable))
       ).length;
-      const sellableToppings = group.modifierOptions.filter(option =>
+      const sellableToppings = (group.modifierOptions ?? []).filter(option =>
         option.modifierOption.isAvailable && option.modifierOption.group.isAvailable).length;
       if (group.minSelect < 0 || group.maxSelect < group.minSelect
-        || group.maxSelect > 30 || group.options.length + group.modifierOptions.length === 0
+        || group.maxSelect > 30 || group.options.length + (group.modifierOptions?.length ?? 0) === 0
         || (group.minSelect > 0 && sellableProducts + sellableToppings === 0)) {
         throw new ConflictException("COMBO_GROUP_UNAVAILABLE");
       }
