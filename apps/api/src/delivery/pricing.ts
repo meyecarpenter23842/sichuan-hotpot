@@ -20,6 +20,16 @@ export const productSelect = {
           variant: { select: { id: true, productId: true, name: true, isAvailable: true } },
           childProduct: { select: { id: true, name: true, kind: true, isAvailable: true } } },
       },
+      modifierOptions: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: {
+          id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+          modifierOption: { select: {
+            id: true, name: true, isAvailable: true,
+            group: { select: { isAvailable: true } },
+          } },
+        },
+      },
     },
   },
   variants: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
@@ -51,7 +61,8 @@ export interface PricedOrderLine {
     readonly optionId: string; readonly name: string; readonly priceVnd: number;
   }[];
   readonly comboItems: readonly {
-    readonly productId: string; readonly variantId: string | null;
+    readonly productId: string | null; readonly variantId: string | null;
+    readonly modifierOptionId: string | null;
     readonly kind: "FIXED" | "CHOICE"; readonly groupName: string | null;
     readonly productName: string; readonly variantName: string | null;
     readonly quantity: number; readonly priceDeltaVnd: number; readonly sortOrder: number;
@@ -91,8 +102,9 @@ export function priceCart(
     const baseUnit = amount(product.priceVnd);
     let dishUnit = baseUnit;
     const comboItems: {
-      productId: string; variantId: string | null; kind: "FIXED" | "CHOICE";
-      groupName: string | null; productName: string; variantName: string | null;
+      productId: string | null; variantId: string | null; modifierOptionId: string | null;
+      kind: "FIXED" | "CHOICE"; groupName: string | null;
+      productName: string; variantName: string | null;
       quantity: number; priceDeltaVnd: number; sortOrder: number;
     }[] = [];
 
@@ -114,7 +126,8 @@ export function priceCart(
         }
         comboItems.push({
           productId: fixed.childProduct.id, variantId: fixed.variant?.id ?? null,
-          kind: "FIXED", groupName: null, productName: fixed.childProduct.name,
+          modifierOptionId: null, kind: "FIXED", groupName: null,
+          productName: fixed.childProduct.name,
           variantName: fixed.variant?.name ?? null, quantity: fixed.quantity,
           priceDeltaVnd: 0, sortOrder: fixed.sortOrder,
         });
@@ -127,13 +140,16 @@ export function priceCart(
       const knownCombo = new Set<string>();
       for (const group of product.comboGroups) {
         for (const option of group.options) knownCombo.add(option.id);
-        const chosen = group.options.filter(option => selectedCombo.has(option.id));
-        const count = chosen.reduce((sum, option) => sum + (selectedCombo.get(option.id) ?? 0), 0);
+        for (const option of group.modifierOptions) knownCombo.add(option.id);
+        const chosenProducts = group.options.filter(option => selectedCombo.has(option.id));
+        const chosenToppings = group.modifierOptions.filter(option => selectedCombo.has(option.id));
+        const count = [...chosenProducts, ...chosenToppings]
+          .reduce((sum, option) => sum + (selectedCombo.get(option.id) ?? 0), 0);
         if (group.minSelect < 0 || group.maxSelect < group.minSelect || group.maxSelect > 30
           || count < group.minSelect || count > group.maxSelect) {
           throw new UnprocessableEntityException("INVALID_COMBO_SELECTION");
         }
-        for (const option of chosen) {
+        for (const option of chosenProducts) {
           const units = selectedCombo.get(option.id) ?? 0;
           if (units < 1 || option.quantity < 1 || option.quantity > 99
             || option.childProduct.kind !== "STANDARD" || !option.childProduct.isAvailable
@@ -145,8 +161,24 @@ export function priceCart(
           dishUnit = amount(dishUnit + amount(delta * units));
           comboItems.push({
             productId: option.childProduct.id, variantId: option.variant?.id ?? null,
-            kind: "CHOICE", groupName: group.name, productName: option.childProduct.name,
-            variantName: option.variant?.name ?? null, quantity: option.quantity * units,
+            modifierOptionId: null, kind: "CHOICE", groupName: group.name,
+            productName: option.childProduct.name, variantName: option.variant?.name ?? null,
+            quantity: option.quantity * units, priceDeltaVnd: delta * units,
+            sortOrder: group.sortOrder * 1000 + option.sortOrder,
+          });
+        }
+        for (const option of chosenToppings) {
+          const units = selectedCombo.get(option.id) ?? 0;
+          if (units < 1 || option.quantity < 1 || option.quantity > 99
+            || !option.modifierOption.isAvailable || !option.modifierOption.group.isAvailable) {
+            throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
+          }
+          const delta = amount(option.priceDeltaVnd);
+          dishUnit = amount(dishUnit + amount(delta * units));
+          comboItems.push({
+            productId: null, variantId: null, modifierOptionId: option.modifierOption.id,
+            kind: "CHOICE", groupName: group.name, productName: option.modifierOption.name,
+            variantName: null, quantity: option.quantity * units,
             priceDeltaVnd: delta * units,
             sortOrder: group.sortOrder * 1000 + option.sortOrder,
           });
