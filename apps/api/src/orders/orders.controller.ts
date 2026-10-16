@@ -1,6 +1,6 @@
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString,
-  IsUUID, Max, Min, ValidateNested,
+  IsUUID, Max, MaxLength, Min, ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import {
@@ -24,6 +24,7 @@ export class CheckoutInput {
   items!: OrderCartItemInput[];
   @IsUUID("4") idempotencyKey!: string;
   @IsString() @IsIn(["COD", "QR"]) paymentMethod!: "COD" | "QR";
+  @IsOptional() @IsString() @MaxLength(500) customerNote?: string | null;
 }
 
 @Controller("customer/orders")
@@ -36,6 +37,7 @@ export class OrdersController {
     return this.orders.checkout(authorization, {
       branchId: input.branchId, addressId: input.addressId,
       idempotencyKey: input.idempotencyKey, paymentMethod: input.paymentMethod,
+      customerNote: input.customerNote ?? null,
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
         modifierIds: item.modifierIds, comboOptionIds: item.comboOptionIds ?? [],
