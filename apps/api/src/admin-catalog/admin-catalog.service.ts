@@ -21,9 +21,7 @@ const PRODUCT_TEXT_LIMITS = {
   description: 1200, ingredients: 1200, productNotes: 800, allergenNotice: 800,
 } as const;
 type ProductTextField = keyof typeof PRODUCT_TEXT_LIMITS;
-function cleanProductText(value: string | null | undefined, field: ProductTextField):
-  string | null | undefined {
-  if (value === undefined) return undefined;
+function cleanProductText(value: string | null, field: ProductTextField): string | null {
   if (value === null) return null;
   const normalized = value.normalize("NFC").replace(/\r\n?/g, "\n");
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(normalized)) {
@@ -236,10 +234,10 @@ export class AdminCatalogService {
     return this.change(() => this.prisma.database.product.create({
       data: {
         categoryId: input.categoryId, name: input.name.trim(),
-        description: cleanProductText(input.description, "description") ?? null,
-        ingredients: cleanProductText(input.ingredients, "ingredients") ?? null,
-        productNotes: cleanProductText(input.productNotes, "productNotes") ?? null,
-        allergenNotice: cleanProductText(input.allergenNotice, "allergenNotice") ?? null,
+        description: cleanProductText(input.description ?? null, "description"),
+        ingredients: cleanProductText(input.ingredients ?? null, "ingredients"),
+        productNotes: cleanProductText(input.productNotes ?? null, "productNotes"),
+        allergenNotice: cleanProductText(input.allergenNotice ?? null, "allergenNotice"),
         priceVnd: input.priceVnd, isAvailable: input.isAvailable,
         isFeatured: input.isFeatured ?? false,
       },
@@ -256,13 +254,13 @@ export class AdminCatalogService {
         ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
         ...(input.name === undefined ? {} : { name: input.name.trim() }),
         ...(input.description === undefined ? {} :
-          { description: cleanProductText(input.description, "description") }),
+          { description: cleanProductText(input.description ?? null, "description") }),
         ...(input.ingredients === undefined ? {} :
-          { ingredients: cleanProductText(input.ingredients, "ingredients") }),
+          { ingredients: cleanProductText(input.ingredients ?? null, "ingredients") }),
         ...(input.productNotes === undefined ? {} :
-          { productNotes: cleanProductText(input.productNotes, "productNotes") }),
+          { productNotes: cleanProductText(input.productNotes ?? null, "productNotes") }),
         ...(input.allergenNotice === undefined ? {} :
-          { allergenNotice: cleanProductText(input.allergenNotice, "allergenNotice") }),
+          { allergenNotice: cleanProductText(input.allergenNotice ?? null, "allergenNotice") }),
         ...(input.priceVnd === undefined ? {} : { priceVnd: input.priceVnd }),
         ...(input.isAvailable === undefined ? {} : { isAvailable: input.isAvailable }),
         ...(input.isFeatured === undefined ? {} : { isFeatured: input.isFeatured }),
