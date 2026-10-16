@@ -52,6 +52,7 @@ export class OrdersService {
       productId: item.productId,
       variantId: item.variantId,
       modifierIds: [...item.modifierIds].sort(),
+      comboOptionIds: [...item.comboOptionIds].sort(),
       quantity: item.quantity,
       // Preserve pre-release legacy idempotency hashes for in-flight retries.
       ...(item.pricingMode === "SEPARATE" ? {pricingMode:"SEPARATE" as const} : {}),
