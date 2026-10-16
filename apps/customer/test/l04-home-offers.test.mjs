@@ -6,7 +6,7 @@ test("L04 Home uses branch-specific API offers rather than hardcoded pseudo disc
  const app=read("../App.tsx");
  const api=read("../src/api.ts");
  assert.match(app,/apiRequest<HomeOffer\[\]>/);
- assert.match(app,/"/catalog\/branches\/"+/);
+ assert.ok(app.includes('encodeURIComponent(activeBranch)+"/offers"'));
  assert.match(app,/offers\.map\(offer=>/);
  assert.match(app,/setSelectedOffer\(offer\)/);
  assert.match(app,/visible=\{!!selectedOffer\}/);
