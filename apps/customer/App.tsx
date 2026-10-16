@@ -1601,7 +1601,8 @@ function CustomerApp() {
                   const product = productsById.get(line.selection.productId);
                   if (!product) return sum;
                   return sum + cartPriceParts(product,line.selection.variantId,
-                     line.selection.modifierIds,line.quantity).total;
+                     line.selection.modifierIds,line.selection.comboOptionIds??[],
+                     line.quantity).total;
                 }, 0))}</Text>
                 <Text style={styles.muted}>Chưa gồm phí giao theo km thực tế, giảm giá và kiểm tra tình trạng món.</Text>
                 <View style={styles.group}>
