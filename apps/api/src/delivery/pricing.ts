@@ -108,7 +108,7 @@ export function priceCart(
       for (const fixed of product.comboFixedItems) {
         if (fixed.quantity < 1 || fixed.quantity > 99
           || fixed.childProduct.kind !== "STANDARD" || !fixed.childProduct.isAvailable
-          || (fixed.variant !== null
+          || (fixed.variant != null
             && (fixed.variant.productId !== fixed.childProduct.id || !fixed.variant.isAvailable))) {
           throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
         }
@@ -137,7 +137,7 @@ export function priceCart(
           const units = selectedCombo.get(option.id) ?? 0;
           if (units < 1 || option.quantity < 1 || option.quantity > 99
             || option.childProduct.kind !== "STANDARD" || !option.childProduct.isAvailable
-            || (option.variant !== null
+            || (option.variant != null
               && (option.variant.productId !== option.childProduct.id || !option.variant.isAvailable))) {
             throw new UnprocessableEntityException("COMBO_COMPONENT_UNAVAILABLE");
           }
