@@ -1129,7 +1129,6 @@ function CustomerApp() {
           <Notice message="Món vừa thay đổi hoặc chi nhánh đã ngừng bán. Vui lòng chọn lại từ thực đơn." error />
           <Button label="Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
         </View>;
-        const variant = item.variants.find(v => v.id === selectedVariantId);
         const costs=cartPriceParts(item,selectedVariantId,selectedModifierIds,selectedQuantity);
         return (
           <View style={styles.section}>
@@ -1412,7 +1411,6 @@ function CustomerApp() {
                 <Text style={styles.detailPrice}>{vnd(cart.reduce((sum, line) => {
                   const product = productsById.get(line.selection.productId);
                   if (!product) return sum;
-                  const variant = product.variants.find(v => v.id === line.selection.variantId);
                   return sum + cartPriceParts(product,line.selection.variantId,
                      line.selection.modifierIds,line.quantity).total;
                 }, 0))}</Text>
