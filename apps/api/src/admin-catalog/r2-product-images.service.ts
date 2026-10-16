@@ -86,10 +86,13 @@ export class R2ProductImagesService implements OnModuleInit, OnModuleDestroy {
         orderBy: { createdAt: "asc" }, take: 20,
       });
       for (const item of pending) {
-        if (!item.key.startsWith("products-image/")) continue;
-        const references = await this.prisma.database.product.count({
-          where: { imageKey: item.key },
-        });
+        const catalogMedia = item.key.startsWith("catalog-media/");
+        if (!catalogMedia && !item.key.startsWith("products-image/")) continue;
+        const references = catalogMedia ? (
+          await this.prisma.database.catalogCategory.count({ where: { imageKey: item.key } })
+          + await this.prisma.database.modifierGroup.count({ where: { imageKey: item.key } })
+          + await this.prisma.database.modifierOption.count({ where: { imageKey: item.key } })
+        ) : await this.prisma.database.product.count({ where: { imageKey: item.key } });
         if (references > 0) continue; // Never delete an image still in use.
         try {
           const response = await fetch(signedR2Url("DELETE", item.key), {

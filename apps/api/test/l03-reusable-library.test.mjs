@@ -1,0 +1,67 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { ModifierLibraryService } from "../dist/admin-catalog/modifier-library.service.js";
+import { R2CatalogMediaService } from "../dist/admin-catalog/r2-catalog-media.service.js";
+const branchId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const productId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const groupId="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const auth={adminAccess:async()=>{}};
+function mockLibrary({allowed=true,revision=7}={}){
+ const calls=[];
+ const db={
+  branch:{findUnique:async()=>({id:branchId}),updateMany:async()=>({count:revision===7?1:0})},
+  product:{findFirst:async()=>({id:productId})},
+  modifierGroup:{findMany:async()=>allowed?[{id:groupId}]:[]},
+  productModifierGroupAssignment:{
+   deleteMany:async args=>{calls.push(["unlink",args]);return {count:0}},
+   createMany:async args=>{calls.push(["link",args]);return {count:1}},
+  },
+  $transaction:async cb=>cb(db),
+ };
+ return {library:new ModifierLibraryService({database:db},auth),calls};
+}
+test("L03: group can attach to products in branch, replacing active associations atomically",async()=>{
+ const {library,calls}=mockLibrary();
+ const outcome=await library.attach("token",branchId,productId,[groupId],7);
+ assert.deepEqual(outcome,{productId,groupIds:[groupId],revision:8});
+ assert.equal(calls.length,2);
+ assert.equal(calls[1][1].data[0].groupId,groupId);
+ const {library:other}=mockLibrary();
+ await assert.rejects(other.attach("token",branchId,productId,[groupId,groupId],7),x=>x.getStatus()===400);
+});
+test("L03: cross-branch ID cannot be attached, and optimistic revision rejects races",async()=>{
+ const {library, calls}=mockLibrary({allowed:false});
+ await assert.rejects(library.attach("token",branchId,productId,[groupId],7),x=>x.getStatus()===403);
+ assert.deepEqual(calls,[]);
+ const {library:stale}=mockLibrary({revision:8});
+ await assert.rejects(stale.attach("token",branchId,productId,[groupId],7),x=>x.getStatus()===409);
+});
+test("L03: new library groups start inactive and require image before publication",async()=>{
+ let created;
+ const db={
+  branch:{findUnique:async()=>({id:branchId})},
+  modifierGroup:{
+    create:async p=>{created=p.data;return p.data},
+    findFirst:async()=>({id:groupId,branchId,name:"Topping",minSelect:0,maxSelect:1,
+      sortOrder:0,imageKey:null,options:[],assignments:[]}),
+  },
+ };
+ const service=new ModifierLibraryService({database:db},auth);
+ await service.create("token",branchId,{name:"Rau",minSelect:0,maxSelect:1,sortOrder:0});
+ assert.equal(created.isAvailable,false);
+ await assert.rejects(service.update("token",branchId,groupId,{isAvailable:true}),x=>x.getStatus()===409);
+});
+test("L03: R2 media keys cannot escape requested entity or branch",async()=>{
+ const db={catalogCategory:{findFirst:async()=>({imageKey:null})}};
+ const service=new R2CatalogMediaService(auth,{database:db},{cleanupPending:async()=>{}});
+ await assert.rejects(service.attach("token",branchId,"categories",productId,
+   "catalog-media/other/categories/"+productId+"/file.png"),x=>x.getStatus()===400);
+});
+test("L03: additive migration backfills links without changing original option IDs or order snapshots",()=>{
+ const sql=readFileSync(new URL("../prisma/migrations/20261015150000_l03_reusable_modifiers/migration.sql",import.meta.url),"utf8");
+ assert.match(sql,/INSERT INTO "ProductModifierGroupAssignment"/);
+ assert.match(sql,/SELECT "productId", id, "sortOrder" FROM "ModifierGroup"/);
+ assert.match(sql,/ALTER COLUMN "productId" DROP NOT NULL/);
+ assert.doesNotMatch(sql,/DROP TABLE "(?:ModifierGroup|ModifierOption|OrderItem)"/);
+});

@@ -19,9 +19,11 @@ export interface Variant {
 }
 export interface ModifierOption {
   id: string; name: string; priceDeltaVnd: number; isAvailable: boolean;
+  imageKey?: string | null;
 }
 export interface ModifierGroup {
   id: string; name: string; minSelect: number; maxSelect: number;
+  imageKey?: string | null;
   options: ModifierOption[];
 }
 export interface Product {
@@ -39,6 +41,7 @@ export interface Category {
   id: string;
   name: string;
   sortOrder: number;
+  imageKey?: string | null;
   products: Product[];
 }
 export interface BranchMenu extends BranchSummary {
@@ -56,7 +59,7 @@ export interface SavedAddress {
 export interface SavedAddresses { phone: string | null; addresses: SavedAddress[]; }
 
 export function safeProductImageUrl(key: string | null | undefined): string | null {
-  if (!key || !/^products-image\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key)
+  if (!key || !(/^(?:products-image|catalog-media)\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key))
     || key.includes("..")) return null;
   return "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/" + key;
 }

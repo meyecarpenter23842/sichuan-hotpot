@@ -31,7 +31,7 @@ export class CatalogService {
           select: {
             id: true,
             name: true,
-            sortOrder: true,
+            sortOrder: true, imageKey: true,
             products: {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
@@ -40,9 +40,22 @@ export class CatalogService {
                 modifierGroups: {
                   orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: { id: true, name: true, minSelect: true, maxSelect: true,
+                    isAvailable: true, imageKey: true, branchId: true,
                     options: { orderBy: [{ name: "asc" }, { id: "asc" }],
-                      select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
+                      select: { id: true, name: true, priceDeltaVnd: true,
+                        isAvailable: true, imageKey: true } },
                   },
+                },
+                modifierAssignments: {
+                  orderBy: { sortOrder: "asc" },
+                  select: { group: {
+                    select: { id: true, name: true, minSelect: true, maxSelect: true,
+                      isAvailable: true, imageKey: true, branchId: true,
+                      options: { orderBy: [{ name: "asc" }, { id: "asc" }],
+                        select: { id: true, name: true, priceDeltaVnd: true,
+                          isAvailable: true, imageKey: true } },
+                    },
+                  } },
                 },
                 variants: {
                   orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -55,6 +68,16 @@ export class CatalogService {
       },
     });
     if (!branch) throw new NotFoundException("Store branch unavailable");
-    return branch;
+    if (!branch.categories.length) return branch;
+    return { ...branch, categories: branch.categories.map(category => ({
+      ...category, products: category.products.map(product => {
+        const combined = new Map(product.modifierGroups.filter(g => g.branchId == null)
+          .map(g => [g.id, g] as const));
+        for (const a of product.modifierAssignments ?? []) combined.set(a.group.id, a.group);
+        return { ...product,
+          modifierGroups: [...combined.values()].filter(g => g.isAvailable !== false),
+          modifierAssignments: undefined };
+      }),
+    })) };
   }
 }

@@ -28,7 +28,14 @@
       "favicon": "./public/icon-192-v20261015b.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false,
+          "photosPermission": "Cho phép chọn ảnh danh mục và topping cho thực đơn cửa hàng."
+        }
+      ]
     ],
     "experiments": {
       "tsconfigPaths": true

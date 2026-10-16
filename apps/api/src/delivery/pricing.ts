@@ -7,9 +7,15 @@ export const productSelect = {
   variants: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
   modifierGroups: {
     select: {
-      name: true, minSelect: true, maxSelect: true,
+      name: true, minSelect: true, maxSelect: true, isAvailable: true, branchId: true,
       options: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
     },
+  },
+  modifierAssignments: {
+    select: { group: { select: {
+      name: true, minSelect: true, maxSelect: true, isAvailable: true,
+      options: { select: { id: true, name: true, priceDeltaVnd: true, isAvailable: true } },
+    } } },
   },
 } as const satisfies Prisma.ProductSelect;
 
@@ -61,7 +67,15 @@ export function priceCart(
     const selected = new Set(item.modifierIds);
     const known = new Set<string>();
     const modifiers: { name: string; priceVnd: number }[] = [];
-    for (const group of product.modifierGroups) {
+    const groups = [...new Map([
+      ...product.modifierGroups.filter(group => group.branchId == null)
+        .map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
+      ...(product.modifierAssignments ?? []).map(assignment => {
+        const group = assignment.group;
+        return [group.name + ":" + group.options.map(o => o.id).join(","), group] as const;
+      }),
+    ]).values()].filter(group => group.isAvailable !== false);
+    for (const group of groups) {
       const chosen = group.options.filter(option => selected.has(option.id));
       for (const option of group.options) known.add(option.id);
       if (group.minSelect < 0 || group.maxSelect < group.minSelect
