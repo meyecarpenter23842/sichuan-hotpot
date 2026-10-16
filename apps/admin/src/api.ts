@@ -21,6 +21,8 @@ export interface CatalogGroup {
 }
 export interface CatalogProduct {
   id: string; categoryId: string; name: string; priceVnd: number; isAvailable: boolean;
+  description: string | null; ingredients: string | null;
+  productNotes: string | null; allergenNotice: string | null;
   isFeatured: boolean; sortOrder: number; soldCount: number;
   imageKey: string | null; variants: CatalogVariant[]; modifierGroups: CatalogGroup[];
 }
