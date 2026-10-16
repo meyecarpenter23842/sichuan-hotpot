@@ -331,6 +331,7 @@ model OrderItemModifierSnapshot {
   orderItemId  String    @db.Uuid
   name         String    @db.VarChar(160)
   priceVnd     Int
+  quantity     Int       @default(1)
   orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
 
   @@index([orderItemId])
