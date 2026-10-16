@@ -352,13 +352,20 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
       const optionIds = new Set(group.options.map(option => option.id));
       const groupCount = line.comboOptionIds.filter(id => optionIds.has(id)).length;
       const current = line.comboOptionIds.filter(id => id === optionId).length;
-      const swapping = delta > 0 && group.maxSelect === 1 && groupCount === 1 && current === 0;
+      const swapping = delta > 0 && current === 0 && groupCount === group.maxSelect;
       const nextCount = current + delta;
       const nextGroupCount = groupCount + delta - (swapping ? 1 : 0);
       if (nextCount < 0 || nextGroupCount < 0 || nextGroupCount > group.maxSelect
         || line.comboOptionIds.length + delta - (swapping ? 1 : 0) > 30) return line;
-      const remaining = line.comboOptionIds.filter(id =>
-        swapping ? !optionIds.has(id) : id !== optionId);
+      const remaining = [...line.comboOptionIds];
+      if (swapping) {
+        const replaced = remaining.findIndex(id => optionIds.has(id));
+        if (replaced >= 0) remaining.splice(replaced, 1);
+      } else {
+        for (let i = remaining.length - 1; i >= 0; i--) {
+          if (remaining[i] === optionId) remaining.splice(i, 1);
+        }
+      }
       return {
         ...line,
         comboOptionIds: [...remaining, ...Array(nextCount).fill(optionId)],
@@ -625,7 +632,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
                           {group.options.map(option => {
                             const count = line.comboOptionIds.filter(id => id === option.id).length;
                             const atMax = selectedCount >= group.maxSelect;
-                            const wouldSwap = group.maxSelect === 1 && selectedCount === 1 && count === 0;
+                            const wouldSwap = selectedCount === group.maxSelect && count === 0;
                             return <View key={option.id} style={s.modifierRow}>
                               <View style={{ flex: 1 }}>
                                 <Text style={s.modifierName}>
