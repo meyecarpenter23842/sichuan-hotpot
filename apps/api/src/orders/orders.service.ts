@@ -52,6 +52,8 @@ export class OrdersService {
       productId: item.productId,
       variantId: item.variantId,
       modifierIds: [...item.modifierIds].sort(),
+      modifierQuantities: [...(item.modifierQuantities ?? [])]
+        .sort((a,b) => a.id.localeCompare(b.id)),
       quantity: item.quantity,
     }));
     normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
@@ -198,7 +200,7 @@ export class OrdersService {
                   variantName: line.variantName, quantity: line.quantity,
                   unitPriceVnd: line.unitPriceVnd, lineTotalVnd: line.lineTotalVnd,
                   modifiers: { create: line.modifiers.map(modifier => ({
-                    name: modifier.name, priceVnd: modifier.priceVnd,
+                    name: modifier.name, priceVnd: modifier.priceVnd, quantity: modifier.quantity,
                   })) },
                 })),
               },
@@ -275,7 +277,7 @@ export class OrdersService {
         items: { select: {
           productId: true, productName: true, variantName: true, quantity: true,
           unitPriceVnd: true, lineTotalVnd: true,
-          modifiers: { select: { name: true, priceVnd: true } },
+          modifiers: { select: { name: true, priceVnd: true, quantity: true } },
         } },
         statusHistory: { orderBy: { createdAt: "asc" },
           select: { fromStatus: true, toStatus: true, createdAt: true, reason: true } },
