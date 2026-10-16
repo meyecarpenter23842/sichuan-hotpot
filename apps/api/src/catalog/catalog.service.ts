@@ -36,9 +36,27 @@ export class CatalogService {
             products: {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
-                id: true, name: true, priceVnd: true, isAvailable: true,
+                id: true, name: true, priceVnd: true, kind: true, isAvailable: true,
                 description: true, ingredients: true, productNotes: true, allergenNotice: true,
                 isFeatured: true, sortOrder: true, imageKey: true,
+                comboFixedItems: {
+                  orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                  select: { id: true, quantity: true, sortOrder: true,
+                    childProduct: { select: { id: true, name: true, kind: true,
+                      isAvailable: true, imageKey: true } } },
+                },
+                comboGroups: {
+                  orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                  select: {
+                    id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
+                    options: {
+                      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+                      select: { id: true, quantity: true, priceDeltaVnd: true, sortOrder: true,
+                        childProduct: { select: { id: true, name: true, kind: true,
+                          isAvailable: true, imageKey: true } } },
+                    },
+                  },
+                },
                 modifierGroups: {
                   orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
                   select: { id: true, name: true, minSelect: true, maxSelect: true,
@@ -76,7 +94,17 @@ export class CatalogService {
         const combined = new Map(product.modifierGroups.filter(g => g.branchId == null)
           .map(g => [g.id, g] as const));
         for (const a of product.modifierAssignments ?? []) combined.set(a.group.id, a.group);
+        const comboConfigured = product.comboFixedItems.length > 0 || product.comboGroups.length > 0;
+        const comboSellable = product.kind !== "COMBO" || (
+          comboConfigured
+          && product.comboFixedItems.every(item =>
+            item.childProduct.kind === "STANDARD" && item.childProduct.isAvailable)
+          && product.comboGroups.every(group =>
+            group.minSelect === 0 || group.options.some(option =>
+              option.childProduct.kind === "STANDARD" && option.childProduct.isAvailable))
+        );
         return { ...product,
+          isAvailable: product.isAvailable && comboSellable,
           modifierGroups: [...combined.values()].filter(g => g.isAvailable !== false),
           modifierAssignments: undefined };
       }),
