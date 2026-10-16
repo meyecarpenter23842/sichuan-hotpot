@@ -98,7 +98,7 @@ try {
   assert.ok(await page.getByText("232.000 ₫",{exact:false}).count(),
     "159000 base + 49000 size + 2 x 12000 topping");
   await page.getByRole("button",{name:"Tăng số lượng món "+productName}).click();
-  await page.getByText("440.000 ₫",{exact:false}).waitFor();
+  await page.getByText("440.000 ₫",{exact:false}).first().waitFor();
   assert.equal(await page.getByText("12.000 ₫ × 2 = 24.000 ₫",{exact:false}).count(),1,
     "Lẩu ×2 but toppings remain ×2, not ×4");
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-390.png", fullPage: true });
