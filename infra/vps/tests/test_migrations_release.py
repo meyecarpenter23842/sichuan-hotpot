@@ -177,6 +177,7 @@ class LiveP4SafetyTests(unittest.TestCase):
         self.assertIn("wait_for_database(name)", source)
         self.assertIn("verify_decryption(cipher)", source)
         self.assertIn('"--clean", "--if-exists"', source)
+        self.assertIn('"--dbname", name', source)
         self.assertIn("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;", source)
         self.assertNotIn('"--single-transaction"', source)
 
