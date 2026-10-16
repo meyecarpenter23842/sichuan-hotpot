@@ -52,6 +52,28 @@ test("L03: new library groups start inactive and require image before publicatio
  assert.equal(created.isAvailable,false);
  await assert.rejects(service.update("token",branchId,groupId,{isAvailable:true}),x=>x.getStatus()===409);
 });
+test("L03: optional group and free topping are valid business objects",async()=>{
+ const created=[];
+ const db={
+  branch:{findUnique:async()=>({id:branchId})},
+  modifierGroup:{
+   create:async ({data})=>{created.push(data);return {id:groupId,...data}},
+   findFirst:async()=>({id:groupId,branchId,imageKey:null,options:[],assignments:[]}),
+  },
+  modifierOption:{create:async ({data})=>{created.push(data);return data}},
+ };
+ const service=new ModifierLibraryService({database:db},auth);
+ const group=await service.create("token",branchId,{
+  name:"Độ cay",minSelect:0,maxSelect:1,sortOrder:0,
+ });
+ assert.equal(group.minSelect,0,"nonmandatory groups require zero selections");
+ const free=await service.addOption("token",branchId,groupId,{
+  name:"Không cay",priceDeltaVnd:0,
+ });
+ assert.equal(free.priceDeltaVnd,0,"zero VND is valid; do not conflate it with missing image");
+ assert.equal(free.isAvailable,false,"new free topping still requires an image before publishing");
+ assert.equal(created.length,2);
+});
 test("L03: R2 media keys cannot escape requested entity or branch",async()=>{
  const db={catalogCategory:{findFirst:async()=>({imageKey:null})}};
  const service=new R2CatalogMediaService(auth,{database:db},{cleanupPending:async()=>{}});
