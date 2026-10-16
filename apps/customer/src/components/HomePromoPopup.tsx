@@ -52,6 +52,15 @@ export function HomePromoPopup({branchId,payload,active}:{
     if(visible)return;
     let cancelled=false;
     let timer:ReturnType<typeof setTimeout>|undefined;
+    const repeatMs=(payload?.settings.repeatIntervalMinutes??360)*60000;
+    const memory=memoryReceipt.current;
+    if(memory&&memory.branchId===branchId&&memory.revision===revision){
+      const remaining=repeatMs-(Date.now()-memory.shownAt);
+      if(remaining>0){
+        timer=setTimeout(()=>setEligibilityEpoch(value=>value+1),Math.max(250,remaining));
+        return()=>{cancelled=true;if(timer)clearTimeout(timer);};
+      }
+    }
     void AsyncStorage.getItem(receiptKey(branchId)).then(raw=>{
       if(cancelled)return;
       let stored:Receipt|null=null;
@@ -60,7 +69,6 @@ export function HomePromoPopup({branchId,payload,active}:{
       const receipt=memory&&memory.branchId===branchId&&memory.revision===revision
         &&(!stored||stored.revision!==revision||memory.shownAt>stored.shownAt)
         ?{revision:memory.revision,shownAt:memory.shownAt}:stored;
-      const repeatMs=(payload?.settings.repeatIntervalMinutes??360)*60000;
       const elapsed=receipt&&receipt.revision===revision?Date.now()-receipt.shownAt:repeatMs;
       if(!receipt||receipt.revision!==revision||elapsed>=repeatMs){
         const shownAt=Date.now();
