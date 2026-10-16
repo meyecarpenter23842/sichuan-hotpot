@@ -1,6 +1,7 @@
 import { Module, RequestMethod } from "@nestjs/common";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
+import { HomeOffersModule } from "./home-offers/home-offers.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { CustomerAddressesModule } from "./customer-addresses/customer-addresses.module";
 import { DeliveryModule } from "./delivery/delivery.module";
