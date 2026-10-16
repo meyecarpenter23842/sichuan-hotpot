@@ -6,6 +6,7 @@ export interface CartSelection {
   readonly productId: string;
   readonly variantId: string | null;
   readonly modifierIds: readonly string[];
+  readonly comboOptionIds?: readonly string[];
 }
 export interface CartLine {
   readonly key: string;
@@ -41,16 +42,21 @@ export function normalizeCartSelection(selection: CartSelection): CartSelection 
   const productId = nonempty(selection.productId, "PRODUCT");
   const variantId = selection.variantId === null ? null : nonempty(selection.variantId, "VARIANT");
   if (selection.modifierIds.length > 30) throw new CartInputError("TOO_MANY_MODIFIERS");
+  const rawComboOptionIds = selection.comboOptionIds ?? [];
+  if (rawComboOptionIds.length > 30) throw new CartInputError("TOO_MANY_COMBO_OPTIONS");
   // Repeated IDs represent counts of the same topping on ONE portion.
   // Preserve multiplicity throughout cart, quote and checkout. Sorting keeps
   // the cart key stable regardless of the order toppings were added.
   const modifierIds = selection.modifierIds.map(id => nonempty(id, "MODIFIER")).sort();
-  return { productId, variantId, modifierIds };
+  const comboOptionIds = rawComboOptionIds.map(id => nonempty(id, "COMBO_OPTION")).sort();
+  return { productId, variantId, modifierIds, comboOptionIds };
 }
 
 export function cartLineKey(selection: CartSelection): string {
   const clean = normalizeCartSelection(selection);
-  return JSON.stringify([clean.productId, clean.variantId, clean.modifierIds]);
+  return JSON.stringify([
+    clean.productId, clean.variantId, clean.modifierIds, clean.comboOptionIds ?? [],
+  ]);
 }
 
 export function addCartLine(
@@ -82,6 +88,10 @@ export function setCartQuantity(cart: readonly CartLine[], key: string, quantity
 /** Count a topping on a single portion, not the number of whole dishes. */
 export function cartModifierCount(selection: CartSelection, modifierId: string): number {
   return selection.modifierIds.filter(id => id === modifierId).length;
+}
+
+export function cartComboOptionCount(selection: CartSelection, optionId: string): number {
+  return (selection.comboOptionIds ?? []).filter(id => id === optionId).length;
 }
 
 /** Change topping quantity immutably. Identity changes with the selection;
@@ -135,6 +145,7 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
   productId: string;
   variantId: string | null;
   modifierIds: string[];
+  comboOptionIds: string[];
   quantity: number;
   pricingMode: "SEPARATE";
 }[] {
@@ -147,6 +158,7 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
       productId: selection.productId,
       variantId: selection.variantId,
       modifierIds: [...selection.modifierIds],
+      comboOptionIds: [...(selection.comboOptionIds ?? [])],
       quantity: line.quantity,
       // Dish counter never multiplies optional topping quantities.
       pricingMode: "SEPARATE" as const,
