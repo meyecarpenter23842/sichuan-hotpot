@@ -55,3 +55,11 @@ test("Admin order sheet exposes guarded edit and complete delivery actions", () 
   assert.match(orders, /expectedUpdatedAt: selected\.updatedAt/);
   assert.match(orders, /Giá được tính lại từ catalog trên máy chủ/);
 });
+
+test("staff order detail shows customer note and combo child size snapshot", () => {
+  assert.match(orders, /Ghi chú khách hàng/);
+  assert.match(orders, /selected\.customerNote/);
+  assert.match(orders, /component\.variantName/);
+  assert.match(service, /customerNote: true/);
+  assert.match(service, /variantName: true/);
+});
