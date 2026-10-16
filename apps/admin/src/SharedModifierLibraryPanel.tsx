@@ -18,7 +18,7 @@ function Photo({ imageKey, label }: {imageKey:string|null|undefined;label:string
 export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImage,onRemoveImage,onFeedback,onAssign}:{
  catalog:AdminCatalog;token:string;root:string;reload:()=>Promise<void>;
  onPickImage:(kind:"categories"|"groups"|"options",id:string,
-   onResult?:(message:string,error:boolean)=>void)=>void;
+   onResult?:(message:string,error:boolean)=>void,onStart?:()=>void)=>void;
  onRemoveImage:(kind:"categories"|"groups"|"options",id:string)=>void;
  onFeedback:(message:string,error:boolean)=>void;
  onAssign:(product:CatalogProduct)=>void;
@@ -37,6 +37,16 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const groups=catalog.modifierLibrary??[];
  const visible=groups.filter(g=>(g.name+" "+g.options.map(o=>o.name).join(" "))
    .toLocaleLowerCase("vi").includes(query.trim().toLocaleLowerCase("vi")));
+ function pickMedia(kind:"groups"|"options",id:string){
+   onPickImage(kind,id,(message,failed)=>{
+     setError(failed?message:"");
+     setNotice(failed?"":message);
+     onFeedback(message,failed);
+   },()=>{
+     setError("");
+     setNotice("Đang tối ưu và tải ảnh. Vui lòng đợi...");
+   });
+ }
  function begin(kind:"group"|"option", group?:CatalogGroup, option?:CatalogOption){
    const n=group?.usedByProductIds?.length??0;
    setEditing({kind,id:kind==="group"?group?.id:option?.id,
@@ -138,7 +148,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
     </View>
     {open&&<View style={s.expanded}>
       <View style={s.actions}>
-       <Action label="Ảnh nhóm" secondary onPress={()=>onPickImage("groups",group.id)}/>
+       <Action label="Ảnh nhóm" secondary onPress={()=>pickMedia("groups",group.id)}/>
        {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>onRemoveImage("groups",group.id)}/>}
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
@@ -153,7 +163,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
           <Text style={s.hint}>+{money(option.priceDeltaVnd)}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={"Ảnh topping "+option.name}
-          style={s.iconAction} onPress={()=>onPickImage("options",option.id)}>
+          style={s.iconAction} onPress={()=>pickMedia("options",option.id)}>
           <Text style={s.edit}>▧</Text></Pressable>
         {!!option.imageKey&&<Pressable accessibilityRole="button" accessibilityLabel={"Gỡ ảnh topping "+option.name}
           style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
@@ -228,13 +238,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
                ?groups.find(g=>g.id===editing.id)?.imageKey
                :groups.flatMap(g=>g.options).find(o=>o.id===editing.id)?.imageKey}
                label="Ảnh đã lưu"/>
-             <Action label="Chọn / thay ảnh" secondary disabled={busy} onPress={()=>{
-               const itemId=editing.id!;
-               onPickImage(editing.kind==="group"?"groups":"options",itemId,(message,failed)=>{
-                 if(failed){setError(message);setNotice("");}
-                 else {setError("");setNotice(message);}
-               });
-             }}/>
+             <Action label="Chọn / thay ảnh" secondary disabled={busy} onPress={()=>pickMedia(editing.kind==="group"?"groups":"options",editing.id!)}/>
            </View>
            {editing.kind==="group"&&<Action label="＋ Thêm topping vào nhóm" secondary
              onPress={()=>begin("option",{id:editing.id!,name:editing.name,
