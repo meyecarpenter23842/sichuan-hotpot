@@ -5,7 +5,7 @@ import { c } from "./theme";
 /** Consistent line icons drawn with React Native primitives (web and Android, no font glyphs). */
 export type IconName = "dashboard" | "catalog" | "settings" | "account" | "store" |
   "clock" | "delivery" | "power" | "bell" | "users" | "plus" | "chevron" |
-  "edit" | "pin" | "check" | "close" | "orders" | "kitchen";
+  "edit" | "pin" | "check" | "close" | "orders" | "kitchen" | "banner";
 
 export function Icon({ name, size = 24, color = c.ink }: {
   name: IconName; size?: number; color?: string;
@@ -89,6 +89,10 @@ export function Icon({ name, size = 24, color = c.ink }: {
       {line(9, 13, 8)}{line(9, 18, 5)}{outline(2, 5, 5, 5, 2)}</>; break;
     case "kitchen": shape = <>{outline(2, 8, 20, 14, 2)}{line(5, 3, 2, 9)}
       {line(11, 3, 2, 9)}{line(17, 3, 2, 9)}</>; break;
+    case "banner": shape = <>{outline(2, 4, 20, 16, 2)}
+      {outline(5, 7, 5, 5, 5)}
+      {part(5, 16, 6, 2, { backgroundColor: color, transform: [{ rotate: "-35deg" }], borderRadius: stroke })}
+      {part(10, 14, 9, 2, { backgroundColor: color, transform: [{ rotate: "28deg" }], borderRadius: stroke })}</>; break;
   }
   return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
     style={{ width: size, height: size, flexShrink: 0 }}>
