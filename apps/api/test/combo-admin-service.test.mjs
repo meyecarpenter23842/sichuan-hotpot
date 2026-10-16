@@ -10,11 +10,13 @@ const branchId = randomUUID();
 const comboId = randomUUID();
 const childA = randomUUID();
 const childB = randomUUID();
+const variantA = randomUUID();
+const variantB = randomUUID();
 
 function fixture(children = [
   { id: childA, kind: "STANDARD" },
   { id: childB, kind: "STANDARD" },
-]) {
+], variants = []) {
   const writes = [];
   const db = {
     branch: {
@@ -30,6 +32,9 @@ function fixture(children = [
       findMany: async input => {
         writes.push(["children", input]); return children;
       },
+    },
+    productVariant: {
+      findMany: async input => { writes.push(["variants", input]); return variants; },
     },
     productComboFixedItem: {
       deleteMany: async input => { writes.push(["fixed-delete", input]); },
@@ -86,4 +91,33 @@ test("admin combo contract blocks self-reference, nesting and cross-branch/missi
 
   await assert.rejects(fixture([]).service.saveCombo("Bearer owner", branchId, comboId, base),
     error => error.getStatus?.() === 400);
+});
+
+
+test("admin persists child size and rejects a size from the wrong product", async () => {
+  const { service, writes } = fixture(undefined, [
+    { id: variantA, productId: childA, isAvailable: true },
+    { id: variantB, productId: childB, isAvailable: true },
+  ]);
+  await service.saveCombo("Bearer owner", branchId, comboId, {
+    fixedItems: [{ productId: childA, variantId: variantA, quantity: 1, sortOrder: 0 }],
+    groups: [{
+      name: "Chọn nước", minSelect: 1, maxSelect: 1, sortOrder: 1,
+      options: [{
+        productId: childB, variantId: variantB, quantity: 1,
+        priceDeltaVnd: 0, sortOrder: 0,
+      }],
+    }],
+  });
+  const fixedWrite = writes.find(row => row[0] === "fixed-create")[1].data[0];
+  const optionWrite = writes.find(row => row[0] === "option-create")[1].data[0];
+  assert.equal(fixedWrite.variantId, variantA);
+  assert.equal(optionWrite.variantId, variantB);
+
+  await assert.rejects(fixture(undefined, [
+    { id: variantA, productId: childB, isAvailable: true },
+  ]).service.saveCombo("Bearer owner", branchId, comboId, {
+    fixedItems: [{ productId: childA, variantId: variantA, quantity: 1, sortOrder: 0 }],
+    groups: [],
+  }), error => error.getStatus?.() === 400);
 });
