@@ -12,6 +12,7 @@ export interface DeliveryCartItem {
   productId: string;
   variantId: string | null;
   modifierIds: string[];
+  modifierQuantities?: { id: string; quantity: number }[];
   quantity: number;
 }
 export interface QuoteRequest {
