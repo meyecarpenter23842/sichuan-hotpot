@@ -928,7 +928,10 @@ function CustomerApp() {
       >
         <ProductArtwork product={product} />
         <View style={styles.productInfo}>
-          <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
+          <View style={styles.productTitleRow}>
+            <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
+            {product.kind === "COMBO" && <Text style={styles.comboBadge}>COMBO</Text>}
+          </View>
           <Text style={styles.price}>{vnd(product.priceVnd)}</Text>
           <Text style={styles.availability}>{product.isAvailable ? "Xem món và tùy chọn" : "Tạm hết hàng"}</Text>
         </View>
@@ -1193,7 +1196,9 @@ function CustomerApp() {
             <Button label="‹ Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
             <View style={styles.detailHero}><ProductArtwork product={item} large /></View>
             <Text style={styles.detailTitle}>{item.name}</Text>
-            <Text style={styles.detailPrice}>Giá lẩu: {vnd(costs.baseUnit)} / phần</Text>
+            <Text style={styles.detailPrice}>
+              {item.kind === "COMBO" ? "Giá combo" : "Giá món"}: {vnd(costs.baseUnit)} / phần
+            </Text>
             {(item.description || item.ingredients || item.productNotes || item.allergenNotice) &&
               <View style={styles.productContent}>
                 {!!item.description && <Text style={styles.productDescription}
@@ -1224,7 +1229,75 @@ function CustomerApp() {
                   <Text style={styles.allergenSource}>Thông tin do cửa hàng cung cấp; nếu cần, hãy hỏi cửa hàng trước khi đặt.</Text>
                 </View>}
               </View>}
-            <Text style={styles.muted}>Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
+            {item.kind === "COMBO" && <View style={styles.comboSection}>
+              <View style={styles.comboHeading}>
+                <Text style={styles.sectionTitle}>Combo gồm</Text>
+                <Text style={styles.comboBadge}>COMBO</Text>
+              </View>
+              {item.comboFixedItems.map(fixed => <View key={fixed.id} style={styles.comboFixedRow}>
+                {safeProductImageUrl(fixed.childProduct.imageKey)
+                  ? <Image source={{ uri: safeProductImageUrl(fixed.childProduct.imageKey)! }}
+                      style={styles.comboThumb} />
+                  : <View style={styles.comboThumbPlaceholder} />}
+                <View style={styles.toppingCopy}>
+                  <Text style={styles.optionText}>{fixed.quantity} × {fixed.childProduct.name}</Text>
+                  {!fixed.childProduct.isAvailable &&
+                    <Text style={styles.warning}>Món này đang tạm hết</Text>}
+                </View>
+              </View>)}
+              {item.comboGroups.map((group: ComboGroup) => {
+                const ids = new Set(group.options.map(option => option.id));
+                const groupCount = selectedComboOptionIds.filter(id => ids.has(id)).length;
+                const required = group.minSelect > 0;
+                return <View key={group.id} style={[styles.group, required && styles.requiredGroup]}>
+                  <View style={styles.choiceGroupHeading}>
+                    <Text style={styles.sectionTitle}>{group.name}</Text>
+                    <Text style={[styles.choiceRequirement, required && styles.choiceRequired]}>
+                      {required ? "Bắt buộc" : "Không bắt buộc"}
+                    </Text>
+                  </View>
+                  <Text style={styles.muted}>Chọn {group.minSelect}–{group.maxSelect} món · hiện {groupCount}</Text>
+                  {group.options.filter(option => option.childProduct.isAvailable).map(option => {
+                    const count = selectedComboOptionIds.filter(id => id === option.id).length;
+                    const atMax = groupCount >= group.maxSelect;
+                    const wouldSwap = group.maxSelect === 1 && groupCount === 1 && count === 0;
+                    return <View key={option.id} style={styles.comboChoiceRow}>
+                      {safeProductImageUrl(option.childProduct.imageKey)
+                        ? <Image source={{ uri: safeProductImageUrl(option.childProduct.imageKey)! }}
+                            style={styles.comboThumb} />
+                        : <View style={styles.comboThumbPlaceholder} />}
+                      <View style={styles.toppingCopy}>
+                        <Text style={styles.optionText} numberOfLines={2}>
+                          {option.quantity} × {option.childProduct.name}
+                        </Text>
+                        <Text style={styles.optionPrice}>{option.priceDeltaVnd > 0
+                          ? "+" + vnd(option.priceDeltaVnd) : "Trong giá combo"}</Text>
+                      </View>
+                      <View style={styles.quantityStepper}>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Bớt " + option.childProduct.name}
+                          disabled={count === 0 || groupCount <= group.minSelect}
+                          onPress={() => changeDetailCombo(group, option.id, -1)}>
+                          <Text style={styles.stepText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.qtyText}>{count}</Text>
+                        <Pressable style={styles.step} accessibilityRole="button"
+                          accessibilityLabel={"Thêm " + option.childProduct.name}
+                          disabled={(!wouldSwap && atMax) || selectedComboOptionIds.length >= 30}
+                          onPress={() => changeDetailCombo(group, option.id, 1)}>
+                          <Text style={styles.stepText}>+</Text>
+                        </Pressable>
+                      </View>
+                    </View>;
+                  })}
+                  {groupCount < group.minSelect &&
+                    <Text style={styles.warning}>Cần chọn thêm {group.minSelect - groupCount} món.</Text>}
+                </View>;
+              })}
+            </View>}
+            <Text style={styles.muted}>
+              {item.kind === "COMBO" ? "Lựa chọn combo: " + vnd(costs.comboTotal) + " · " : ""}
+              Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
               {" "}{vnd(costs.requiredTotal)} · Tổng {selectedQuantity} phần: {vnd(costs.total)}</Text>
             <Text style={styles.muted}>Giá tạm tính; máy chủ xác nhận lại trước khi đặt.</Text>
             {item.variants.length > 0 && <View style={styles.group}>
@@ -1372,9 +1445,11 @@ function CustomerApp() {
                   const product=productsById.get(line.selection.productId);
                   const variant=product?.variants.find(v=>v.id===line.selection.variantId);
                   const groups=product?.modifierGroups??[];
+                  const comboOptionIds=line.selection.comboOptionIds??[];
                   const unavailable=!product||!product.isAvailable
                     ||(line.selection.variantId!==null&&(!variant||!variant.isAvailable))
-                    ||optionSelectionError(groups,line.selection.modifierIds)!==null;
+                    ||optionSelectionError(groups,line.selection.modifierIds)!==null
+                    ||(product?comboSelectionError(product,comboOptionIds)!==null:true);
                   const costs=product?cartPriceParts(product,line.selection.variantId,
                     line.selection.modifierIds,line.selection.comboOptionIds??[],line.quantity):null;
                   return <View key={line.key} style={styles.cartLine}>
@@ -1383,7 +1458,8 @@ function CustomerApp() {
                         <Text style={styles.productName}>
                           {product?.name??"Món không còn trong thực đơn"}</Text>
                         <Text style={styles.muted}>
-                          Size: {variant?.name??"Mặc định"} · Giá lẩu {costs?vnd(costs.baseUnit):"—"} / phần
+                          {product?.kind === "COMBO" ? "Combo" : "Size: " + (variant?.name??"Mặc định")}
+                          {" · "}{costs?vnd(costs.baseUnit):"—"} / phần
                         </Text>
                       </View>
                       <View style={styles.quantityStepper}>
@@ -1403,6 +1479,27 @@ function CustomerApp() {
                         </Pressable>
                       </View>
                     </View>
+                    {product?.kind === "COMBO" && <View style={styles.cartGroup}>
+                      <Text style={styles.cartGroupTitle}>Thành phần combo</Text>
+                      {product.comboFixedItems.map(fixed =>
+                        <Text key={fixed.id} style={styles.muted}>
+                          • {fixed.quantity} × {fixed.childProduct.name}
+                        </Text>)}
+                      {product.comboGroups.map(group => {
+                        const selected = group.options.filter(option =>
+                          cartComboOptionCount(line.selection, option.id) > 0);
+                        return selected.length ? <View key={group.id} style={styles.comboCartGroup}>
+                          <Text style={styles.cartToppingName}>{group.name}</Text>
+                          {selected.map(option => {
+                            const count = cartComboOptionCount(line.selection, option.id);
+                            return <Text key={option.id} style={styles.muted}>
+                              • {option.quantity * count} × {option.childProduct.name}
+                              {option.priceDeltaVnd > 0 ? " · +" + vnd(option.priceDeltaVnd * count) : ""}
+                            </Text>;
+                          })}
+                        </View> : null;
+                      })}
+                    </View>}
                     {[...groups].sort((a,b)=>Number(b.minSelect>0)-Number(a.minSelect>0)).map(group=>{
                       const groupIds=new Set(group.options.map(o=>o.id));
                       const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
@@ -1474,9 +1571,13 @@ function CustomerApp() {
                     })}
                     {costs&&<View style={styles.cartPriceBreakdown}>
                       <View style={styles.cartPriceSplit}>
-                        <Text style={styles.muted}>Lẩu {variant?.name??"Mặc định"} × {line.quantity}</Text>
+                        <Text style={styles.muted}>{product?.kind === "COMBO" ? "Combo" : "Món " + (variant?.name??"Mặc định")} × {line.quantity}</Text>
                         <Text style={styles.cartPriceValue}>{vnd(costs.dishTotal)}</Text>
                       </View>
+                      {costs.comboTotal>0&&<View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Lựa chọn combo</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.comboTotal)}</Text>
+                      </View>}
                       {costs.requiredTotal>0&&<View style={styles.cartPriceSplit}>
                         <Text style={styles.muted}>Lựa chọn bắt buộc</Text>
                         <Text style={styles.cartPriceValue}>{vnd(costs.requiredTotal)}</Text>
@@ -2082,7 +2183,10 @@ const styles = StyleSheet.create({
   iconTileTea: { backgroundColor: "#FFF0F0" },
   iconGlyph: { fontSize: 30 },
   productInfo: { flex: 1, paddingHorizontal: 12, gap: 3 },
-  productName: { color: "#20252B", fontSize: typeScale.action, fontWeight: "800", lineHeight: 19 },
+  productTitleRow: { flexDirection:"row",alignItems:"center",gap:6,minWidth:0 },
+  comboBadge: { color:"#B3262D",backgroundColor:"#FDE8EA",fontSize:9,fontWeight:"900",
+    borderRadius:7,paddingHorizontal:6,paddingVertical:3,overflow:"hidden" },
+  productName: { color: "#20252B", fontSize: typeScale.action, fontWeight: "800", lineHeight: 19, flexShrink:1 },
   price: { color: brand, fontSize: typeScale.action, fontWeight: "900" },
   availability: { color: "#667085", fontSize: 12 },
   forward: { color: brand, fontSize: 23 },
@@ -2104,6 +2208,15 @@ const styles = StyleSheet.create({
   allergenTitle: { color: "#B42318", fontSize: 12, fontWeight: "900" },
   allergenText: { color: "#7A271A", fontSize: 13, lineHeight: 19 },
   allergenSource: { color: "#912018", fontSize: 11, lineHeight: 16 },
+  comboSection: { gap:8,marginTop:8,paddingTop:10,borderTopWidth:1,borderTopColor:"#E4E7EC" },
+  comboHeading: { flexDirection:"row",alignItems:"center",gap:7 },
+  comboFixedRow: { minHeight:54,flexDirection:"row",alignItems:"center",gap:8,
+    borderBottomWidth:1,borderBottomColor:"#F0F1F3",paddingVertical:5 },
+  comboChoiceRow: { minHeight:62,flexDirection:"row",alignItems:"center",gap:8,
+    borderBottomWidth:1,borderBottomColor:"#F0F1F3",paddingVertical:6 },
+  comboThumb: { width:42,height:42,borderRadius:9 },
+  comboThumbPlaceholder: { width:42,height:42,borderRadius:9,backgroundColor:"#F1F2F4" },
+  comboCartGroup: { gap:3,paddingTop:3 },
   group: { marginTop: 8, gap: 9, paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
   sizeStrip: { flexDirection:"row",alignItems:"stretch",gap:8,paddingVertical:4,paddingRight:12 },
   sizeTile: { minWidth:106,minHeight:60,alignItems:"center",justifyContent:"center",
