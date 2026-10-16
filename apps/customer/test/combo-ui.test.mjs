@@ -32,7 +32,7 @@ test("customer combo composition exposes configured size and blocks unavailable 
   assert.match(app, /fixed\.variant \? " · " \+ fixed\.variant\.name/);
   assert.match(app, /choice\.variantName \? " · " \+ choice\.variantName/);
   assert.match(combo, /item\.variant != null && !item\.variant\.isAvailable/);
-  assert.match(combo, /option\.variant != null && !option\.variant\.isAvailable/);
+  assert.match(combo, /option\.variant == null \|\| option\.variant\.isAvailable/);
   assert.match(orders, /component\.variantName/);
 });
 
