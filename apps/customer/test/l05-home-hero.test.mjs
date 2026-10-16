@@ -37,6 +37,6 @@ test("L05 carousel supports reduced motion, preloading, all transitions and appr
   assert.match(hero,/transition==="wipe"/);
   assert.match(hero,/321\/829/);
   assert.match(hero,/home-reference\.png/);
-  assert.match(hero,/testID="home-approved-hero"/);
+  assert.match(app,/testID="home-approved-hero"/);
   assert.match(hero,/Tải lại banner/);
 });
