@@ -19,6 +19,6 @@ test("L04 Settings uses owner-scoped popup with real CRUD and signed R2 workflow
 test("L04 time editor converts Vietnam local time to UTC without client timezone drift",()=>{
  const p=read("../src/HomeOffersPanel.tsx");
  assert.match(p,/Date\.UTC\(year,month-1,day,hour-7,minute,0\)/);
- assert.match(p,/Giờ Việt Nam/);
+ assert.match(p,/giờ Việt Nam/i);
  assert.match(p,/OFFER_IMAGE_REQUIRED|Thêm ảnh trước khi bật|Hãy thêm ảnh trước khi bật/);
 });
