@@ -81,13 +81,15 @@ test("L05 popup cannot be globally enabled without at least one live image",asyn
 });
 
 test("L05 popup config validates frequency and is OWNER/revision protected",async()=>{
-  const {service,auth}=fixture();
+  const {service,auth,slides}=fixture();
   auth.principal=async()=>({id:"staff",role:"MANAGER"});
   await assert.rejects(service.adminGet("Bearer staff",branch),e=>e.getStatus()===403);
   auth.principal=async()=>({id:"owner",role:"OWNER"});
   await assert.rejects(service.updateConfig("Bearer owner",branch,0,{
     enabled:true,repeatIntervalMinutes:1,slideDwellMs:4000,
   }),e=>e.getStatus()===400);
+  slides.set(id1,{id:id1,branchId:branch,imageKey:image(id1),altText:"Ảnh live",enabled:true,
+    sortOrder:0,revision:0,createdAt:new Date()});
   const saved=await service.updateConfig("Bearer owner",branch,0,{
     enabled:true,repeatIntervalMinutes:60,slideDwellMs:3000,
   });
