@@ -586,6 +586,13 @@ export class AdminCatalogService {
   async deleteVariant(auth: string | undefined, branchId: string, id: string) {
     await this.authorize(auth, branchId);
     await this.variant(branchId, id);
+    const [fixedUse, optionUse] = await Promise.all([
+      this.prisma.database.productComboFixedItem.count({ where: { variantId: id } }),
+      this.prisma.database.productComboOption.count({ where: { variantId: id } }),
+    ]);
+    if (fixedUse || optionUse) {
+      throw new ConflictException("VARIANT_USED_BY_COMBO_REMOVE_FROM_COMBO_FIRST");
+    }
     await this.change(() => this.prisma.database.productVariant.delete({ where: { id } }));
     return { status: "deleted" };
   }
