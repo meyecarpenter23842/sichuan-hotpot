@@ -8,7 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
 import {
-  addCartLine, setCartQuantity,
+  addCartLine, setCartQuantity, cartModifierCount, replaceCartLineSelection,
   type CartLine,
 } from "../../packages/shared/src/cart";
 import {
@@ -165,9 +165,9 @@ function HomeLifestylePhoto({ kind, width, height }: {
 }
 
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
-  return (product.modifierGroups ?? []).flatMap(group => group.options)
-    .filter(option => ids.includes(option.id))
-    .reduce((total, option) => total + option.priceDeltaVnd, 0);
+  const catalog = new Map((product.modifierGroups ?? []).flatMap(group => group.options)
+    .map(option => [option.id, option.priceDeltaVnd] as const));
+  return ids.reduce((sum,id)=>sum+(catalog.get(id)??0),0);
 }
 
 function CustomerApp() {
@@ -868,13 +868,12 @@ function CustomerApp() {
       }
       const modifierIds: string[] = [];
       const available = product.modifierGroups.flatMap(group => group.options);
-      const used = new Set<string>();
       for (const modifier of item.modifiers) {
         const matches = available.filter(v => v.name === modifier.name
-          && v.isAvailable && !used.has(v.id));
+          && v.isAvailable && v.priceDeltaVnd === modifier.priceVnd);
         if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
+        // Duplicate snapshot rows preserve extra topping quantities.
         modifierIds.push(matches[0]!.id);
-        used.add(matches[0]!.id);
       }
       if (optionSelectionError(product.modifierGroups, modifierIds)) {
         return "Tùy chọn đơn cũ không còn hợp lệ, vui lòng chọn lại.";
