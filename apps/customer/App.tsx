@@ -1034,6 +1034,28 @@ function CustomerApp() {
       }
       const comboOptionIds: string[] = [];
       if (product.kind === "COMBO") {
+        const historicalFixed = item.comboItems.filter(component => component.kind === "FIXED");
+        if (historicalFixed.length !== product.comboFixedItems.length) {
+          return "Thành phần cố định của combo cũ đã thay đổi, vui lòng chọn lại.";
+        }
+        const unmatchedFixed = [...historicalFixed];
+        for (const fixed of product.comboFixedItems) {
+          const matchIndex = unmatchedFixed.findIndex(snapshot => {
+            const productMatches = snapshot.productId
+              ? snapshot.productId === fixed.childProduct.id
+              : snapshot.productName === fixed.childProduct.name;
+            const variantMatches = snapshot.variantId
+              ? snapshot.variantId === fixed.variant?.id
+              : snapshot.variantName
+                ? snapshot.variantName === fixed.variant?.name
+                : fixed.variant == null;
+            return productMatches && variantMatches && snapshot.quantity === fixed.quantity;
+          });
+          if (matchIndex < 0) {
+            return "Món hoặc size cố định của combo cũ đã thay đổi, vui lòng chọn lại.";
+          }
+          unmatchedFixed.splice(matchIndex, 1);
+        }
         for (const snapshot of item.comboItems.filter(component => component.kind === "CHOICE")) {
           const group = product.comboGroups.find(candidate => candidate.name === snapshot.groupName);
           if (!group) return "Nhóm lựa chọn combo cũ đã thay đổi, vui lòng chọn lại.";
