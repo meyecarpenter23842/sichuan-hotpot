@@ -26,10 +26,26 @@ export interface ModifierGroup {
   imageKey?: string | null;
   options: ModifierOption[];
 }
+export interface ComboChildProduct {
+  id: string; name: string; kind: "STANDARD" | "COMBO";
+  isAvailable: boolean; imageKey: string | null;
+}
+export interface ComboFixedItem {
+  id: string; quantity: number; sortOrder: number; childProduct: ComboChildProduct;
+}
+export interface ComboOption {
+  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  childProduct: ComboChildProduct;
+}
+export interface ComboGroup {
+  id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
+  options: ComboOption[];
+}
 export interface Product {
   id: string;
   name: string;
   priceVnd: number;
+  kind: "STANDARD" | "COMBO";
   isAvailable: boolean;
   isFeatured: boolean;
   description: string | null;
@@ -39,6 +55,8 @@ export interface Product {
   sortOrder: number;
   variants: Variant[];
   modifierGroups: ModifierGroup[];
+  comboFixedItems: ComboFixedItem[];
+  comboGroups: ComboGroup[];
   imageKey: string | null;
 }
 export interface Category {
@@ -125,6 +143,10 @@ export interface CustomerOrderDetail extends CustomerOrderSummary {
     productId: string | null; productName: string; variantName: string | null;
     quantity: number; unitPriceVnd: number; lineTotalVnd: number;
     modifiers: { name: string; priceVnd: number }[];
+    comboItems: {
+      kind: "FIXED" | "CHOICE"; groupName: string | null; productName: string;
+      quantity: number; priceDeltaVnd: number;
+    }[];
   }[];
   statusHistory: {
     fromStatus: string | null; toStatus: string; createdAt: string; reason: string | null;
