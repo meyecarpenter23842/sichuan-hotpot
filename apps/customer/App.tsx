@@ -193,6 +193,7 @@ function CustomerApp() {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
   const [detailError, setDetailError] = useState("");
+  const [productInfoExpanded, setProductInfoExpanded] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [expandedCartGroups,setExpandedCartGroups]=useState<string[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
@@ -801,6 +802,7 @@ function CustomerApp() {
     setSelectedQuantity(1);
     setSelectedModifierIds([]);
     setDetailError("");
+    setProductInfoExpanded(false);
     setNotice("");
     setScreen("detail");
   }
@@ -1161,6 +1163,36 @@ function CustomerApp() {
             <View style={styles.detailHero}><ProductArtwork product={item} large /></View>
             <Text style={styles.detailTitle}>{item.name}</Text>
             <Text style={styles.detailPrice}>Giá lẩu: {vnd(costs.baseUnit)} / phần</Text>
+            {(item.description || item.ingredients || item.productNotes || item.allergenNotice) &&
+              <View style={styles.productContent}>
+                {!!item.description && <Text style={styles.productDescription}
+                  numberOfLines={productInfoExpanded ? undefined : 4}>{item.description}</Text>}
+                {!!item.ingredients && <>
+                  <Pressable accessibilityRole="button"
+                    accessibilityLabel={(productInfoExpanded ? "Ẩn" : "Xem") + " thành phần " + item.name}
+                    accessibilityState={{expanded: productInfoExpanded}}
+                    style={styles.productInfoToggle}
+                    onPress={() => setProductInfoExpanded(value => !value)}>
+                    <Text style={styles.productInfoToggleText}>
+                      {productInfoExpanded ? "Ẩn thành phần" : "Xem thành phần"}
+                    </Text>
+                    <Text style={styles.productInfoChevron}>{productInfoExpanded ? "⌃" : "⌄"}</Text>
+                  </Pressable>
+                  {productInfoExpanded && <View style={styles.productInfoSection}>
+                    <Text style={styles.productInfoLabel}>Thành phần</Text>
+                    <Text style={styles.productInfoText}>{item.ingredients}</Text>
+                  </View>}
+                </>}
+                {!!item.productNotes && <View style={styles.productInfoSection}>
+                  <Text style={styles.productInfoLabel}>Lưu ý</Text>
+                  <Text style={styles.productInfoText}>{item.productNotes}</Text>
+                </View>}
+                {!!item.allergenNotice && <View style={styles.allergenNotice}>
+                  <Text style={styles.allergenTitle}>Thông tin dị ứng</Text>
+                  <Text style={styles.allergenText}>{item.allergenNotice}</Text>
+                  <Text style={styles.allergenSource}>Thông tin do cửa hàng cung cấp; nếu cần, hãy hỏi cửa hàng trước khi đặt.</Text>
+                </View>}
+              </View>}
             <Text style={styles.muted}>Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
               {" "}{vnd(costs.requiredTotal)} · Tổng {selectedQuantity} phần: {vnd(costs.total)}</Text>
             <Text style={styles.muted}>Giá tạm tính; máy chủ xác nhận lại trước khi đặt.</Text>
@@ -2026,6 +2058,21 @@ const styles = StyleSheet.create({
   detailHero: { height: 154, backgroundColor: "#FFF0F0", borderRadius: 16, justifyContent: "center", alignItems: "center" },
   detailTitle: { fontSize: typeScale.page, fontWeight: "800", color: "#20252B" },
   detailPrice: { color: brand, fontSize: 19, fontWeight: "900" },
+  productContent: { gap: 9, paddingVertical: 4 },
+  productDescription: { color: "#475467", fontSize: 13, lineHeight: 19 },
+  productInfoToggle: { minHeight: 44, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", borderTopWidth: 1, borderBottomWidth: 1,
+    borderColor: "#EAECF0", paddingVertical: 8 },
+  productInfoToggleText: { color: brand, fontSize: 13, fontWeight: "800" },
+  productInfoChevron: { color: brand, fontSize: 18, fontWeight: "800" },
+  productInfoSection: { gap: 4 },
+  productInfoLabel: { color: "#344054", fontSize: 12, fontWeight: "800" },
+  productInfoText: { color: "#475467", fontSize: 13, lineHeight: 19 },
+  allergenNotice: { gap: 4, borderLeftWidth: 3, borderLeftColor: "#D92D20",
+    backgroundColor: "#FFF6F5", paddingHorizontal: 10, paddingVertical: 9, borderRadius: 8 },
+  allergenTitle: { color: "#B42318", fontSize: 12, fontWeight: "900" },
+  allergenText: { color: "#7A271A", fontSize: 13, lineHeight: 19 },
+  allergenSource: { color: "#912018", fontSize: 11, lineHeight: 16 },
   group: { marginTop: 8, gap: 9, paddingVertical: 12, borderTopWidth: 1, borderTopColor: "#E4E7EC" },
   sizeStrip: { flexDirection:"row",alignItems:"stretch",gap:8,paddingVertical:4,paddingRight:12 },
   sizeTile: { minWidth:106,minHeight:60,alignItems:"center",justifyContent:"center",
