@@ -65,40 +65,16 @@ jobs:
           else
             echo "release_sha=none"
           fi
-          query() { sudo -n -u postgres /usr/bin/psql -d hotpot -AtX -v ON_ERROR_STOP=1 -c "$1"; }
-          has_table="$(query "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='_prisma_migrations';")"
-          [[ "$has_table" == 0 || "$has_table" == 1 ]]
-          echo "migration_table=$has_table"
-          for name in 20261013020000_p3_checkout_snapshots 20261013030000_p3_qr_payee_snapshot; do
-            if [[ "$has_table" == 1 ]]; then
-              count="$(query "SELECT count(*) FROM public._prisma_migrations WHERE migration_name='$name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL;")"
-            else
-              count=0
-            fi
-            [[ "$count" == 0 || "$count" == 1 ]]
-            echo "$name=$count"
-          done
-          for pair in Order:requestHash Order:phoneSnapshot Payment:qrBankBin Payment:qrAccountNo Payment:qrAccountName; do
-            table="$(printf '%s' "$pair" | cut -d: -f1)"
-            column="$(printf '%s' "$pair" | cut -d: -f2)"
-            count="$(query "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='$table' AND column_name='$column';")"
-            [[ "$count" == 0 || "$count" == 1 ]]
-            echo "column_$table"_"$column=$count"
-          done
+          sudo -n /usr/local/sbin/hotpot-api-release-manual --check-config
           REMOTE
           python3 - "$RUNNER_TEMP/inspect.out" <<'PY'
           import re, sys
           patterns={
             'api_service':r'(active|inactive|failed|activating|deactivating|unknown)',
             'release_sha':r'([0-9a-f]{40}|unknown|none)',
-            'migration_table':r'[01]',
-            '20261013020000_p3_checkout_snapshots':r'[01]',
-            '20261013030000_p3_qr_payee_snapshot':r'[01]',
-            'column_Order_requestHash':r'[01]',
-            'column_Order_phoneSnapshot':r'[01]',
-            'column_Payment_qrBankBin':r'[01]',
-            'column_Payment_qrAccountNo':r'[01]',
-            'column_Payment_qrAccountName':r'[01]',
+            'backend_environment':r'(PASS|BLOCKED)',
+            'migration_ready':r'(PASS|BLOCKED)',
+            'https_configured':r'(PASS|BLOCKED)',
           }
           values={}
           for line in open(sys.argv[1], encoding='utf8').read().splitlines():
