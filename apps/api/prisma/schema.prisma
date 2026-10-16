@@ -182,6 +182,10 @@ model Product {
   id          String         @id @default(uuid()) @db.Uuid
   categoryId  String         @db.Uuid
   name        String         @db.VarChar(200)
+  description String?        @db.VarChar(1200)
+  ingredients String?        @db.VarChar(1200)
+  productNotes String?       @db.VarChar(800)
+  allergenNotice String?     @db.VarChar(800)
   priceVnd    Int
   isAvailable Boolean        @default(true)
   isFeatured  Boolean        @default(false)
