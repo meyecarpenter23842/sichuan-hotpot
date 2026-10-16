@@ -422,7 +422,9 @@ export function CatalogPanel({ catalog, token, reload }: {
                 : <View style={{ width: 36, height: 36, borderRadius: 8,
                     backgroundColor: "#F1F2F4", alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ fontSize: 10, color: c.secondary }}>Ảnh</Text></View>}
-              <Text style={st.categoryName}>{category.name}</Text>
+              <View style={{flex:1}}><Text style={st.categoryName}>{category.name}</Text>
+                {category.isPublished === false && <Text style={st.sub}>Chưa công bố · gắn ảnh để hiển thị trên app khách</Text>}
+              </View>
             </View>
             <Text style={st.sub}>{category.products.length} món</Text>
           </View>

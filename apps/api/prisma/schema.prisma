@@ -165,6 +165,7 @@ model CatalogCategory {
   name      String    @db.VarChar(160)
   sortOrder Int       @default(0)
   imageKey  String?   @db.VarChar(512)
+  isPublished Boolean @default(true)
   branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
   products  Product[]
 

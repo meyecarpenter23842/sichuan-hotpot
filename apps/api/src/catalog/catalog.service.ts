@@ -27,6 +27,7 @@ export class CatalogService {
         name: true,
         isActive: true,
         categories: {
+          where: { isPublished: true },
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           select: {
             id: true,

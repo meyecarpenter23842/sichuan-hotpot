@@ -73,7 +73,7 @@ export class AdminCatalogService {
         categories: {
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           select: {
-            id: true, name: true, sortOrder: true, imageKey: true,
+            id: true, name: true, sortOrder: true, imageKey: true, isPublished: true,
             products: {
               orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
               select: {
@@ -183,7 +183,8 @@ export class AdminCatalogService {
   async createCategory(auth: string | undefined, branchId: string, input: CategoryInput) {
     await this.authorize(auth, branchId);
     return this.change(() => this.prisma.database.catalogCategory.create({
-      data: { branchId, name: input.name.trim(), sortOrder: input.sortOrder },
+      data: { branchId, name: input.name.trim(), sortOrder: input.sortOrder,
+        isPublished: false },
     }));
   }
   async updateCategory(auth: string | undefined, branchId: string, id: string,
