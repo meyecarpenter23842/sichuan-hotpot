@@ -10,6 +10,21 @@ import { c, font } from "./theme";
 type Edit = {kind:"group"|"option"; id?:string; groupId?:string; name:string;
  price:string; min:string; max:string; order:string; usedBy:number};
 const money=(n:number)=>n.toLocaleString("vi-VN")+"đ";
+export function publicationBlockers(group:CatalogGroup):string[] {
+ const blockers:string[]=[];
+ const available=group.options.filter(o=>o.isAvailable);
+ if(!group.imageKey)blockers.push("Thêm ảnh nhóm");
+ if(group.options.length===0)blockers.push("Thêm ít nhất một topping");
+ if(group.options.length<group.minSelect)blockers.push("Thêm đủ "+group.minSelect+" topping");
+ if(available.length<group.minSelect)blockers.push("Bật ít nhất "+group.minSelect+" topping");
+ if(available.some(o=>!o.imageKey))blockers.push("Ảnh topping đang bán còn thiếu");
+ return blockers;
+}
+function CheckMark({checked}:{checked:boolean}) {
+ return <View pointerEvents="none" style={[s.checkBox,checked&&s.checkBoxSelected]}>
+   <Text style={s.checkGlyph}>{checked?"✓":""}</Text>
+ </View>;
+}
 function Photo({ imageKey, label }: {imageKey:string|null|undefined;label:string}) {
  const uri=imageUrl(imageKey??null);
  return uri?<Image source={{uri}} accessibilityLabel={label} style={s.photo}/>
@@ -122,7 +137,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  return <View style={s.root}>
   <View style={s.heading}>
    <View style={s.flex}><Text style={s.title}>Thư viện nhóm tùy chọn</Text>
-     <Text style={s.hint}>Tạo một lần · Gắn nhiều món · Ảnh riêng cho nhóm và topping</Text></View>
+     <Text style={s.hint}>Nhóm chứa các topping dùng chung cho nhiều món (ví dụ: nhóm Topping lẩu có Bò cuộn, Thả lẩu, Mì).</Text></View>
    <Action label="＋ Nhóm" secondary onPress={()=>begin("group")}/>
   </View>
   <Field label="Tìm nhóm hoặc topping" value={query} onChangeText={setQuery}
@@ -132,6 +147,8 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
   {visible.length===0&&<Text style={s.hint}>Chưa có nhóm phù hợp. Thêm nhóm để bắt đầu.</Text>}
   {visible.map(group=>{
    const open=expanded===group.id;
+   const blockers=publicationBlockers(group);
+   const cannotEnable=!group.isAvailable&&blockers.length>0;
    return <View key={group.id} style={s.group}>
     <View style={s.line}>
      <Pressable style={s.main} accessibilityRole="button" accessibilityLabel={"Mở nhóm "+group.name}
@@ -152,9 +169,16 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>onRemoveImage("groups",group.id)}/>}
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
-      <StatusSwitch label={"Hiển thị nhóm "+group.name} value={group.isAvailable}
-        busy={busy} onValueChange={value=>void toggle("group",group.id,value,group.usedByProductIds?.length??0)}/>
-      {!group.imageKey&&<Text style={s.hint}>Nhóm mới cần gắn ảnh trước khi bật bán.</Text>}
+      <View style={s.line}>
+       <View style={s.flex}>
+         <Text style={s.name}>Hiển thị nhóm trong app khách</Text>
+         <Text style={s.hint}>{group.isAvailable?"Đang bán":cannotEnable?"Nháp · Chưa đủ điều kiện":"Sẵn sàng bật bán"}</Text>
+       </View>
+       <StatusSwitch label={"Hiển thị nhóm "+group.name} value={group.isAvailable}
+         disabled={cannotEnable} busy={busy} hint={cannotEnable?blockers.join(", "):undefined}
+         onValueChange={value=>void toggle("group",group.id,value,group.usedByProductIds?.length??0)}/>
+      </View>
+      {cannotEnable&&<Notice text={"Để bật nhóm: "+blockers.join(" · ")+". Giá topping 0đ vẫn hợp lệ."}/>}
       {group.options.map(option=><View key={option.id} style={s.line}>
         <Photo imageKey={option.imageKey} label={"Ảnh topping "+option.name}/>
         <Pressable accessibilityRole="button" accessibilityLabel={"Sửa topping "+option.name}
@@ -167,9 +191,14 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
           <Text style={s.edit}>▧</Text></Pressable>
         {!!option.imageKey&&<Pressable accessibilityRole="button" accessibilityLabel={"Gỡ ảnh topping "+option.name}
           style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
-        <StatusSwitch value={option.isAvailable} busy={busy}
-          label={"Bán topping "+option.name}
-          onValueChange={value=>void toggle("option",option.id,value,group.usedByProductIds?.length??0)}/>
+        <View style={{alignItems:"center"}}>
+          <StatusSwitch value={option.isAvailable} busy={busy}
+            disabled={!option.isAvailable&&!option.imageKey}
+            hint={!option.isAvailable&&!option.imageKey?"Cần ảnh topping trước khi bật bán":undefined}
+            label={"Bán topping "+option.name}
+            onValueChange={value=>void toggle("option",option.id,value,group.usedByProductIds?.length??0)}/>
+          {!option.isAvailable&&!option.imageKey&&<Text style={s.hint}>Cần ảnh</Text>}
+        </View>
       </View>)}
     </View>}
    </View>;
@@ -210,8 +239,20 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
          <Field label="Tên hiển thị" value={editing.name}
            onChangeText={name=>setEditing(old=>old?{...old,name}:old)}/>
          {editing.kind==="group"?<>
-           <Field label="Chọn tối thiểu" numeric value={editing.min}
-             onChangeText={min=>setEditing(old=>old?{...old,min}:old)}/>
+           <Pressable accessibilityRole="checkbox" accessibilityLabel="Bắt buộc khách chọn"
+             accessibilityState={{checked:Number(editing.min)>0}}
+             aria-checked={Number(editing.min)>0} style={s.checkRow}
+             onPress={()=>setEditing(old=>old?{
+               ...old,min:Number(old.min)>0?"0":"1"
+             }:old)}>
+             <CheckMark checked={Number(editing.min)>0}/>
+             <View style={s.flex}>
+               <Text style={s.name}>Bắt buộc khách chọn</Text>
+               <Text style={s.hint}>{Number(editing.min)>0
+                 ?"Khách phải chọn ít nhất một lựa chọn"
+                 :"Khách được bỏ qua nhóm này"}</Text>
+             </View>
+           </Pressable>
            <Field label="Chọn tối đa" numeric value={editing.max}
              onChangeText={max=>setEditing(old=>old?{...old,max}:old)}/>
            <Field label="Thứ tự" numeric value={editing.order}
@@ -219,17 +260,17 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
          </>:<Field label="Giá topping (VND)" numeric value={editing.price}
            onChangeText={price=>setEditing(old=>old?{...old,price}:old)}/>}
          {editing.kind==="group"&&<>
-           <Text style={s.title}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
+           <Text style={s.name}>Gắn nhóm vào món ({selectedProducts.length} đã chọn)</Text>
            <Text style={s.hint}>Chọn món dùng nhóm này. Lưu cập nhật liên kết trong một giao dịch.</Text>
            <Action label={showProducts?"Thu gọn danh sách món":"Chọn món sử dụng"} secondary
              onPress={()=>setShowProducts(old=>!old)}/>
            {showProducts&&products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
              accessibilityState={{checked:selectedProducts.includes(product.id)}}
-             aria-checked={selectedProducts.includes(product.id)} style={s.line}
+             aria-checked={selectedProducts.includes(product.id)} style={s.checkRow}
              onPress={()=>setSelectedProducts(old=>old.includes(product.id)
                ?old.filter(id=>id!==product.id):[...old,product.id])}>
+             <CheckMark checked={selectedProducts.includes(product.id)}/>
              <Text style={s.flex} numberOfLines={2}>{product.name}</Text>
-             <Text style={s.edit}>{selectedProducts.includes(product.id)?"☑":"☐"}</Text>
            </Pressable>)}
          </>}
          {editing.id&&<>
@@ -253,9 +294,9 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
          {!!notice&&<Notice text={notice}/>}
          
          {editing.usedBy>1&&<Pressable accessibilityRole="checkbox"
-           accessibilityState={{checked:confirmImpact}} style={s.line}
+           accessibilityState={{checked:confirmImpact}} aria-checked={confirmImpact} style={s.checkRow}
            onPress={()=>setConfirmImpact(old=>!old)}>
-           <Text style={s.edit}>{confirmImpact?"☑":"☐"}</Text>
+           <CheckMark checked={confirmImpact}/>
            <Text style={s.flex}>Tôi xác nhận thay đổi áp dụng cho {editing.usedBy} món</Text>
          </Pressable>}
          {!!error&&<Notice text={error} error/>}
@@ -337,7 +378,7 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
             accessibilityLabel={"Gắn nhóm "+group.name}
             accessibilityState={{checked:attached,disabled:busy}}
             aria-checked={attached}
-            disabled={busy} style={s.line}
+            disabled={busy} style={s.checkRow}
             onPress={()=>void setMembership(group)}>
             <Photo imageKey={group.imageKey} label={"Ảnh nhóm "+group.name}/>
             <View style={s.flex}>
@@ -345,7 +386,7 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
               <Text style={s.hint}>{group.options.length} topping
                 {group.isAvailable?" · Đang bán":" · Chưa bật bán"}</Text>
             </View>
-            <Text style={s.edit}>{attached?"☑":"☐"}</Text>
+            <CheckMark checked={attached}/>
           </Pressable>;
         })}
       </ScrollView>
@@ -377,4 +418,10 @@ const s=StyleSheet.create({
  modal:{backgroundColor:c.white,borderRadius:16,width:"100%",maxWidth:540,
  alignSelf:"center",maxHeight:"90%",padding:14,gap:10},
  form:{gap:12,paddingBottom:18},
+ checkRow:{minHeight:56,flexDirection:"row",alignItems:"center",gap:12,paddingVertical:9,
+  paddingHorizontal:4,borderBottomWidth:1,borderBottomColor:c.line},
+ checkBox:{width:28,height:28,borderWidth:2,borderColor:c.secondary,borderRadius:7,
+  alignItems:"center",justifyContent:"center",backgroundColor:c.white},
+ checkBoxSelected:{backgroundColor:c.red,borderColor:c.red},
+ checkGlyph:{fontSize:19,fontWeight:"800",lineHeight:24,color:c.white},
 });
