@@ -123,7 +123,7 @@ export function HomePromoPopup({branchId,payload,active}:{
     <View style={s.overlay} testID="home-promo-popup">
       <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button"
         accessibilityLabel="Đóng popup quảng bá" onPress={()=>setVisible(false)}/>
-      <View style={[s.card,{width:frameWidth}]}>
+      <View style={[s.card,{width:frameWidth}]} testID="home-promo-card">
         <View style={[s.frame,{width:frameWidth,height:frameHeight}]} {...pan.panHandlers}>
           {previous&&<View style={StyleSheet.absoluteFill}>{image(previous)}</View>}
           {current&&<Animated.View style={[StyleSheet.absoluteFill,incoming]}>{image(current)}</Animated.View>}
