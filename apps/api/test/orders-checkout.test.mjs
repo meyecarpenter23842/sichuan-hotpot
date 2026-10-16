@@ -236,6 +236,29 @@ test("L08 rejects an option or size turned off before checkout, without insertin
   });
   assert.equal(repeated.items[0].modifiers.length,2,
     "Both topping units must survive in immutable order snapshots");
+  // New cart semantics: increasing the dish must not purchase more mushrooms.
+  const separateCart=(quantity,idempotencyKey)=>({
+    ...cart(idempotencyKey,[option.id,option.id]),
+    items:[{productId,variantId:variant.id,modifierIds:[option.id,option.id],
+      quantity,pricingMode:"SEPARATE"}],
+  });
+  const two=await request(separateCart(2,randomUUID())).expect(201);
+  const threeKey=randomUUID();
+  const three=await request(separateCart(3,threeKey)).expect(201);
+  assert.equal(two.body.totalVnd,161000,
+    "2 dishes 130000 + only two toppings 16000 + ship 15000");
+  assert.equal(three.body.totalVnd,226000,
+    "3 dishes 195000 + unchanged toppings 16000 + ship 15000");
+  assert.equal(three.body.totalVnd-two.body.totalVnd,65000,
+    "dish +1 cannot silently duplicate topping");
+  const exact=await db.order.findUniqueOrThrow({
+    where:{customerId_idempotencyKey:{customerId:userId,idempotencyKey:threeKey}},
+    include:{items:{include:{modifiers:true}}},
+  });
+  assert.equal(exact.items[0].unitPriceVnd,65000);
+  assert.equal(exact.items[0].lineTotalVnd,211000);
+  assert.equal(exact.items[0].modifiers.length,2);
+  assert.equal(exact.items[0].modifiers.reduce((t,o)=>t+o.priceVnd,0),16000);
   await request(cart(randomUUID(),[option.id,option.id,option.id])).expect(422);
   await db.modifierOption.update({ where: { id: option.id }, data: { isAvailable: false } });
   try {

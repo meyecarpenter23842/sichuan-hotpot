@@ -61,7 +61,7 @@ test("rejects invalid product/variant/modifier inputs and unsafe quantities", ()
 test("checkout payload contains IDs and quantities, never frontend prices", () => {
   const cart = addCartLine([], base, 3);
   const payload = checkoutCartItems(cart);
-  assert.deepEqual(payload, [{ productId: "hotpot-1", variantId: null, modifierIds: ["beef", "tofu"], quantity: 3 }]);
+  assert.deepEqual(payload, [{ productId: "hotpot-1", variantId: null, modifierIds: ["beef", "tofu"], quantity: 3, pricingMode:"SEPARATE" }]);
   assert.equal(JSON.stringify(payload).includes("price"), false);
   assert.throws(() => checkoutCartItems([]), /EMPTY_CART/);
 });

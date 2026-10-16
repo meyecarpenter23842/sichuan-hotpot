@@ -53,6 +53,8 @@ export class OrdersService {
       variantId: item.variantId,
       modifierIds: [...item.modifierIds].sort(),
       quantity: item.quantity,
+      // Preserve pre-release legacy idempotency hashes for in-flight retries.
+      ...(item.pricingMode === "SEPARATE" ? {pricingMode:"SEPARATE" as const} : {}),
     }));
     normalized.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const fingerprint = JSON.stringify({

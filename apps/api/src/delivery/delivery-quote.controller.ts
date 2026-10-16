@@ -1,5 +1,5 @@
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsOptional, IsUUID, Max, Min, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsUUID, Max, Min, ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { Body, Controller, Header, Headers, Post } from "@nestjs/common";
@@ -10,6 +10,7 @@ class QuoteCartLineInput {
   @IsOptional() @IsUUID("4") variantId!: string | null;
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) modifierIds!: string[];
   @IsInt() @Min(1) @Max(99) quantity!: number;
+  @IsOptional() @IsIn(["SEPARATE"]) pricingMode?: "SEPARATE";
 }
 export class DeliveryQuoteInput {
   @IsUUID("4") branchId!: string;
@@ -32,6 +33,7 @@ export class DeliveryQuoteController {
       items: input.items.map(item => ({
         productId: item.productId, variantId: item.variantId ?? null,
         modifierIds: item.modifierIds, quantity: item.quantity,
+        ...(item.pricingMode ? { pricingMode: item.pricingMode } : {}),
       })),
     });
   }

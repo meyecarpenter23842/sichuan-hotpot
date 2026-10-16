@@ -42,7 +42,11 @@ test("cart exposes each real topping with per-portion quantity and server-repric
   assert.match(app,/cartModifierCount\(line\.selection,option\.id\)/);
   assert.match(app,/accessibilityLabel=\{"Thêm topping "\+option\.name\}/);
   assert.match(app,/accessibilityLabel=\{"Bớt topping "\+option\.name\}/);
-  assert.match(app,/unit\*line\.quantity/);
+  assert.match(app,/costs\.dishTotal/);
+  assert.match(app,/costs\.toppingTotal/);
+  assert.match(app,/cartPriceParts\(/);
+  assert.match(app,/mandatory&&styles\.requiredGroup/);
+  assert.match(app,/width:"31\.5%"/);
   assert.match(checkout,/checkoutCartItems\(cart\)/);
   assert.doesNotMatch(checkout,/modifierPriceVnd\s*:/);
 });

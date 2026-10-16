@@ -164,10 +164,27 @@ function HomeLifestylePhoto({ kind, width, height }: {
   );
 }
 
+/** Optional toppings are purchased independently from the dish counter.
+ * Required preparation choices apply to every dish portion. */
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
-  const catalog = new Map((product.modifierGroups ?? []).flatMap(group => group.options)
-    .map(option => [option.id, option.priceDeltaVnd] as const));
-  return ids.reduce((sum,id)=>sum+(catalog.get(id)??0),0);
+  const prices = new Map((product.modifierGroups??[])
+    .filter(group=>group.minSelect===0)
+    .flatMap(group=>group.options.map(option=>[option.id,option.priceDeltaVnd] as const)));
+  return ids.reduce((sum,id)=>sum+(prices.get(id)??0),0);
+}
+function cartPriceParts(product: Product, variantId: string|null,
+  ids:readonly string[], quantity:number) {
+  const variant=product.variants.find(v=>v.id===variantId);
+  const baseUnit=product.priceVnd+(variant?.priceDeltaVnd??0);
+  const dishTotal=baseUnit*quantity;
+  const requiredUnit=(product.modifierGroups??[]).filter(g=>g.minSelect>0)
+    .flatMap(group=>group.options)
+    .reduce((sum,option)=>sum+
+      ids.filter(id=>id===option.id).length*option.priceDeltaVnd,0);
+  const requiredTotal=requiredUnit*quantity;
+  const toppingTotal=selectedModifierPrice(product,ids);
+  return {baseUnit,dishTotal,requiredTotal,toppingTotal,
+    total:dishTotal+requiredTotal+toppingTotal};
 }
 
 function CustomerApp() {
@@ -1112,15 +1129,16 @@ function CustomerApp() {
           <Notice message="Món vừa thay đổi hoặc chi nhánh đã ngừng bán. Vui lòng chọn lại từ thực đơn." error />
           <Button label="Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
         </View>;
-        const variant = item.variants.find(v => v.id === selectedVariantId);
-        const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0) + selectedModifierPrice(item, selectedModifierIds);
+        const costs=cartPriceParts(item,selectedVariantId,selectedModifierIds,selectedQuantity);
         return (
           <View style={styles.section}>
             <Button label="‹ Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
             <View style={styles.detailHero}><ProductArtwork product={item} large /></View>
             <Text style={styles.detailTitle}>{item.name}</Text>
-            <Text style={styles.detailPrice}>{vnd(total)}</Text>
-            <Text style={styles.muted}>Giá hiển thị để tham khảo. Máy chủ sẽ xác nhận lại giá khi đặt hàng.</Text>
+            <Text style={styles.detailPrice}>Giá lẩu: {vnd(costs.baseUnit)} / phần</Text>
+            <Text style={styles.muted}>Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
+              {" "}{vnd(costs.requiredTotal)} · Tổng {selectedQuantity} phần: {vnd(costs.total)}</Text>
+            <Text style={styles.muted}>Giá tạm tính; máy chủ xác nhận lại trước khi đặt.</Text>
             {item.variants.length > 0 && <View style={styles.group}>
               <Text style={styles.sectionTitle}>Khẩu phần / size</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -1147,7 +1165,7 @@ function CustomerApp() {
               const mandatory=group.minSelect>0;
               const ids=new Set(group.options.map(o=>o.id));
               const groupCount=selectedModifierIds.filter(id=>ids.has(id)).length;
-              return <View key={group.id} style={styles.group}>
+              return <View key={group.id} style={[styles.group,mandatory&&styles.requiredGroup]}>
                 <View style={styles.choiceGroupHeading}>
                   <Text style={styles.sectionTitle}>{group.name}</Text>
                   <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
@@ -1177,8 +1195,8 @@ function CustomerApp() {
                           source={{uri:safeProductImageUrl(option.imageKey)!}}
                           style={styles.requiredImage}/>}
                         <Text style={styles.requiredTileName} numberOfLines={2}>{option.name}</Text>
-                        <Text style={styles.sizePrice}>{option.priceDeltaVnd>0
-                          ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                        {option.priceDeltaVnd>0&&<Text style={styles.sizePrice}>
+                          +{vnd(option.priceDeltaVnd)}</Text>}
                         {group.maxSelect===1&&<Text style={styles.tileCheck}>{count>0?"✓":"○"}</Text>}
                       </Pressable>
                       {group.maxSelect>1&&<View style={styles.tileStepper}>
@@ -1245,7 +1263,7 @@ function CustomerApp() {
                   onPress={() => setSelectedQuantity(q => Math.min(99, q + 1))}><Text style={styles.stepText}>+</Text></Pressable>
               </View>
             </View>
-            <Button label={item.isAvailable ? "Thêm vào giỏ · " + vnd(total * selectedQuantity) : "Món đang tạm hết"}
+            <Button label={item.isAvailable ? "Thêm vào giỏ · " + vnd(costs.total) : "Món đang tạm hết"}
               disabled={!item.isAvailable} onPress={addSelectedProduct} />
           </View>
         );
@@ -1269,15 +1287,15 @@ function CustomerApp() {
                   const unavailable=!product||!product.isAvailable
                     ||(line.selection.variantId!==null&&(!variant||!variant.isAvailable))
                     ||optionSelectionError(groups,line.selection.modifierIds)!==null;
-                  const unit=product?product.priceVnd+(variant?.priceDeltaVnd??0)
-                    +selectedModifierPrice(product,line.selection.modifierIds):0;
+                  const costs=product?cartPriceParts(product,line.selection.variantId,
+                    line.selection.modifierIds,line.quantity):null;
                   return <View key={line.key} style={styles.cartLine}>
                     <View style={styles.cartLineHeading}>
                       <View style={styles.cartLineDetails}>
                         <Text style={styles.productName}>
                           {product?.name??"Món không còn trong thực đơn"}</Text>
                         <Text style={styles.muted}>
-                          Size: {variant?.name??"Mặc định"} · Đơn giá {vnd(unit)}
+                          Size: {variant?.name??"Mặc định"} · Giá lẩu {costs?vnd(costs.baseUnit):"—"} / phần
                         </Text>
                       </View>
                       <View style={styles.quantityStepper}>
@@ -1297,7 +1315,7 @@ function CustomerApp() {
                         </Pressable>
                       </View>
                     </View>
-                    {groups.map(group=>{
+                    {[...groups].sort((a,b)=>Number(b.minSelect>0)-Number(a.minSelect>0)).map(group=>{
                       const groupIds=new Set(group.options.map(o=>o.id));
                       const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
                       const mandatory=group.minSelect>0;
@@ -1326,11 +1344,13 @@ function CustomerApp() {
                               <Text style={styles.cartToppingName} numberOfLines={2}>
                                 {option.name}</Text>
                               <Text style={styles.muted}>
-                                {vnd(option.priceDeltaVnd)} mỗi topping ·
-                                {" "+(count*line.quantity)} cho {line.quantity} phần
+                                {mandatory
+                                  ? "Áp dụng cho "+line.quantity+" phần · "+vnd(option.priceDeltaVnd)+" / phần"
+                                  : vnd(option.priceDeltaVnd)+" × "+count+" = "+
+                                    vnd(option.priceDeltaVnd*count)}
                               </Text>
                             </View>
-                            <View style={styles.quantityStepper}>
+                            {!mandatory&&<View style={styles.quantityStepper}>
                               <Pressable style={styles.step} accessibilityRole="button"
                                 accessibilityLabel={"Bớt topping "+option.name}
                                 disabled={!product||!product.isAvailable||count===0||groupCount<=group.minSelect}
@@ -1346,7 +1366,7 @@ function CustomerApp() {
                                 onPress={()=>changeCartTopping(line,group,option.id,1)}>
                                 <Text style={styles.stepText}>+</Text>
                               </Pressable>
-                            </View>
+                            </View>}
                           </View>;
                         })}
                         {(hasOtherOptions||expanded)&&
@@ -1356,7 +1376,7 @@ function CustomerApp() {
                             onPress={()=>setExpandedCartGroups(old=>expanded
                               ?old.filter(id=>id!==cartGroupKey):[...old,cartGroupKey])}>
                             <Text style={styles.cartToppingManageText}>
-                              {expanded?"Thu gọn lựa chọn":"＋ Thêm / đổi topping"}
+                              {expanded?"Thu gọn":mandatory?"Thay đổi "+group.name:"＋ Thêm / đổi topping"}
                             </Text>
                           </Pressable>}
                         {groupCount<group.minSelect&&<Text style={styles.warning}>
@@ -1364,12 +1384,24 @@ function CustomerApp() {
                         </Text>}
                       </View>;
                     })}
-                    <View style={styles.cartLineFooter}>
-                      <Text style={styles.muted}>Tổng món đã chọn</Text>
-                      <Text style={styles.price}>
-                        {product?vnd(unit*line.quantity):"Cần chọn món khác"}
-                      </Text>
-                    </View>
+                    {costs&&<View style={styles.cartPriceBreakdown}>
+                      <View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Lẩu {variant?.name??"Mặc định"} × {line.quantity}</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.dishTotal)}</Text>
+                      </View>
+                      {costs.requiredTotal>0&&<View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Lựa chọn bắt buộc</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.requiredTotal)}</Text>
+                      </View>}
+                      <View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Topping đã chọn</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.toppingTotal)}</Text>
+                      </View>
+                      <View style={styles.cartLineFooter}>
+                        <Text style={styles.muted}>Thành tiền</Text>
+                        <Text style={styles.price}>{vnd(costs.total)}</Text>
+                      </View>
+                    </View>}
                     {unavailable&&<Text style={styles.warning}>
                       Món hoặc tùy chọn đã thay đổi. Hãy chọn lại trên thực đơn.
                     </Text>}
@@ -1379,9 +1411,8 @@ function CustomerApp() {
                 <Text style={styles.detailPrice}>{vnd(cart.reduce((sum, line) => {
                   const product = productsById.get(line.selection.productId);
                   if (!product) return sum;
-                  const variant = product.variants.find(v => v.id === line.selection.variantId);
-                  return sum + (product.priceVnd + (variant?.priceDeltaVnd ?? 0)
-                     + selectedModifierPrice(product, line.selection.modifierIds)) * line.quantity;
+                  return sum + cartPriceParts(product,line.selection.variantId,
+                     line.selection.modifierIds,line.quantity).total;
                 }, 0))}</Text>
                 <Text style={styles.muted}>Chưa gồm phí giao theo km thực tế, giảm giá và kiểm tra tình trạng món.</Text>
                 <View style={styles.group}>
@@ -1730,13 +1761,15 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
   sessionLoading: { flex: 1, padding: 24, justifyContent: "center", alignItems: "stretch", gap: 16 },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
-  header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
-  logoBadge: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", backgroundColor: "#4A0C0A" },
+  logoBadge: { width: 44, height: 44, borderRadius:9,backgroundColor:"#FFFFFF",
+    alignItems: "center", justifyContent: "center" },
   logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
-  brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
-  brandSub: { fontSize: typeScale.caption, color: "#667085" },
-  headerCart: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
+  brandName: { fontSize: typeScale.body, fontWeight: "800", color: palette.white, letterSpacing: 0.4 },
+  brandSub: { fontSize: typeScale.caption, color: "#F6DDE0" },
+  headerCart: { minWidth: 44, minHeight: 44, borderRadius:12,backgroundColor:"#FFFFFF",
+    justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1, minHeight: 0, paddingBottom: 58 },
   addressBody: { paddingBottom: 0 },
@@ -1926,15 +1959,17 @@ const styles = StyleSheet.create({
   choiceRequirement: { color:"#667085",fontSize:11,fontWeight:"700",
     borderRadius:7,paddingHorizontal:7,paddingVertical:3,backgroundColor:"#F3F4F6" },
   choiceRequired: { color:"#B3262D",backgroundColor:"#FFF0F1" },
-  choiceWrap: { flexDirection:"row",flexWrap:"wrap",gap:9 },
-  requiredTile: { width:"48%",minWidth:130,borderWidth:1,borderColor:"#E4E7EC",
-    borderRadius:12,backgroundColor:"#FFFFFF",overflow:"hidden" },
-  requiredTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFF7F7" },
-  requiredTilePick: { minHeight:66,alignItems:"center",justifyContent:"center",
-    paddingHorizontal:8,paddingVertical:8,gap:3 },
-  requiredImage: { width:42,height:42,borderRadius:8 },
-  requiredTileName: { color:"#20252B",fontWeight:"800",fontSize:13,textAlign:"center" },
-  tileCheck: { color:"#B3262D",fontSize:20,fontWeight:"800" },
+  choiceWrap: { flexDirection:"row",flexWrap:"wrap",gap:6,justifyContent:"space-between" },
+  requiredGroup: { paddingHorizontal:10,paddingVertical:12,borderRadius:14,
+    borderWidth:1,borderColor:"#F5D9DB",backgroundColor:"#FFF9F9",marginTop:12 },
+  requiredTile: { width:"31.5%",minWidth:0,borderWidth:1,borderColor:"transparent",
+    borderRadius:10,backgroundColor:"transparent",overflow:"hidden" },
+  requiredTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFECED" },
+  requiredTilePick: { minHeight:98,alignItems:"center",justifyContent:"center",
+    paddingHorizontal:2,paddingVertical:6,gap:3 },
+  requiredImage: { width:36,height:36,borderRadius:7 },
+  requiredTileName: { color:"#20252B",fontWeight:"800",fontSize:12,textAlign:"center" },
+  tileCheck: { color:"#B3262D",fontSize:17,fontWeight:"800" },
   tileStepper: { flexDirection:"row",alignItems:"center",justifyContent:"space-around",
     borderTopWidth:1,borderTopColor:"#E4E7EC" },
   tileQtyButton: { minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center" },
@@ -1955,6 +1990,9 @@ const styles = StyleSheet.create({
   cartToppingManageText: { color:"#B3262D",fontWeight:"800",fontSize:12 },
   cartLineFooter: { flexDirection:"row",alignItems:"center",justifyContent:"space-between",
     gap:10,borderTopWidth:1,borderTopColor:"#EAECF0",paddingTop:9 },
+  cartPriceBreakdown: {gap:7,paddingTop:6},
+  cartPriceSplit: {flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:8},
+  cartPriceValue: {fontSize:13,fontWeight:"800",color:"#20252B"},
 
   option: { flexDirection: "row", alignItems: "center",gap:10,
     paddingVertical: 10, paddingHorizontal:6, minHeight: 58, borderBottomWidth: 1,

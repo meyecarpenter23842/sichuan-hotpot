@@ -13,6 +13,7 @@ export interface DeliveryCartItem {
   variantId: string | null;
   modifierIds: string[];
   quantity: number;
+  pricingMode?: "SEPARATE";
 }
 export interface QuoteRequest {
   branchId: string;

@@ -19,11 +19,14 @@ function nearWhite(data, index) {
     && Math.max(red, green, blue) - Math.min(red, green, blue) < 19;
   const warmIvory = red >= 232 && green >= 220 && blue >= 207
     && red >= green && green >= blue && red - blue <= 53;
-  return neutral || warmIvory;
+  // Owner's red hotpot mark has also been supplied on a solid black square.
+  // Erase only edge-connected black pixels; keep interior dark pot details.
+  const blackBackdrop = red <= 44 && green <= 44 && blue <= 44;
+  return neutral || warmIvory || blackBackdrop;
 }
 
 /**
- * Only erase pale background connected to the OUTER edge. White details inside
+ * Erase ivory/white/black backgrounds connected to the OUTER edge. Details inside
  * the supplied logo are preserved; a custom hand-drawn logo is never substituted.
  */
 export function cleanLogo(source) {

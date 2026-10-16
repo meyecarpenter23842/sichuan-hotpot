@@ -46,6 +46,7 @@ try {
   await db.modifierOption.createMany({ data: [
     { groupId: spice.id, name: "Cay vừa", priceDeltaVnd: 0 },
     { groupId: spice.id, name: "Cay nhiều", priceDeltaVnd: 0 },
+    { groupId: spice.id, name: "Rất cay", priceDeltaVnd: 0 },
   ] });
   const extra = await db.modifierGroup.create({ data: {
     productId: product.id, name: "Topping", minSelect: 0, maxSelect: 2, sortOrder: 2,
@@ -94,9 +95,13 @@ try {
   // Modify an existing topping inside the cart: no duplicate dish and prices
   // must immediately reflect two toppings on one portion.
   await page.getByRole("button", { name:"Thêm topping Nấm kim châm" }).click();
-  await page.getByText("2 cho 1 phần",{exact:false}).waitFor();
+  await page.getByText("12.000 ₫ × 2 = 24.000 ₫",{exact:false}).waitFor();
   assert.ok(await page.getByText("232.000 ₫",{exact:false}).count(),
     "159000 base + 49000 size + 2 x 12000 topping");
+  await page.getByRole("button",{name:"Tăng số lượng món "+productName}).click();
+  await page.getByText("440.000 ₫",{exact:false}).first().waitFor();
+  assert.equal(await page.getByText("12.000 ₫ × 2 = 24.000 ₫",{exact:false}).count(),1,
+    "Lẩu ×2 but toppings remain ×2, not ×4");
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-390.png", fullPage: true });
   await page.setViewportSize({width:320,height:700});
   await page.screenshot({ path: "apps/customer/qa-artifacts/p22-cart-320.png", fullPage: true });
@@ -108,7 +113,7 @@ try {
   await page.getByRole("button", { name: /Xem thực đơn mà không cần đăng nhập/ }).click();
   await page.getByRole("button", { name: "Giỏ hàng", exact: true }).click();
   await page.getByText(productName).waitFor();
-  await page.getByText("2 cho 1 phần",{exact:false}).waitFor();
+  await page.getByText("12.000 ₫ × 2 = 24.000 ₫",{exact:false}).waitFor();
   console.log("PASS: cart survives reload with size, required spice and two optional toppings");
   await page.getByRole("button", { name: "Đăng nhập để tiếp tục" }).click();
   await page.getByRole("button", { name: "Đăng ký" }).click();
