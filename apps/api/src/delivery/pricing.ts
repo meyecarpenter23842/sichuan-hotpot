@@ -27,7 +27,7 @@ export interface PricedOrderLine {
   readonly quantity: number;
   readonly unitPriceVnd: number;
   readonly lineTotalVnd: number;
-  readonly modifiers: readonly { readonly name: string; readonly priceVnd: number }[];
+  readonly modifiers: readonly { readonly name: string; readonly priceVnd: number; readonly quantity: number }[];
 }
 export interface PricedCart {
   readonly subtotalVnd: number;
@@ -64,9 +64,18 @@ export function priceCart(
       unit += variant.priceDeltaVnd;
       variantName = variant.name;
     }
+    const counts = item.modifierQuantities ?? [];
+    if (!Array.isArray(counts) || counts.length > 30 ||
+      new Set(counts.map(row => row.id)).size !== counts.length ||
+      counts.some(row => !row || typeof row.id !== "string"
+        || !item.modifierIds.includes(row.id) || !Number.isSafeInteger(row.quantity)
+        || row.quantity < 2 || row.quantity > 20)) {
+      throw new BadRequestException("INVALID_TOPPING_QUANTITY");
+    }
+    const quantities = new Map(counts.map(row => [row.id,row.quantity]));
     const selected = new Set(item.modifierIds);
     const known = new Set<string>();
-    const modifiers: { name: string; priceVnd: number }[] = [];
+    const modifiers: { name: string; priceVnd: number; quantity: number }[] = [];
     const groups = [...new Map([
       ...product.modifierGroups.filter(group => group.branchId == null)
         .map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
@@ -84,8 +93,9 @@ export function priceCart(
         throw new UnprocessableEntityException("INVALID_MODIFIERS");
       }
       for (const option of chosen) {
-        unit += option.priceDeltaVnd;
-        modifiers.push({ name: option.name, priceVnd: option.priceDeltaVnd });
+        const quantity = quantities.get(option.id) ?? 1;
+        unit = amount(unit + amount(option.priceDeltaVnd * quantity));
+        modifiers.push({ name: option.name, priceVnd: option.priceDeltaVnd, quantity });
       }
     }
     if (item.modifierIds.some(id => !known.has(id))) {
