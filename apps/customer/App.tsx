@@ -1288,15 +1288,15 @@ function CustomerApp() {
                   const unavailable=!product||!product.isAvailable
                     ||(line.selection.variantId!==null&&(!variant||!variant.isAvailable))
                     ||optionSelectionError(groups,line.selection.modifierIds)!==null;
-                  const unit=product?product.priceVnd+(variant?.priceDeltaVnd??0)
-                    +selectedModifierPrice(product,line.selection.modifierIds):0;
+                  const costs=product?cartPriceParts(product,line.selection.variantId,
+                    line.selection.modifierIds,line.quantity):null;
                   return <View key={line.key} style={styles.cartLine}>
                     <View style={styles.cartLineHeading}>
                       <View style={styles.cartLineDetails}>
                         <Text style={styles.productName}>
                           {product?.name??"Món không còn trong thực đơn"}</Text>
                         <Text style={styles.muted}>
-                          Size: {variant?.name??"Mặc định"} · Đơn giá {vnd(unit)}
+                          Size: {variant?.name??"Mặc định"} · Giá lẩu {costs?vnd(costs.baseUnit):"—"} / phần
                         </Text>
                       </View>
                       <View style={styles.quantityStepper}>
@@ -1316,7 +1316,7 @@ function CustomerApp() {
                         </Pressable>
                       </View>
                     </View>
-                    {groups.map(group=>{
+                    {[...groups].sort((a,b)=>Number(b.minSelect>0)-Number(a.minSelect>0)).map(group=>{
                       const groupIds=new Set(group.options.map(o=>o.id));
                       const groupCount=line.selection.modifierIds.filter(id=>groupIds.has(id)).length;
                       const mandatory=group.minSelect>0;
@@ -1345,11 +1345,13 @@ function CustomerApp() {
                               <Text style={styles.cartToppingName} numberOfLines={2}>
                                 {option.name}</Text>
                               <Text style={styles.muted}>
-                                {vnd(option.priceDeltaVnd)} mỗi topping ·
-                                {" "+(count*line.quantity)} cho {line.quantity} phần
+                                {mandatory
+                                  ? "Áp dụng cho "+line.quantity+" phần · "+vnd(option.priceDeltaVnd)+" / phần"
+                                  : vnd(option.priceDeltaVnd)+" × "+count+" = "+
+                                    vnd(option.priceDeltaVnd*count)}
                               </Text>
                             </View>
-                            <View style={styles.quantityStepper}>
+                            {!mandatory&&<View style={styles.quantityStepper}>
                               <Pressable style={styles.step} accessibilityRole="button"
                                 accessibilityLabel={"Bớt topping "+option.name}
                                 disabled={!product||!product.isAvailable||count===0||groupCount<=group.minSelect}
@@ -1365,7 +1367,7 @@ function CustomerApp() {
                                 onPress={()=>changeCartTopping(line,group,option.id,1)}>
                                 <Text style={styles.stepText}>+</Text>
                               </Pressable>
-                            </View>
+                            </View>}
                           </View>;
                         })}
                         {(hasOtherOptions||expanded)&&
@@ -1375,7 +1377,7 @@ function CustomerApp() {
                             onPress={()=>setExpandedCartGroups(old=>expanded
                               ?old.filter(id=>id!==cartGroupKey):[...old,cartGroupKey])}>
                             <Text style={styles.cartToppingManageText}>
-                              {expanded?"Thu gọn lựa chọn":"＋ Thêm / đổi topping"}
+                              {expanded?"Thu gọn":mandatory?"Thay đổi "+group.name:"＋ Thêm / đổi topping"}
                             </Text>
                           </Pressable>}
                         {groupCount<group.minSelect&&<Text style={styles.warning}>
@@ -1383,12 +1385,24 @@ function CustomerApp() {
                         </Text>}
                       </View>;
                     })}
-                    <View style={styles.cartLineFooter}>
-                      <Text style={styles.muted}>Tổng món đã chọn</Text>
-                      <Text style={styles.price}>
-                        {product?vnd(unit*line.quantity):"Cần chọn món khác"}
-                      </Text>
-                    </View>
+                    {costs&&<View style={styles.cartPriceBreakdown}>
+                      <View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Lẩu {variant?.name??"Mặc định"} × {line.quantity}</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.dishTotal)}</Text>
+                      </View>
+                      {costs.requiredTotal>0&&<View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Lựa chọn bắt buộc</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.requiredTotal)}</Text>
+                      </View>}
+                      <View style={styles.cartPriceSplit}>
+                        <Text style={styles.muted}>Topping đã chọn</Text>
+                        <Text style={styles.cartPriceValue}>{vnd(costs.toppingTotal)}</Text>
+                      </View>
+                      <View style={styles.cartLineFooter}>
+                        <Text style={styles.muted}>Thành tiền</Text>
+                        <Text style={styles.price}>{vnd(costs.total)}</Text>
+                      </View>
+                    </View>}
                     {unavailable&&<Text style={styles.warning}>
                       Món hoặc tùy chọn đã thay đổi. Hãy chọn lại trên thực đơn.
                     </Text>}
@@ -1399,8 +1413,8 @@ function CustomerApp() {
                   const product = productsById.get(line.selection.productId);
                   if (!product) return sum;
                   const variant = product.variants.find(v => v.id === line.selection.variantId);
-                  return sum + (product.priceVnd + (variant?.priceDeltaVnd ?? 0)
-                     + selectedModifierPrice(product, line.selection.modifierIds)) * line.quantity;
+                  return sum + cartPriceParts(product,line.selection.variantId,
+                     line.selection.modifierIds,line.quantity).total;
                 }, 0))}</Text>
                 <Text style={styles.muted}>Chưa gồm phí giao theo km thực tế, giảm giá và kiểm tra tình trạng món.</Text>
                 <View style={styles.group}>
@@ -1974,6 +1988,9 @@ const styles = StyleSheet.create({
   cartToppingManageText: { color:"#B3262D",fontWeight:"800",fontSize:12 },
   cartLineFooter: { flexDirection:"row",alignItems:"center",justifyContent:"space-between",
     gap:10,borderTopWidth:1,borderTopColor:"#EAECF0",paddingTop:9 },
+  cartPriceBreakdown: {gap:7,paddingTop:6},
+  cartPriceSplit: {flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:8},
+  cartPriceValue: {fontSize:13,fontWeight:"800",color:"#20252B"},
 
   option: { flexDirection: "row", alignItems: "center",gap:10,
     paddingVertical: 10, paddingHorizontal:6, minHeight: 58, borderBottomWidth: 1,
