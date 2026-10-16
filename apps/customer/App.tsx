@@ -164,10 +164,27 @@ function HomeLifestylePhoto({ kind, width, height }: {
   );
 }
 
+/** Optional toppings are purchased independently from the dish counter.
+ * Required preparation choices apply to every dish portion. */
 function selectedModifierPrice(product: Product, ids: readonly string[]): number {
-  const catalog = new Map((product.modifierGroups ?? []).flatMap(group => group.options)
-    .map(option => [option.id, option.priceDeltaVnd] as const));
-  return ids.reduce((sum,id)=>sum+(catalog.get(id)??0),0);
+  const prices = new Map((product.modifierGroups??[])
+    .filter(group=>group.minSelect===0)
+    .flatMap(group=>group.options.map(option=>[option.id,option.priceDeltaVnd] as const)));
+  return ids.reduce((sum,id)=>sum+(prices.get(id)??0),0);
+}
+function cartPriceParts(product: Product, variantId: string|null,
+  ids:readonly string[], quantity:number) {
+  const variant=product.variants.find(v=>v.id===variantId);
+  const baseUnit=product.priceVnd+(variant?.priceDeltaVnd??0);
+  const dishTotal=baseUnit*quantity;
+  const requiredUnit=(product.modifierGroups??[]).filter(g=>g.minSelect>0)
+    .flatMap(group=>group.options)
+    .reduce((sum,option)=>sum+
+      ids.filter(id=>id===option.id).length*option.priceDeltaVnd,0);
+  const requiredTotal=requiredUnit*quantity;
+  const toppingTotal=selectedModifierPrice(product,ids);
+  return {baseUnit,dishTotal,requiredTotal,toppingTotal,
+    total:dishTotal+requiredTotal+toppingTotal};
 }
 
 function CustomerApp() {
@@ -1113,14 +1130,16 @@ function CustomerApp() {
           <Button label="Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
         </View>;
         const variant = item.variants.find(v => v.id === selectedVariantId);
-        const total = item.priceVnd + (variant?.priceDeltaVnd ?? 0) + selectedModifierPrice(item, selectedModifierIds);
+        const costs=cartPriceParts(item,selectedVariantId,selectedModifierIds,selectedQuantity);
         return (
           <View style={styles.section}>
             <Button label="‹ Trở lại thực đơn" alternate onPress={() => setScreen("menu")} />
             <View style={styles.detailHero}><ProductArtwork product={item} large /></View>
             <Text style={styles.detailTitle}>{item.name}</Text>
-            <Text style={styles.detailPrice}>{vnd(total)}</Text>
-            <Text style={styles.muted}>Giá hiển thị để tham khảo. Máy chủ sẽ xác nhận lại giá khi đặt hàng.</Text>
+            <Text style={styles.detailPrice}>Giá lẩu: {vnd(costs.baseUnit)} / phần</Text>
+            <Text style={styles.muted}>Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
+              {" "}{vnd(costs.requiredTotal)} · Tổng {selectedQuantity} phần: {vnd(costs.total)}</Text>
+            <Text style={styles.muted}>Giá tạm tính; máy chủ xác nhận lại trước khi đặt.</Text>
             {item.variants.length > 0 && <View style={styles.group}>
               <Text style={styles.sectionTitle}>Khẩu phần / size</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -1245,7 +1264,7 @@ function CustomerApp() {
                   onPress={() => setSelectedQuantity(q => Math.min(99, q + 1))}><Text style={styles.stepText}>+</Text></Pressable>
               </View>
             </View>
-            <Button label={item.isAvailable ? "Thêm vào giỏ · " + vnd(total * selectedQuantity) : "Món đang tạm hết"}
+            <Button label={item.isAvailable ? "Thêm vào giỏ · " + vnd(costs.total) : "Món đang tạm hết"}
               disabled={!item.isAvailable} onPress={addSelectedProduct} />
           </View>
         );
