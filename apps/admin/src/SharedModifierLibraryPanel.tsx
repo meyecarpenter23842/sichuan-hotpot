@@ -51,6 +51,10 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
    try{
      const result=await request<{id?:string}>(root+path,token,method,payload);
      const edited=editing;
+     if(method==="POST" && result.id && edited){
+       // An assignment retry must PATCH this draft, not create another one.
+       setEditing(old=>old?{...old,id:result.id}:old);
+     }
      const savedGroupId=edited?.kind==="group" ? (result.id??edited.id) : null;
      if(savedGroupId){
        const before=(catalog.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds??[];
@@ -255,9 +259,10 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
   </Modal>
  </View>;
 }
-export function ProductGroupAssignmentModal({catalog,product,token,root,reload,onClose}:{
+export function ProductGroupAssignmentModal({catalog,product,token,root,reload,onClose,onFeedback}:{
  catalog:AdminCatalog;product:CatalogProduct|null;token:string;root:string;
  reload:()=>Promise<void>;onClose:()=>void;
+ onFeedback?:(message:string,error:boolean)=>void;
 }) {
  const [draft,setDraft]=useState<string[]>([]);
  const [busy,setBusy]=useState(false);
@@ -272,8 +277,9 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
   try{
    await request(root+"/products/"+product.id+"/group-assignments",token,"PUT",
     {groupIds:draft,revision:catalog.catalogRevision});
-   await reload();onClose();
-  }catch(e){setError(e instanceof Error?e.message:"Lưu nhóm thất bại.");}
+   await reload();onClose();onFeedback?.("Đã gắn nhóm vào món.",false);
+  }catch(e){const message=e instanceof Error?e.message:"Lưu nhóm thất bại.";
+   setError(message);onFeedback?.(message,true);}
   finally{setBusy(false);}
  }
  return <Modal visible={!!product} transparent animationType="slide" onRequestClose={onClose}>
