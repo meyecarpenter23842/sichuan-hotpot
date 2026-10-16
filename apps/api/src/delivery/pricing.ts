@@ -56,20 +56,22 @@ export function priceCart(
     }
     const product = catalog.get(item.productId);
     if (!product || !product.isAvailable) throw new UnprocessableEntityException("PRODUCT_UNAVAILABLE");
-    let unit = amount(product.priceVnd);
+    const separate = item.pricingMode === "SEPARATE";
+    const baseUnit = amount(product.priceVnd);
+    let dishUnit = baseUnit;
     let variantName: string | null = null;
     if (item.variantId !== null) {
       const variant = product.variants.find(v => v.id === item.variantId);
       if (!variant || !variant.isAvailable) throw new UnprocessableEntityException("VARIANT_UNAVAILABLE");
-      unit += variant.priceDeltaVnd;
+      dishUnit = amount(dishUnit + variant.priceDeltaVnd);
       variantName = variant.name;
     }
-    // Each repeated option ID is one unit of that topping per dish. Repricing
-    // and order snapshots must preserve counts; never trust frontend totals.
     const selected = new Map<string,number>();
     for (const id of item.modifierIds) selected.set(id, (selected.get(id)??0)+1);
     const known = new Set<string>();
-    const modifiers: { name: string; priceVnd: number }[] = [];
+    const modifiers: {name:string;priceVnd:number}[] = [];
+    let separateExtras = 0;
+    let legacyUnit = dishUnit;
     const groups = [...new Map([
       ...product.modifierGroups.filter(group => group.branchId == null)
         .map(group => [group.name + ":" + group.options.map(o => o.id).join(","), group] as const),
@@ -87,22 +89,35 @@ export function priceCart(
         || chosen.some(option => !option.isAvailable)) {
         throw new UnprocessableEntityException("INVALID_MODIFIERS");
       }
+      // Required choices describe how each dish is prepared (e.g. its spice).
+      // Optional topping counts are absolute per cart line, independent of the
+      // dish counter; raising "lẩu lớn" 1->2 cannot silently double toppings.
       for (const option of chosen) {
-        for (let i=0; i<(selected.get(option.id)??0); i++) {
-          unit = amount(unit + amount(option.priceDeltaVnd));
-          // Repeated price snapshots represent one purchased topping each.
-          modifiers.push({ name: option.name, priceVnd: option.priceDeltaVnd });
+        const units=selected.get(option.id)??0;
+        const price=amount(option.priceDeltaVnd);
+        legacyUnit=amount(legacyUnit+amount(price*units));
+        if (separate && group.minSelect>0) {
+          separateExtras=amount(separateExtras+amount(price*units*item.quantity));
+          modifiers.push({name:option.name,priceVnd:amount(price*units*item.quantity)});
+        } else {
+          for(let n=0;n<units;n++){
+            if(separate)separateExtras=amount(separateExtras+price);
+            modifiers.push({name:option.name,priceVnd:price});
+          }
         }
       }
     }
     if (item.modifierIds.some(id => !known.has(id))) {
       throw new UnprocessableEntityException("INVALID_MODIFIERS");
     }
-    const lineTotalVnd = amount(amount(unit) * item.quantity);
-    subtotalVnd = amount(subtotalVnd + lineTotalVnd);
+    const unitPriceVnd=separate?dishUnit:legacyUnit;
+    const lineTotalVnd=separate
+      ?amount(amount(dishUnit*item.quantity)+separateExtras)
+      :amount(legacyUnit*item.quantity);
+    subtotalVnd=amount(subtotalVnd+lineTotalVnd);
     lines.push({
       productId: product.id, productName: product.name, variantName,
-      quantity: item.quantity, unitPriceVnd: unit, lineTotalVnd, modifiers,
+      quantity: item.quantity, unitPriceVnd, lineTotalVnd, modifiers,
     });
   }
   if (subtotalVnd === 0) throw new UnprocessableEntityException("INVALID_CATALOG_PRICE");
