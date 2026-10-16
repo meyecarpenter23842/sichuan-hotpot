@@ -35,7 +35,10 @@ const selectOrder = {
 const kitchenOrderSelect = {
   id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
   items: { select: { productName: true, variantName: true, quantity: true,
-    modifiers: { select: { name: true } } } },
+    modifiers: { select: { name: true } },
+    comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { kind: true, groupName: true, productName: true, quantity: true } },
+  } },
 } as const satisfies Prisma.OrderSelect;
 
 type EditInput = {
