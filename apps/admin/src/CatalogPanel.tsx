@@ -587,7 +587,8 @@ export function CatalogPanel({ catalog, token, reload }: {
     </View>
     <ProductGroupAssignmentModal catalog={catalog}
       product={allProducts.find(p => p.id === assignProductId) ?? null}
-      token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)} />
+      token={token} root={root} reload={reload} onClose={() => setAssignProductId(null)}
+      onFeedback={(message,failed)=>announce(message,failed)} />
     <Modal visible={editor !== null} animationType="slide" transparent
       onRequestClose={() => { if (!busy) setEditor(null); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
