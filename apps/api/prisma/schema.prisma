@@ -83,6 +83,8 @@ model Branch {
   homeOffers        HomeOffer[]
   homeHeroConfig    HomeHeroConfig?
   homeHeroSlides    HomeHeroSlide[]
+  homePopupConfig   HomePopupConfig?
+  homePopupSlides   HomePopupSlide[]
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
@@ -491,6 +493,32 @@ model HomeHeroSlide {
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @db.Timestamptz(6)
   branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([branchId, enabled, sortOrder])
+}
+
+
+model HomePopupConfig {
+  branchId              String   @id @db.Uuid
+  enabled               Boolean  @default(false)
+  repeatIntervalMinutes Int      @default(360)
+  slideDwellMs          Int      @default(4000)
+  revision              Int      @default(0)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(6)
+  branch                Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+model HomePopupSlide {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  imageKey  String?  @db.VarChar(512)
+  altText   String   @db.VarChar(200)
+  enabled   Boolean  @default(false)
+  sortOrder Int      @default(0)
+  revision  Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   @@index([branchId, enabled, sortOrder])
 }
