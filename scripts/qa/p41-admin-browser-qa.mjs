@@ -146,10 +146,17 @@ try {
   });
   assert.equal(savedGroup.isAvailable, false, "Unpictured new group starts as a draft");
   assert.equal(savedOption.isAvailable, false, "Unpictured new option starts as a draft");
+  // Assert the association in PostgreSQL first, independently of modal paint.
+  assert.equal(await db.productModifierGroupAssignment.count({
+    where: { productId: savedProduct.id, groupId: savedGroup.id },
+  }), 1, "Creating a shared group with selected products must persist immediately");
   // The new draft must already be linked to its selected product.
   // Reopen the picker to verify the checked persisted state without reassigning.
   await page.getByRole("button", { name: "Gắn nhóm cho Lẩu QA P4.1" }).click();
   await page.getByRole("checkbox", { name: /Độ cay/ }).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="checkbox"]')].some(
+    node => node.textContent?.includes("Độ cay") && node.getAttribute("aria-checked") === "true"
+  ));
   assert.equal(await page.getByRole("checkbox", { name: /Độ cay/ }).getAttribute("aria-checked"), "true");
   await page.getByRole("button", { name: "Hủy" }).click();
   await page.getByRole("button", { name: "Đóng chọn nhóm" }).waitFor({ state: "hidden" });
