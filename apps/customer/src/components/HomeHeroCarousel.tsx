@@ -111,7 +111,7 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
       inputRange:[0,1],outputRange:[heroWidth,0]})}]}:{};
   const wipeWidth=progress.interpolate({inputRange:[0,1],outputRange:[0,heroWidth]});
 
-  const fallback=<View style={[s.frame,{width:heroWidth,height:heroHeight}]} testID="home-approved-hero">
+  const fallback=<View style={[s.frame,{width:heroWidth,height:heroHeight}]}>
     <Image source={require("../../assets/home-reference.png")} resizeMode="stretch"
       accessibilityLabel="Ảnh banner dự phòng theo mẫu đã duyệt"
       style={[s.fallbackImage,{left:-58*heroScale,top:-232*heroScale,
