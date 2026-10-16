@@ -1166,7 +1166,7 @@ function CustomerApp() {
               const mandatory=group.minSelect>0;
               const ids=new Set(group.options.map(o=>o.id));
               const groupCount=selectedModifierIds.filter(id=>ids.has(id)).length;
-              return <View key={group.id} style={styles.group}>
+              return <View key={group.id} style={[styles.group,mandatory&&styles.requiredGroup]}>
                 <View style={styles.choiceGroupHeading}>
                   <Text style={styles.sectionTitle}>{group.name}</Text>
                   <Text style={[styles.choiceRequirement,mandatory&&styles.choiceRequired]}>
@@ -1196,8 +1196,8 @@ function CustomerApp() {
                           source={{uri:safeProductImageUrl(option.imageKey)!}}
                           style={styles.requiredImage}/>}
                         <Text style={styles.requiredTileName} numberOfLines={2}>{option.name}</Text>
-                        <Text style={styles.sizePrice}>{option.priceDeltaVnd>0
-                          ? "+"+vnd(option.priceDeltaVnd):"0đ"}</Text>
+                        {option.priceDeltaVnd>0&&<Text style={styles.sizePrice}>
+                          +{vnd(option.priceDeltaVnd)}</Text>}
                         {group.maxSelect===1&&<Text style={styles.tileCheck}>{count>0?"✓":"○"}</Text>}
                       </Pressable>
                       {group.maxSelect>1&&<View style={styles.tileStepper}>
@@ -1763,13 +1763,14 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.white },
   sessionLoading: { flex: 1, padding: 24, justifyContent: "center", alignItems: "stretch", gap: 16 },
   shell: { flex: 1, width: "100%", maxWidth: 620, alignSelf: "center", backgroundColor: palette.white, overflow: "hidden" },
-  header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: palette.line, backgroundColor: palette.white },
+  header: { paddingHorizontal: 16, paddingVertical: 11, flexDirection: "row", alignItems: "center", backgroundColor: "#4A0C0A" },
   logoBadge: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   logoGlyph: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
   headerText: { flex: 1, paddingHorizontal: 10 },
-  brandName: { fontSize: typeScale.body, fontWeight: "800", color: brand, letterSpacing: 0.4 },
-  brandSub: { fontSize: typeScale.caption, color: "#667085" },
-  headerCart: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
+  brandName: { fontSize: typeScale.body, fontWeight: "800", color: palette.white, letterSpacing: 0.4 },
+  brandSub: { fontSize: typeScale.caption, color: "#F6DDE0" },
+  headerCart: { minWidth: 44, minHeight: 44, borderRadius:12,backgroundColor:"#FFFFFF",
+    justifyContent: "center", alignItems: "center" },
   headerCartText: { fontSize: typeScale.small, color: brand, fontWeight: "800" },
   body: { flex: 1, minHeight: 0, paddingBottom: 58 },
   addressBody: { paddingBottom: 0 },
@@ -1959,15 +1960,17 @@ const styles = StyleSheet.create({
   choiceRequirement: { color:"#667085",fontSize:11,fontWeight:"700",
     borderRadius:7,paddingHorizontal:7,paddingVertical:3,backgroundColor:"#F3F4F6" },
   choiceRequired: { color:"#B3262D",backgroundColor:"#FFF0F1" },
-  choiceWrap: { flexDirection:"row",flexWrap:"wrap",gap:9 },
-  requiredTile: { width:"48%",minWidth:130,borderWidth:1,borderColor:"#E4E7EC",
-    borderRadius:12,backgroundColor:"#FFFFFF",overflow:"hidden" },
-  requiredTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFF7F7" },
-  requiredTilePick: { minHeight:66,alignItems:"center",justifyContent:"center",
-    paddingHorizontal:8,paddingVertical:8,gap:3 },
-  requiredImage: { width:42,height:42,borderRadius:8 },
-  requiredTileName: { color:"#20252B",fontWeight:"800",fontSize:13,textAlign:"center" },
-  tileCheck: { color:"#B3262D",fontSize:20,fontWeight:"800" },
+  choiceWrap: { flexDirection:"row",flexWrap:"wrap",gap:6,justifyContent:"space-between" },
+  requiredGroup: { paddingHorizontal:10,paddingVertical:12,borderRadius:14,
+    borderWidth:1,borderColor:"#F5D9DB",backgroundColor:"#FFF9F9",marginTop:12 },
+  requiredTile: { width:"31.5%",minWidth:0,borderWidth:1,borderColor:"transparent",
+    borderRadius:10,backgroundColor:"transparent",overflow:"hidden" },
+  requiredTileSelected: { borderColor:"#B3262D",backgroundColor:"#FFECED" },
+  requiredTilePick: { minHeight:98,alignItems:"center",justifyContent:"center",
+    paddingHorizontal:2,paddingVertical:6,gap:3 },
+  requiredImage: { width:36,height:36,borderRadius:7 },
+  requiredTileName: { color:"#20252B",fontWeight:"800",fontSize:12,textAlign:"center" },
+  tileCheck: { color:"#B3262D",fontSize:17,fontWeight:"800" },
   tileStepper: { flexDirection:"row",alignItems:"center",justifyContent:"space-around",
     borderTopWidth:1,borderTopColor:"#E4E7EC" },
   tileQtyButton: { minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center" },
