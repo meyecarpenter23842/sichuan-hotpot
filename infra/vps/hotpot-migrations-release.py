@@ -103,7 +103,7 @@ def sql(query, database="hotpot"):
 
 def sql_write(query):
     run(["/usr/bin/psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "-"],
-        env=database_process_env("postgres"), input_bytes=query.encode(), timeout=30)
+        env=database_process_env("hotpot"), input_bytes=query.encode(), timeout=30)
 
 
 def checked_history(expected):
