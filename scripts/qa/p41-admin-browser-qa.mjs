@@ -160,13 +160,13 @@ try {
       && node.getAttribute("aria-checked") === "true"
   ));
   await groupCheckbox.click();
-  await page.getByText("Đã bỏ gắn Độ cay khỏi Lẩu QA P4.1.").waitFor();
+  await page.getByText("Đã bỏ gắn Độ cay khỏi Lẩu QA P4.1.").last().waitFor();
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
   }), 0, "Single click must detach immediately in PostgreSQL");
   assert.equal(await groupCheckbox.getAttribute("aria-checked"),"false");
   await groupCheckbox.click();
-  await page.getByText("Đã gắn Độ cay vào Lẩu QA P4.1.").waitFor();
+  await page.getByText("Đã gắn Độ cay vào Lẩu QA P4.1.").last().waitFor();
   assert.equal(await db.productModifierGroupAssignment.count({
     where: { productId: savedProduct.id, groupId: savedGroup.id },
   }), 1, "Single click must attach immediately in PostgreSQL");
