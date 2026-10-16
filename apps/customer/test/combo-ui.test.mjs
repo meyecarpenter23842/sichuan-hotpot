@@ -30,8 +30,20 @@ test("cart and order history expose selected combo composition instead of a myst
 test("customer combo composition exposes configured size and blocks unavailable size", () => {
   assert.match(api, /variant: Variant \| null/);
   assert.match(app, /fixed\.variant \? " · " \+ fixed\.variant\.name/);
-  assert.match(app, /option\.variant \? " · " \+ option\.variant\.name/);
+  assert.match(app, /choice\.variantName \? " · " \+ choice\.variantName/);
   assert.match(combo, /item\.variant != null && !item\.variant\.isAvailable/);
   assert.match(combo, /option\.variant != null && !option\.variant\.isAvailable/);
   assert.match(orders, /component\.variantName/);
+});
+
+
+test("customer combo groups mix normal products and shared topping library choices", () => {
+  assert.match(api, /modifierOptions: ComboModifierOption\[\]/);
+  assert.match(combo, /function comboGroupChoices/);
+  assert.match(combo, /sourceType: "TOPPING"/);
+  assert.match(combo, /modifierOption\.group\.isAvailable/);
+  assert.match(app, /comboGroupChoices\(group\)/);
+  assert.match(app, /Topping ·/);
+  assert.match(app, /snapshot\.modifierOptionId/);
+  assert.match(api, /modifierOptionId: string \| null/);
 });
