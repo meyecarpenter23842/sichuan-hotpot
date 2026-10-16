@@ -24,7 +24,11 @@ export function vnLocalToUtc(input:string):string|null {
   if(!input.trim())return null;
   const match=/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/.exec(input.trim());
   if(!match)throw Error("Thời gian theo định dạng YYYY-MM-DD HH:mm (giờ Việt Nam).");
-  const [,year,month,day,hour,minute]=match.map(Number);
+  const year=Number(match[1]!);
+  const month=Number(match[2]!);
+  const day=Number(match[3]!);
+  const hour=Number(match[4]!);
+  const minute=Number(match[5]!);
   const utc=Date.UTC(year,month-1,day,hour-7,minute,0);
   const check=new Date(utc+7*3600000);
   if(check.getUTCFullYear()!==year||check.getUTCMonth()+1!==month||
