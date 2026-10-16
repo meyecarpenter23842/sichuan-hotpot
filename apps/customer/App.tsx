@@ -1882,7 +1882,7 @@ function CustomerApp() {
                     accessibilityLabel="Logo Lẩu Tứ Xuyên" />
                 </View>
                 <View style={styles.headerText}>
-                  <Text style={styles.brandName}>SICHUAN HOTPOT</Text>
+                  <Text style={styles.brandName}>HOTPOT</Text>
                   <Text style={styles.brandSub}>Lẩu Tứ Xuyên & Trà Sữa</Text>
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}

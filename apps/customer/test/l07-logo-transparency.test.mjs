@@ -9,7 +9,7 @@ import { ASSET_VERSION, cleanLogo, renderIcon } from "../scripts/generate-icons.
 
 const { PNG } = pngjs;
 const here = dirname(fileURLToPath(import.meta.url));
-const approvedSource = resolve(here, "../../../assets/brand-approved-20261015.png");
+const approvedSource = resolve(here, "../../../assets/brand-hotpot-approved-20261016.png");
 
 function alphaAt(image, x, y) {
   return image.data[(y * image.width + x) * 4 + 3];
@@ -30,7 +30,7 @@ function assertTransparentCorners(image, label) {
 test("L07 approved RGB logo loses its outer matte without deleting the artwork", () => {
   const source = readFileSync(approvedSource);
   const original = PNG.sync.read(source);
-  const cleaned = cleanLogo(source);
+  const cleaned = cleanLogo(source, "approved-emblem");
 
   assert.equal(cleaned.width, original.width);
   assert.equal(cleaned.height, original.height);
@@ -40,6 +40,10 @@ test("L07 approved RGB logo loses its outer matte without deleting the artwork",
   const cleanedImage = new PNG({ width: cleaned.width, height: cleaned.height });
   cleanedImage.data = Buffer.from(cleaned.data);
   assertTransparentCorners(cleanedImage, "cleaned approved source");
+  assert.equal(alphaAt(cleanedImage, Math.floor(cleaned.width / 2), 50), 0,
+    "baked-in checkerboard must become true transparency");
+  assert.ok(alphaAt(cleanedImage, Math.floor(cleaned.width / 2), 150) > 0,
+    "the approved red emblem must stay visible");
 
   let visible = 0;
   for (let i = 3; i < cleaned.data.length; i += 4) {
@@ -54,7 +58,7 @@ test("L07 approved RGB logo loses its outer matte without deleting the artwork",
 
   const adaptive = PNG.sync.read(renderIcon(cleaned, 1024, true));
   assertTransparentCorners(adaptive, "Android adaptive foreground");
-  assert.equal(ASSET_VERSION, "v20261016c");
+  assert.equal(ASSET_VERSION, "v20261016d");
 });
 
 test("L07 only removes edge-connected dark matte and preserves enclosed dark details", () => {
