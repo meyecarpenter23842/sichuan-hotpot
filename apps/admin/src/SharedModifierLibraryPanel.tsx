@@ -224,7 +224,8 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
            <Action label={showProducts?"Thu gọn danh sách món":"Chọn món sử dụng"} secondary
              onPress={()=>setShowProducts(old=>!old)}/>
            {showProducts&&products.map(product=><Pressable key={product.id} accessibilityRole="checkbox"
-             accessibilityState={{checked:selectedProducts.includes(product.id)}} style={s.line}
+             accessibilityState={{checked:selectedProducts.includes(product.id)}}
+             aria-checked={selectedProducts.includes(product.id)} style={s.line}
              onPress={()=>setSelectedProducts(old=>old.includes(product.id)
                ?old.filter(id=>id!==product.id):[...old,product.id])}>
              <Text style={s.flex} numberOfLines={2}>{product.name}</Text>
@@ -302,7 +303,8 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
     {(catalog.modifierLibrary??[]).filter(g=>g.name.toLocaleLowerCase("vi")
       .includes(search.trim().toLocaleLowerCase("vi"))).map(g=>
       <Pressable key={g.id} accessibilityRole="checkbox"
-       accessibilityState={{checked:draft.includes(g.id)}} style={s.line}
+       accessibilityState={{checked:draft.includes(g.id)}}
+        aria-checked={draft.includes(g.id)} style={s.line}
        onPress={()=>setDraft(old=>old.includes(g.id)?old.filter(x=>x!==g.id):[...old,g.id])}>
        <Photo imageKey={g.imageKey} label={"Ảnh nhóm "+g.name}/>
        <Text style={s.flex} numberOfLines={2}>{g.name} · {g.options.length} topping</Text>
