@@ -145,7 +145,7 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
   productId: string;
   variantId: string | null;
   modifierIds: string[];
-  comboOptionIds: string[];
+  comboOptionIds?: string[];
   quantity: number;
   pricingMode: "SEPARATE";
 }[] {
@@ -158,7 +158,9 @@ export function checkoutCartItems(cart: readonly CartLine[]): {
       productId: selection.productId,
       variantId: selection.variantId,
       modifierIds: [...selection.modifierIds],
-      comboOptionIds: [...(selection.comboOptionIds ?? [])],
+      ...((selection.comboOptionIds?.length ?? 0) > 0
+        ? { comboOptionIds: [...(selection.comboOptionIds ?? [])] }
+        : {}),
       quantity: line.quantity,
       // Dish counter never multiplies optional topping quantities.
       pricingMode: "SEPARATE" as const,
