@@ -394,7 +394,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     setEditLines(lines => lines.map((line, index) => {
       if (index !== lineIndex) return line;
       const ids = [...line.modifierIds];
-      const optionIds = new Set(comboChoices(group).map(option => option.id));
+      const optionIds = new Set(group.options.map(option => option.id));
       const groupCount = ids.filter(id => optionIds.has(id)).length;
       if (delta > 0) {
         if (groupCount >= group.maxSelect) return line;
@@ -412,7 +412,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
   ) => {
     setEditLines(lines => lines.map((line, index) => {
       if (index !== lineIndex) return line;
-      const optionIds = new Set(group.options.map(option => option.id));
+      const optionIds = new Set(comboChoices(group).map(option => option.id));
       const groupCount = line.comboOptionIds.filter(id => optionIds.has(id)).length;
       const current = line.comboOptionIds.filter(id => id === optionId).length;
       const swapping = delta > 0 && current === 0 && groupCount === group.maxSelect;
