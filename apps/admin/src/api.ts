@@ -31,9 +31,15 @@ export interface CatalogComboOption {
   id: string; variantId: string | null; quantity: number; priceDeltaVnd: number; sortOrder: number;
   variant: CatalogVariant | null; childProduct: CatalogComboChild;
 }
+export interface CatalogComboModifierOption {
+  id: string; quantity: number; priceDeltaVnd: number; sortOrder: number;
+  modifierOption: CatalogOption & {
+    group: { id: string; name: string; isAvailable: boolean; imageKey?: string | null };
+  };
+}
 export interface CatalogComboGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
-  options: CatalogComboOption[];
+  options: CatalogComboOption[]; modifierOptions: CatalogComboModifierOption[];
 }
 export interface CatalogProduct {
   id: string; categoryId: string; name: string; priceVnd: number;
