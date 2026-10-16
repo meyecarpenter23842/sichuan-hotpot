@@ -88,7 +88,7 @@ export function ComboEditorModal({ catalog, product, token, root, onClose, reloa
   }
 
   async function save() {
-    if (busy) return;
+    if (!product || busy) return;
     setError("");
     try {
       if (fixed.length === 0 && groups.length === 0) {
