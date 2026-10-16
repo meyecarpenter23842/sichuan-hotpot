@@ -14,6 +14,8 @@ const seedBranch=await db.branch.findFirst({
 });
 assert.ok(seedBranch,"P22 disposable branch required for Home QA");
 const offerId=randomUUID();
+const heroIds=[randomUUID(),randomUUID()];
+const heroKeys=heroIds.map(id=>"catalog-media/"+seedBranch.id+"/hero/"+id+"/"+randomUUID()+".webp");
 const popupIds=[randomUUID(),randomUUID()];
 const popupKeys=popupIds.map(id=>"catalog-media/"+seedBranch.id+"/popup/"+id+"/"+randomUUID()+".webp");
 await db.homeOffer.create({data:{
@@ -23,6 +25,17 @@ await db.homeOffer.create({data:{
   enabled:true,sortOrder:0,ctaTarget:"MENU",
   startAt:new Date(Date.now()-3600000),endAt:new Date(Date.now()+3600000),
 }});
+await db.homeHeroConfig.upsert({
+  where:{branchId:seedBranch.id},
+  create:{branchId:seedBranch.id,autoplay:true,dwellMs:2000,transitionType:"fade",
+    transitionDurationMs:250,revision:21},
+  update:{autoplay:true,dwellMs:2000,transitionType:"fade",
+    transitionDurationMs:250,revision:{increment:21}},
+});
+await db.homeHeroSlide.createMany({data:heroIds.map((id,index)=>({
+  id,branchId:seedBranch.id,imageKey:heroKeys[index],altText:"Hero QA "+(index+1),
+  title:null,subtitle:null,ctaTarget:null,enabled:true,sortOrder:index,
+}))});
 await db.homePopupConfig.upsert({
   where:{branchId:seedBranch.id},
   create:{branchId:seedBranch.id,enabled:true,repeatIntervalMinutes:30,slideDwellMs:2000,revision:11},
@@ -42,6 +55,8 @@ try {
     const page = await ctx.newPage();
     const tinyPng=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR42mNkYGD4z8DAwMDAAAAEAQEABn0C/QAAAABJRU5ErkJggg==","base64");
     await page.route("https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/catalog-media/"+seedBranch.id+"/popup/**",
+      route=>route.fulfill({status:200,contentType:"image/png",body:tinyPng}));
+    await page.route("https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/catalog-media/"+seedBranch.id+"/hero/**",
       route=>route.fulfill({status:200,contentType:"image/png",body:tinyPng}));
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -75,6 +90,18 @@ try {
     }
     await page.getByRole("button",{name:"Đóng popup",exact:true}).click();
     await promoPopup.waitFor({state:"hidden",timeout:3000});
+    const liveHero=page.getByTestId("home-live-hero");
+    await liveHero.waitFor();
+    const heroRegion=page.getByTestId("home-approved-hero");
+    const [heroRect,regionRect]=await Promise.all([liveHero.boundingBox(),heroRegion.boundingBox()]);
+    assert.ok(heroRect&&regionRect&&Math.abs((heroRect.y+heroRect.height)-(regionRect.y+regionRect.height))<=2,
+      "Hero region must not reserve a blank strip below the banner");
+    if(width===320){
+      await page.waitForFunction(()=>document.querySelector('[data-testid="home-live-hero"]')
+        ?.getAttribute("aria-label")?.includes("Banner 2 trên 2"),null,{timeout:3500});
+      await page.waitForFunction(()=>document.querySelector('[data-testid="home-live-hero"]')
+        ?.getAttribute("aria-label")?.includes("Banner 1 trên 2"),null,{timeout:3500});
+    }
     const promotion=page.getByRole("button",{name:"Xem ưu đãi Ưu đãi QA cuối tuần"});
     await promotion.waitFor();
     await promotion.click();
@@ -121,12 +148,16 @@ try {
     await page.getByRole("button", { name: "Xem danh mục Trà sữa" }).click();
     await page.getByRole("tab", { name: "Thực đơn" }).waitFor();
     await page.getByRole("textbox", { name: "Tìm món ăn, trà sữa" }).waitFor();
+    assert.equal(await page.getByText("Thực đơn",{exact:true}).count(),0,
+      "Menu must not waste vertical space on a duplicate page title");
     await ctx.close();
     console.log("PASS: Home reference categories, fixed tabs, menu search and artwork", width, height);
   }
 } finally {
   await db.homePopupSlide.deleteMany({where:{id:{in:popupIds}}});
   await db.homePopupConfig.deleteMany({where:{branchId:seedBranch.id}});
+  await db.homeHeroSlide.deleteMany({where:{id:{in:heroIds}}});
+  await db.homeHeroConfig.deleteMany({where:{branchId:seedBranch.id}});
   await db.homeOffer.deleteMany({where:{id:offerId}});
   await db.$disconnect();
   await browser.close();
