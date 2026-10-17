@@ -28,6 +28,7 @@ import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
 import { HomeHeroCarousel } from "./src/components/HomeHeroCarousel";
 import { HomePromoPopup } from "./src/components/HomePromoPopup";
+import { ChatbotWidget } from "./src/components/ChatbotWidget";
 import { AddressPinMap } from "./src/components/AddressPinMap";
 import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
@@ -1993,6 +1994,7 @@ function CustomerApp() {
           </View>
         )}
         <HomePromoPopup branchId={branchId} payload={homePopup} active={screen==="home"}/>
+        <ChatbotWidget branchId={branchId} active={authReady && screen !== "login"}/>
         <Modal visible={!!selectedOffer} transparent animationType="fade"
           onRequestClose={()=>setSelectedOffer(null)}>
           <View style={styles.offerModalOverlay}>
