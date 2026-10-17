@@ -2,15 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const appConfig = readFileSync(new URL("../app.config.js", import.meta.url), "utf8");
+const appJson = readFileSync(new URL("../app.json", import.meta.url), "utf8");
+const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const prebuild = readFileSync(new URL("../scripts/prebuild-android.mjs", import.meta.url), "utf8");
 const nativePush = readFileSync(new URL("../src/push-client.native.ts", import.meta.url), "utf8");
 
-test("local Android config makes Firebase descriptor optional", () => {
-  assert.match(appConfig, /existsSync\(firebaseDescriptor\)/);
-  assert.match(appConfig, /delete android\.googleServicesFile/);
-  assert.match(appConfig, /android\.googleServicesFile = "\.\/google-services\.json"/);
-  assert.doesNotMatch(appConfig, /GOOGLE_MAPS_ANDROID_KEY/);
-  assert.match(appConfig, /Do not reintroduce Google Maps config/);
+test("local Android prebuild does not require Firebase or Google Maps config", () => {
+  assert.doesNotMatch(appJson, /googleServicesFile/);
+  assert.doesNotMatch(appJson, /googleMaps|GOOGLE_MAPS_ANDROID_KEY|mapsApiKey/i);
+  assert.match(packageJson, /"android:prebuild": "node scripts\/prebuild-android\.mjs"/);
+});
+
+test("prebuild enables FCM only when the gitignored descriptor exists", () => {
+  assert.match(prebuild, /existsSync\(googleServicesPath\)/);
+  assert.match(prebuild, /buildConfig\.expo\.android\.googleServicesFile = "\.\/google-services\.json"/);
+  assert.match(prebuild, /writeFileSync\(appJsonPath, originalText\)/);
+  assert.match(prebuild, /process\.platform === "win32" \? "npx\.cmd" : "npx"/);
 });
 
 test("stale native push module cannot crash customer app during module import", () => {
