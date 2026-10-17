@@ -44,42 +44,13 @@ jobs:
       - name: Generate customer icon assets
         run: npm run icons:generate --workspace @hotpot/customer
 
-      - name: Create CI-only Firebase descriptor
+      - name: Prove local prebuild needs no Firebase descriptor
         shell: bash
         run: |
-          cat > apps/customer/google-services.json <<'JSON'
-          {
-            "project_info": {
-              "project_number": "000000000000",
-              "project_id": "hotpot-ci",
-              "storage_bucket": "hotpot-ci.invalid"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
-                  "android_client_info": {
-                    "package_name": "vn.sichuanhotpot.customer"
-                  }
-                },
-                "oauth_client": [],
-                "api_key": [
-                  {
-                    "current_key": "ci-not-a-real-api-key"
-                  }
-                ],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": []
-                  }
-                }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          JSON
+          set -euo pipefail
+          test ! -e apps/customer/google-services.json
 
-      - name: Clean Expo prebuild for Android
+      - name: Clean Expo prebuild for Android without Firebase descriptor
         working-directory: apps/customer
         run: npx expo prebuild --platform android --clean --no-install
 
