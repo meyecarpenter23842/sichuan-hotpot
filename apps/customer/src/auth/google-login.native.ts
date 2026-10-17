@@ -33,7 +33,7 @@ function nativeGoogleError(error: unknown): Error {
     }
     if (error.code === "10" || error.code === "DEVELOPER_ERROR") {
       return new Error(
-        "Google Android chưa khớp package/SHA-1. Cần cập nhật OAuth Android cho vn.sichuanhotpot.customer rồi rebuild ứng dụng.",
+        "Google chưa cấp quyền cho chữ ký APK này. Kiểm tra OAuth Android: package vn.sichuanhotpot.customer và SHA-1 của APK đã cài. Không cần SHA riêng cho từng khách.",
       );
     }
   }
