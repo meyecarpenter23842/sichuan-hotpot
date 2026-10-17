@@ -1,12 +1,14 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
+  Animated, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiRequest } from "../api";
 import { palette, typeScale } from "../theme";
+
+const CHATBOT_AVATAR = require("../../assets/avatar-chatbot.jpg");
 
 interface PublicChatbotConfig {
   enabled: boolean;
@@ -20,6 +22,58 @@ interface ChatMessage { id: number; role: "user" | "assistant"; text: string; }
 
 function newSessionId(): string {
   return "cx-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+}
+
+function BotAvatar({ size }: { size: number }) {
+  return <Image source={CHATBOT_AVATAR} resizeMode="cover"
+    style={{ width: size, height: size, borderRadius: size / 2 }} />;
+}
+
+function ZaloLogo() {
+  return <View style={s.zaloLogo}>
+    <Text style={s.zaloWord}>Zalo</Text>
+    <View style={s.zaloTail} />
+  </View>;
+}
+
+function TypingIndicator() {
+  const dots = useRef([
+    new Animated.Value(0.38),
+    new Animated.Value(0.38),
+    new Animated.Value(0.38),
+  ]).current;
+
+  useEffect(() => {
+    const pulse = (dot: Animated.Value) => Animated.sequence([
+      Animated.timing(dot, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.timing(dot, { toValue: 0.38, duration: 220, useNativeDriver: true }),
+    ]);
+    const loop = Animated.loop(Animated.sequence([
+      Animated.stagger(120, dots.map(pulse)),
+      Animated.delay(260),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [dots]);
+
+  return <View accessibilityLabel="Chatbot đang nhập" style={s.typingDots}>
+    {dots.map((dot, index) => <Animated.View key={index} style={[
+      s.typingDot,
+      {
+        opacity: dot,
+        transform: [{
+          scale: dot.interpolate({ inputRange: [0.38, 1], outputRange: [0.82, 1] }),
+        }],
+      },
+    ]} />)}
+  </View>;
+}
+
+function AssistantBubble({ children }: { children: React.ReactNode }) {
+  return <View style={s.botRow}>
+    <View style={s.messageAvatar}><BotAvatar size={28} /></View>
+    <View style={[s.bubble, s.botBubble]}>{children}</View>
+  </View>;
 }
 
 export function ChatbotWidget({ branchId, active }: { branchId: string; active: boolean }) {
@@ -84,8 +138,9 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
     <Pressable testID="chatbot-fab" accessibilityRole="button" accessibilityLabel="Mở hỗ trợ trực tuyến"
       onPress={() => { setOpen(true); setError(""); }}
       style={({ pressed }) => [s.fab, pressed && s.pressed]}>
-      <MaterialCommunityIcons name="message-text-outline" size={27} color="#FFFFFF" />
+      <BotAvatar size={48} />
     </Pressable>
+
     <Modal visible={open} transparent animationType="fade" statusBarTranslucent
       onRequestClose={() => setOpen(false)}>
       <View style={s.overlay}>
@@ -96,18 +151,18 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
           <SafeAreaView edges={["bottom"]} style={[s.card, { height: panelHeight }]}>
             <View style={s.header}>
               <View style={s.headerCopy}>
-                <View style={s.botMark}>
-                  <MaterialCommunityIcons name="robot-outline" size={20} color={palette.red} />
-                </View>
+                <View style={s.headerAvatar}><BotAvatar size={38} /></View>
                 <View style={s.headerText}>
                   <Text style={s.headerTitle} numberOfLines={1}>{config.displayName}</Text>
-                  <Text style={s.headerStatus}>{config.enabled ? "Đang trực tuyến" : "Hỗ trợ qua Zalo"}</Text>
+                  <Text style={s.headerStatus}>
+                    {sending ? "Đang nhập…" : config.enabled ? "Đang trực tuyến" : "Hỗ trợ qua Zalo"}
+                  </Text>
                 </View>
               </View>
               <View style={s.headerActions}>
                 {config.zaloEnabled ? <Pressable accessibilityRole="link" accessibilityLabel="Mở Zalo hỗ trợ"
                   onPress={openZalo} style={({ pressed }) => [s.zaloButton, pressed && s.headerPressed]}>
-                  <Text style={s.zaloMark}>Z</Text>
+                  <ZaloLogo />
                 </Pressable> : null}
                 <Pressable accessibilityRole="button" accessibilityLabel="Đóng chatbot"
                   onPress={() => setOpen(false)} style={({ pressed }) => [s.close, pressed && s.headerPressed]}>
@@ -119,20 +174,26 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
             <ScrollView ref={scroll} style={s.messages} contentContainerStyle={s.messagesContent}
               keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
               onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
-              <View style={[s.bubble, s.botBubble]}>
+              <AssistantBubble>
                 <Text style={s.botText}>{config.welcomeMessage}</Text>
-              </View>
+              </AssistantBubble>
+
               {!config.enabled ? <View style={s.offlineNotice}>
                 <Text style={s.offlineText}>Chatbot đang tạm nghỉ. Bạn có thể bấm Zalo ở góc trên để được hỗ trợ.</Text>
               </View> : null}
-              {messages.map(message => <View key={message.id}
-                style={[s.bubble, message.role === "user" ? s.userBubble : s.botBubble]}>
-                <Text style={message.role === "user" ? s.userText : s.botText}>{message.text}</Text>
-              </View>)}
-              {sending ? <View style={[s.bubble, s.botBubble, s.typing]}>
-                <ActivityIndicator size="small" color={palette.red} />
-                <Text style={s.typingText}>Đang trả lời…</Text>
-              </View> : null}
+
+              {messages.map(message => message.role === "assistant"
+                ? <AssistantBubble key={message.id}>
+                    <Text style={s.botText}>{message.text}</Text>
+                  </AssistantBubble>
+                : <View key={message.id} style={[s.bubble, s.userBubble]}>
+                    <Text style={s.userText}>{message.text}</Text>
+                  </View>)}
+
+              {sending ? <AssistantBubble>
+                <TypingIndicator />
+              </AssistantBubble> : null}
+
               {!!error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View> : null}
             </ScrollView>
 
@@ -162,8 +223,9 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
 }
 
 const s = StyleSheet.create({
-  fab: { position: "absolute", right: 14, bottom: 76, zIndex: 70, width: 54, height: 54,
-    borderRadius: 27, backgroundColor: palette.red, alignItems: "center", justifyContent: "center",
+  fab: { position: "absolute", right: 14, bottom: 76, zIndex: 70, width: 56, height: 56,
+    borderRadius: 28, padding: 2, backgroundColor: "#FFFFFF", borderWidth: 2, borderColor: palette.red,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
     elevation: 8, shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 } },
   pressed: { opacity: 0.78 },
@@ -176,29 +238,39 @@ const s = StyleSheet.create({
   header: { minHeight: 62, paddingHorizontal: 12, backgroundColor: palette.red,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   headerCopy: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
-  botMark: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFFFFF",
-    alignItems: "center", justifyContent: "center" },
+  headerAvatar: { width: 42, height: 42, borderRadius: 21, padding: 2, backgroundColor: "#FFFFFF",
+    alignItems: "center", justifyContent: "center", overflow: "hidden" },
   headerText: { flex: 1, minWidth: 0 },
   headerTitle: { color: "#FFFFFF", fontSize: typeScale.action, fontWeight: "800" },
   headerStatus: { color: "#FFE3E4", fontSize: typeScale.caption, marginTop: 2 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  zaloButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0068FF",
-    borderWidth: 2, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
-  zaloMark: { color: "#FFFFFF", fontSize: 17, lineHeight: 20, fontWeight: "900" },
+  zaloButton: { width: 38, height: 38, borderRadius: 10, backgroundColor: "#FFFFFF",
+    borderWidth: 1, borderColor: "#D8E4FF", alignItems: "center", justifyContent: "center" },
+  zaloLogo: { width: 30, height: 30, borderRadius: 8, backgroundColor: "#FFFFFF",
+    borderWidth: 1.5, borderColor: "#0068FF", alignItems: "center", justifyContent: "center" },
+  zaloWord: { color: "#0068FF", fontSize: 9, lineHeight: 11, fontWeight: "900", letterSpacing: -0.4 },
+  zaloTail: { position: "absolute", right: 3, bottom: 2, width: 6, height: 6,
+    borderRightWidth: 1.5, borderBottomWidth: 1.5, borderColor: "#0068FF",
+    backgroundColor: "#FFFFFF", transform: [{ rotate: "18deg" }] },
   close: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  headerPressed: { backgroundColor: "rgba(0,0,0,.14)" },
+  headerPressed: { opacity: 0.72 },
   messages: { flex: 1, backgroundColor: "#F7F8FA" },
-  messagesContent: { padding: 12, gap: 8, flexGrow: 1 },
+  messagesContent: { padding: 12, gap: 9, flexGrow: 1 },
+  botRow: { alignSelf: "stretch", flexDirection: "row", alignItems: "flex-end", gap: 7 },
+  messageAvatar: { width: 30, height: 30, borderRadius: 15, padding: 1,
+    backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.line,
+    alignItems: "center", justifyContent: "center", overflow: "hidden" },
   bubble: { maxWidth: "84%", borderRadius: 14, paddingHorizontal: 11, paddingVertical: 9 },
-  botBubble: { alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderWidth: 1,
+  botBubble: { backgroundColor: "#FFFFFF", borderWidth: 1,
     borderColor: palette.line, borderBottomLeftRadius: 5 },
   userBubble: { alignSelf: "flex-end", backgroundColor: palette.red, borderBottomRightRadius: 5 },
   botText: { color: palette.text, fontSize: typeScale.body, lineHeight: 19 },
   userText: { color: "#FFFFFF", fontSize: typeScale.body, lineHeight: 19 },
   offlineNotice: { alignSelf: "stretch", borderRadius: 10, padding: 9, backgroundColor: palette.softRed },
   offlineText: { color: palette.red, fontSize: typeScale.small, lineHeight: 18 },
-  typing: { flexDirection: "row", alignItems: "center", gap: 7 },
-  typingText: { color: palette.muted, fontSize: typeScale.small },
+  typingDots: { height: 20, minWidth: 42, flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 5 },
+  typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#98A2B3" },
   errorBox: { alignSelf: "stretch", borderRadius: 10, padding: 9, backgroundColor: "#FFF0F0",
     borderWidth: 1, borderColor: "#F4C8CC" },
   errorText: { color: "#9B1C24", fontSize: typeScale.small, lineHeight: 18 },
