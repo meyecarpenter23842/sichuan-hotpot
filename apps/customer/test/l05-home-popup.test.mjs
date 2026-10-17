@@ -43,3 +43,16 @@ test("L05 popup is centered, swipeable, timed and pauses offscreen",()=>{
   assert.match(popup,/isReduceMotionEnabled/);
   assert.match(popup,/resizeMode="contain"/);
 });
+
+
+test("L05 popup keeps contain artwork but makes all letterbox surfaces transparent",()=>{
+  const popup=read("../src/components/HomePromoPopup.tsx");
+  assert.match(popup,/resizeMode="contain"/);
+  assert.match(popup,/testID="home-promo-frame"/);
+  assert.match(popup,/testID="home-promo-dots"/);
+  assert.match(popup,/card:\{[^\n]*backgroundColor:"transparent"/);
+  assert.match(popup,/frame:\{[^\n]*backgroundColor:"transparent"/);
+  assert.match(popup,/dots:\{[\s\S]*?backgroundColor:"transparent"/);
+  assert.doesNotMatch(popup,/card:\{[\s\S]*?backgroundColor:"#FFFFFF"/);
+  assert.doesNotMatch(popup,/frame:\{[\s\S]*?backgroundColor:"#F7F3F1"/);
+});
