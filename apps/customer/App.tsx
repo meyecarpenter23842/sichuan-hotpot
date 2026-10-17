@@ -1939,7 +1939,7 @@ function CustomerApp() {
                         .catch(error => setNotice(error instanceof Error
                           ? error.message : "Không bật được thông báo trên thiết bị."));
                     }}
-                      accessibilityRole="button" accessibilityLabel="Bật thông báo và xem đơn hàng">
+                      accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
                       <HotpotNavIcon name="notifications" active size={27} />
                     </Pressable>
                     <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
