@@ -13,8 +13,8 @@ test("new orders alert staff while customer push waits for CONFIRMED", () => {
 });
 
 test("PWA uses system notification banner and Android Admin uses approved custom sound", () => {
-  const adminPush = read("../../admin/src/push-client.ts");
-  const customerPush = read("../../customer/src/push-client.ts");
+  const adminPush = read("../../admin/src/push-client.native.ts");
+  const customerPush = read("../../customer/src/push-client.native.ts");
   const adminWorker = read("../../admin/public/hotpot-sw.js");
   const customerWorker = read("../../customer/public/hotpot-sw.js");
   assert.match(adminPush, /new-orders-v1/);
