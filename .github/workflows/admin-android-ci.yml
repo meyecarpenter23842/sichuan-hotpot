@@ -78,6 +78,9 @@ jobs:
           node -e 'const app=require("./apps/admin/app.json"); if (app.expo.android.googleServicesFile) process.exit(1)'
           git diff --exit-code -- apps/admin/app.json
 
+      - name: Prepare Gradle wrapper
+        run: chmod +x apps/admin/android/gradlew
+
       - name: Build Admin debug APK
         working-directory: apps/admin/android
         run: ./gradlew :app:assembleDebug --no-daemon
