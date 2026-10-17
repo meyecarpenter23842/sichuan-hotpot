@@ -16,7 +16,8 @@
     "prestart": "npm run icons:generate",
     "preandroid": "npm run icons:generate",
     "preweb": "npm run icons:generate",
-    "prebuild": "npm run icons:generate"
+    "prebuild": "npm run icons:generate",
+    "android:prebuild": "node scripts/prebuild-android.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
