@@ -1,0 +1,128 @@
+name: Customer Android native build
+
+on:
+  pull_request:
+    paths:
+      - "apps/customer/**"
+      - "package-lock.json"
+      - ".github/workflows/customer-android-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/customer/**"
+      - "package-lock.json"
+      - ".github/workflows/customer-android-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "1"
+      EXPO_NO_DOTENV: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install exact workspace lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate customer icon assets
+        run: npm run icons:generate --workspace @hotpot/customer
+
+      - name: Create CI-only Firebase descriptor
+        shell: bash
+        run: |
+          cat > apps/customer/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "hotpot-ci",
+              "storage_bucket": "hotpot-ci.invalid"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": {
+                    "package_name": "vn.sichuanhotpot.customer"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "ci-not-a-real-api-key"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
+      - name: Clean Expo prebuild for Android
+        working-directory: apps/customer
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Assert generated native project has no Google Maps SDK residue
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s apps/customer/android/app/src/main/AndroidManifest.xml
+          if grep -RInE             'com\.google\.android\.geo\.API_KEY|com\.google\.android\.gms\.maps|play-services-maps|react-native-maps'             apps/customer/android; then
+            echo "::error::Generated Android project still contains Google Maps SDK residue."
+            exit 1
+          fi
+
+      - name: Resolve Android debug runtime dependencies
+        working-directory: apps/customer/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon             > "$RUNNER_TEMP/customer-android-debug-dependencies.txt"
+          if grep -Ei 'com\.google\.android\.gms:play-services-maps|react-native-maps'             "$RUNNER_TEMP/customer-android-debug-dependencies.txt"; then
+            echo "::error::Android runtime dependency graph still contains Google Maps."
+            exit 1
+          fi
+
+      - name: Build customer debug APK
+        working-directory: apps/customer/android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Archive Android dependency proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-android-debug-dependencies
+          path: ${{ runner.temp }}/customer-android-debug-dependencies.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Archive customer debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-android-debug-apk
+          path: apps/customer/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
