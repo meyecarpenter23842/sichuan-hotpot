@@ -16,7 +16,8 @@ test("Customer chatbot header puts Zalo in the red top-right action area", () =>
   const widget = read("../src/components/ChatbotWidget.tsx");
   assert.match(widget, /backgroundColor: palette\.red/);
   assert.match(widget, /accessibilityLabel="Mở Zalo hỗ trợ"/);
-  assert.match(widget, /<Text style=\{s\.zaloText\}>Zalo<\/Text>/);
+  assert.match(widget, /<Text style=\{s\.zaloMark\}>Z<\/Text>/);
+  assert.match(widget, /backgroundColor: "#0068FF"/);
   assert.match(widget, /https:\/\/zalo\.me\//);
   assert.match(widget, /accessibilityLabel="Đóng chatbot"/);
 });
