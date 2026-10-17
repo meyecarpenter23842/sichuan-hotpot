@@ -2,10 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildPwaOutputConfig } from "./create-pwa-output-config.mjs";
 
-test("customer prebuilt PWA proxies only the three POST session actions before SPA", () => {
+test("customer prebuilt PWA canonicalizes host before session proxy and SPA", () => {
   const config = buildPwaOutputConfig("customer", "https://132.145.103.89");
   assert.equal(config.version, 3);
   assert.deepEqual(config.routes, [
+    { src: "^/(.*)$",
+      has: [{ type: "host", value: { suf: ".vercel.app" } }],
+      status: 307, headers: { Location: "https://www.bepsi.click/$1" } },
+    { src: "^/(.*)$",
+      has: [{ type: "host", value: "bepsi.click" }],
+      status: 307, headers: { Location: "https://www.bepsi.click/$1" } },
     { src: "^/api/session/(start|refresh|logout)$", methods: ["POST"],
       dest: "https://132.145.103.89/auth/browser/$1" },
     { handle: "filesystem" },
@@ -43,5 +49,7 @@ test("Admin preview deployment routes redirect to canonical origin before sessio
   assert.equal(routes[1].src, "^/api/session/(start|refresh|logout)$");
   assert.equal(routes.at(-1).dest, "/index.html");
   const customerRoutes = buildPwaOutputConfig("customer", "https://132.145.103.89").routes;
-  assert.equal(customerRoutes.some(route => route.has?.some(x => x.type === "host")), false);
+  assert.equal(customerRoutes[0].headers.Location, "https://www.bepsi.click/$1");
+  assert.equal(customerRoutes[1].headers.Location, "https://www.bepsi.click/$1");
+  assert.equal(customerRoutes[2].src, "^/api/session/(start|refresh|logout)$");
 });
