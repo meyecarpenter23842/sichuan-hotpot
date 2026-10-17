@@ -10,6 +10,9 @@ const TILE = 256;
 const HEIGHT = 248;
 const minZoom = 5, maxZoom = 18;
 const fallback = { latitude: 16, longitude: 106 };
+const OSM_TILE_HEADERS = {
+  "User-Agent": "SichuanHotpot/0.2.0 (https://bepsi.click)",
+};
 type Pin = { latitude: number; longitude: number };
 function limitLat(value: number): number {
   return Math.max(-85.05112878, Math.min(85.05112878, value));
@@ -100,7 +103,11 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
           style={{ position: "absolute", width: TILE, height: TILE,
             left: x * TILE - center.x + width / 2 + drag.dx,
             top: y * TILE - center.y + HEIGHT / 2 + drag.dy }}>
-          <Image source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
+          <Image source={{
+              uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`,
+              headers: OSM_TILE_HEADERS,
+              cache: "force-cache",
+            }}
             onError={() => setFailedTiles(old => old.includes(tileId) ? old : [...old, tileId])}
             onLoad={() => setFailedTiles(old => old.filter(id => id !== tileId))}
             style={{ width: TILE, height: TILE }} />
@@ -131,7 +138,7 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
         </View>
       </View>
       <Text style={styles.helper}>Chạm hoặc kéo bản đồ để đặt ghim vào đúng vị trí giao hàng.</Text>
-      {failedTiles.length > 0 && <Text style={styles.error}>Không tải được đầy đủ nền bản đồ. Có thể nhập tọa độ thủ công.</Text>}
+      {failedTiles.length > 0 && <Text style={styles.error}>Không tải được đầy đủ nền bản đồ OSM. Hãy thử lại khi có mạng; GPS và nhập tọa độ vẫn dùng được.</Text>}
     </View>
   );
 }
