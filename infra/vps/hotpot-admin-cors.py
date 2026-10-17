@@ -24,6 +24,10 @@ ADMIN = "https://sichuan-hotpot-admin.vercel.app"
 ADMIN_CUSTOM = "https://admin.bepsi.click"
 ADMIN_ORIGINS = (ADMIN, ADMIN_CUSTOM)
 CUSTOMER = "https://sichuan-hotpot-customer.vercel.app"
+CUSTOMER_CUSTOM = "https://www.bepsi.click"
+CUSTOMER_BARE = "https://bepsi.click"
+CUSTOMER_ORIGINS = (CUSTOMER, CUSTOMER_CUSTOM, CUSTOMER_BARE)
+PWA_ORIGINS = CUSTOMER_ORIGINS + ADMIN_ORIGINS
 
 
 class Blocked(Exception):
@@ -55,7 +59,7 @@ def rewrite_content(data):
                 and parsed.path == "" and not parsed.query and not parsed.fragment
                 and not parsed.username and not parsed.password and origin == parsed.geturl(),
                 "unsafe_cors_origin")
-    missing = [origin for origin in ADMIN_ORIGINS if origin not in origins]
+    missing = [origin for origin in PWA_ORIGINS if origin not in origins]
     if not missing:
         return data, False
     origins.extend(missing)
@@ -90,11 +94,11 @@ def good_http(url):
     return code == 0
 
 
-def good_preflight(base, method, resource, requested_headers, admin_origin=ADMIN):
+def good_preflight(base, method, resource, requested_headers, request_origin=ADMIN):
     code, headers = run(["/usr/bin/curl", "--fail", "--silent", "--show-error",
                          "--connect-timeout", "3", "--max-time", "6",
                          "-X", "OPTIONS", "-D", "-", "-o", "/dev/null",
-                         "-H", "Origin: " + admin_origin,
+                         "-H", "Origin: " + request_origin,
                          "-H", "Access-Control-Request-Method: " + method,
                          "-H", "Access-Control-Request-Headers: " + requested_headers,
                          base + resource], timeout=10)
@@ -106,7 +110,7 @@ def good_preflight(base, method, resource, requested_headers, admin_origin=ADMIN
             k, v = row.split(":", 1)
             fields[k.strip().lower()] = v.strip()
     methods = [item.strip() for item in fields.get("access-control-allow-methods", "").split(",")]
-    return fields.get("access-control-allow-origin") == admin_origin and method in methods
+    return fields.get("access-control-allow-origin") == request_origin and method in methods
 
 
 def healthy_https_and_cors(origin):
@@ -114,10 +118,14 @@ def healthy_https_and_cors(origin):
         for path in ("/health/live", "/health/ready"):
             if not good_http(base + path):
                 return False
-        for admin_origin in ADMIN_ORIGINS:
+        for request_origin in PWA_ORIGINS:
             if not good_preflight(base, "POST", "/auth/login",
-                                  "content-type", admin_origin):
+                                  "content-type", request_origin):
                 return False
+            if not good_preflight(base, "POST", "/auth/google",
+                                  "content-type", request_origin):
+                return False
+        for admin_origin in ADMIN_ORIGINS:
             for method in ("PATCH", "PUT"):
                 if not good_preflight(base, method,
                                       "/admin/branches/00000000-0000-4000-8000-000000000000/catalog",
@@ -162,7 +170,7 @@ def main():
     code, output = run(["/usr/bin/systemctl", "is-active", SERVICE], timeout=10)
     require(code == 0 and output.strip() == b"active", "api_service_inactive")
     if not changed and healthy_https_and_cors(origin):
-        print("admin_cors=ALREADY_READY;api_live=PASS;api_ready=PASS", flush=True)
+        print("pwa_cors=ALREADY_READY;api_live=PASS;api_ready=PASS", flush=True)
         return
     # Preserve root-only pre-change bytes; never log content or allow a symlink.
     backup = API_ENV.with_name("api.env.admin-cors-backup-" + secrets.token_hex(8))
@@ -178,10 +186,10 @@ def main():
         require(code == 0, "api_restart_failed")
         for _ in range(15):
             if healthy_https_and_cors(origin):
-                print("admin_cors=PASS;api_live=PASS;api_ready=PASS", flush=True)
+                print("pwa_cors=PASS;api_live=PASS;api_ready=PASS", flush=True)
                 return
             time.sleep(2)
-        raise Blocked("admin_cors_preflight_failed")
+        raise Blocked("pwa_cors_preflight_failed")
     except Exception:
         atomic_replace(API_ENV, before, st)
         run(["/usr/bin/systemctl", "restart", SERVICE], timeout=45)
@@ -195,7 +203,7 @@ if __name__ == "__main__":
     try:
         main()
     except Blocked as exc:
-        print("admin_cors=BLOCKED;reason=" + str(exc), file=sys.stderr)
+        print("pwa_cors=BLOCKED;reason=" + str(exc), file=sys.stderr)
         sys.exit(2)
     except Exception:
         print("admin_cors=BLOCKED;reason=operation_failed", file=sys.stderr)
