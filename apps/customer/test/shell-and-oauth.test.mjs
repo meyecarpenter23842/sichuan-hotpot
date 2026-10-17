@@ -4,24 +4,30 @@ import test from "node:test";
 
 const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");
+const nativeGoogle = readFileSync(new URL("../src/auth/google-login.native.ts", import.meta.url), "utf8");
+const webGoogle = readFileSync(new URL("../src/auth/google-login.web.ts", import.meta.url), "utf8");
 const viewport = readFileSync(new URL("../scripts/lock-pwa-viewport.mjs", import.meta.url), "utf8");
 const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
 const appConfig = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"));
 
-test("Google OAuth callbacks are stable on web and Android", () => {
-  assert.match(auth, /redirectUri: Platform\.OS === "web" \? window\.location\.origin \+ "\/" : googleAndroidRedirect/);
-  assert.match(auth, /const googleAndroidRedirect = "vn\.sichuanhotpot\.customer:\/oauthredirect"/);
-  assert.match(auth, /Google\.useIdTokenAuthRequest/);
+test("Google auth is platform-correct on web and Android", () => {
+  assert.match(webGoogle, /Google\.useIdTokenAuthRequest/);
+  assert.match(webGoogle, /window\.location\.origin \+ "\/"/);
+  assert.match(nativeGoogle, /GoogleSignin\.configure/);
+  assert.match(nativeGoogle, /GoogleSignin\.signIn\(\)/);
+  assert.doesNotMatch(nativeGoogle, /oauthredirect|expo-auth-session/);
   assert.equal(appConfig.expo.android.package, "vn.sichuanhotpot.customer");
+  assert.ok(appConfig.expo.plugins.includes("@react-native-google-signin/google-signin"));
   assert.ok(Array.isArray(appConfig.expo.scheme));
   assert.ok(appConfig.expo.scheme.includes("sichuanhotpot"));
   assert.ok(appConfig.expo.scheme.includes("vn.sichuanhotpot.customer"));
 });
 
-test("Google cancel/error states and Android API origin have explicit guards", () => {
-  assert.match(auth, /googleResponse\.type === "cancel" \|\| googleResponse\.type === "dismiss"/);
-  assert.match(auth, /setGoogleBusy\(false\)/);
+test("Google cancel/config errors and Android API origin have explicit guards", () => {
+  assert.match(auth, /response\.type === "cancel"/);
   assert.match(auth, /Bạn đã hủy đăng nhập Google/);
+  assert.match(nativeGoogle, /DEVELOPER_ERROR/);
+  assert.match(nativeGoogle, /package\/SHA-1/);
   assert.match(api, /Platform\.OS !== "web" && isLocal/);
   assert.match(api, /không dùng localhost/);
 });

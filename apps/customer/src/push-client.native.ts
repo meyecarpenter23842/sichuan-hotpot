@@ -40,7 +40,18 @@ async function registerNative(accessToken: string, askPermission: boolean): Prom
     return;
   }
   if (Platform.OS !== "android") return;
-  const device = await Notifications.getDevicePushTokenAsync();
+  let device: Awaited<ReturnType<NotificationsModule["getDevicePushTokenAsync"]>>;
+  try {
+    device = await Notifications.getDevicePushTokenAsync();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error ?? "");
+    if (/firebase|google-services|fcm|messaging/i.test(detail)) {
+      throw new Error(
+        "Bản Android này chưa có cấu hình Firebase Push. Cần đặt apps/customer/google-services.json đúng package vn.sichuanhotpot.customer rồi rebuild ứng dụng.",
+      );
+    }
+    throw new Error("Android chưa đăng ký được push notification. Vui lòng thử lại sau.");
+  }
   if (device.type !== "android" || typeof device.data !== "string") {
     throw new Error("Android chưa lấy được FCM device token.");
   }
