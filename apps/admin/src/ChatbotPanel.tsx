@@ -48,7 +48,8 @@ async function pickJson(): Promise<{ name: string; text: string } | null> {
   const picked = await File.pickFileAsync(undefined, "application/json");
   const file = Array.isArray(picked) ? picked[0] : picked;
   if (!file) return null;
-  return { name: file.name || "service-account.json", text: await file.text() };
+  const pickedName = decodeURIComponent(file.uri.split("/").pop() || "service-account.json");
+  return { name: pickedName, text: await file.text() };
 }
 
 export function ChatbotPanel({ token, branchId, onDirtyChange }: {
