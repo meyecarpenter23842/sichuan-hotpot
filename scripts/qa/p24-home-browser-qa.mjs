@@ -77,6 +77,13 @@ try {
     const promoPopup=page.getByTestId("home-promo-popup");
     await promoPopup.waitFor();
     const promoCard=page.getByTestId("home-promo-card");
+    const promoFrame=page.getByTestId("home-promo-frame");
+    const promoDots=page.getByTestId("home-promo-dots");
+    for(const [label,node] of [["card",promoCard],["frame",promoFrame],["dots",promoDots]]){
+      const background=await node.evaluate(el=>getComputedStyle(el).backgroundColor);
+      assert.ok(background==="rgba(0, 0, 0, 0)"||background==="transparent",
+        "Home popup "+label+" must stay transparent, got "+background);
+    }
     const promoRect=await promoCard.boundingBox();
     assert.ok(promoRect&&promoRect.x>=0&&promoRect.y>=0&&
       promoRect.x+promoRect.width<=width+1&&promoRect.y+promoRect.height<=height+1,
