@@ -35,6 +35,16 @@
           "microphonePermission": false,
           "photosPermission": "Cho phép chọn ảnh danh mục và topping cho thực đơn cửa hàng."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "../../sound-native-android.mp3"
+          ],
+          "defaultChannel": "new-orders-v1",
+          "color": "#B3262D"
+        }
       ]
     ],
     "experiments": {
