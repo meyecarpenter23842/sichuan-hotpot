@@ -17,7 +17,9 @@ test("prebuild enables FCM only when the gitignored descriptor exists", () => {
   assert.match(prebuild, /existsSync\(googleServicesPath\)/);
   assert.match(prebuild, /buildConfig\.expo\.android\.googleServicesFile = "\.\/google-services\.json"/);
   assert.match(prebuild, /writeFileSync\(appJsonPath, originalText\)/);
-  assert.match(prebuild, /process\.platform === "win32" \? "npx\.cmd" : "npx"/);
+  assert.match(prebuild, /spawnSync\(\s*process\.execPath/);
+  assert.match(prebuild, /node_modules", "expo", "bin", "cli"/);
+  assert.doesNotMatch(prebuild, /npx\.cmd|process\.platform === "win32"/);
 });
 
 test("stale native push module cannot crash customer app during module import", () => {
