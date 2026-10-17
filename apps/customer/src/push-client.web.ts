@@ -34,7 +34,7 @@ async function registerWeb(accessToken: string, askPermission: boolean): Promise
     if (permission !== "granted") {
       throw new Error(permission === "denied"
         ? "Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của trình duyệt hoặc thiết bị."
-        : "Chưa cấp quyền thông báo. Anh có thể bật lại khi sẵn sàng.");
+        : "Chưa cấp quyền thông báo. Có thể bật lại khi sẵn sàng.");
     }
   }
   if (Notification.permission !== "granted") return;
