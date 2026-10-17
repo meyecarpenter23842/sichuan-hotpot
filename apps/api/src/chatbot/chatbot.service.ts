@@ -175,7 +175,6 @@ export class ChatbotService {
         headers: {
           Accept: "application/json",
           Authorization: "Bearer " + token,
-          "x-goog-user-project": projectId,
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),

@@ -107,7 +107,7 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
               <View style={s.headerActions}>
                 {config.zaloEnabled ? <Pressable accessibilityRole="link" accessibilityLabel="Mở Zalo hỗ trợ"
                   onPress={openZalo} style={({ pressed }) => [s.zaloButton, pressed && s.headerPressed]}>
-                  <Text style={s.zaloText}>Zalo</Text>
+                  <Text style={s.zaloMark}>Z</Text>
                 </Pressable> : null}
                 <Pressable accessibilityRole="button" accessibilityLabel="Đóng chatbot"
                   onPress={() => setOpen(false)} style={({ pressed }) => [s.close, pressed && s.headerPressed]}>
@@ -182,9 +182,9 @@ const s = StyleSheet.create({
   headerTitle: { color: "#FFFFFF", fontSize: typeScale.action, fontWeight: "800" },
   headerStatus: { color: "#FFE3E4", fontSize: typeScale.caption, marginTop: 2 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  zaloButton: { height: 36, minWidth: 48, borderRadius: 18, paddingHorizontal: 9,
-    borderWidth: 1, borderColor: "rgba(255,255,255,.72)", alignItems: "center", justifyContent: "center" },
-  zaloText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
+  zaloButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0068FF",
+    borderWidth: 2, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  zaloMark: { color: "#FFFFFF", fontSize: 17, lineHeight: 20, fontWeight: "900" },
   close: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   headerPressed: { backgroundColor: "rgba(0,0,0,.14)" },
   messages: { flex: 1, backgroundColor: "#F7F8FA" },
