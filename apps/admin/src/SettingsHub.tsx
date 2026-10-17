@@ -12,13 +12,12 @@ import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { StatusSwitch } from "./StatusSwitch";
 import { Action, Notice } from "./ui";
-import { playOrderChime } from "./order-notifications";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
 
 type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
-  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Âm báo đơn hàng", owner: false },
+  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Banner + âm khi khóa màn", owner: false },
   { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, vị trí GPS", owner: true },
   { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
   { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", hint: "Ảnh, nội dung, lịch hiển thị", owner: true },
@@ -88,21 +87,19 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
             keyboardShouldPersistTaps="handled" nestedScrollEnabled
             showsVerticalScrollIndicator={false}>
             {selected === "alerts" && <View style={{ gap: 12 }}>
-              <Text style={s.note}>Chuông báo đơn mới trên thiết bị này. Trình duyệt cần anh bật
-                âm thanh bằng thao tác chạm; khi ứng dụng đóng, thông báo nền cần Web Push.</Text>
+              <Text style={s.note}>{Platform.OS === "web"
+                ? "Admin PWA dùng banner hệ thống và âm mặc định của điện thoại, kể cả khi khóa màn."
+                : "Android Admin dùng banner hệ thống và âm đơn hàng dài đã đóng gói trong ứng dụng."}</Text>
               <View style={s.toggleRow}>
                 <View style={s.toggleCopy}>
-                  <Text style={s.toggleTitle}>Chuông báo đơn mới</Text>
+                  <Text style={s.toggleTitle}>Thông báo đơn mới</Text>
                   <Text style={s.note}>{chimeEnabled ? "Đang bật trên thiết bị này" : "Đang tắt trên thiết bị này"}</Text>
                 </View>
-                <StatusSwitch value={chimeEnabled} busy={chimePending} label="Chuông báo đơn mới"
-                  onValueChange={next => {
-                    onChimeChange(next);
-                    if (next) playOrderChime();
-                  }} />
+                <StatusSwitch value={chimeEnabled} busy={chimePending} label="Thông báo đơn mới"
+                  onValueChange={onChimeChange} />
               </View>
               {!!chimeError && <Notice text={chimeError} error />}
-              <Text style={s.note}>Đơn chờ lâu vẫn được đánh dấu khi bật lại ứng dụng.</Text>
+              <Text style={s.note}>WebSocket vẫn đồng bộ danh sách đơn; push chỉ chịu trách nhiệm cảnh báo nền/khóa màn.</Text>
             </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
               branch={branch} mode="details" onDirtyChange={setDirty}
