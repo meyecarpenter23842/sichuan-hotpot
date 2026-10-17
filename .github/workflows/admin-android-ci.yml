@@ -59,6 +59,15 @@ jobs:
       - name: Clean Expo prebuild for Admin Android
         run: npm run android:prebuild --workspace @hotpot/admin
 
+      - name: Prove Metro root is pinned to the app directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle_file="apps/admin/android/app/build.gradle"
+          test -s "$gradle_file"
+          grep -Fq 'root = new File(projectRoot)' "$gradle_file"
+          echo "Metro app project root pin: PASS"
+
       - name: Prove Admin launcher is visible to Android
         shell: bash
         run: |

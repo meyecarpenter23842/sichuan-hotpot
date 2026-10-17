@@ -25,6 +25,13 @@ test("prebuild enables FCM only when the gitignored descriptor exists", () => {
   assert.doesNotMatch(prebuild, /npx\.cmd|process\.platform === "win32"/);
 });
 
+
+test("prebuild pins Metro bundling to the app directory for release APKs", () => {
+  assert.match(prebuild, /androidAppBuildGradlePath/);
+  assert.match(prebuild, /root = new File\(projectRoot\)/);
+  assert.match(prebuild, /pinMetroProjectRoot\(\)/);
+});
+
 test("stale native push module cannot crash customer app during module import", () => {
   assert.doesNotMatch(nativePush, /^import \* as Notifications from "expo-notifications";/m);
   assert.match(nativePush, /import\("expo-notifications"\)\.catch\(\(\) => null\)/);
