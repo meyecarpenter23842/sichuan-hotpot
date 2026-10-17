@@ -28,6 +28,29 @@ test("pins Expo Gradle root and overrides Expo CLI after template definition", (
   assert.equal(configureReleaseGradle(patched), patched, "patch must be idempotent");
 });
 
+test("repairs a stale #186 native Gradle project without re-running destructive prebuild", () => {
+  const oldBuildGradle = expoTemplate.replace(/^react \{$/m, "react {\n    root = new File(projectRoot)");
+  const migrated = configureReleaseGradle(oldBuildGradle);
+  assertReleaseGradle(migrated);
+  assert.equal((migrated.match(/^\s*root\s*=/gm) ?? []).length, 1);
+  assert.equal((migrated.match(/^\s*extraPackagerArgs\s*=/gm) ?? []).length, 1);
+  assert.equal(configureReleaseGradle(migrated), migrated, "migration must be repeatable");
+  assert.throws(
+    () => configureReleaseGradle(oldBuildGradle.replace("root = new File(projectRoot)", 'root = file("../../")')),
+    /custom/,
+  );
+});
+
+test("release entrypoints validate and repair existing native Gradle before building", () => {
+  const rootPackage = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  const runner = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
+  assert.equal(rootPackage.scripts["android:release:customer"], "node scripts/android/build-release.mjs customer");
+  assert.equal(rootPackage.scripts["android:release:admin"], "node scripts/android/build-release.mjs admin");
+  assert.match(runner, /configureGeneratedAndroid\(appDirectory\)/);
+  assert.match(runner, /require\.resolve\("object\.assign\/polyfill"\)/);
+  assert.match(runner, /spawnSync\(command, args, \{ cwd: gradleDirectory, stdio: "inherit" \}\)/);
+});
+
 test("Expo embed entry resolves relative to Metro workspace root, not Gradle app root", () => {
   const repo = mkdtempSync(join(tmpdir(), "hotpot-expo-workspace-"));
   try {

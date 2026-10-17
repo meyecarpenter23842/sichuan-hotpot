@@ -8,6 +8,7 @@ on:
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "package-lock.json"
+      - "package.json"
       - ".github/workflows/android-windows-release-ci.yml"
   push:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "package-lock.json"
+      - "package.json"
       - ".github/workflows/android-windows-release-ci.yml"
 
 permissions:
@@ -78,9 +80,8 @@ jobs:
         run: .\gradlew.bat :app:createBundleReleaseJsAndAssets --no-daemon --info
         shell: pwsh
 
-      - name: Assemble installable release APK
-        working-directory: apps/${{ matrix.app }}/android
-        run: .\gradlew.bat :app:assembleRelease --no-daemon --stacktrace
+      - name: Assemble installable release APK with safe local launcher
+        run: npm run android:release:${{ matrix.app }}
         shell: pwsh
 
       - name: Verify APK embeds JavaScript without Metro
