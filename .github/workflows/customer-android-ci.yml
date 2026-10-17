@@ -56,6 +56,15 @@ jobs:
       - name: Clean Expo prebuild for Android without Firebase descriptor
         run: npm run android:prebuild --workspace @hotpot/customer
 
+      - name: Prove Metro root is pinned to the app directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle_file="apps/customer/android/app/build.gradle"
+          test -s "$gradle_file"
+          grep -Fq 'root = new File(projectRoot)' "$gradle_file"
+          echo "Metro app project root pin: PASS"
+
       - name: Assert generated Android app schemes
         shell: bash
         run: |
