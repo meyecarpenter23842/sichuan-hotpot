@@ -41,3 +41,18 @@ test("draft address modal preserves existing selection on cancel, selects only a
   assert.match(address, /setSelectedAddressId\(saved\.id\)/);
   assert.match(address, /setAddressModalOpen\(false\)/);
 });
+
+
+test("Android GPS lookup cannot stay busy forever when emulator has no location", () => {
+  assert.match(address, /Location\.hasServicesEnabledAsync\(\)/);
+  assert.match(address, /setTimeout\(\(\) => reject\(new Error\("GPS_TIMEOUT"\)\), 12000\)/);
+  assert.match(address, /Location\.getLastKnownPositionAsync/);
+  assert.match(address, /setAddressBusy\(false\)/);
+  assert.match(address, /đặt vị trí cho emulator/);
+});
+
+test("Android OSM tile requests identify the app to avoid public-tile blocking", () => {
+  assert.match(native, /"User-Agent": "SichuanHotpot\/0\.2\.0 \(https:\/\/bepsi\.click\)"/);
+  assert.match(native, /headers: OSM_TILE_HEADERS/);
+  assert.match(native, /GPS và nhập tọa độ vẫn dùng được/);
+});
