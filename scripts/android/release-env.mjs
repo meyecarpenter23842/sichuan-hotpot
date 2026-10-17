@@ -23,6 +23,24 @@ export function loadReleaseEnv(appDirectory, initialEnvironment = process.env) {
   return result;
 }
 
+// Customer and Admin share the same NestJS API. An Android Admin release
+// may reuse Customer's local API origin only when Admin has no configuration.
+// Admin's explicit value ALWAYS wins. The caller must inject the inherited
+// origin into Gradle's process environment so Expo embeds the same URL.
+export function resolveAndroidReleaseEnv(repoRoot, app, initialEnvironment = process.env) {
+  const appEnvironment = loadReleaseEnv(join(repoRoot, "apps", app), initialEnvironment);
+  let inheritedFromCustomer = false;
+  if (app === "admin" && !String(appEnvironment.EXPO_PUBLIC_API_BASE_URL || "").trim()) {
+    const customerEnvironment = loadReleaseEnv(join(repoRoot, "apps", "customer"), initialEnvironment);
+    const sharedOrigin = String(customerEnvironment.EXPO_PUBLIC_API_BASE_URL || "").trim();
+    if (sharedOrigin) {
+      appEnvironment.EXPO_PUBLIC_API_BASE_URL = sharedOrigin;
+      inheritedFromCustomer = true;
+    }
+  }
+  return { environment: appEnvironment, inheritedFromCustomer };
+}
+
 export function assertAndroidReleaseEnv(app, env) {
   if (env.EXPO_NO_CLIENT_ENV_VARS === "1") {
     throw new Error("Expo client env inlining is disabled; Android release would not have an API URL.");
