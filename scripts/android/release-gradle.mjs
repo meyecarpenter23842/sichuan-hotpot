@@ -45,11 +45,22 @@ export function configureReleaseGradle(source) {
     assertReleaseGradle(source);
     return source;
   }
-  // Never overwrite a future Expo template's custom bundling args unnoticed.
-  if (/^\s*(?!\/\/)(?:root|extraPackagerArgs)\s*=/m.test(source)) {
-    throw new Error("Unexpected custom React Native Gradle root/packager args; review before patching.");
+  // PR #186 generated projects already contain this exact root pin. Upgrade
+  // those Android folders in place: never require a destructive --clean prebuild.
+  const existingRoots = [...source.matchAll(/^\s*root\s*=\s*(.+)$/gm)];
+  if (
+    existingRoots.length > 1 ||
+    (existingRoots.length === 1 && existingRoots[0][1].trim() !== "new File(projectRoot)")
+  ) {
+    throw new Error("Unexpected custom React Native Gradle root; review before patching.");
   }
-  const rooted = source.replace(/^react \{$/m, `react {\n${ROOT_PIN}`);
+  // Preserve user-defined bundling options rather than silently overriding them.
+  if (/^\s*extraPackagerArgs\s*=/m.test(source) || /^\s*cliFile\s*=\s*new File\(projectRoot/m.test(source)) {
+    throw new Error("Unexpected custom React Native Gradle CLI/packager args; review before patching.");
+  }
+  const rooted = existingRoots.length
+    ? source
+    : source.replace(/^react \{$/m, `react {\n${ROOT_PIN}`);
   const patched = rooted.replace(/^(\s*bundleCommand\s*=\s*"export:embed"\s*)$/m, `$1\n${CLI_PIN}`);
   assertReleaseGradle(patched);
   return patched;
@@ -82,13 +93,15 @@ export function configureGeneratedAndroid(appDirectory) {
   console.log(`Android release: Expo entry ${resolvedEntry}; Expo launcher rooted at ${appDirectory}`);
 }
 
-// Inspect generated Gradle in CI without altering the native project.
+// Inspect by default, or safely repair an existing native project in place.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const app = process.argv[2];
+  const repair = process.argv[2] === "--repair";
+  const app = process.argv[repair ? 3 : 2];
   if (!["customer", "admin"].includes(app)) {
-    throw new Error("Usage: node scripts/android/release-gradle.mjs customer|admin");
+    throw new Error("Usage: node scripts/android/release-gradle.mjs [--repair] customer|admin");
   }
   const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "apps", app);
-  assertReleaseGradle(readFileSync(join(appDirectory, "android", "app", "build.gradle"), "utf8"));
+  if (repair) configureGeneratedAndroid(appDirectory);
+  else assertReleaseGradle(readFileSync(join(appDirectory, "android", "app", "build.gradle"), "utf8"));
   console.log(`${app} release Gradle contract: PASS`);
 }
