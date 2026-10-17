@@ -31,14 +31,14 @@ test("Admin inherits Customer HTTPS API only when its own release config is abse
     mkdirSync(join(root, "apps", "customer"), { recursive: true });
     mkdirSync(join(root, "apps", "admin"), { recursive: true });
     writeFileSync(join(root, "apps", "customer", ".env.local"),
-      "EXPO_PUBLIC_API_BASE_URL=https://customer-api.example.com\\n");
+      "EXPO_PUBLIC_API_BASE_URL=https://customer-api.example.com\n");
     const fallback = resolveAndroidReleaseEnv(root, "admin", {});
     assert.equal(fallback.environment.EXPO_PUBLIC_API_BASE_URL, "https://customer-api.example.com");
     assert.equal(fallback.inheritedFromCustomer, true);
     assertAndroidReleaseEnv("admin", fallback.environment);
 
     writeFileSync(join(root, "apps", "admin", ".env.local"),
-      "EXPO_PUBLIC_API_BASE_URL=https://admin-api.example.com\\n");
+      "EXPO_PUBLIC_API_BASE_URL=https://admin-api.example.com\n");
     const override = resolveAndroidReleaseEnv(root, "admin", {});
     assert.equal(override.environment.EXPO_PUBLIC_API_BASE_URL, "https://admin-api.example.com");
     assert.equal(override.inheritedFromCustomer, false);
