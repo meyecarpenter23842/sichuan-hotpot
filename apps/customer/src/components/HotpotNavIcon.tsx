@@ -1,34 +1,43 @@
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React from "react";
-import { Image, StyleSheet, View } from "react-native";
+import { View } from "react-native";
 
-// Cropped directly from the owner-provided Sichuan Hotpot icon sheet.
-// One 336x56 transparent atlas, 12 columns x 2 states. No emoji or font-icon substitution.
-const navigationSheet = require("../../assets/sheet-navigation.png");
-const columns = {
-  home: 0, search: 1, menu: 2, categories: 3, hotpot: 4, chili: 5,
-  cart: 6, orders: 7, favorites: 8, notifications: 9, user: 10, settings: 11,
+const glyphs = {
+  home: ["home-variant-outline", "home-variant"],
+  search: ["magnify", "magnify"],
+  menu: ["silverware-fork-knife", "silverware-fork-knife"],
+  categories: ["shape-outline", "shape"],
+  hotpot: ["pot-steam-outline", "pot-steam"],
+  chili: ["chili-mild-outline", "chili-mild"],
+  cart: ["cart-outline", "cart"],
+  orders: ["receipt-text-outline", "receipt-text"],
+  favorites: ["heart-outline", "heart"],
+  notifications: ["bell-outline", "bell"],
+  user: ["account-outline", "account"],
+  settings: ["cog-outline", "cog"],
 } as const;
 
-export type HotpotNavIconName = keyof typeof columns;
+export type HotpotNavIconName = keyof typeof glyphs;
 
+/** Crisp vector icons for navigation/actions; never crop icons from bitmap reference sheets. */
 export function HotpotNavIcon({ name, active = false, size = 24 }: {
   name: HotpotNavIconName;
   active?: boolean;
   size?: number;
 }) {
-  const col = columns[name];
-  const sheetScale = size / 28;
+  const glyph = glyphs[name][active ? 1 : 0];
   return (
-    <View testID={"icon-" + name + (active ? "-active" : "")}
-      accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-      style={[styles.clip, { width: size, height: size }]}>
-      <Image source={navigationSheet} resizeMode="stretch" fadeDuration={0}
-        style={{ position: "absolute", left: -col * size, top: active ? -size : 0,
-          width: 336 * sheetScale, height: 56 * sheetScale }} />
+    <View
+      testID={"icon-" + name + (active ? "-active" : "")}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
+    >
+      <MaterialCommunityIcons
+        name={glyph as never}
+        size={size}
+        color={active ? "#B3262D" : "#667085"}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  clip: { overflow: "hidden", flexShrink: 0 },
-});
