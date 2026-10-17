@@ -93,11 +93,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for apk in             apps/admin/android/app/build/outputs/apk/debug/app-debug.apk             apps/admin/android/app/build/outputs/apk/release/app-release.apk
+          for apk in apps/admin/android/app/build/outputs/apk/debug/app-debug.apk apps/admin/android/app/build/outputs/apk/release/app-release.apk
           do
             test -s "$apk"
-            unzip -p "$apk" res/raw/new_order_alert.mp3 > "$RUNNER_TEMP/packed-order-sound.mp3"
-            cmp sound-native-android.mp3 "$RUNNER_TEMP/packed-order-sound.mp3"
+            found=0
+            while IFS= read -r entry; do
+              if unzip -p "$apk" "$entry" | cmp -s sound-native-android.mp3 -; then
+                echo "Approved order sound found in $apk as $entry"
+                found=1
+                break
+              fi
+            done < <(unzip -Z1 "$apk" | grep -E '^res/.*\.mp3$' || true)
+            if [ "$found" -ne 1 ]; then
+              echo "::error::Approved order sound bytes were not found in $apk."
+              unzip -Z1 "$apk" | grep -E '^res/.*\.mp3$' || true
+              exit 1
+            fi
           done
           echo "Admin custom order sound packaged in debug + release-equivalent APKs: PASS"
 
