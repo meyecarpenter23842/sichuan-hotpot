@@ -148,13 +148,11 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
     if (busy || googleBusy || !googleConfigured || !googleRequest) return;
     setError(""); setInfo(""); setGoogleBusy(true);
     try {
-      const result = await googlePrompt();
-      if (result.type !== "success" && result.type !== "opened") {
-        setGoogleBusy(false);
-      }
+      await googlePrompt();
     } catch {
-      setGoogleBusy(false);
       setError("Không mở được Google. Vui lòng thử lại.");
+    } finally {
+      setGoogleBusy(false);
     }
   }
 
