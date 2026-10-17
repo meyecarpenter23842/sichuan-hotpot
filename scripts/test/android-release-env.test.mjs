@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { assertAndroidReleaseEnv, loadReleaseEnv } from "../android/release-env.mjs";
+import { assertAndroidReleaseEnv, loadReleaseEnv, resolveAndroidReleaseEnv } from "../android/release-env.mjs";
 
 const valid = {
   EXPO_PUBLIC_API_BASE_URL: "https://api.example.com",
@@ -22,6 +22,28 @@ test("Expo release env honors process values and production dotenv priority", ()
     assert.equal(loadReleaseEnv(dir, { EXPO_NO_DOTENV: "1" }).EXPO_PUBLIC_API_BASE_URL, undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Admin inherits Customer HTTPS API only when its own release config is absent", () => {
+  const root = mkdtempSync(join(tmpdir(), "hotpot-shared-api-"));
+  try {
+    mkdirSync(join(root, "apps", "customer"), { recursive: true });
+    mkdirSync(join(root, "apps", "admin"), { recursive: true });
+    writeFileSync(join(root, "apps", "customer", ".env.local"),
+      "EXPO_PUBLIC_API_BASE_URL=https://customer-api.example.com\\n");
+    const fallback = resolveAndroidReleaseEnv(root, "admin", {});
+    assert.equal(fallback.environment.EXPO_PUBLIC_API_BASE_URL, "https://customer-api.example.com");
+    assert.equal(fallback.inheritedFromCustomer, true);
+    assertAndroidReleaseEnv("admin", fallback.environment);
+
+    writeFileSync(join(root, "apps", "admin", ".env.local"),
+      "EXPO_PUBLIC_API_BASE_URL=https://admin-api.example.com\\n");
+    const override = resolveAndroidReleaseEnv(root, "admin", {});
+    assert.equal(override.environment.EXPO_PUBLIC_API_BASE_URL, "https://admin-api.example.com");
+    assert.equal(override.inheritedFromCustomer, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -57,7 +79,8 @@ test("Admin exposes invalid API config instead of mislabeling it as network outa
 test("release builder validates runtime env and can show signer fingerprint", () => {
   const script = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
   const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
-  assert.match(script, /assertAndroidReleaseEnv\(app, loadReleaseEnv\(appDirectory\)\)/);
+  assert.match(script, /resolveAndroidReleaseEnv\(repoRoot, app\)/);
+  assert.match(script, /process\.env\.EXPO_PUBLIC_API_BASE_URL = buildEnvironment\.EXPO_PUBLIC_API_BASE_URL/);
   assert.equal(manifest.scripts["android:sha1:customer"], "node scripts/android/apk-fingerprint.mjs customer");
   assert.equal(manifest.scripts["android:sha1:admin"], "node scripts/android/apk-fingerprint.mjs admin");
 });
