@@ -33,7 +33,7 @@ export function assertAndroidReleaseEnv(app, env) {
   try { parsed = new URL(base); } catch { /* handled below */ }
   if (
     !parsed || parsed.protocol !== "https:" ||
-    parsed.origin !== base.replace(/\\/$/, "") ||
+    parsed.origin !== (base.endsWith("/") ? base.slice(0, -1) : base) ||
     parsed.username || parsed.password ||
     (!ciPlaceholder && (parsed.hostname.endsWith(".invalid") || parsed.hostname === "localhost"))
   ) {
