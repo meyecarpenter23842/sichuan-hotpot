@@ -112,6 +112,7 @@ model Branch {
   homeHeroSlides    HomeHeroSlide[]
   homePopupConfig   HomePopupConfig?
   homePopupSlides   HomePopupSlide[]
+  chatbotConfig     ChatbotConfig?
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
@@ -703,4 +704,24 @@ model HomePopupSlide {
   branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   @@index([branchId, enabled, sortOrder])
+}
+
+
+model ChatbotConfig {
+  branchId                 String   @id @db.Uuid
+  enabled                  Boolean  @default(false)
+  zaloEnabled              Boolean  @default(true)
+  projectId                String?  @db.VarChar(128)
+  credentialCiphertext     String?  @db.Text
+  credentialIv             String?  @db.VarChar(64)
+  credentialTag            String?  @db.VarChar(64)
+  agentResourceName        String?  @db.VarChar(512)
+  agentDisplayName         String?  @db.VarChar(200)
+  agentLocation            String?  @db.VarChar(64)
+  defaultLanguageCode      String?  @db.VarChar(24)
+  environmentResourceName  String?  @db.VarChar(512)
+  environmentDisplayName   String?  @db.VarChar(200)
+  revision                 Int      @default(0)
+  updatedAt                DateTime @updatedAt @db.Timestamptz(6)
+  branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
 }
