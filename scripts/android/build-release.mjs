@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configureGeneratedAndroid } from "./release-gradle.mjs";
-import { assertAndroidReleaseEnv, loadReleaseEnv } from "./release-env.mjs";
+import { assertAndroidReleaseEnv, resolveAndroidReleaseEnv } from "./release-env.mjs";
 
 const require = createRequire(import.meta.url);
 const app = process.argv[2];
@@ -32,7 +32,13 @@ try {
 
 // Refuse to produce an installable-but-offline APK with empty or placeholder
 // runtime configuration. Expo inlines EXPO_PUBLIC_* at bundle creation time.
-const runtime = assertAndroidReleaseEnv(app, loadReleaseEnv(appDirectory));
+const { environment: buildEnvironment, inheritedFromCustomer } =
+  resolveAndroidReleaseEnv(repoRoot, app);
+const runtime = assertAndroidReleaseEnv(app, buildEnvironment);
+if (inheritedFromCustomer) {
+  process.env.EXPO_PUBLIC_API_BASE_URL = buildEnvironment.EXPO_PUBLIC_API_BASE_URL;
+  console.log("Admin Android: using the shared Customer API origin (no Admin override found).");
+}
 if (runtime.isCiPlaceholder) {
   console.log("CI-only APK: placeholder API/OAuth values, not a production distribution build.");
 }
