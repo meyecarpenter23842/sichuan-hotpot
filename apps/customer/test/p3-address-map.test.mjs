@@ -45,7 +45,9 @@ test("draft address modal preserves existing selection on cancel, selects only a
 
 test("Android GPS lookup cannot stay busy forever when emulator has no location", () => {
   assert.match(address, /Location\.hasServicesEnabledAsync\(\)/);
-  assert.match(address, /setTimeout\(\(\) => reject\(new Error\("GPS_TIMEOUT"\)\), 12000\)/);
+  assert.match(address, /Location\.watchPositionAsync/);
+  assert.match(address, /accuracy: Location\.Accuracy\.Highest/);
+  assert.match(address, /setTimeout\(\(\) => \{\s*finish\(\(\) => reject\(new Error\("GPS_TIMEOUT"\)\)\);\s*\}, 12000\)/s);
   assert.match(address, /Location\.getLastKnownPositionAsync/);
   assert.match(address, /setAddressBusy\(false\)/);
   assert.match(address, /đặt vị trí cho emulator/);
