@@ -22,13 +22,13 @@ self.addEventListener("notificationclick", event => {
   const target = event.notification.data && typeof event.notification.data.url === "string"
     ? event.notification.data.url : "/";
   event.waitUntil((async () => {
-    const all = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of all) {
       if ("focus" in client) {
         if ("navigate" in client) await client.navigate(target);
         return client.focus();
       }
     }
-    return clients.openWindow(target);
+    return self.clients.openWindow(target);
   })());
 });
