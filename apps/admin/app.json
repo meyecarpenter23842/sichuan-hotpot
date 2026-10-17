@@ -39,13 +39,11 @@
       [
         "expo-notifications",
         {
-          "sounds": [
-            "../../sound-native-android.mp3"
-          ],
           "defaultChannel": "new-orders-v1",
           "color": "#B3262D"
         }
-      ]
+      ],
+      "./plugins/with-order-sound.cjs"
     ],
     "experiments": {
       "tsconfigPaths": true
