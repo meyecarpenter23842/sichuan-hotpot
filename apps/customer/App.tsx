@@ -644,14 +644,44 @@ function CustomerApp() {
       if (permission.status !== "granted") {
         throw new Error("Bạn chưa cho phép truy cập vị trí. Có thể nhập tọa độ thủ công.");
       }
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        throw new Error("Dịch vụ vị trí đang tắt. Hãy bật Vị trí/Location trên thiết bị rồi thử lại.");
+      }
+
+      let position: Location.LocationObject | null = null;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        position = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_resolve, reject) => {
+            timeoutId = setTimeout(() => reject(new Error("GPS_TIMEOUT")), 12000);
+          }),
+        ]);
+      } catch (error) {
+        const lastKnown = await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60 * 1000,
+          requiredAccuracy: 1000,
+        }).catch(() => null);
+        if (!lastKnown) {
+          if (error instanceof Error && error.message === "GPS_TIMEOUT") {
+            throw new Error("Thiết bị chưa trả vị trí GPS. Hãy bật Vị trí/Location hoặc đặt vị trí cho emulator rồi thử lại.");
+          }
+          throw error;
+        }
+        position = lastKnown;
+        setNotice("GPS hiện tại chưa phản hồi; đang dùng vị trí gần nhất của thiết bị để đặt ghim.");
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+
       setAddress(old => ({
         ...old, latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
       }));
-      setNotice("Đã lấy GPS. Kiểm tra lại số nhà, tên đường và vị trí ghim trước khi đặt.");
+      if (!notice.includes("vị trí gần nhất")) {
+        setNotice("Đã lấy GPS. Kiểm tra lại số nhà, tên đường và vị trí ghim trước khi đặt.");
+      }
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lấy được GPS.");
     } finally {
