@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const read = p => readFileSync(new URL(p, import.meta.url), "utf8");
 const fee = read("../src/DeliveryPolicyPanel.tsx");
-const chime = read("../src/order-notifications.ts");
+const nativePush = read("../src/push-client.native.ts");
+const soundPlugin = read("../plugins/with-order-sound.cjs");
 const ws = read("../src/order-realtime.ts");
 
 test("owner zone pricing is editable inside the delivery settings overlay", () => {
@@ -16,8 +17,12 @@ test("owner zone pricing is editable inside the delivery settings overlay", () =
   assert.match(fee, /normalize\(current\)/);
   assert.doesNotMatch(fee, /Phụ thu theo quãng đường/);
 });
-test("new double-ring chime lasts approximately three seconds; ws cleanup is safe", () => {
-  assert.match(chime, /for \(const offset of \[0, 1\.5\]\)/);
-  assert.match(chime, /oscillator\.stop\(start \+ offset \+ 1\.20\)/);
+
+test("Android Admin uses approved packaged long-sound channel; websocket cleanup remains safe", () => {
+  assert.match(nativePush, /setNotificationChannelAsync\("new-orders-v1"/);
+  assert.match(nativePush, /sound: "new_order_alert\.mp3"/);
+  assert.match(nativePush, /AndroidImportance\.MAX/);
+  assert.match(soundPlugin, /sound-native-android\.mp3/);
+  assert.match(soundPlugin, /new_order_alert\.mp3/);
   assert.match(ws, /pending\.readyState === WebSocket\.CONNECTING/);
 });
