@@ -651,18 +651,38 @@ function CustomerApp() {
 
       let position: Location.LocationObject | null = null;
       let usedLastKnown = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       try {
-        position = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise<never>((_resolve, reject) => {
-            timeoutId = setTimeout(() => reject(new Error("GPS_TIMEOUT")), 12000);
-          }),
-        ]);
+        position = await new Promise<Location.LocationObject>((resolve, reject) => {
+          let settled = false;
+          let subscription: { remove(): void } | null = null;
+          const finish = (callback: () => void) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            subscription?.remove();
+            callback();
+          };
+          const timeoutId = setTimeout(() => {
+            finish(() => reject(new Error("GPS_TIMEOUT")));
+          }, 12000);
+
+          void Location.watchPositionAsync({
+            accuracy: Location.Accuracy.Highest,
+            timeInterval: 250,
+            distanceInterval: 0,
+          }, next => {
+            finish(() => resolve(next));
+          }).then(value => {
+            subscription = value;
+            if (settled) value.remove();
+          }).catch(error => {
+            finish(() => reject(error));
+          });
+        });
       } catch (error) {
         const lastKnown = await Location.getLastKnownPositionAsync({
-          maxAge: 5 * 60 * 1000,
-          requiredAccuracy: 1000,
+          maxAge: 10 * 60 * 1000,
+          requiredAccuracy: 5000,
         }).catch(() => null);
         if (!lastKnown) {
           if (error instanceof Error && error.message === "GPS_TIMEOUT") {
@@ -672,8 +692,6 @@ function CustomerApp() {
         }
         position = lastKnown;
         usedLastKnown = true;
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
       }
 
       if (!position) throw new Error("Không lấy được GPS.");

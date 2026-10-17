@@ -4,7 +4,7 @@ import {
   Animated, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiRequest } from "../api";
 import { palette, typeScale } from "../theme";
 
@@ -78,6 +78,7 @@ function AssistantBubble({ children }: { children: React.ReactNode }) {
 
 export function ChatbotWidget({ branchId, active }: { branchId: string; active: boolean }) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [config, setConfig] = useState<PublicChatbotConfig | null>(null);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -133,17 +134,18 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
   if (!active || !config || (!config.enabled && !config.zaloEnabled)) return null;
   const panelWidth = Math.min(390, Math.max(290, width - 20));
   const panelHeight = Math.min(580, Math.max(320, height - 118));
+  const bottomClearance = 78 + Math.max(0, insets.bottom);
 
   return <>
     <Pressable testID="chatbot-fab" accessibilityRole="button" accessibilityLabel="Mở hỗ trợ trực tuyến"
       onPress={() => { setOpen(true); setError(""); }}
-      style={({ pressed }) => [s.fab, pressed && s.pressed]}>
+      style={({ pressed }) => [s.fab, { bottom: bottomClearance }, pressed && s.pressed]}>
       <BotAvatar size={48} />
     </Pressable>
 
     <Modal visible={open} transparent animationType="fade" statusBarTranslucent
       onRequestClose={() => setOpen(false)}>
-      <View style={s.overlay}>
+      <View style={[s.overlay, { paddingBottom: Math.max(72, bottomClearance - 6) }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Đóng khung hỗ trợ"
           style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -223,14 +225,14 @@ export function ChatbotWidget({ branchId, active }: { branchId: string; active: 
 }
 
 const s = StyleSheet.create({
-  fab: { position: "absolute", right: 14, bottom: 76, zIndex: 70, width: 56, height: 56,
+  fab: { position: "absolute", right: 14, zIndex: 70, width: 56, height: 56,
     borderRadius: 28, padding: 2, backgroundColor: "#FFFFFF", borderWidth: 2, borderColor: palette.red,
     alignItems: "center", justifyContent: "center", overflow: "hidden",
     elevation: 8, shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 } },
   pressed: { opacity: 0.78 },
   overlay: { flex: 1, alignItems: "flex-end", justifyContent: "flex-end",
-    paddingHorizontal: 10, paddingBottom: 70, backgroundColor: "rgba(16,12,12,.20)" },
+    paddingHorizontal: 10, backgroundColor: "rgba(16,12,12,.20)" },
   panelWrap: { maxWidth: "100%" },
   card: { maxHeight: "100%", borderRadius: 18, overflow: "hidden", backgroundColor: palette.white,
     borderWidth: 1, borderColor: "#D9DDE3", elevation: 14, shadowColor: "#000000",
