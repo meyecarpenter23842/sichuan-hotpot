@@ -59,6 +59,16 @@ jobs:
       - name: Clean Expo prebuild for Admin Android
         run: npm run android:prebuild --workspace @hotpot/admin
 
+      - name: Prove Admin launcher is visible to Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="apps/admin/android/app/src/main/AndroidManifest.xml"
+          test -s "$manifest"
+          grep -Fq 'android.intent.action.MAIN' "$manifest"
+          grep -Fq 'android.intent.category.LAUNCHER' "$manifest"
+          echo "Admin MAIN/LAUNCHER activity: PASS"
+
       - name: Prove approved order sound is generated as Android raw resource
         shell: bash
         run: |

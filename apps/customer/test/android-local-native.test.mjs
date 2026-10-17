@@ -10,7 +10,10 @@ const nativePush = readFileSync(new URL("../src/push-client.native.ts", import.m
 test("local Android prebuild does not require Firebase or Google Maps config", () => {
   assert.doesNotMatch(appJson, /googleServicesFile/);
   assert.doesNotMatch(appJson, /googleMaps|GOOGLE_MAPS_ANDROID_KEY|mapsApiKey/i);
-  assert.match(packageJson, /"android:prebuild": "node scripts\/prebuild-android\.mjs"/);
+  assert.match(
+    packageJson,
+    /"android:prebuild": "npm run icons:generate && node scripts\/prebuild-android\.mjs"/,
+  );
 });
 
 test("prebuild enables FCM only when the gitignored descriptor exists", () => {
