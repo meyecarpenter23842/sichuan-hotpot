@@ -12,7 +12,8 @@ jobs:
     if: >-
       github.event.issue.number == 3 &&
       github.event.issue.pull_request == null &&
-      github.event.comment.body == '/fix-hotpot-pwa-cors' &&
+      (github.event.comment.body == '/fix-hotpot-pwa-cors' ||
+       github.event.comment.body == '/fix-hotpot-admin-cors') &&
       github.actor == 'meyecarpenter23842'
     environment: production-api
     runs-on: ubuntu-latest
@@ -55,12 +56,12 @@ jobs:
             -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
           outcome="$(ssh "${ssh_opts[@]}" "$VPS_USER@$VPS_HOST" \
             'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-admin-cors.py 2>&1)" || {
-            echo "::error::Admin CORS update blocked; VPS helper restores the previous API config if necessary."
+            echo "::error::PWA CORS update blocked; VPS helper restores the previous API config if necessary."
             printf '%s\n' "$outcome" | grep -E '^pwa_cors=BLOCKED;reason=[a-z_]+$' || true
             exit 1
           }
           grep -Eq '^pwa_cors=(PASS|ALREADY_READY);api_live=PASS;api_ready=PASS$' <<< "$outcome" || {
-            echo "::error::Admin CORS proof missing."
+            echo "::error::PWA CORS proof missing."
             exit 1
           }
           echo "Customer/Admin API CORS and HTTPS/loopback health: PASS"
