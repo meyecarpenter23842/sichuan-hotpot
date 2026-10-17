@@ -32,7 +32,8 @@
     "react-native-safe-area-context": "5.6.2",
     "react-native-web": "0.21.4",
     "leaflet": "1.9.4",
-    "react-native-maps": "1.20.1"
+    "react-native-maps": "1.20.1",
+    "@expo/vector-icons": "^15.0.3"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
