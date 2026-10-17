@@ -1,4 +1,4 @@
-name: Fix Admin PWA production CORS (owner only)
+name: Fix PWA production CORS (owner only)
 on:
   issue_comment:
     types: [created]
@@ -12,7 +12,8 @@ jobs:
     if: >-
       github.event.issue.number == 3 &&
       github.event.issue.pull_request == null &&
-      github.event.comment.body == '/fix-hotpot-admin-cors' &&
+      (github.event.comment.body == '/fix-hotpot-pwa-cors' ||
+       github.event.comment.body == '/fix-hotpot-admin-cors') &&
       github.actor == 'meyecarpenter23842'
     environment: production-api
     runs-on: ubuntu-latest
@@ -40,7 +41,7 @@ jobs:
           (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
           test -n "$VPS_HOST" && test -n "$VPS_DEPLOY_SSH_KEY" && test -n "$VPS_KNOWN_HOSTS"
           python3 -m unittest discover -s infra/vps/tests -p test_admin_cors.py -v
-      - name: Apply narrow Admin CORS allowlist and verify API with rollback
+      - name: Apply Customer/Admin CORS allowlist and verify API with rollback
         shell: bash
         run: |
           set -euo pipefail
@@ -55,15 +56,15 @@ jobs:
             -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" -o ConnectTimeout=10)
           outcome="$(ssh "${ssh_opts[@]}" "$VPS_USER@$VPS_HOST" \
             'sudo -n /usr/bin/python3 -' < infra/vps/hotpot-admin-cors.py 2>&1)" || {
-            echo "::error::Admin CORS update blocked; VPS helper restores the previous API config if necessary."
-            printf '%s\n' "$outcome" | grep -E '^admin_cors=BLOCKED;reason=[a-z_]+$' || true
+            echo "::error::PWA CORS update blocked; VPS helper restores the previous API config if necessary."
+            printf '%s\n' "$outcome" | grep -E '^pwa_cors=BLOCKED;reason=[a-z_]+$' || true
             exit 1
           }
-          grep -Eq '^admin_cors=(PASS|ALREADY_READY);api_live=PASS;api_ready=PASS$' <<< "$outcome" || {
-            echo "::error::Admin CORS proof missing."
+          grep -Eq '^pwa_cors=(PASS|ALREADY_READY);api_live=PASS;api_ready=PASS$' <<< "$outcome" || {
+            echo "::error::PWA CORS proof missing."
             exit 1
           }
-          echo "Admin API POST/PATCH/PUT CORS and HTTPS/loopback health: PASS"
+          echo "Customer/Admin API CORS and HTTPS/loopback health: PASS"
       - name: Remove temporary SSH material
         if: always()
         shell: bash

@@ -21,6 +21,8 @@ class NarrowCORSChangeTests(unittest.TestCase):
         self.assertIn(module.CUSTOMER.encode(), result)
         self.assertIn(module.ADMIN.encode(), result)
         self.assertIn(module.ADMIN_CUSTOM.encode(), result)
+        self.assertIn(module.CUSTOMER_CUSTOM.encode(), result)
+        self.assertIn(module.CUSTOMER_BARE.encode(), result)
         self.assertEqual(result.count(b"CORS_ALLOWED_ORIGINS="), 1)
         self.assertEqual(module.rewrite_content(result), (result, False))
 
@@ -29,7 +31,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
                 b"https://bepsi.click\r\nJWT_SECRET=placeholder\r\n")
         modified, changed = module.rewrite_content(data)
         self.assertTrue(changed)
-        self.assertIn(b"https://bepsi.click,https://sichuan-hotpot-admin.vercel.app,https://admin.bepsi.click\r\n", modified)
+        self.assertIn(b"https://bepsi.click,https://www.bepsi.click,https://sichuan-hotpot-admin.vercel.app,https://admin.bepsi.click\r\n", modified)
         self.assertTrue(modified.endswith(b"JWT_SECRET=placeholder\r\n"))
 
     def test_fail_closed_missing_duplicate_or_invalid_origins(self):
@@ -63,7 +65,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
     def test_owner_only_no_auto_deploy_and_rollback(self):
         code = (ROOT / "hotpot-admin-cors.py").read_text()
         workflow = (ROOT.parents[1] / ".github/workflows/vps-admin-cors-owner.yml").read_text()
-        self.assertIn("github.event.comment.body == '/fix-hotpot-admin-cors'", workflow)
+        self.assertIn("github.event.comment.body == '/fix-hotpot-pwa-cors'", workflow)
         self.assertIn("github.actor == 'meyecarpenter23842'", workflow)
         self.assertIn("environment: production-api", workflow)
         self.assertIn("StrictHostKeyChecking=yes", workflow)
@@ -72,7 +74,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
             self.assertNotIn(auto, workflow)
         self.assertIn('atomic_replace(API_ENV, before, st)', code)
         self.assertIn('run(["/usr/bin/systemctl", "restart", SERVICE]', code)
-        self.assertIn('admin_cors=BLOCKED;reason=', code)
+        self.assertIn('pwa_cors=BLOCKED;reason=', code)
 
 
 if __name__ == "__main__":
