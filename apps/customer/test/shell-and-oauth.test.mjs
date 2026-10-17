@@ -5,10 +5,25 @@ import test from "node:test";
 const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const auth = readFileSync(new URL("../src/screens/AuthScreen.tsx", import.meta.url), "utf8");
 const viewport = readFileSync(new URL("../scripts/lock-pwa-viewport.mjs", import.meta.url), "utf8");
+const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
+const appConfig = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"));
 
-test("Google Web OAuth has a stable root callback", () => {
-  assert.match(auth, /redirectUri: Platform\.OS === "web" \? window\.location\.origin \+ "\/"/);
+test("Google OAuth callbacks are stable on web and Android", () => {
+  assert.match(auth, /redirectUri: Platform\.OS === "web" \? window\.location\.origin \+ "\/" : googleAndroidRedirect/);
+  assert.match(auth, /const googleAndroidRedirect = "vn\.sichuanhotpot\.customer:\/oauthredirect"/);
   assert.match(auth, /Google\.useIdTokenAuthRequest/);
+  assert.equal(appConfig.expo.android.package, "vn.sichuanhotpot.customer");
+  assert.ok(Array.isArray(appConfig.expo.scheme));
+  assert.ok(appConfig.expo.scheme.includes("sichuanhotpot"));
+  assert.ok(appConfig.expo.scheme.includes("vn.sichuanhotpot.customer"));
+});
+
+test("Google cancel/error states and Android API origin have explicit guards", () => {
+  assert.match(auth, /googleResponse\.type === "cancel" \|\| googleResponse\.type === "dismiss"/);
+  assert.match(auth, /setGoogleBusy\(false\)/);
+  assert.match(auth, /Bạn đã hủy đăng nhập Google/);
+  assert.match(api, /Platform\.OS !== "web" && isLocal/);
+  assert.match(api, /không dùng localhost/);
 });
 
 test("homepage is search-free while Menu retains search", () => {

@@ -19,10 +19,13 @@ permissions:
 jobs:
   android-debug:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       CI: "1"
       EXPO_NO_DOTENV: "1"
+      EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: "ci-web.apps.googleusercontent.com"
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: "ci-android.apps.googleusercontent.com"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +56,16 @@ jobs:
       - name: Clean Expo prebuild for Android without Firebase descriptor
         run: npm run android:prebuild --workspace @hotpot/customer
 
+      - name: Assert generated Android OAuth callback schemes
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="apps/customer/android/app/src/main/AndroidManifest.xml"
+          test -s "$manifest"
+          grep -Fq 'android:scheme="sichuanhotpot"' "$manifest"
+          grep -Fq 'android:scheme="vn.sichuanhotpot.customer"' "$manifest"
+          echo "Android OAuth callback schemes: PASS"
+
       - name: Assert generated native project has no Google Maps SDK residue
         shell: bash
         run: |
@@ -79,6 +92,10 @@ jobs:
         working-directory: apps/customer/android
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Build customer release-equivalent APK
+        working-directory: apps/customer/android
+        run: ./gradlew :app:assembleRelease --no-daemon
+
       - name: Archive Android dependency proof
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,5 +110,13 @@ jobs:
         with:
           name: customer-android-debug-apk
           path: apps/customer/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Archive customer release-equivalent APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-android-release-equivalent-apk
+          path: apps/customer/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7

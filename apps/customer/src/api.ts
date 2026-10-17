@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export class ApiRequestError extends Error {
   constructor(message: string, public readonly status: number) {
     super(message);
@@ -184,7 +186,11 @@ const customerBusinessErrors: Readonly<Record<string, string>> = {
 };
 
 export function apiBaseUrl(): string {
-  if (!configured || (!validApi.test(configured) && !localApi.test(configured))) {
+  const isLocal = localApi.test(configured);
+  if (Platform.OS !== "web" && isLocal) {
+    throw new Error("Ứng dụng Android phải dùng API HTTPS có thể truy cập từ thiết bị, không dùng localhost.");
+  }
+  if (!configured || (!validApi.test(configured) && !(Platform.OS === "web" && isLocal))) {
     throw new Error("Chưa cấu hình HTTPS EXPO_PUBLIC_API_BASE_URL cho ứng dụng.");
   }
   return configured.replace(/\/+$/, "");
