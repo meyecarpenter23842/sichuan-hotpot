@@ -51,11 +51,13 @@ test("L07 unsaved weekly hours remain local until API PUT", () => {
   assert.match(hours, /busy=\{saving\}/);
 });
 
-test("L07 chime preference persists per-device and serializes rapid toggles", () => {
+test("L07 notification preference persists only after device registration and serializes rapid toggles", () => {
   assert.match(app, /chimeLock\.current \|\| chimePending/);
-  assert.match(app, /void saveOrderChime\(enabled\)/);
+  assert.match(app, /if \(enabled\) await enableAdminPush\(token, branchId\)/);
+  assert.match(app, /else await disableAdminPush\(token\)/);
+  assert.match(app, /await saveOrderChime\(enabled\)/);
   assert.match(app, /setChimeEnabled\(enabled\)/);
   assert.match(app, /chimeError=\{chimeError\}/);
   assert.match(hub, /busy=\{chimePending\}/);
-  assert.match(hub, /if \(next\) playOrderChime\(\)/);
+  assert.doesNotMatch(hub, /playOrderChime/);
 });
