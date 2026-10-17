@@ -38,10 +38,16 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
   const [zoom, setZoom] = useState(hasPin ? 17 : 6);
   const [width, setWidth] = useState(320);
   const [drag, setDrag] = useState({ dx: 0, dy: 0 });
-  const [tilesFailed, setTilesFailed] = useState(false);
+  const [failedTiles, setFailedTiles] = useState<string[]>([]);
   const lastInternal = useRef<string | null>(null);
   const state = useRef({ pin, zoom, width, onChange });
   state.current = { pin, zoom, width, onChange };
+  const tileGeneration = `${zoom}:${pin.latitude.toFixed(4)}:${pin.longitude.toFixed(4)}`;
+
+  useEffect(() => {
+    // A new viewport must not inherit a stale error from tiles that are no longer visible.
+    setFailedTiles([]);
+  }, [tileGeneration]);
 
   useEffect(() => {
     if (!validPin(latitude, longitude)) return;
@@ -88,14 +94,15 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
     for (let y = y0; y <= y1; y++) {
       if (y < 0 || y >= count) continue;
       const tileX = ((x % count) + count) % count;
+      const tileId = zoom + ":" + x + ":" + y;
       tileViews.push(
-        <View pointerEvents="none" key={zoom + ":" + x + ":" + y}
+        <View pointerEvents="none" key={tileId}
           style={{ position: "absolute", width: TILE, height: TILE,
             left: x * TILE - center.x + width / 2 + drag.dx,
             top: y * TILE - center.y + HEIGHT / 2 + drag.dy }}>
           <Image source={{ uri: `https://tile.openstreetmap.org/${zoom}/${tileX}/${y}.png`, cache: "force-cache" }}
-            onError={() => setTilesFailed(true)}
-            onLoad={() => setTilesFailed(false)}
+            onError={() => setFailedTiles(old => old.includes(tileId) ? old : [...old, tileId])}
+            onLoad={() => setFailedTiles(old => old.filter(id => id !== tileId))}
             style={{ width: TILE, height: TILE }} />
         </View>,
       );
@@ -124,7 +131,7 @@ export function AddressPinMap({ latitude, longitude, onChange }: AddressPinProps
         </View>
       </View>
       <Text style={styles.helper}>Chạm hoặc kéo bản đồ để đặt ghim vào đúng vị trí giao hàng.</Text>
-      {tilesFailed && <Text style={styles.error}>Không tải được nền bản đồ. Có thể nhập tọa độ thủ công.</Text>}
+      {failedTiles.length > 0 && <Text style={styles.error}>Không tải được đầy đủ nền bản đồ. Có thể nhập tọa độ thủ công.</Text>}
     </View>
   );
 }
