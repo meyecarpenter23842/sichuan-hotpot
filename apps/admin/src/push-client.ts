@@ -59,7 +59,7 @@ async function registerNative(token: string, branchId: string): Promise<string> 
   if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) throw new Error("Chưa cấp quyền thông báo cho ứng dụng Admin.");
   const device = await Notifications.getDevicePushTokenAsync();
-  if (device.type !== "fcm" || typeof device.data !== "string") {
+  if (device.type !== "android" || typeof device.data !== "string") {
     throw new Error("Android chưa lấy được FCM device token.");
   }
   await request("/push/subscriptions", token, "POST", {
