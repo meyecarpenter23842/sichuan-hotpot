@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 const address = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 const web = readFileSync(new URL("../src/components/AddressPinMap.web.tsx", import.meta.url), "utf8");
 const native = readFileSync(new URL("../src/components/AddressPinMap.native.tsx", import.meta.url), "utf8");
+const customerPackage = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const appConfig = readFileSync(new URL("../app.json", import.meta.url), "utf8");
+const workspaceLock = readFileSync(new URL("../../../package-lock.json", import.meta.url), "utf8");
 test("PWA and Android use real draggable pins with manual coordinate fallback", () => {
   assert.match(web, /L\.tileLayer/);
   assert.match(web, /map\.on\("click"/);
@@ -16,6 +19,22 @@ test("PWA and Android use real draggable pins with manual coordinate fallback", 
   assert.match(address, /Vĩ độ \(latitude\)/);
   assert.match(address, /Kinh độ \(longitude\)/);
 });
+
+test("Android OSM build cannot silently pull Google Maps SDK back in", () => {
+  assert.doesNotMatch(customerPackage, /react-native-maps/);
+  assert.doesNotMatch(workspaceLock, /node_modules\/react-native-maps/);
+  assert.doesNotMatch(appConfig, /com\.google\.android\.geo\.API_KEY|googleMaps|mapsApiKey/i);
+  assert.match(native, /tile\.openstreetmap\.org/);
+  assert.doesNotMatch(native, /react-native-maps|Google Maps SDK/);
+});
+
+test("native tile failures are tracked per tile instead of being cleared by an unrelated tile load", () => {
+  assert.match(native, /const tileId = zoom \+ ":" \+ x \+ ":" \+ y/);
+  assert.match(native, /old\.includes\(tileId\) \? old : \[\.\.\.old, tileId\]/);
+  assert.match(native, /old\.filter\(id => id !== tileId\)/);
+  assert.match(native, /setFailedTiles\(\[\]\)/);
+});
+
 test("draft address modal preserves existing selection on cancel, selects only after save", () => {
   assert.match(address, /addressBeforeModal\.current = address/);
   assert.match(address, /if \(addressBeforeModal\.current\) setAddress\(addressBeforeModal\.current\)/);
