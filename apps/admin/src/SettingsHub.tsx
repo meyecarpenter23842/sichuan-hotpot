@@ -8,6 +8,7 @@ import { DeliveryPolicyPanel } from "./DeliveryPolicyPanel";
 import { HomeOffersPanel } from "./HomeOffersPanel";
 import { HomeHeroPanel } from "./HomeHeroPanel";
 import { HomePopupPanel } from "./HomePopupPanel";
+import { ChatbotPanel } from "./ChatbotPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { StatusSwitch } from "./StatusSwitch";
@@ -15,7 +16,7 @@ import { Action, Notice } from "./ui";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
 
-type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup";
+type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup" | "chatbot";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
   { id: "alerts", label: "Thông báo", icon: "bell", hint: "Banner + âm khi khóa màn", owner: false },
   { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, vị trí GPS", owner: true },
@@ -23,6 +24,7 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", hint: "Ảnh, nội dung, lịch hiển thị", owner: true },
   { id: "hero", label: "Banner trang chủ", icon: "banner", hint: "Ảnh, motion, CTA", owner: true },
   { id: "popup", label: "Popup trang chủ", icon: "popup", hint: "Nhiều ảnh, tần suất hiện", owner: true },
+  { id: "chatbot", label: "Chatbot AI", icon: "chat", hint: "Dialogflow CX + Zalo", owner: true },
   { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Km, phụ phí, giá trị đơn", owner: true },
   { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
   { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
@@ -124,6 +126,8 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
             {selected === "hero" && <HomeHeroPanel key={branch.id} token={token}
               branchId={branch.id} onDirtyChange={setDirty} />}
             {selected === "popup" && <HomePopupPanel key={branch.id} token={token}
+              branchId={branch.id} onDirtyChange={setDirty} />}
+            {selected === "chatbot" && <ChatbotPanel key={branch.id} token={token}
               branchId={branch.id} onDirtyChange={setDirty} />}
             {selected === "orders" && <DeliveryPolicyPanel key={branch.id + ":orders"}
               token={token} branchId={branch.id} active={branch.isActive}
