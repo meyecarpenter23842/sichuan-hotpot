@@ -34,6 +34,10 @@ import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
   validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
+import {
+  configureCustomerNotificationPresentation, enableCustomerPush,
+  refreshCustomerPushIfAllowed, watchCustomerNotificationResponses,
+} from "./src/push-client";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
@@ -242,6 +246,29 @@ function CustomerApp() {
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const addressEditorOrigin = useRef<Screen>("account");
   const addressBeforeModal = useRef<AddressDraft | null>(null);
+  const pendingNotificationOrder = useRef<string | null>(null);
+
+  useEffect(() => {
+    void configureCustomerNotificationPresentation().catch(() => undefined);
+    let stop: (() => void) | undefined;
+    const openOrder = (orderId: string) => {
+      pendingNotificationOrder.current = orderId;
+      setFocusOrderId(orderId);
+      setScreen("orders");
+    };
+    void watchCustomerNotificationResponses(openOrder)
+      .then(dispose => { stop = dispose; }).catch(() => undefined);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const orderId = new URL(window.location.href).searchParams.get("order");
+      if (orderId) openOrder(orderId);
+    }
+    return () => { stop?.(); };
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    void refreshCustomerPushIfAllowed(accessToken).catch(() => undefined);
+  }, [accessToken]);
 
   const catalogueRequest = useRef(0);
   const currentBranch = useRef("");
@@ -456,7 +483,11 @@ function CustomerApp() {
           setAccessToken(tokens.accessToken);
           setPrincipal(who);
           setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
-          setScreen("home");
+          const notifiedOrder = pendingNotificationOrder.current;
+          if (notifiedOrder) {
+            setFocusOrderId(notifiedOrder);
+            setScreen("orders");
+          } else setScreen("home");
         }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 401) {
@@ -486,8 +517,13 @@ function CustomerApp() {
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
     setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
-    setScreen(loginReturnTo);
-    setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
+    const notifiedOrder = pendingNotificationOrder.current;
+    if (notifiedOrder) {
+      setFocusOrderId(notifiedOrder);
+      setScreen("orders");
+    } else setScreen(loginReturnTo);
+    setNotice(notifiedOrder ? "Đang mở đơn hàng từ thông báo."
+      : loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
 
   const renewSession = useCallback(async () => {
@@ -1892,8 +1928,18 @@ function CustomerApp() {
                     </Text>
                   </Pressable>
                   <View style={styles.homeHeaderActions}>
-                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("orders")}
-                      accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
+                    <Pressable style={styles.headerIconAction} onPress={() => {
+                      setScreen("orders");
+                      if (!accessToken) {
+                        setNotice("Đăng nhập để bật thông báo trạng thái đơn hàng.");
+                        return;
+                      }
+                      void enableCustomerPush(accessToken)
+                        .then(() => setNotice("Đã bật thông báo đơn hàng trên thiết bị này."))
+                        .catch(error => setNotice(error instanceof Error
+                          ? error.message : "Không bật được thông báo trên thiết bị."));
+                    }}
+                      accessibilityRole="button" accessibilityLabel="Bật thông báo và xem đơn hàng">
                       <HotpotNavIcon name="notifications" active size={27} />
                     </Pressable>
                     <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
