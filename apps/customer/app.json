@@ -48,7 +48,8 @@
           "defaultChannel": "customer-orders-v1",
           "color": "#B3262D"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "tsconfigPaths": true
