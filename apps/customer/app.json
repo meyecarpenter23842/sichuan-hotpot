@@ -38,7 +38,14 @@
           "locationWhenInUsePermission": "Cho phép Sichuan Hotpot dùng vị trí để hỗ trợ địa chỉ giao hàng."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "customer-orders-v1",
+          "color": "#B3262D"
+        }
+      ]
     ],
     "experiments": {
       "tsconfigPaths": true
