@@ -13,7 +13,7 @@ CREATE TABLE "ChatbotConfig" (
   "environmentResourceName" VARCHAR(512),
   "environmentDisplayName" VARCHAR(200),
   "revision" INTEGER NOT NULL DEFAULT 0,
-  "updatedAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMPTZ(6) NOT NULL,
 
   CONSTRAINT "ChatbotConfig_pkey" PRIMARY KEY ("branchId"),
   CONSTRAINT "ChatbotConfig_revision_check" CHECK ("revision" >= 0),
