@@ -8,3 +8,6 @@ apps/customer/assets/adaptive-icon.png
 apps/customer/public/icon-192.png
 apps/customer/public/icon-512.png
 apps/customer/public/apple-touch-icon.png
+# Native push credentials must stay out of Git.
+apps/*/google-services.json
+apps/*/GoogleService-Info.plist
