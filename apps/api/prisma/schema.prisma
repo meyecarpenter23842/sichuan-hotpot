@@ -61,6 +61,16 @@ enum DeliveryPricingMode {
   ZONE
 }
 
+enum PushScope {
+  CUSTOMER
+  STAFF
+}
+
+enum PushTransport {
+  WEB_PUSH
+  FCM
+}
+
 model User {
   id                 String               @id @default(uuid()) @db.Uuid
   clerkSubject       String?              @unique @db.VarChar(255) // Legacy DEV-only; do not populate new accounts
@@ -77,6 +87,7 @@ model User {
   authIdentities     AuthIdentity[]
   localCredential    LocalCredential?
   authSessions       AuthSession[]
+  pushEndpoints      PushEndpoint[]
 }
 
 model Branch {
@@ -104,6 +115,7 @@ model Branch {
   deliveryPolicies  DeliveryPolicyVersion[]
   openingHours      BranchOpeningHour[]
   orders            Order[]
+  pushEndpoints      PushEndpoint[]
 }
 
 model BranchMember {
@@ -372,6 +384,24 @@ model Address {
   user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
+}
+
+model PushEndpoint {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @db.Uuid
+  branchId  String?       @db.Uuid
+  scope     PushScope
+  transport PushTransport
+  token     String        @unique @db.Text
+  p256dh    String?       @db.VarChar(256)
+  auth      String?       @db.VarChar(128)
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @db.Timestamptz(6)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch    Branch?       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scope])
+  @@index([branchId, scope])
 }
 
 model Order {
