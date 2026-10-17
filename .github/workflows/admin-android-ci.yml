@@ -1,0 +1,115 @@
+name: Admin Android native build
+
+on:
+  pull_request:
+    paths:
+      - "apps/admin/**"
+      - "apps/api/src/push/**"
+      - "sound-native-android.mp3"
+      - "package-lock.json"
+      - ".github/workflows/admin-android-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/admin/**"
+      - "apps/api/src/push/**"
+      - "sound-native-android.mp3"
+      - "package-lock.json"
+      - ".github/workflows/admin-android-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: "1"
+      EXPO_NO_DOTENV: "1"
+      EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install exact workspace lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate Admin icon assets
+        run: npm run icons:generate --workspace @hotpot/admin
+
+      - name: Prove repository contains no Firebase descriptor
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e apps/admin/google-services.json
+          node -e 'const app=require("./apps/admin/app.json"); if (app.expo.android.googleServicesFile) process.exit(1)'
+
+      - name: Clean Expo prebuild for Admin Android
+        run: npm run android:prebuild --workspace @hotpot/admin
+
+      - name: Prove approved order sound is generated as Android raw resource
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="apps/admin/android/app/src/main/res/raw/new_order_alert.mp3"
+          test -s "$generated"
+          cmp sound-native-android.mp3 "$generated"
+          manifest="apps/admin/android/app/src/main/AndroidManifest.xml"
+          test -s "$manifest"
+          grep -Fq 'android:scheme="sichuanhotpotadmin"' "$manifest"
+          echo "Admin custom order sound raw resource: PASS"
+
+      - name: Prove tracked Expo config was restored after prebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const app=require("./apps/admin/app.json"); if (app.expo.android.googleServicesFile) process.exit(1)'
+          git diff --exit-code -- apps/admin/app.json
+
+      - name: Build Admin debug APK
+        working-directory: apps/admin/android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Build Admin release-equivalent APK
+        working-directory: apps/admin/android
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Prove custom sound bytes are packaged in both APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in             apps/admin/android/app/build/outputs/apk/debug/app-debug.apk             apps/admin/android/app/build/outputs/apk/release/app-release.apk
+          do
+            test -s "$apk"
+            unzip -p "$apk" res/raw/new_order_alert.mp3 > "$RUNNER_TEMP/packed-order-sound.mp3"
+            cmp sound-native-android.mp3 "$RUNNER_TEMP/packed-order-sound.mp3"
+          done
+          echo "Admin custom order sound packaged in debug + release-equivalent APKs: PASS"
+
+      - name: Archive Admin debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-android-debug-apk
+          path: apps/admin/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Archive Admin release-equivalent APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-android-release-equivalent-apk
+          path: apps/admin/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
