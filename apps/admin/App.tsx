@@ -14,8 +14,11 @@ import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
 import { OrderQueuePanel, type StaffOrder } from "./src/OrderQueuePanel";
 import { watchOrderEvents } from "./src/order-realtime";
-import { OrderAlertWatcher } from "./src/OrderAlertWatcher";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
+import {
+  configureAdminNotificationPresentation, disableAdminPush, enableAdminPush,
+  refreshAdminPushIfEnabled, watchAdminNotificationResponses,
+} from "./src/push-client";
 import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
@@ -241,13 +244,42 @@ export default function AdminApp() {
   }, []);
   const changeChime = (enabled: boolean) => {
     if (chimeLock.current || chimePending) return;
+    if (!token || !branchId) {
+      setChimeError("Chưa có phiên quản trị hoặc chi nhánh để đăng ký thông báo.");
+      return;
+    }
     chimeLock.current = true;
     setChimePending(true); setChimeError("");
-    void saveOrderChime(enabled)
-      .then(() => setChimeEnabled(enabled))
-      .catch(() => setChimeError("Không lưu được thiết lập chuông trên thiết bị. Vui lòng thử lại."))
+    void (async () => {
+      if (enabled) await enableAdminPush(token, branchId);
+      else await disableAdminPush(token);
+      await saveOrderChime(enabled);
+      setChimeEnabled(enabled);
+    })()
+      .catch(error => setChimeError(error instanceof Error
+        ? error.message : "Không cấu hình được thông báo trên thiết bị."))
       .finally(() => { chimeLock.current = false; setChimePending(false); });
   };
+
+  useEffect(() => {
+    void configureAdminNotificationPresentation().catch(() => undefined);
+    let stop: (() => void) | undefined;
+    void watchAdminNotificationResponses(() => {
+      setChooseBranch(false);
+      setTab("orders");
+    }).then(dispose => { stop = dispose; }).catch(() => undefined);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const params = new URL(window.location.href).searchParams;
+      if (params.get("notification") === "orders" || params.get("order")) setTab("orders");
+    }
+    return () => { stop?.(); };
+  }, []);
+
+  useEffect(() => {
+    if (!token || !branchId || !chimeEnabled) return;
+    void refreshAdminPushIfEnabled(token, branchId, true)
+      .catch(error => setChimeError(error instanceof Error ? error.message : "Không làm mới được đăng ký thông báo."));
+  }, [token, branchId, chimeEnabled]);
 
   const loadIdentity = useCallback(async (access: string) => {
     const user = await request<Principal>("/auth/me", access);
@@ -513,8 +545,6 @@ export default function AdminApp() {
           </>}
         </View>
       </KeyboardAvoidingView> : <View style={styles.shell}>
-        {branchId && <OrderAlertWatcher token={token} branchId={branchId}
-          role={branchRole} chimeEnabled={chimeEnabled} />}
         <View style={styles.header} onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)}>
           <View style={styles.headerTop}>
             <Image source={require("./assets/app-icon.png")} style={styles.headerLogo}
@@ -583,7 +613,7 @@ export default function AdminApp() {
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
           </View> : (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active chimeEnabled={chimeEnabled} /> :
+              role={branchRole} mode={tab} active /> :
             tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
