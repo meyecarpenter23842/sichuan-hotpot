@@ -65,8 +65,8 @@ jobs:
           set -euo pipefail
           gradle_file="apps/admin/android/app/build.gradle"
           test -s "$gradle_file"
-          grep -Fq 'root = new File(projectRoot)' "$gradle_file"
-          echo "Metro app project root pin: PASS"
+          node scripts/android/release-gradle.mjs admin
+          echo "Expo release Gradle and CLI app roots: PASS"
 
       - name: Prove Admin launcher is visible to Android
         shell: bash

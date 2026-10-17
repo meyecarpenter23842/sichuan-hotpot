@@ -1,0 +1,103 @@
+name: Android Windows release APK
+
+on:
+  pull_request:
+    paths:
+      - "apps/customer/**"
+      - "apps/admin/**"
+      - "scripts/android/**"
+      - "scripts/test/android-release-gradle.test.mjs"
+      - "package-lock.json"
+      - ".github/workflows/android-windows-release-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/customer/**"
+      - "apps/admin/**"
+      - "scripts/android/**"
+      - "scripts/test/android-release-gradle.test.mjs"
+      - "package-lock.json"
+      - ".github/workflows/android-windows-release-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  release-windows:
+    name: Windows release ${{ matrix.app }}
+    runs-on: windows-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [customer, admin]
+    env:
+      CI: "1"
+      EXPO_NO_DOTENV: "1"
+      EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: "ci-web.apps.googleusercontent.com"
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: "ci-android.apps.googleusercontent.com"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install locked npm workspaces
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate Android native project
+        run: npm run android:prebuild --workspace @hotpot/${{ matrix.app }}
+
+      - name: Verify generated release bundle contract
+        run: |
+          node scripts/android/release-gradle.mjs ${{ matrix.app }}
+          if ($LASTEXITCODE -ne 0) { throw "Gradle bundle contract failed" }
+          $appRoot = (Resolve-Path "apps/${{ matrix.app }}").Path
+          $entry = & node -e "require('expo/scripts/resolveAppEntry')" $appRoot android absolute
+          if ($LASTEXITCODE -ne 0) { throw "Expo entry resolver failed" }
+          $expected = [IO.Path]::GetFullPath((Join-Path $appRoot "index.ts"))
+          $actual = [IO.Path]::GetFullPath(($entry | Select-Object -Last 1).Trim())
+          if ($actual -ine $expected) { throw "Wrong Windows entry: $actual (expected $expected)" }
+          Write-Host "Windows app entry: $actual"
+        shell: pwsh
+
+      - name: Execute Metro release bundling on Windows
+        working-directory: apps/${{ matrix.app }}/android
+        run: .\gradlew.bat :app:createBundleReleaseJsAndAssets --no-daemon --info
+        shell: pwsh
+
+      - name: Assemble installable release APK
+        working-directory: apps/${{ matrix.app }}/android
+        run: .\gradlew.bat :app:assembleRelease --no-daemon --stacktrace
+        shell: pwsh
+
+      - name: Verify APK embeds JavaScript without Metro
+        run: |
+          $apk = "apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk"
+          if (!(Test-Path $apk)) { throw "Release APK missing: $apk" }
+          $contents = & jar tf $apk
+          if ($LASTEXITCODE -ne 0 -or !($contents -contains "assets/index.android.bundle")) {
+            throw "Release APK does not contain assets/index.android.bundle"
+          }
+          Write-Host "Release APK includes embedded JS bundle: $apk"
+        shell: pwsh
+
+      - name: Archive Windows release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-windows-release-apk
+          path: apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
