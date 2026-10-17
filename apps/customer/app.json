@@ -2,7 +2,10 @@
   "expo": {
     "name": "Sichuan Hotpot",
     "slug": "sichuan-hotpot-customer",
-    "scheme": "sichuanhotpot",
+    "scheme": [
+      "sichuanhotpot",
+      "vn.sichuanhotpot.customer"
+    ],
     "version": "0.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
