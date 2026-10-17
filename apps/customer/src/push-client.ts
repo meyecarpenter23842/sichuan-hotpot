@@ -69,7 +69,7 @@ async function registerNative(accessToken: string, askPermission: boolean): Prom
   }
   if (Platform.OS !== "android") return;
   const device = await Notifications.getDevicePushTokenAsync();
-  if (device.type !== "fcm" || typeof device.data !== "string") {
+  if (device.type !== "android" || typeof device.data !== "string") {
     throw new Error("Android chưa lấy được FCM device token.");
   }
   await apiRequest("/push/subscriptions", {
