@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { request } from "./api";
+import {
+  ensureHotpotServiceWorkerRegistration,
+  webPushSupportError,
+} from "./web-push-service-worker";
 
 const ENDPOINT_KEY = "sichuan.admin.push-endpoint.v1";
 type PushConfig = { enabled: boolean; publicKey: string | null };
@@ -15,21 +19,32 @@ function vapidKey(value: string): ArrayBuffer {
 }
 
 async function registerWeb(token: string, branchId: string): Promise<string> {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
-      || !("PushManager" in globalThis) || !("Notification" in globalThis)) {
-    throw new Error("Trình duyệt này chưa hỗ trợ thông báo nền.");
+  const supportError = webPushSupportError();
+  if (supportError) throw new Error(supportError);
+
+  if (Notification.permission === "denied") {
+    throw new Error("Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của trình duyệt hoặc thiết bị.");
   }
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error("Chưa cấp quyền thông báo cho Admin PWA.");
+  if (Notification.permission === "default") {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      throw new Error(permission === "denied"
+        ? "Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của trình duyệt hoặc thiết bị."
+        : "Chưa cấp quyền thông báo. Có thể bật lại khi sẵn sàng.");
+    }
+  }
+
   const config = await request<PushConfig>("/push/config", token);
   if (!config.enabled || !config.publicKey) throw new Error("Máy chủ chưa cấu hình Web Push.");
-  const registration = await navigator.serviceWorker.register("/hotpot-sw.js", { scope: "/" });
-  const old = await registration.pushManager.getSubscription();
-  if (old) await old.unsubscribe().catch(() => false);
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: vapidKey(config.publicKey),
-  });
+
+  const registration = await ensureHotpotServiceWorkerRegistration();
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidKey(config.publicKey),
+    });
+  }
   const json = subscription.toJSON();
   if (!json.keys?.p256dh || !json.keys?.auth) {
     await subscription.unsubscribe().catch(() => false);
@@ -42,7 +57,10 @@ async function registerWeb(token: string, branchId: string): Promise<string> {
   return subscription.endpoint;
 }
 
-export async function configureAdminNotificationPresentation(): Promise<void> {}
+export async function configureAdminNotificationPresentation(): Promise<void> {
+  if (webPushSupportError()) return;
+  await ensureHotpotServiceWorkerRegistration();
+}
 
 export async function enableAdminPush(token: string, branchId: string): Promise<void> {
   const endpoint = await registerWeb(token, branchId);
