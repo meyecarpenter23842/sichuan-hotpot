@@ -12,6 +12,7 @@ import { DeliveryQuoteService } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import { configuredQr, qrInstructions } from "../payments/vietqr";
 import { OrderRealtimeService } from "./order-realtime.service";
+import { PushService } from "../push/push.service";
 
 export interface CheckoutRequest {
   branchId: string;
@@ -45,6 +46,7 @@ export class OrdersService {
     private readonly auth: AuthService,
     private readonly quote: DeliveryQuoteService,
     private readonly realtime: OrderRealtimeService,
+    private readonly push: PushService,
   ) {}
 
   paymentMethods() { return { codAvailable: true, qrAvailable: configuredQr() !== null }; }
@@ -249,6 +251,7 @@ export class OrdersService {
             type: "order.created", orderId: created.orderId, branchId: input.branchId,
             customerId, status: "PENDING",
           });
+          void this.push.notifyStaffNewOrder(input.branchId, created.orderId).catch(() => undefined);
         }
         return created;
       } catch (error) {
