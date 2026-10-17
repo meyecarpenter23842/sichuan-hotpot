@@ -56,7 +56,7 @@ jobs:
       - name: Clean Expo prebuild for Android without Firebase descriptor
         run: npm run android:prebuild --workspace @hotpot/customer
 
-      - name: Assert generated Android OAuth callback schemes
+      - name: Assert generated Android app schemes
         shell: bash
         run: |
           set -euo pipefail
@@ -87,6 +87,11 @@ jobs:
             echo "::error::Android runtime dependency graph still contains Google Maps."
             exit 1
           fi
+          if ! grep -Eiq 'com\.google\.android\.gms:play-services-auth|google-signin'             "$RUNNER_TEMP/customer-android-debug-dependencies.txt"; then
+            echo "::error::Native Google Sign-In SDK is missing from Android runtime dependencies."
+            exit 1
+          fi
+          echo "Native Google Sign-In dependency: PASS"
 
       - name: Build customer debug APK
         working-directory: apps/customer/android
