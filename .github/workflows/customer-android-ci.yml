@@ -51,8 +51,7 @@ jobs:
           test ! -e apps/customer/google-services.json
 
       - name: Clean Expo prebuild for Android without Firebase descriptor
-        working-directory: apps/customer
-        run: npx expo prebuild --platform android --clean --no-install
+        run: npm run android:prebuild --workspace @hotpot/customer
 
       - name: Assert generated native project has no Google Maps SDK residue
         shell: bash
