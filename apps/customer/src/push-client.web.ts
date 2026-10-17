@@ -1,4 +1,8 @@
 import { apiRequest } from "./api";
+import {
+  ensureHotpotServiceWorkerRegistration,
+  webPushSupportError,
+} from "./web-push-service-worker";
 
 type PushConfig = { enabled: boolean; publicKey: string | null };
 
@@ -13,21 +17,35 @@ function vapidKey(value: string): ArrayBuffer {
 }
 
 async function registerWeb(accessToken: string, askPermission: boolean): Promise<void> {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
-      || !("PushManager" in globalThis) || !("Notification" in globalThis)) {
-    throw new Error("Trình duyệt này chưa hỗ trợ thông báo nền.");
-  }
-  if (askPermission && Notification.permission === "default") await Notification.requestPermission();
-  if (Notification.permission !== "granted") {
-    if (askPermission) throw new Error("Chưa cấp quyền thông báo cho ứng dụng.");
+  const supportError = webPushSupportError();
+  if (supportError) {
+    if (askPermission) throw new Error(supportError);
     return;
   }
+
+  if (Notification.permission === "denied") {
+    if (askPermission) {
+      throw new Error("Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của trình duyệt hoặc thiết bị.");
+    }
+    return;
+  }
+  if (askPermission && Notification.permission === "default") {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      throw new Error(permission === "denied"
+        ? "Quyền thông báo đang bị chặn. Hãy bật lại trong Cài đặt của trình duyệt hoặc thiết bị."
+        : "Chưa cấp quyền thông báo. Anh có thể bật lại khi sẵn sàng.");
+    }
+  }
+  if (Notification.permission !== "granted") return;
+
   const config = await apiRequest<PushConfig>("/push/config", { accessToken });
   if (!config.enabled || !config.publicKey) {
     if (askPermission) throw new Error("Máy chủ chưa cấu hình Web Push.");
     return;
   }
-  const registration = await navigator.serviceWorker.register("/hotpot-sw.js", { scope: "/" });
+
+  const registration = await ensureHotpotServiceWorkerRegistration();
   let subscription = await registration.pushManager.getSubscription();
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
@@ -46,7 +64,10 @@ async function registerWeb(accessToken: string, askPermission: boolean): Promise
   });
 }
 
-export async function configureCustomerNotificationPresentation(): Promise<void> {}
+export async function configureCustomerNotificationPresentation(): Promise<void> {
+  if (webPushSupportError()) return;
+  await ensureHotpotServiceWorkerRegistration();
+}
 
 export async function enableCustomerPush(accessToken: string): Promise<void> {
   await registerWeb(accessToken, true);
