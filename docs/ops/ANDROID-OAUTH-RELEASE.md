@@ -22,7 +22,7 @@ This reads the **APK's signing certificate** using the installed Android SDK. It
 Expo inlines `EXPO_PUBLIC_*` during bundling. Both apps have independent project roots and need their own valid release API origin:
 
 - `apps/customer/.env.local`: `EXPO_PUBLIC_API_BASE_URL` and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
-- `apps/admin/.env.local`: `EXPO_PUBLIC_API_BASE_URL`
+- `apps/admin/.env.local`: optional `EXPO_PUBLIC_API_BASE_URL`; if absent, the Admin release command inherits the HTTPS API origin from Customer\'s local release environment without changing any .env file.
 
 Values must point to the real reachable HTTPS backend, using a hostname/certificate trusted by Android. The Admin login uses `/auth/login`; the Customer Google login first obtains a Google token, then calls `/auth/google` against this API. If the API is deployed behind an IP address whose TLS certificate does not match the IP, Android will fail to connect; do not disable HTTPS/TLS verification.
 
