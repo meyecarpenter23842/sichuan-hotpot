@@ -83,9 +83,11 @@ export async function request<T>(path: string, token?: string, method = "GET",
   body?: unknown): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
+  // Config errors must not be disguised as a network outage.
+  const origin = apiOrigin();
   let response: Response;
   try {
-    response = await fetch(apiOrigin() + path, {
+    response = await fetch(origin + path, {
       method, signal: controller.signal,
       headers: {
         Accept: "application/json",
@@ -94,8 +96,11 @@ export async function request<T>(path: string, token?: string, method = "GET",
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  } catch {
-    throw new Error("Không kết nối được API. Kiểm tra mạng rồi thử lại.");
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("API không phản hồi trong 15 giây. Kiểm tra máy chủ và kết nối.");
+    }
+    throw new Error("Không kết nối được API qua HTTPS. Kiểm tra tên miền, chứng chỉ TLS và máy chủ.");
   } finally { clearTimeout(timer); }
   if (!response.ok) {
     const data: unknown = await response.json().catch(() => null);
