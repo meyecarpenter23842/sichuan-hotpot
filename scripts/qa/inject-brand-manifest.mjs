@@ -17,6 +17,7 @@ for (const file of [
   `icon-192-${ASSET_VERSION}.png`,
   `icon-512-${ASSET_VERSION}.png`,
   `apple-touch-icon-${ASSET_VERSION}.png`,
+  "hotpot-sw.js",
 ]) {
   const from = resolve(publicDir, file);
   if (!existsSync(from)) throw Error("Approved brand asset missing: " + file);

@@ -8,6 +8,7 @@ import { PrismaService } from "../database/prisma.service";
 import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import { OrderRealtimeService } from "./order-realtime.service";
+import { PushService } from "../push/push.service";
 
 const operatingRoles = ["OWNER", "MANAGER", "KITCHEN"] as const;
 type OperationalRole = (typeof operatingRoles)[number];
@@ -57,6 +58,7 @@ export class AdminOrdersService {
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly realtime: OrderRealtimeService,
+    private readonly push: PushService,
   ) {}
 
   private async role(authorization: string | undefined, branchId: string): Promise<{
@@ -208,6 +210,9 @@ export class AdminOrdersService {
         type: "order.status", orderId, branchId, customerId: changed.customerId,
         status: changed.status,
       });
+      if (changed.status === "CONFIRMED") {
+        void this.push.notifyCustomerConfirmed(changed.customerId, orderId).catch(() => undefined);
+      }
       return { id: changed.id, fromStatus: changed.fromStatus, status: changed.status };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {

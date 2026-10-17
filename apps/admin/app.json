@@ -13,7 +13,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
-      }
+      },
+      "googleServicesFile": "./google-services.json"
     },
     "ios": {
       "supportsTablet": true
@@ -35,7 +36,15 @@
           "microphonePermission": false,
           "photosPermission": "Cho phép chọn ảnh danh mục và topping cho thực đơn cửa hàng."
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "new-orders-v1",
+          "color": "#B3262D"
+        }
+      ],
+      "./plugins/with-order-sound.cjs"
     ],
     "experiments": {
       "tsconfigPaths": true

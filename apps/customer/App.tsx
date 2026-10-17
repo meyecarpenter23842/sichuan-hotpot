@@ -34,6 +34,10 @@ import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
   validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
+import {
+  configureCustomerNotificationPresentation, enableCustomerPush,
+  refreshCustomerPushIfAllowed, watchCustomerNotificationResponses,
+} from "./src/push-client";
 
 type Screen = "home" | "menu" | "detail" | "cart" | "account" | "orders" | "login" | "address" | "purchased";
 type AddressDraft = {
@@ -174,6 +178,18 @@ function cartPriceParts(product: Product, variantId: string|null,
     total:dishTotal+comboTotal+requiredTotal+toppingTotal};
 }
 
+function CartIconBadge({ count, size = 27 }: { count: number; size?: number }) {
+  const label = count > 99 ? "99+" : String(count);
+  return (
+    <View style={styles.cartIconBadgeWrap}>
+      <HotpotNavIcon name="cart" active size={size} />
+      {count > 0 && <View style={styles.cartCountBadge} testID="cart-count-badge">
+        <Text style={styles.cartCountBadgeText}>{label}</Text>
+      </View>}
+    </View>
+  );
+}
+
 function CustomerApp() {
   const { width: viewportWidth } = useWindowDimensions();
   const [screen, setScreen] = useState<Screen>("login");
@@ -200,6 +216,7 @@ function CustomerApp() {
   const [detailError, setDetailError] = useState("");
   const [productInfoExpanded, setProductInfoExpanded] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
   const [expandedCartGroups,setExpandedCartGroups]=useState<string[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [notice, setNotice] = useState("");
@@ -229,6 +246,29 @@ function CustomerApp() {
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const addressEditorOrigin = useRef<Screen>("account");
   const addressBeforeModal = useRef<AddressDraft | null>(null);
+  const pendingNotificationOrder = useRef<string | null>(null);
+
+  useEffect(() => {
+    void configureCustomerNotificationPresentation().catch(() => undefined);
+    let stop: (() => void) | undefined;
+    const openOrder = (orderId: string) => {
+      pendingNotificationOrder.current = orderId;
+      setFocusOrderId(orderId);
+      setScreen("orders");
+    };
+    void watchCustomerNotificationResponses(openOrder)
+      .then(dispose => { stop = dispose; }).catch(() => undefined);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const orderId = new URL(window.location.href).searchParams.get("order");
+      if (orderId) openOrder(orderId);
+    }
+    return () => { stop?.(); };
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    void refreshCustomerPushIfAllowed(accessToken).catch(() => undefined);
+  }, [accessToken]);
 
   const catalogueRequest = useRef(0);
   const currentBranch = useRef("");
@@ -443,7 +483,11 @@ function CustomerApp() {
           setAccessToken(tokens.accessToken);
           setPrincipal(who);
           setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
-          setScreen("home");
+          const notifiedOrder = pendingNotificationOrder.current;
+          if (notifiedOrder) {
+            setFocusOrderId(notifiedOrder);
+            setScreen("orders");
+          } else setScreen("home");
         }
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 401) {
@@ -473,8 +517,13 @@ function CustomerApp() {
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
     setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
-    setScreen(loginReturnTo);
-    setNotice(loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
+    const notifiedOrder = pendingNotificationOrder.current;
+    if (notifiedOrder) {
+      setFocusOrderId(notifiedOrder);
+      setScreen("orders");
+    } else setScreen(loginReturnTo);
+    setNotice(notifiedOrder ? "Đang mở đơn hàng từ thông báo."
+      : loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
 
   const renewSession = useCallback(async () => {
@@ -1879,13 +1928,23 @@ function CustomerApp() {
                     </Text>
                   </Pressable>
                   <View style={styles.homeHeaderActions}>
-                    <Pressable style={styles.headerIconAction} onPress={() => setScreen("orders")}
+                    <Pressable style={styles.headerIconAction} onPress={() => {
+                      setScreen("orders");
+                      if (!accessToken) {
+                        setNotice("Đăng nhập để bật thông báo trạng thái đơn hàng.");
+                        return;
+                      }
+                      void enableCustomerPush(accessToken)
+                        .then(() => setNotice("Đã bật thông báo đơn hàng trên thiết bị này."))
+                        .catch(error => setNotice(error instanceof Error
+                          ? error.message : "Không bật được thông báo trên thiết bị."));
+                    }}
                       accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
                       <HotpotNavIcon name="notifications" active size={27} />
                     </Pressable>
                     <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
                       accessibilityRole="button" accessibilityLabel="Giỏ hàng">
-                      <HotpotNavIcon name="cart" active size={27} />
+                      <CartIconBadge count={cartItemCount} size={27} />
                     </Pressable>
                   </View>
                 </View>
@@ -1903,7 +1962,7 @@ function CustomerApp() {
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
                   accessibilityRole="button" accessibilityLabel="Giỏ hàng">
-                  <HotpotNavIcon name="cart" active size={25} />
+                  <CartIconBadge count={cartItemCount} size={25} />
                 </Pressable>
               </View>
             )}
@@ -2439,6 +2498,11 @@ const styles = StyleSheet.create({
   smallAction: { alignSelf: "flex-end", paddingVertical: 9, minHeight: 44, justifyContent: "center" },
   linkText: { color: brand, fontSize: 13, fontWeight: "700" },
   orText: { textAlign: "center", paddingVertical: 8 },
+  cartIconBadgeWrap: { position: "relative", alignItems: "center", justifyContent: "center" },
+  cartCountBadge: { position: "absolute", top: -8, right: -10, minWidth: 18, height: 18,
+    paddingHorizontal: 4, borderRadius: 9, backgroundColor: "#D92D20", borderWidth: 2,
+    borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  cartCountBadgeText: { color: "#FFFFFF", fontSize: 10, lineHeight: 12, fontWeight: "900" },
   bottomNavigation: { position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 5, borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 58 },
   navItem: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 2 },
   navGlyph: { fontSize: 20, color: "#98A2B3" },
