@@ -10,7 +10,6 @@ import { Icon } from "./Icon";
 import {
   request, type AdminCatalog, type CatalogComboGroup, type CatalogGroup, type CatalogProduct,
 } from "./api";
-import { markNewOrderAlerted, playOrderChime } from "./order-notifications";
 import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
@@ -124,9 +123,8 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
 const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
 const deliveryStatuses: OrderStatus[] = ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"];
 
-export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnabled }: {
+export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery"; active: boolean;
-  chimeEnabled: boolean;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -170,8 +168,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
         });
         if (unseen.length) {
           setNotice("Có " + unseen.length + " đơn mới. Kiểm tra và xác nhận.");
-          if (chimeEnabled && !kitchenOnly
-            && unseen.some(item => markNewOrderAlerted(branchId, item.id))) playOrderChime();
         }
       }
       lastIds.current = new Set(pending.map(x => x.id));
@@ -183,7 +179,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, chimeEnab
     } finally {
       if (current === requestId.current) { setLoading(false); setSyncing(false); }
     }
-  }, [branchId, token, chimeEnabled, kitchenOnly]);
+  }, [branchId, token]);
 
   useEffect(() => {
     requestId.current++;
