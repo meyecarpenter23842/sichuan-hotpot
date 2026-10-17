@@ -22,6 +22,7 @@ type Props = {
 const googleWebId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
 const googleAndroidId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
 const googleConfigured = Platform.OS === "web" ? !!googleWebId : !!googleAndroidId;
+const googleAndroidRedirect = "vn.sichuanhotpot.customer:/oauthredirect";
 const heroUrl = "https://pub-63ed7b1c33514906ab6e2d82f41bffce.r2.dev/system-image/login-hero.png";
 const REMEMBER_USERNAME = "hotpot.login.username.v1";
 const googleG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAYAAADhAJiYAAAABmJLR0QA/wD/AP+gvaeTAAAEp0lEQVRYhe2YW2xUVRSGv7VnzrTSKb3R1jQhpsiDlyrCtIDIpRQUxIiRm4QH9EEgaAKBBxNASRNRE5VQE42XxJiIF+4kJIhgbwoqpaACUdQaFFGgYNvQ23Smc87yoU5tyxw6LW0TE/+ns2f9e60vZ++z954t9FG1MwtGocwWdALIWCADSAc8QCNwXkXPgBy2ncgnOeXfnutLfonHpMWYy4cLlgiyAvS+ePsBDujnOLyaWXH8gIDeMFDtjPz7BdkM3BUnhJu+8GBWZpRV/dAvIA0ErMtpng2i+hxgbhAmqjaFZdll1R/0CajuwQnD7bDuB508QCBdpQrPZ5VVF8caQm/PH+pnBlIiYedTYOIgwACIQIpbsNtQKEhEzXuDCANCSWZZ9Rq3Cd7tDV2Zkb8OeDTO1BHgmKpUCdRiVIBslHHApJ65O2FKq9de72vzAmgF/tC5tFeaPpRl6vQKEgTZIl779cyDJy7GMjQU3pMa8VirFNYAqQCqsiW77Nja3pILQLjUWt26J7ck/JPr0Eb1DcYszvqsqqZXbKDugYKREZtdqHyZXd47TCdQe6n1XfhM6pjWAyPRkMfFqhXYwblZld83x5O4s1cgYMmJE+3x+iV4MDHX67HPAjh1CTTvzcW+ktjTV+MLJUxIPXKkoS8w/ZGxjD2ls5ERIvmJn/GNqevqUcGsGAoYAKNIty1BvA5Jc86T9NDviOWAzynNLKuqGAqYDiDRkbECvrvrSV7yy29Ou3fjUMEAGEGGuwU9OS0nby6tOjrYEIXFDanRZy/guvKoSmO8SYs2NS3sD4waeUQ66jzVASROCI296YvosLgzi+zoD5AoCOyOto2o/OVmrtfEe8ftWDi6P4X6IkWzOoFU9Vc3Y4qEczIJDvGkNnoyVkCBXcFcrqr1WOCj+bcNMkfn6m88PvsoYHeLqsX6xgJKWvKIqPGJ6FuBt5dbg0WjyoXos1em0NBeytfAZIAaO4X1jfn8YSf920NkGsPr3kBZgbgcHVQXuRYUkyzou25xY+RsZymAcKm1SuC1fW23sLklj7C6brDbwuGkJ08t3driljyWija1PIzoPldgmF2xwX8Q/jkPWZ72j4625aS91DxmI9c90Mtiy9c6MbBtwTOjjOzZuWin7eYs+HjBJMV5UYyc1LOhW8XxuVkjYW/wq84KXSOBbfNLBFa7A3XTOUX3C6bKEa01tuOI8WQpOg6YBdwZNXraRjPs0tOInX5tFuVQ+bP+WTGBCisKvc2X0ksRmRYnVNwS289NtSvxBvN68PB4xQb/+9F2t+GpnF4ZCbfrIuD0QAOpp5nWnM2E0vbR5Uj9Z2Jy0vauvmvmy6mley8bnzMdOD7QUOAQSt9NW+bWjqboCwdWSei6QADH5u2ts4yZKvDmQCN5gneQUD8PoDpjtP+dnvFe/9vnb58/B+VlukzS/khsPwn18/A1FgHS5IgzvnL98B/7DARAcbEpuP30EpTl2rGAxnv7gYmMwLo6HV9TEWIPAwhhmFu+zn8oJni8iaMav2Nhru04s4HxwFhghHTcD1l03A9dUJEaX0teu9U4tc0bzL+I02VmGMrdYP7Xf1J/AzZyp/maK4iUAAAAAElFTkSuQmCC";
@@ -75,6 +76,7 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [imageFailed, setImageFailed] = useState(false);
@@ -83,9 +85,9 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [googleRequest, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
     webClientId: googleWebId || "unconfigured.apps.googleusercontent.com",
     androidClientId: googleAndroidId || "unconfigured.apps.googleusercontent.com",
-    // Exact, stable web callback for the Google OAuth Web client.
-    // Register <origin>/ under Google Cloud > Authorized redirect URIs.
-    redirectUri: Platform.OS === "web" ? window.location.origin + "/" : undefined,
+    // Web stays on its registered root callback. Native must exactly match the
+    // package/applicationId callback used by Expo AuthSession for Google.
+    redirectUri: Platform.OS === "web" ? window.location.origin + "/" : googleAndroidRedirect,
   });
 
   useEffect(() => {
@@ -111,18 +113,50 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
 
   useEffect(() => {
     if (!googleResponse) return;
-    if (googleResponse.type === "error") { setError("Không thể đăng nhập Google."); return; }
+    if (googleResponse.type === "cancel" || googleResponse.type === "dismiss") {
+      setGoogleBusy(false);
+      setInfo("Bạn đã hủy đăng nhập Google.");
+      return;
+    }
+    if (googleResponse.type === "error") {
+      setGoogleBusy(false);
+      setError("Google không thể xác thực lúc này. Vui lòng thử lại.");
+      return;
+    }
     if (googleResponse.type !== "success") return;
     const idToken = googleResponse.params?.id_token;
-    if (!idToken) { setError("Google chưa trả về mã xác minh."); return; }
+    if (!idToken) {
+      setGoogleBusy(false);
+      setError("Google chưa trả về mã xác minh. Vui lòng thử lại.");
+      return;
+    }
     let disposed = false;
     setBusy(true);
     apiRequest<AuthTokens>("/auth/google", { method: "POST", body: { idToken } })
       .then(async tokens => { if (!disposed) await onAuthenticated(tokens); })
       .catch(e => { if (!disposed) setError(e instanceof Error ? e.message : "Đăng nhập Google thất bại."); })
-      .finally(() => { if (!disposed) setBusy(false); });
+      .finally(() => {
+        if (!disposed) {
+          setBusy(false);
+          setGoogleBusy(false);
+        }
+      });
     return () => { disposed = true; };
   }, [googleResponse, onAuthenticated]);
+
+  async function startGoogleLogin() {
+    if (busy || googleBusy || !googleConfigured || !googleRequest) return;
+    setError(""); setInfo(""); setGoogleBusy(true);
+    try {
+      const result = await googlePrompt();
+      if (result.type !== "success" && result.type !== "opened") {
+        setGoogleBusy(false);
+      }
+    } catch {
+      setGoogleBusy(false);
+      setError("Không mở được Google. Vui lòng thử lại.");
+    }
+  }
 
   async function submit() {
     if (busy) return;
@@ -199,8 +233,9 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
     <Action label={busy ? "Đang xác thực..." : "Đăng nhập"} disabled={busy}
       onPress={() => void submit()} />
     <View style={s.divider}><View style={s.rule} /><Text style={s.dividerText}>hoặc</Text><View style={s.rule} /></View>
-    <Action label="Tiếp tục với Google" secondary disabled={!googleConfigured || !googleRequest || busy}
-      onPress={() => { setError(""); void googlePrompt().catch(() => setError("Không mở được Google.")); }}>
+    <Action label={googleBusy ? "Đang mở Google..." : "Tiếp tục với Google"} secondary
+      disabled={!googleConfigured || !googleRequest || busy || googleBusy}
+      onPress={() => void startGoogleLogin()}>
       <Image source={{ uri: googleG }} style={s.googleLogo} accessibilityLabel="Logo Google nhiều màu" />
     </Action>
     <Pressable accessibilityRole="button" accessibilityLabel="Đăng ký" style={s.registerPrompt}
