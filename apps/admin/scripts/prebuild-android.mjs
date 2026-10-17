@@ -8,9 +8,24 @@ const appDirectory = dirname(scriptDirectory);
 const workspaceRoot = resolve(appDirectory, "..", "..");
 const appJsonPath = join(appDirectory, "app.json");
 const googleServicesPath = join(appDirectory, "google-services.json");
+const androidAppBuildGradlePath = join(appDirectory, "android", "app", "build.gradle");
 
 const originalText = readFileSync(appJsonPath, "utf8");
 const withFirebase = existsSync(googleServicesPath);
+
+function pinMetroProjectRoot() {
+  const source = readFileSync(androidAppBuildGradlePath, "utf8");
+  if (source.includes("root = new File(projectRoot)")) return;
+
+  const marker = "react {";
+  if (!source.includes(marker)) {
+    throw new Error("Android app/build.gradle không có react block để khóa Metro project root.");
+  }
+
+  const patched = source.replace(marker, marker + "\n    root = new File(projectRoot)");
+  writeFileSync(androidAppBuildGradlePath, patched);
+  console.log("Android prebuild: Metro project root pinned to this app directory.");
+}
 
 function findExpoCli() {
   const candidates = [
@@ -41,7 +56,11 @@ try {
   );
 
   if (result.error) throw result.error;
-  if (result.status !== 0) process.exitCode = result.status ?? 1;
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+  } else {
+    pinMetroProjectRoot();
+  }
 } finally {
   // Keep the repository secret-free after every local or CI prebuild.
   writeFileSync(appJsonPath, originalText);
