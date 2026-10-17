@@ -650,6 +650,7 @@ function CustomerApp() {
       }
 
       let position: Location.LocationObject | null = null;
+      let usedLastKnown = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       try {
         position = await Promise.race([
@@ -670,18 +671,19 @@ function CustomerApp() {
           throw error;
         }
         position = lastKnown;
-        setNotice("GPS hiện tại chưa phản hồi; đang dùng vị trí gần nhất của thiết bị để đặt ghim.");
+        usedLastKnown = true;
       } finally {
         if (timeoutId) clearTimeout(timeoutId);
       }
 
+      if (!position) throw new Error("Không lấy được GPS.");
       setAddress(old => ({
         ...old, latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
       }));
-      if (!notice.includes("vị trí gần nhất")) {
-        setNotice("Đã lấy GPS. Kiểm tra lại số nhà, tên đường và vị trí ghim trước khi đặt.");
-      }
+      setNotice(usedLastKnown
+        ? "GPS hiện tại chưa phản hồi; đang dùng vị trí gần nhất của thiết bị để đặt ghim."
+        : "Đã lấy GPS. Kiểm tra lại số nhà, tên đường và vị trí ghim trước khi đặt.");
     } catch (error) {
       setAddressErrorText(error instanceof Error ? error.message : "Không lấy được GPS.");
     } finally {
