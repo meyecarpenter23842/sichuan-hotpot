@@ -1,7 +1,7 @@
+import { Body, Controller, Get, Header, Headers, Post } from "@nestjs/common";
 import {
-  Body, Controller, Get, Header, Headers, IsIn, IsOptional, IsString,
-  IsUUID, MaxLength, MinLength, Post,
-} from "@nestjs/common";
+  IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength,
+} from "class-validator";
 import type { PushScope, PushTransport } from "@prisma/client";
 import { PushService } from "./push.service";
 
