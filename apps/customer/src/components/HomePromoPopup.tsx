@@ -143,7 +143,8 @@ export function HomePromoPopup({branchId,payload,active}:{
       <Pressable style={StyleSheet.absoluteFill} accessibilityRole="button"
         accessibilityLabel="Đóng popup quảng bá" onPress={()=>setVisible(false)}/>
       <View style={[s.card,{width:frameWidth}]} testID="home-promo-card">
-        <View style={[s.frame,{width:frameWidth,height:frameHeight}]} {...pan.panHandlers}>
+        <View testID="home-promo-frame"
+          style={[s.frame,{width:frameWidth,height:frameHeight}]} {...pan.panHandlers}>
           {previous&&<View style={StyleSheet.absoluteFill}>{image(previous)}</View>}
           {current&&<Animated.View testID={"home-promo-slide-"+index} style={[StyleSheet.absoluteFill,incoming]}>{image(current)}</Animated.View>}
           <Pressable accessibilityRole="button" accessibilityLabel="Đóng popup"
@@ -151,7 +152,7 @@ export function HomePromoPopup({branchId,payload,active}:{
             <Text style={s.closeText}>×</Text>
           </Pressable>
         </View>
-        <View style={s.dots}>
+        <View style={s.dots} testID="home-promo-dots">
           {slides.length>1&&slides.map((slide,dot)=><Pressable key={slide.id}
             accessibilityRole="tab" accessibilityLabel={"Ảnh popup "+(dot+1)}
             accessibilityState={{selected:dot===index}} style={s.dotTap}
@@ -167,13 +168,13 @@ export function HomePromoPopup({branchId,payload,active}:{
 const s=StyleSheet.create({
   overlay:{flex:1,alignItems:"center",justifyContent:"center",padding:16,
     backgroundColor:"rgba(12,8,7,.68)"},
-  card:{maxWidth:"100%",borderRadius:18,overflow:"hidden",backgroundColor:"#FFFFFF",
-    shadowColor:"#000",shadowOpacity:.2,shadowRadius:18,elevation:8},
-  frame:{overflow:"hidden",backgroundColor:"#F7F3F1"},
+  card:{maxWidth:"100%",borderRadius:18,overflow:"hidden",backgroundColor:"transparent"},
+  frame:{overflow:"hidden",backgroundColor:"transparent"},
   close:{position:"absolute",right:9,top:9,width:44,height:44,borderRadius:22,
     alignItems:"center",justifyContent:"center",backgroundColor:"rgba(0,0,0,.64)"},
   closeText:{color:"#FFFFFF",fontSize:28,lineHeight:32,fontWeight:"500"},
-  dots:{height:42,flexDirection:"row",alignItems:"center",justifyContent:"center",backgroundColor:"#FFFFFF"},
+  dots:{height:42,flexDirection:"row",alignItems:"center",justifyContent:"center",
+    backgroundColor:"transparent"},
   dotTap:{width:44,height:42,alignItems:"center",justifyContent:"center"},
   dot:{width:7,height:7,borderRadius:7,backgroundColor:"#D0D5DD"},
   dotActive:{width:18,backgroundColor:"#B42318"},
