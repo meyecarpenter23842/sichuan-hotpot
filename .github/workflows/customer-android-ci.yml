@@ -62,8 +62,8 @@ jobs:
           set -euo pipefail
           gradle_file="apps/customer/android/app/build.gradle"
           test -s "$gradle_file"
-          grep -Fq 'root = new File(projectRoot)' "$gradle_file"
-          echo "Metro app project root pin: PASS"
+          node scripts/android/release-gradle.mjs customer
+          echo "Expo release Gradle and CLI app roots: PASS"
 
       - name: Assert generated Android app schemes
         shell: bash

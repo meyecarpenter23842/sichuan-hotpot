@@ -26,10 +26,9 @@ test("prebuild enables FCM only when the gitignored descriptor exists", () => {
 });
 
 
-test("prebuild pins Metro bundling to the app directory for release APKs", () => {
-  assert.match(prebuild, /androidAppBuildGradlePath/);
-  assert.match(prebuild, /root = new File\(projectRoot\)/);
-  assert.match(prebuild, /pinMetroProjectRoot\(\)/);
+test("prebuild configures Expo CLI and Gradle release roots after clean prebuild", () => {
+  assert.match(prebuild, /configureGeneratedAndroid\(appDirectory\)/);
+  assert.match(prebuild, /scripts\/android\/release-gradle\.mjs/);
 });
 
 test("stale native push module cannot crash customer app during module import", () => {
