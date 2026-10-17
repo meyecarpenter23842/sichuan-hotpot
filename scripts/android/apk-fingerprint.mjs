@@ -44,9 +44,14 @@ if (verify.error || verify.status !== 0) {
   const details = String(verify.stderr || verify.error?.message || verify.stdout || "").trim().slice(0, 600);
   throw new Error("APK signature verification failed: " + (details || "apksigner returned exit code " + verify.status));
 }
-const sha1 = verify.stdout.match(/Signer #1 certificate SHA-1 digest:\s*([0-9a-f:]+)/i)?.[1];
-const sha256 = verify.stdout.match(/Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)/i)?.[1];
-if (!sha1 || !sha256) throw new Error("No APK signing certificate fingerprint found.");
+const signerOutput = [verify.stdout || "", verify.stderr || ""].join("\n");
+const sha1 = signerOutput.match(/Signer #1 certificate SHA-1 digest:\s*([0-9a-f:]+)/i)?.[1];
+const sha256 = signerOutput.match(/Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)/i)?.[1];
+if (!sha1 || !sha256) {
+  // Only public signing metadata is printed. Never print private keystore files.
+  const details = signerOutput.trim().slice(0, 1200) || "(apksigner produced no output)";
+  throw new Error("No APK signing certificate fingerprint found. apksigner output: " + details);
+}
 console.log(`Android app: ${app}`);
 console.log(`APK certificate SHA-1: ${sha1.toUpperCase()}`);
 console.log(`APK certificate SHA-256: ${sha256.toUpperCase()}`);
