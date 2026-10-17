@@ -1,8 +1,27 @@
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { apiRequest } from "./api";
 
+type NotificationsModule = typeof import("expo-notifications");
+
+let notificationsModule: Promise<NotificationsModule | null> | null = null;
+
+async function loadNotifications(required: boolean): Promise<NotificationsModule | null> {
+  if (!notificationsModule) {
+    notificationsModule = import("expo-notifications").catch(() => null);
+  }
+  const Notifications = await notificationsModule;
+  if (!Notifications && required) {
+    throw new Error(
+      "Bản Android hiện tại chưa tích hợp module thông báo. Hãy rebuild ứng dụng Android rồi thử lại.",
+    );
+  }
+  return Notifications;
+}
+
 async function registerNative(accessToken: string, askPermission: boolean): Promise<void> {
+  const Notifications = await loadNotifications(askPermission);
+  if (!Notifications) return;
+
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("customer-orders-v1", {
       name: "Cập nhật đơn hàng",
@@ -32,6 +51,9 @@ async function registerNative(accessToken: string, askPermission: boolean): Prom
 }
 
 export async function configureCustomerNotificationPresentation(): Promise<void> {
+  const Notifications = await loadNotifications(false);
+  if (!Notifications) return;
+
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldPlaySound: true,
@@ -53,7 +75,12 @@ export async function refreshCustomerPushIfAllowed(accessToken: string): Promise
 export async function watchCustomerNotificationResponses(
   onOpenOrder: (orderId: string) => void,
 ): Promise<() => void> {
-  const handle = (response: Awaited<ReturnType<typeof Notifications.getLastNotificationResponseAsync>>) => {
+  const Notifications = await loadNotifications(false);
+  if (!Notifications) return () => undefined;
+
+  const handle = (
+    response: Awaited<ReturnType<NotificationsModule["getLastNotificationResponseAsync"]>>,
+  ) => {
     const data = response?.notification.request.content.data;
     if (data && typeof data.orderId === "string") onOpenOrder(data.orderId);
   };
