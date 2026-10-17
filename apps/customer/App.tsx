@@ -174,6 +174,18 @@ function cartPriceParts(product: Product, variantId: string|null,
     total:dishTotal+comboTotal+requiredTotal+toppingTotal};
 }
 
+function CartIconBadge({ count, size = 27 }: { count: number; size?: number }) {
+  const label = count > 99 ? "99+" : String(count);
+  return (
+    <View style={styles.cartIconBadgeWrap}>
+      <HotpotNavIcon name="cart" active size={size} />
+      {count > 0 && <View style={styles.cartCountBadge} testID="cart-count-badge">
+        <Text style={styles.cartCountBadgeText}>{label}</Text>
+      </View>}
+    </View>
+  );
+}
+
 function CustomerApp() {
   const { width: viewportWidth } = useWindowDimensions();
   const [screen, setScreen] = useState<Screen>("login");
@@ -200,6 +212,7 @@ function CustomerApp() {
   const [detailError, setDetailError] = useState("");
   const [productInfoExpanded, setProductInfoExpanded] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
   const [expandedCartGroups,setExpandedCartGroups]=useState<string[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
   const [notice, setNotice] = useState("");
@@ -1885,7 +1898,7 @@ function CustomerApp() {
                     </Pressable>
                     <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
                       accessibilityRole="button" accessibilityLabel="Giỏ hàng">
-                      <HotpotNavIcon name="cart" active size={27} />
+                      <CartIconBadge count={cartItemCount} size={27} />
                     </Pressable>
                   </View>
                 </View>
@@ -1903,7 +1916,7 @@ function CustomerApp() {
                 </View>
                 <Pressable style={styles.headerCart} onPress={() => setScreen("cart")}
                   accessibilityRole="button" accessibilityLabel="Giỏ hàng">
-                  <HotpotNavIcon name="cart" active size={25} />
+                  <CartIconBadge count={cartItemCount} size={25} />
                 </Pressable>
               </View>
             )}
@@ -2439,6 +2452,11 @@ const styles = StyleSheet.create({
   smallAction: { alignSelf: "flex-end", paddingVertical: 9, minHeight: 44, justifyContent: "center" },
   linkText: { color: brand, fontSize: 13, fontWeight: "700" },
   orText: { textAlign: "center", paddingVertical: 8 },
+  cartIconBadgeWrap: { position: "relative", alignItems: "center", justifyContent: "center" },
+  cartCountBadge: { position: "absolute", top: -8, right: -10, minWidth: 18, height: 18,
+    paddingHorizontal: 4, borderRadius: 9, backgroundColor: "#D92D20", borderWidth: 2,
+    borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  cartCountBadgeText: { color: "#FFFFFF", fontSize: 10, lineHeight: 12, fontWeight: "900" },
   bottomNavigation: { position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 5, borderTopWidth: 1, borderTopColor: "#E4E7EC", backgroundColor: "white", flexDirection: "row", justifyContent: "space-around", minHeight: 58 },
   navItem: { flex: 1, minHeight: 58, alignItems: "center", justifyContent: "center", gap: 2 },
   navGlyph: { fontSize: 20, color: "#98A2B3" },
