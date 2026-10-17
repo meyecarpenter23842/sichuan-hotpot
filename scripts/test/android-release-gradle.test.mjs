@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { withExpoProjectRoot } = require("../android/expo-embed-cli.cjs");
@@ -28,18 +28,24 @@ test("pins Expo Gradle root and overrides Expo CLI after template definition", (
   assert.equal(configureReleaseGradle(patched), patched, "patch must be idempotent");
 });
 
-test("Expo CLI launcher puts project directory after Gradle's --verbose", () => {
-  const app = mkdtempSync(join(tmpdir(), "hotpot-expo-root-"));
+test("Expo embed entry resolves relative to Metro workspace root, not Gradle app root", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hotpot-expo-workspace-"));
   try {
-    writeFileSync(join(app, "package.json"), "{}");
-    writeFileSync(join(app, "index.ts"), "");
-    const argv = ["node", "cli.cjs", "export:embed", "--entry-file", "index.ts", "--hotpot-project-root", app, "--verbose"];
-    const updated = withExpoProjectRoot(argv);
-    assert.equal(updated.args.at(-1), app);
-    assert.equal(updated.args.at(-2), "--verbose");
-    assert.ok(!updated.args.includes("--hotpot-project-root"));
+    for (const name of ["customer", "admin"]) {
+      const app = join(repo, "apps", name);
+      const { mkdirSync } = require("node:fs");
+      mkdirSync(app, { recursive: true });
+      writeFileSync(join(app, "package.json"), "{}");
+      writeFileSync(join(app, "index.ts"), "");
+      const argv = ["node", "cli.cjs", "export:embed", "--entry-file", "index.ts", "--hotpot-project-root", app, "--verbose"];
+      const updated = withExpoProjectRoot(argv, repo);
+      assert.equal(updated.args[updated.args.indexOf("--entry-file") + 1], "apps/" + name + "/index.ts");
+      assert.equal(updated.args.at(-1), resolve(app));
+      assert.equal(updated.args.at(-2), "--verbose");
+      assert.ok(!updated.args.includes("--hotpot-project-root"));
+    }
   } finally {
-    rmSync(app, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
   }
 });
 
