@@ -33,11 +33,12 @@ if (!signer) {
 }
 const command = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : signer;
 const args = process.platform === "win32"
-  ? ["/d", "/s", "/c", `"${signer}" verify --print-certs "${apk}"`]
+  ? ["/d", "/s", "/c", `""${signer}" verify --print-certs "${apk}""`]
   : ["verify", "--print-certs", apk];
 const verify = spawnSync(command, args, { encoding: "utf8" });
 if (verify.error || verify.status !== 0) {
-  throw new Error("APK signature verification failed; check Android SDK and signing settings.");
+  const details = String(verify.stderr || verify.error?.message || verify.stdout || "").trim().slice(0, 600);
+  throw new Error("APK signature verification failed: " + (details || "apksigner returned exit code " + verify.status));
 }
 const sha1 = verify.stdout.match(/Signer #1 certificate SHA-1 digest:\s*([0-9a-f:]+)/i)?.[1];
 const sha256 = verify.stdout.match(/Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)/i)?.[1];
