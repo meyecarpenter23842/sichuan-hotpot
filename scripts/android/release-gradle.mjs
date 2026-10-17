@@ -3,10 +3,14 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-// Expo's export:embed CLI derives its project directory from its current working
-// directory unless passed a positional path. Gradle's react.root alone did not
-// guarantee the correct Expo project on Windows/npm workspaces.
-const PATCH = `    // Keep React Native Gradle and Expo export:embed on this app, not the npm workspace.\n    root = new File(projectRoot)\n    extraPackagerArgs = [projectRoot]`;
+// React Native Gradle appends --verbose after extraPackagerArgs. Expo SDK 54
+// requires the positional project root to be the FINAL argument.
+const ROOT_PIN = "    root = new File(projectRoot)";
+const CLI_PIN = [
+  "    // Expo export:embed root marker is moved after Gradle's --verbose by the launcher.",
+  '    cliFile = new File(projectRoot, "../../scripts/android/expo-embed-cli.cjs").getCanonicalFile()',
+  '    extraPackagerArgs = ["--hotpot-project-root", projectRoot]',
+].join("\n");
 const PROJECT_ROOT_DECLARATION =
   "def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()";
 
@@ -16,12 +20,16 @@ export function assertReleaseGradle(source) {
   }
   for (const [name, pattern] of [
     ["Expo entry resolver", /^\s*entryFile\s*=\s*file\(\["node", "-e", "require\('expo\/scripts\/resolveAppEntry'\)", projectRoot, "android", "absolute"\]/m],
-    ["Expo CLI", /^\s*cliFile\s*=\s*new File\(\["node", "--print", "require\.resolve\('@expo\/cli'/m],
+    ["Expo CLI original", /^\s*cliFile\s*=\s*new File\(\["node", "--print", "require\.resolve\('@expo\/cli'/m],
     ["export:embed", /^\s*bundleCommand\s*=\s*"export:embed"\s*$/m],
     ["Gradle React root", /^\s*root\s*=\s*new File\(projectRoot\)\s*$/m],
-    ["Expo CLI positional project root", /^\s*extraPackagerArgs\s*=\s*\[projectRoot\]\s*$/m],
+    ["Expo launcher", /^\s*cliFile\s*=\s*new File\(projectRoot, "\.\.\/\.\.\/scripts\/android\/expo-embed-cli\.cjs"\)\.getCanonicalFile\(\)\s*$/m],
+    ["Expo root marker", /^\s*extraPackagerArgs\s*=\s*\["--hotpot-project-root", projectRoot\]\s*$/m],
   ]) {
     if (!pattern.test(source)) throw new Error(`Missing Android release bundling contract: ${name}`);
+  }
+  if (source.lastIndexOf('cliFile = new File(projectRoot') < source.indexOf('bundleCommand = "export:embed"')) {
+    throw new Error("Expo launcher must override the generated cliFile after bundleCommand.");
   }
   return true;
 }
@@ -33,7 +41,7 @@ export function configureReleaseGradle(source) {
   if (!/^react \{$/m.test(source)) {
     throw new Error("Unexpected Expo app/build.gradle: missing react block.");
   }
-  if (source.includes("extraPackagerArgs = [projectRoot]")) {
+  if (source.includes('extraPackagerArgs = ["--hotpot-project-root", projectRoot]')) {
     assertReleaseGradle(source);
     return source;
   }
@@ -41,17 +49,19 @@ export function configureReleaseGradle(source) {
   if (/^\s*(?!\/\/)(?:root|extraPackagerArgs)\s*=/m.test(source)) {
     throw new Error("Unexpected custom React Native Gradle root/packager args; review before patching.");
   }
-  const configured = source.replace(/^react \{$/m, `react {\n${PATCH}`);
-  assertReleaseGradle(configured);
-  return configured;
+  const rooted = source.replace(/^react \{$/m, `react {\n${ROOT_PIN}`);
+  const patched = rooted.replace(/^(\s*bundleCommand\s*=\s*"export:embed"\s*)$/m, `$1\n${CLI_PIN}`);
+  assertReleaseGradle(patched);
+  return patched;
 }
 
 export function configureGeneratedAndroid(appDirectory) {
   const buildGradle = join(appDirectory, "android", "app", "build.gradle");
   const settingsGradle = join(appDirectory, "android", "settings.gradle");
   const entryFile = join(appDirectory, "index.ts");
-  if (!existsSync(settingsGradle) || !existsSync(entryFile)) {
-    throw new Error(`Incomplete Android prebuild or app entry for ${basename(appDirectory)}`);
+  const launcher = resolve(appDirectory, "..", "..", "scripts", "android", "expo-embed-cli.cjs");
+  if (!existsSync(settingsGradle) || !existsSync(entryFile) || !existsSync(launcher)) {
+    throw new Error(`Incomplete Android prebuild, app entry or Expo launcher for ${basename(appDirectory)}`);
   }
   // Use the same Expo entry resolver Gradle will invoke, on both Windows/Linux.
   const resolveEntry = spawnSync(process.execPath, [
@@ -69,7 +79,7 @@ export function configureGeneratedAndroid(appDirectory) {
   const source = readFileSync(buildGradle, "utf8");
   const patched = configureReleaseGradle(source);
   if (patched !== source) writeFileSync(buildGradle, patched);
-  console.log(`Android release: Expo entry ${resolvedEntry}; Gradle and CLI rooted at ${appDirectory}`);
+  console.log(`Android release: Expo entry ${resolvedEntry}; Expo launcher rooted at ${appDirectory}`);
 }
 
 // Inspect generated Gradle in CI without altering the native project.
