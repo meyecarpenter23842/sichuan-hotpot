@@ -23,19 +23,23 @@ for (const sdk of sdkCandidates) {
   if (!existsSync(tools)) continue;
   const versions = readdirSync(tools).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   for (const version of versions) {
-    const executable = join(tools, version, process.platform === "win32" ? "apksigner.bat" : "apksigner");
-    if (existsSync(executable)) { signer = executable; break; }
+    const apkSignerJar = join(tools, version, "lib", "apksigner.jar");
+    if (existsSync(apkSignerJar)) { signer = apkSignerJar; break; }
   }
   if (signer) break;
 }
 if (!signer) {
-  throw new Error("Android SDK build-tools/apksigner not found. Set ANDROID_HOME or ANDROID_SDK_ROOT.");
+  throw new Error("Android SDK build-tools/lib/apksigner.jar not found. Set ANDROID_HOME or ANDROID_SDK_ROOT.");
 }
-const command = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : signer;
-const args = process.platform === "win32"
-  ? ["/d", "/s", "/c", `""${signer}" verify --print-certs "${apk}""`]
-  : ["verify", "--print-certs", apk];
-const verify = spawnSync(command, args, { encoding: "utf8" });
+// Invoke the SDK tool's Java entrypoint directly. Windows cmd.exe quoting
+// of apksigner.bat breaks when Node passes /s /c args; Java argv is portable.
+const java = process.env.JAVA_HOME
+  ? join(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java")
+  : "java";
+const verify = spawnSync(java, [
+  "-cp", signer, "com.android.apksigner.ApkSignerTool",
+  "verify", "--print-certs", apk,
+], { encoding: "utf8" });
 if (verify.error || verify.status !== 0) {
   const details = String(verify.stderr || verify.error?.message || verify.stdout || "").trim().slice(0, 600);
   throw new Error("APK signature verification failed: " + (details || "apksigner returned exit code " + verify.status));
