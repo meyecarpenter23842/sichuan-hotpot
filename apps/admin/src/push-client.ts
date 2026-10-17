@@ -6,11 +6,14 @@ const ENDPOINT_KEY = "sichuan.admin.push-endpoint.v1";
 
 type PushConfig = { enabled: boolean; publicKey: string | null };
 
-function vapidKey(value: string): Uint8Array {
+function vapidKey(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/")
     + "=".repeat((4 - value.length % 4) % 4);
   const raw = atob(base64);
-  return Uint8Array.from(raw, char => char.charCodeAt(0));
+  const buffer = new ArrayBuffer(raw.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return buffer;
 }
 
 async function registerWeb(token: string, branchId: string): Promise<string> {
