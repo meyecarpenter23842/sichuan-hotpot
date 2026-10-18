@@ -12,8 +12,8 @@ test("Android production configuration requires matching Firebase package", () =
   try {
     assert.throws(() => assertFirebaseConfig(directory, "admin"), /Missing apps\/admin\/google-services.json/);
     const descriptor = {
-      project_info: { project_id: "hotpot-production" },
-      client: [{ client_info: { mobilesdk_app_id: "1:123:android:abcdef",
+      project_info: { project_id: "project-0fc02e8a-d32e-4ea9-884", project_number: "265040680128" },
+      client: [{ client_info: { mobilesdk_app_id: "1:265040680128:android:abcdef",
         android_client_info: { package_name: "vn.sichuanhotpot.customer" } },
         api_key: [{ current_key: "fake-key-for-local-test" }] }],
     };
@@ -22,6 +22,14 @@ test("Android production configuration requires matching Firebase package", () =
     descriptor.client[0].client_info.android_client_info.package_name = "vn.sichuanhotpot.admin";
     writeFileSync(join(directory, "google-services.json"), JSON.stringify(descriptor));
     assert.equal(assertFirebaseConfig(directory, "admin").fixture, false);
+    descriptor.project_info.project_id = "another-firebase-project";
+    writeFileSync(join(directory, "google-services.json"), JSON.stringify(descriptor));
+    assert.throws(() => assertFirebaseConfig(directory, "admin"), /Firebase project\/sender mismatch/);
+    descriptor.project_info.project_id = "project-0fc02e8a-d32e-4ea9-884";
+    descriptor.project_info.project_number = "999999999999";
+    writeFileSync(join(directory, "google-services.json"), JSON.stringify(descriptor));
+    assert.throws(() => assertFirebaseConfig(directory, "admin"), /Firebase project\/sender mismatch/);
+    descriptor.project_info.project_number = "265040680128";
     descriptor.project_info.project_id = "hotpot-ci-fixture";
     writeFileSync(join(directory, "google-services.json"), JSON.stringify(descriptor));
     const ci = process.env.CI;
