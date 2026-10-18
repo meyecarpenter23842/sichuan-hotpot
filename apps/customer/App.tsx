@@ -26,6 +26,7 @@ import { PurchasedProductsScreen } from "./src/screens/PurchasedProductsScreen";
 import { palette, typeScale } from "./src/theme";
 import { HotpotNavIcon } from "./src/components/HotpotNavIcon";
 import { HomeCategoryIcon, type HomeCategoryName } from "./src/components/HomeCategoryIcon";
+import { RecoverableImage } from "./src/components/RecoverableImage";
 import { HomeHeroCarousel } from "./src/components/HomeHeroCarousel";
 import { HomePromoPopup } from "./src/components/HomePromoPopup";
 import { ChatbotWidget } from "./src/components/ChatbotWidget";
@@ -146,13 +147,11 @@ function IconTile({ name }: { name: string }) {
 
 
 function ProductArtwork({ product, large = false }: { product: Product; large?: boolean }) {
-  const [broken, setBroken] = useState(false);
   const uri = safeProductImageUrl(product.imageKey);
-  useEffect(() => setBroken(false), [uri]);
-  if (!uri || broken) return <IconTile name={product.name} />;
-  return <Image source={{ uri }} resizeMode="cover"
+  if (!uri) return <IconTile name={product.name} />;
+  return <RecoverableImage uri={uri} resizeMode="cover"
     style={large ? styles.productImageLarge : styles.productImage}
-    accessibilityLabel={"Ảnh món " + product.name} onError={() => setBroken(true)} />;
+    accessibilityLabel={"Ảnh món " + product.name} />;
 }
 
 /** Optional toppings are purchased independently from the dish counter.
@@ -1080,8 +1079,9 @@ function CustomerApp() {
               accessibilityRole="button" style={[styles.pill, categoryId === cat.id && styles.pillActive]}
             >
               {safeProductImageUrl(cat.imageKey)
-                ? <Image source={{uri:safeProductImageUrl(cat.imageKey)!}}
-                    style={{width:24,height:24,borderRadius:6,marginRight:5}} accessibilityLabel={"Ảnh danh mục "+cat.name}/>
+                ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact
+                    style={{width:24,height:24,borderRadius:6,marginRight:5}}
+                    accessibilityLabel={"Ảnh danh mục "+cat.name}/>
                 : null}
               <Text style={[styles.pillText, categoryId === cat.id && styles.pillTextActive]}>{cat.name}</Text>
             </Pressable>
@@ -1091,8 +1091,9 @@ function CustomerApp() {
           <View key={cat.id} style={styles.categoryBlock}>
             <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
                {safeProductImageUrl(cat.imageKey)
-                 ? <Image source={{uri:safeProductImageUrl(cat.imageKey)!}}
-                     style={{width:32,height:32,borderRadius:8}} accessibilityLabel={"Ảnh danh mục "+cat.name}/>
+                 ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact
+                    style={{width:32,height:32,borderRadius:8}}
+                    accessibilityLabel={"Ảnh danh mục "+cat.name}/>
                  : null}
                <Text style={styles.categoryTitle}>{cat.name}</Text>
              </View>
@@ -1311,9 +1312,8 @@ function CustomerApp() {
                   accessibilityLabel={"Xem ưu đãi "+offer.title}
                   style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58))}]}
                   onPress={()=>setSelectedOffer(offer)}>
-                  {safeProductImageUrl(offer.imageKey)&&<Image resizeMode="cover"
-                    source={{uri:safeProductImageUrl(offer.imageKey)!}}
-                    style={styles.homeOfferImage}/>}
+                  {safeProductImageUrl(offer.imageKey)&&<RecoverableImage uri={safeProductImageUrl(offer.imageKey)!} resizeMode="cover"
+                    accessibilityLabel={"Ảnh ưu đãi "+offer.title} style={styles.homeOfferImage}/>}
                   <View style={styles.homeOfferCardShade}>
                     <Text style={styles.homeOfferCardTitle} numberOfLines={1}>{offer.title}</Text>
                   </View>
@@ -1412,8 +1412,8 @@ function CustomerApp() {
               </View>
               {item.comboFixedItems.map(fixed => <View key={fixed.id} style={styles.comboFixedRow}>
                 {safeProductImageUrl(fixed.childProduct.imageKey)
-                  ? <Image source={{ uri: safeProductImageUrl(fixed.childProduct.imageKey)! }}
-                      style={styles.comboThumb} />
+                  ? <RecoverableImage uri={safeProductImageUrl(fixed.childProduct.imageKey)!} compact
+                      accessibilityLabel={"Ảnh "+fixed.childProduct.name} style={styles.comboThumb}/>
                   : <View style={styles.comboThumbPlaceholder} />}
                 <View style={styles.toppingCopy}>
                   <Text style={styles.optionText}>
@@ -1443,8 +1443,8 @@ function CustomerApp() {
                     const wouldSwap = groupCount === group.maxSelect && count === 0;
                     return <View key={choice.id} style={styles.comboChoiceRow}>
                       {safeProductImageUrl(choice.imageKey)
-                        ? <Image source={{ uri: safeProductImageUrl(choice.imageKey)! }}
-                            style={styles.comboThumb} />
+                        ? <RecoverableImage uri={safeProductImageUrl(choice.imageKey)!} compact
+                          accessibilityLabel={"Ảnh "+choice.name} style={styles.comboThumb}/>
                         : <View style={styles.comboThumbPlaceholder} />}
                       <View style={styles.toppingCopy}>
                         <Text style={styles.optionText} numberOfLines={2}>
@@ -2064,8 +2064,9 @@ function CustomerApp() {
               <ScrollView style={styles.offerModalScroll}
                 contentContainerStyle={styles.offerModalContent} keyboardShouldPersistTaps="handled">
                 {selectedOffer&&safeProductImageUrl(selectedOffer.imageKey)&&
-                  <Image source={{uri:safeProductImageUrl(selectedOffer.imageKey)!}}
-                    resizeMode="cover" style={styles.offerModalPhoto}/>}
+                  <RecoverableImage uri={safeProductImageUrl(selectedOffer.imageKey)!}
+                    resizeMode="cover" style={styles.offerModalPhoto}
+                    accessibilityLabel={"Ảnh ưu đãi "+selectedOffer.title}/>}
                 <Text style={styles.offerModalSummary}>{selectedOffer?.summary}</Text>
                 <Text style={styles.offerModalBody}>{selectedOffer?.body}</Text>
                 {selectedOffer?.endAt&&<Text style={styles.muted}>

@@ -2,6 +2,7 @@ import React,{useCallback,useEffect,useMemo,useRef,useState} from "react";
 import { AccessibilityInfo,Animated,AppState,Image,PanResponder,Platform,Pressable,
   StyleSheet,Text,View,useWindowDimensions } from "react-native";
 import { safeProductImageUrl,type HomeHeroPayload,type HomeHeroSlide } from "../api";
+import { RecoverableImage } from "./RecoverableImage";
 
 export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
   payload:HomeHeroPayload|null;loading:boolean;error:string;active:boolean;
@@ -12,7 +13,6 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
   const heroHeight=heroWidth*321/829;
   const heroScale=heroWidth/829;
   const signature=(payload?.slides??[]).map(s=>s.id+":"+s.imageKey).join("|");
-  const [failed,setFailed]=useState<string[]>([]);
   const [index,setIndex]=useState(0);
   const [previousIndex,setPreviousIndex]=useState<number|null>(null);
   const [visible,setVisible]=useState(true);
@@ -21,7 +21,7 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
   const progress=useRef(new Animated.Value(1)).current;
   const transitionLock=useRef(false);
 
-  useEffect(()=>{setFailed([]);setIndex(0);setPreviousIndex(null);progress.setValue(1);},[signature,progress]);
+  useEffect(()=>{setIndex(0);setPreviousIndex(null);progress.setValue(1);},[signature,progress]);
   useEffect(()=>{
     let mounted=true;
     void AccessibilityInfo.isReduceMotionEnabled().then(value=>{if(mounted)setReducedMotion(value);});
@@ -44,7 +44,7 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
   },[]);
 
   const slides=useMemo(()=>(payload?.slides??[]).filter(slide=>
-    !!safeProductImageUrl(slide.imageKey)&&!failed.includes(slide.id)),[payload,failed]);
+    !!safeProductImageUrl(slide.imageKey)),[payload]);
   const settings=payload?.settings??{
     autoplay:true,dwellMs:5000,transitionType:"fade" as const,transitionDurationMs:450,
     revision:0,updatedAt:null,
@@ -89,13 +89,12 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
     onPanResponderTerminationRequest:()=>true,
   }),[goTo,index]);
 
-  const markFailed=(id:string)=>setFailed(old=>old.includes(id)?old:[...old,id]);
   const renderContent=(slide:HomeHeroSlide)=>{
     const uri=safeProductImageUrl(slide.imageKey);
     if(!uri)return null;
     return <View style={[s.slide,{width:heroWidth,height:heroHeight}]}>
-      <Image source={{uri}} resizeMode="cover" style={StyleSheet.absoluteFillObject}
-        accessibilityLabel={slide.altText} onError={()=>markFailed(slide.id)}/>
+      <RecoverableImage uri={uri} resizeMode="cover"
+        style={StyleSheet.absoluteFillObject} accessibilityLabel={slide.altText}/>
       {(slide.title||slide.subtitle||slide.ctaTarget)&&<View style={s.copy}>
         {!!slide.title&&<Text style={s.title} numberOfLines={2}>{slide.title}</Text>}
         {!!slide.subtitle&&<Text style={s.subtitle} numberOfLines={2}>{slide.subtitle}</Text>}
@@ -119,12 +118,12 @@ export function HomeHeroCarousel({payload,loading,error,active,onRetry,onMenu}:{
       accessibilityLabel="Ảnh banner dự phòng theo mẫu đã duyệt"
       style={[s.fallbackImage,{left:-58*heroScale,top:-232*heroScale,
         width:941*heroScale,height:1672*heroScale}]}/>
-    {(loading||error||failed.length>0)&&<View style={s.status}>
+    {(loading||error)&&<View style={s.status}>
       <Text style={s.statusText}>{loading&&!error?"Đang tải banner…":
-        error?"Banner đang dùng ảnh dự phòng.":"Một ảnh banner chưa tải được."}</Text>
-      {(!!error||failed.length>0)&&<Pressable accessibilityRole="button"
+        error?"Banner đang dùng ảnh dự phòng.":"Chưa có banner được bật."}</Text>
+      {!!error&&<Pressable accessibilityRole="button"
         accessibilityLabel="Tải lại banner" style={s.retry} onPress={()=>{
-          setFailed([]);setTimerEpoch(x=>x+1);onRetry();
+          setTimerEpoch(x=>x+1);onRetry();
         }}><Text style={s.retryText}>Thử lại</Text></Pressable>}
     </View>}
   </View>;
