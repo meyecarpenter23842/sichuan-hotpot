@@ -96,9 +96,9 @@ export async function adminPushTestStatus(): Promise<PushTestStatus> {
   const channel = await Notifications.getNotificationChannelAsync(ORDER_CHANNEL_ID);
   const channelSound = channel?.sound ?? null;
   const sound = !channel ? "Chưa tạo channel âm riêng"
-    : channelSound === ORDER_SOUND_FILE || channelSound === "new_order_alert"
-      ? ORDER_SOUND_FILE + " · channel " + ORDER_CHANNEL_ID + " đã cấu hình (chưa nghe thực tế)"
-      : "Channel " + ORDER_CHANNEL_ID + " đang dùng âm " + (channelSound ?? "mặc định")
+    : channelSound === "custom"
+      ? "Âm tùy chỉnh của channel " + ORDER_CHANNEL_ID + " đã bật (chưa xác nhận nghe thực tế)"
+      : "Channel " + ORDER_CHANNEL_ID + " đang dùng âm " + (channelSound ?? "tắt âm")
         + ". Kiểm tra thiết lập thông báo Android.";
   if (!permission.granted) return { permission: permission.canAskAgain ? "Chưa cấp" : "Bị từ chối",
     firebase: "Chưa xác minh", token: "Chưa đăng ký", sound };
