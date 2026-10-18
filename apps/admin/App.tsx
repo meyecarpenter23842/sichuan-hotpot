@@ -6,6 +6,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   AdminApiError, forgetSession, refreshSession, rememberSession, request,
+  setAdminSessionRecovery,
   type AdminCatalog, type AuthTokens, type Branch, type Principal,
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
@@ -229,6 +230,9 @@ export default function AdminApp() {
   const [headerBusy, setHeaderBusy] = useState(false);
   const [headerToast, setHeaderToast] = useState("");
   const sessionGeneration = useRef(0);
+  const liveAccess = useRef<string | null>(null);
+  const accessRecovery = useRef<Promise<string | null> | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const renewing = useRef(false);
   const retryCount = useRef(0);
   const [retryAt, setRetryAt] = useState(0);
@@ -306,6 +310,7 @@ export default function AdminApp() {
         if (!live || epoch !== sessionGeneration.current || !current) return;
         await loadIdentity(current.accessToken);
         if (!live || epoch !== sessionGeneration.current) return;
+        liveAccess.current = current.accessToken;
         setToken(current.accessToken);
         setAccessExpiresAt(Date.now() + current.accessTokenExpiresInSeconds * 1000);
       } catch (error) {
@@ -318,7 +323,7 @@ export default function AdminApp() {
     }
     void restore();
     return () => { live = false; };
-  }, [loadIdentity]);
+  }, [loadIdentity, restoreAttempt]);
 
   async function login() {
     if (loginBusy) return;
@@ -330,6 +335,7 @@ export default function AdminApp() {
       await rememberSession(tokens.refreshToken);
       sessionGeneration.current++;
       retryCount.current = 0; setRetryAt(0);
+      liveAccess.current = tokens.accessToken;
       setToken(tokens.accessToken);
       setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
       setLoginPassword("");
@@ -367,29 +373,52 @@ export default function AdminApp() {
     } finally { setRecoveryBusy(false); }
   }
 
+  // One recovery path for proactive rotation, stale WebSocket polling and 401 API replies.
+  const recoverAccess = useCallback(async (stale: string): Promise<string | null> => {
+    if (!liveAccess.current) return null; // logout must never reanimate a session
+    if (liveAccess.current !== stale) return liveAccess.current;
+    if (accessRecovery.current) return accessRecovery.current;
+    const epoch = sessionGeneration.current;
+    const task = (async () => {
+      const next = await refreshSession();
+      if (!next || epoch !== sessionGeneration.current) return null;
+      liveAccess.current = next.accessToken;
+      setToken(next.accessToken);
+      setAccessExpiresAt(Date.now() + next.accessTokenExpiresInSeconds * 1000);
+      retryCount.current = 0; setRetryAt(0);
+      setNotice("");
+      return next.accessToken;
+    })();
+    accessRecovery.current = task;
+    try { return await task; }
+    finally { if (accessRecovery.current === task) accessRecovery.current = null; }
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    return setAdminSessionRecovery(recoverAccess);
+  }, [token, recoverAccess]);
+
   const renew = useCallback(async () => {
     if (!token || renewing.current || Date.now() < retryAt) return;
     renewing.current = true;
     const epoch = sessionGeneration.current;
     try {
-      const next = await refreshSession();
-      if (!next || epoch !== sessionGeneration.current) return;
-      retryCount.current = 0;
-      setRetryAt(0); setToken(next.accessToken);
-      setAccessExpiresAt(Date.now() + next.accessTokenExpiresInSeconds * 1000);
+      await recoverAccess(token);
     } catch (e) {
       if (epoch !== sessionGeneration.current) return;
       if (e instanceof AdminApiError && e.status === 401) {
+        liveAccess.current = null;
         setToken(null); setPrincipal(null); setBranches([]);
         await forgetSession(null).catch(() => undefined);
-        setAuthError("Phiên đã hết hạn. Vui lòng đăng nhập lại.");
+        setAuthError("Phiên thực sự không còn hợp lệ. Vui lòng đăng nhập lại.");
       } else {
         const wait = Math.min(300000, 15000 * 2 ** Math.min(retryCount.current++, 5));
         setRetryAt(Date.now() + wait);
         setNotice("Mạng gián đoạn. Admin sẽ thử kết nối lại.");
       }
     } finally { renewing.current = false; }
-  }, [token, retryAt]);
+  }, [token, retryAt, recoverAccess]);
 
   useEffect(() => {
     if (!token) return;
@@ -422,6 +451,7 @@ export default function AdminApp() {
   async function signOut() {
     sessionGeneration.current++;
     const old = token;
+    liveAccess.current = null;
     if (old) await disableAdminPush(old).catch(() => undefined);
     setToken(null); setPrincipal(null); setCatalog(null);
     setBranches([]); setBranchId(null); setNotice(""); setAuthError("");
@@ -488,12 +518,12 @@ export default function AdminApp() {
         <Text style={styles.caption}>Đang kiểm tra phiên quản trị...</Text>
       </View> : sessionError ? <View style={styles.center}>
         <Notice text={sessionError} error />
-        <Action label="Thử kết nối lại" onPress={() => { setSessionError(""); setReady(false);
-          // Reloading the document resets the boot hook; on Android a new session is restored via app restart.
-          if (Platform.OS === "web") window.location.reload();
-          else { setReady(true); setSessionError(""); }
+        <Action label="Thử kết nối lại" onPress={() => {
+          setSessionError(""); setRestoreAttempt(n => n + 1);
         }} />
         <Action label="Đăng nhập lại" secondary onPress={() => {
+          sessionGeneration.current++;
+          liveAccess.current = null;
           void forgetSession(null); setSessionError(""); setToken(null); setPrincipal(null);
         }} />
       </View> : !token ? <KeyboardAvoidingView style={styles.loginPage}

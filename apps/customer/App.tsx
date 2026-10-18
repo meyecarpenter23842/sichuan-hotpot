@@ -12,7 +12,8 @@ import {
   replaceCartLineSelection, type CartLine,
 } from "../../packages/shared/src/cart";
 import {
-  apiRequest, ApiRequestError, safeProductImageUrl, type AuthTokens, type BranchMenu, type BranchSummary,
+  apiRequest, ApiRequestError, safeProductImageUrl, setCustomerSessionRecovery,
+  type AuthTokens, type BranchMenu, type BranchSummary,
   type Principal, type Product, type ModifierGroup, type ComboGroup,
   type SavedAddress, type SavedAddresses, type HomeOffer, type HomeHeroPayload, type HomePopupPayload,
   type CheckoutReceipt, type CustomerOrderDetail,
@@ -52,13 +53,19 @@ const BRANCH_KEY = "hotpot.branch.v1";
 const ADDRESS_KEY = "hotpot.address.draft.v1";
 const REFRESH_KEY = "hotpot.auth.refresh.v1";
 const WEB_SESSION_MARKER = "hotpot.auth.pwa.present.v1";
+let storedSessionEpoch = 0;
+let refreshPending: Promise<AuthTokens | null> | null = null;
 async function writeRefresh(token: string): Promise<void> {
+  const epoch = ++storedSessionEpoch;
   if (Platform.OS === "web") {
     await startBrowserSession(token);
-    await AsyncStorage.setItem(WEB_SESSION_MARKER, "1").catch(() => undefined);
+    if (epoch === storedSessionEpoch)
+      await AsyncStorage.setItem(WEB_SESSION_MARKER, "1").catch(() => undefined);
   } else await SecureStore.setItemAsync(REFRESH_KEY, token);
 }
 async function clearRefresh(): Promise<void> {
+  ++storedSessionEpoch;
+  if (refreshPending) await refreshPending.catch(() => null);
   if (Platform.OS === "web") {
     // Never retain the local signed-in marker after a failed/offline logout.
     await AsyncStorage.multiRemove([REFRESH_KEY, WEB_SESSION_MARKER]).catch(() => undefined);
@@ -67,20 +74,32 @@ async function clearRefresh(): Promise<void> {
     await SecureStore.deleteItemAsync(REFRESH_KEY);
   }
 }
-async function refreshCredentials(): Promise<AuthTokens | null> {
+async function rotateCredentials(): Promise<AuthTokens | null> {
+  const epoch = storedSessionEpoch;
   if (Platform.OS === "web") {
     // This non-secret marker avoids hammering /refresh for anonymous visitors.
     if (await AsyncStorage.getItem(WEB_SESSION_MARKER).catch(() => null) !== "1") return null;
+    if (epoch !== storedSessionEpoch) return null;
     const token = await refreshBrowserSession();
-    return { ...token, refreshToken: "" };
+    return epoch === storedSessionEpoch ? { ...token, refreshToken: "" } : null;
   }
   const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
-  if (!refreshToken) return null;
+  if (!refreshToken || epoch !== storedSessionEpoch) return null;
   const tokens = await apiRequest<AuthTokens>("/auth/refresh", {
     method: "POST", body: { refreshToken },
   });
-  await writeRefresh(tokens.refreshToken);
+  if (epoch !== storedSessionEpoch) return null;
+  await SecureStore.setItemAsync(REFRESH_KEY, tokens.refreshToken);
+  if (epoch !== storedSessionEpoch) return null;
   return tokens;
+}
+// Backend rotates refresh tokens atomically; requests in the same app must share rotation.
+async function refreshCredentials(): Promise<AuthTokens | null> {
+  if (refreshPending) return refreshPending;
+  const work = rotateCredentials();
+  refreshPending = work;
+  try { return await work; }
+  finally { if (refreshPending === work) refreshPending = null; }
 }
 const brand = palette.red;
 const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
@@ -228,6 +247,8 @@ function CustomerApp() {
   const [authRestoreAttempt, setAuthRestoreAttempt] = useState(0);
   const [accessExpiresAt, setAccessExpiresAt] = useState(0);
   const authEpoch = useRef(0);
+  const liveAccess = useRef("");
+  const accessRecovery = useRef<Promise<string | null> | null>(null);
   const renewing = useRef(false);
   const refreshFailures = useRef(0);
   const [retryAt, setRetryAt] = useState(0);
@@ -481,6 +502,7 @@ function CustomerApp() {
         });
         if (who.role !== "CUSTOMER") throw new Error("Tài khoản không thuộc ứng dụng khách hàng.");
         if (active && epoch === authEpoch.current) {
+          liveAccess.current = tokens.accessToken;
           setAccessToken(tokens.accessToken);
           setPrincipal(who);
           setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
@@ -515,6 +537,7 @@ function CustomerApp() {
     refreshFailures.current = 0;
     setRetryAt(0);
     setAuthRestoreError("");
+    liveAccess.current = tokens.accessToken;
     setAccessToken(tokens.accessToken);
     setPrincipal(who);
     setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
@@ -527,26 +550,47 @@ function CustomerApp() {
       : loginReturnTo === "cart" ? "Đăng nhập thành công. Vui lòng kiểm tra địa chỉ giao hàng." : "Đăng nhập thành công.");
   }, [loginReturnTo]);
 
+  const recoverAccess = useCallback(async (stale: string): Promise<string | null> => {
+    if (!liveAccess.current) return null;
+    if (liveAccess.current !== stale) return liveAccess.current;
+    if (accessRecovery.current) return accessRecovery.current;
+    const epoch = authEpoch.current;
+    const task = (async () => {
+      const tokens = await refreshCredentials();
+      if (!tokens || epoch !== authEpoch.current) return null;
+      liveAccess.current = tokens.accessToken;
+      setAccessToken(tokens.accessToken);
+      setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+      refreshFailures.current = 0; setRetryAt(0);
+      setNotice("");
+      return tokens.accessToken;
+    })();
+    accessRecovery.current = task;
+    try { return await task; }
+    finally { if (accessRecovery.current === task) accessRecovery.current = null; }
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    return setCustomerSessionRecovery(recoverAccess);
+  }, [accessToken, recoverAccess]);
+
   const renewSession = useCallback(async () => {
     if (renewing.current) return;
     renewing.current = true;
     const epoch = authEpoch.current;
     try {
-      const tokens = await refreshCredentials();
-      if (!tokens || epoch !== authEpoch.current) return;
-      refreshFailures.current = 0;
-      setRetryAt(0);
-      setAccessToken(tokens.accessToken);
-      setAccessExpiresAt(Date.now() + tokens.accessTokenExpiresInSeconds * 1000);
+      if (liveAccess.current) await recoverAccess(liveAccess.current);
     } catch (error) {
       if (epoch !== authEpoch.current) return;
       if (error instanceof ApiRequestError && error.status === 401) {
+        liveAccess.current = "";
         await clearRefresh().catch(() => undefined);
         setAccessToken("");
         setPrincipal(null);
         setAccessExpiresAt(0);
         setScreen("login");
-        setNotice("Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+        setNotice("Phiên thực sự không còn hợp lệ. Vui lòng đăng nhập lại.");
       } else {
         // Retain the credential. Exponential retry prevents a 1-second refresh storm.
         const delay = Math.min(300_000, 15_000 * 2 ** Math.min(refreshFailures.current, 5));
@@ -554,10 +598,8 @@ function CustomerApp() {
         setRetryAt(Date.now() + delay);
         setNotice("Mạng gián đoạn. Ứng dụng sẽ thử kết nối lại.");
       }
-    } finally {
-      renewing.current = false;
-    }
-  }, []);
+    } finally { renewing.current = false; }
+  }, [recoverAccess]);
 
   useEffect(() => {
     if (!accessToken || !accessExpiresAt) return;
@@ -587,6 +629,7 @@ function CustomerApp() {
   async function signOut() {
     const token = accessToken;
     authEpoch.current += 1;
+    liveAccess.current = "";
     setPrincipal(null);
     setAccessToken("");
     setAccessExpiresAt(0);
