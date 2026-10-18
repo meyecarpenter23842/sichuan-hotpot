@@ -12,6 +12,6 @@ test("customer account has device-only FCM and audio tests without creating orde
   assert.match(tester, /customerTestLocalSound/);
   assert.match(tester, /CHƯA xác nhận/);
   assert.match(native, /scheduleNotificationAsync/);
-  assert.match(native, /POST", accessToken, body: \{ token: deviceToken \}/);
+  assert.match(native, /POST", accessToken, body: \{ token: deviceToken, delaySeconds \}/);
   assert.doesNotMatch(native, /\/orders\/create/);
 });
