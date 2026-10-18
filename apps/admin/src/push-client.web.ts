@@ -93,3 +93,19 @@ export async function watchAdminNotificationResponses(
 ): Promise<() => void> {
   return () => undefined;
 }
+
+export type PushTestStatus = { permission: string; firebase: string; token: string; sound: string };
+export async function adminPushTestStatus(): Promise<PushTestStatus> {
+  return { permission: typeof Notification === "undefined" ? "Không hỗ trợ" : Notification.permission,
+    firebase: "Chỉ dành cho APK Android", token: "Không dùng FCM", sound: "Âm hệ thống trình duyệt" };
+}
+export async function adminTestLocalSound(): Promise<void> {
+  throw new Error("Kiểm tra âm thanh riêng chỉ hỗ trợ APK Android.");
+}
+export async function adminTestRemotePush(_token: string, _branchId: string): Promise<string> {
+  throw new Error("Kiểm tra FCM chỉ hỗ trợ APK Android.");
+}
+export function listenAdminTestReceipts(_token: string, _onReceipt: (testId: string) => void): () => void {
+  return () => undefined;
+}
+

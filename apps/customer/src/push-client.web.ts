@@ -82,3 +82,21 @@ export async function watchCustomerNotificationResponses(
 ): Promise<() => void> {
   return () => undefined;
 }
+
+export type PushTestStatus = { permission: string; firebase: string; token: string; sound: string };
+export async function customerPushTestStatus(): Promise<PushTestStatus> {
+  return { permission: typeof Notification === "undefined" ? "Không hỗ trợ" : Notification.permission,
+    firebase: "Chỉ dành cho APK Android", token: "Không dùng FCM", sound: "Âm hệ thống trình duyệt" };
+}
+export async function customerTestLocalSound(): Promise<void> {
+  throw new Error("Kiểm tra âm thanh riêng chỉ hỗ trợ APK Android.");
+}
+export async function customerTestRemotePush(_accessToken: string): Promise<string> {
+  throw new Error("Kiểm tra FCM chỉ hỗ trợ APK Android.");
+}
+export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {
+  return () => undefined;
+}
+export async function disableCustomerPush(_accessToken: string): Promise<void> {
+  // PWA uses a browser subscription, not Android FCM.
+}

@@ -1,9 +1,11 @@
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "./api";
 
 type NotificationsModule = typeof import("expo-notifications");
 
 let notificationsModule: Promise<NotificationsModule | null> | null = null;
+const ENDPOINT_KEY = "sichuan.customer.push-endpoint.v1";
 
 async function loadNotifications(required: boolean): Promise<NotificationsModule | null> {
   if (!notificationsModule) {
@@ -18,9 +20,9 @@ async function loadNotifications(required: boolean): Promise<NotificationsModule
   return Notifications;
 }
 
-async function registerNative(accessToken: string, askPermission: boolean): Promise<void> {
+async function registerNative(accessToken: string, askPermission: boolean): Promise<string | null> {
   const Notifications = await loadNotifications(askPermission);
-  if (!Notifications) return;
+  if (!Notifications) return null;
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("customer-orders-v1", {
@@ -37,9 +39,9 @@ async function registerNative(accessToken: string, askPermission: boolean): Prom
   if (!permission.granted && askPermission) permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) {
     if (askPermission) throw new Error("Chưa cấp quyền thông báo cho ứng dụng.");
-    return;
+    return null;
   }
-  if (Platform.OS !== "android") return;
+  if (Platform.OS !== "android") return null;
   let device: Awaited<ReturnType<NotificationsModule["getDevicePushTokenAsync"]>>;
   try {
     device = await Notifications.getDevicePushTokenAsync();
@@ -59,6 +61,8 @@ async function registerNative(accessToken: string, askPermission: boolean): Prom
     method: "POST", accessToken,
     body: { scope: "CUSTOMER", transport: "FCM", token: device.data },
   });
+  await AsyncStorage.setItem(ENDPOINT_KEY, device.data);
+  return device.data;
 }
 
 export async function configureCustomerNotificationPresentation(): Promise<void> {
@@ -98,4 +102,70 @@ export async function watchCustomerNotificationResponses(
   handle(await Notifications.getLastNotificationResponseAsync());
   const subscription = Notifications.addNotificationResponseReceivedListener(handle);
   return () => subscription.remove();
+}
+
+export type PushTestStatus = { permission: string; firebase: string; token: string; sound: string };
+export async function customerPushTestStatus(): Promise<PushTestStatus> {
+  const Notifications = await loadNotifications(true);
+  if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) return { permission: permission.canAskAgain ? "Chưa cấp" : "Bị từ chối",
+    firebase: "Chưa xác minh", token: "Chưa đăng ký", sound: "default (chưa thử nghe)" };
+  try {
+    const device = await Notifications.getDevicePushTokenAsync();
+    return { permission: "Đã cấp", firebase: "Khởi tạo Firebase và lấy token thành công",
+      token: device.type === "android" && typeof device.data === "string" ? "Sẵn sàng" : "Không hợp lệ",
+      sound: "default (chưa thử nghe)" };
+  } catch (error) {
+    return { permission: "Đã cấp", firebase: error instanceof Error ? error.message : "Không truy cập được Firebase",
+      token: "Không khả dụng", sound: "default (chưa thử nghe)" };
+  }
+}
+export async function customerTestLocalSound(): Promise<void> {
+  const Notifications = await loadNotifications(true);
+  if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) throw new Error("Phải cấp quyền thông báo để kiểm tra âm thanh hệ thống Android.");
+  await Notifications.setNotificationChannelAsync("customer-orders-v1", {
+    name: "Cập nhật đơn hàng",
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: "default",
+  });
+  await Notifications.scheduleNotificationAsync({
+    content: { title: "Kiểm tra âm thanh", body: "Âm thử cục bộ, không tạo đơn hàng.",
+      sound: "default", data: { kind: "LOCAL_SOUND_TEST" } },
+    trigger: null,
+  });
+}
+export async function customerTestRemotePush(accessToken: string): Promise<string> {
+  const deviceToken = await registerNative(accessToken, true);
+  if (!deviceToken) throw new Error("Thiết bị chưa có FCM token.");
+  await AsyncStorage.setItem(ENDPOINT_KEY, deviceToken);
+  const result = await apiRequest<{ testId: string }>("/push/test", { method: "POST", accessToken, body: { token: deviceToken } });
+  return result.testId;
+}
+export function listenCustomerTestReceipts(
+  accessToken: string, onReceipt: (testId: string) => void,
+): () => void {
+  let listener: { remove: () => void } | undefined;
+  let active = true;
+  void loadNotifications(false).then(Notifications => {
+    if (!active || !Notifications) return;
+    listener = Notifications.addNotificationReceivedListener(notification => {
+    const data = notification.request.content.data;
+    if (data?.kind !== "TEST" || typeof data.testId !== "string") return;
+    void AsyncStorage.getItem(ENDPOINT_KEY).then(endpoint => {
+      if (!endpoint) return;
+      return apiRequest("/push/test/receipt", { method: "POST", accessToken, body: { testId: data.testId, token: endpoint } }).then(() => onReceipt(data.testId as string));
+    }).catch(() => undefined);
+  });
+  }).catch(() => undefined);
+  return () => { active = false; listener?.remove(); };
+}
+
+export async function disableCustomerPush(accessToken: string): Promise<void> {
+  const token = await AsyncStorage.getItem(ENDPOINT_KEY);
+  if (!token) return;
+  await apiRequest("/push/subscriptions/remove", { method: "POST", accessToken, body: { token } });
+  await AsyncStorage.removeItem(ENDPOINT_KEY);
 }
