@@ -4,7 +4,7 @@ export function parseApkCertificateFingerprints(output) {
   const results = new Map();
   const lines = String(output).split(/\r?\n/);
   for (const line of lines) {
-    const matched = line.match(/^\s*(?:Signer #\d+|V\d+ Signer): certificate (SHA-1|SHA-256) digest:\s*([a-f0-9:]+)\s*$/i);
+    const matched = line.match(/^\s*(?:Signer #\d+:?|V\d+ Signer:)\s+certificate (SHA-1|SHA-256) digest:\s*([a-f0-9:]+)\s*$/i);
     if (!matched) continue;
     const type = matched[1].toUpperCase();
     const digest = matched[2].replace(/:/g, "").toUpperCase();
