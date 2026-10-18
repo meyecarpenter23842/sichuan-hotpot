@@ -212,6 +212,10 @@ export class AdminOrdersService {
       });
       if (changed.status === "CONFIRMED") {
         void this.push.notifyCustomerConfirmed(changed.customerId, orderId).catch(() => undefined);
+      } else {
+        // A customer in background still needs a push, not only a realtime event.
+        void this.push.notifyCustomerStatus(changed.customerId, orderId, changed.status, reason)
+          .catch(() => undefined);
       }
       return { id: changed.id, fromStatus: changed.fromStatus, status: changed.status };
     } catch (error) {

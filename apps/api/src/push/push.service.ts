@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, HttpException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { PushScope, PushTransport } from "@prisma/client";
+import type { OrderStatus, PushScope, PushTransport } from "@prisma/client";
 import { GoogleAuth } from "google-auth-library";
 import webpush from "web-push";
 import { AuthService } from "../auth/auth.service";
@@ -18,7 +18,7 @@ export interface PushRegistration {
 type PushPayload = {
   title: string;
   body: string;
-  kind: "NEW_ORDER" | "ORDER_CONFIRMED" | "TEST";
+  kind: "NEW_ORDER" | "ORDER_CONFIRMED" | "ORDER_STATUS" | "TEST";
   orderId?: string;
   testId?: string;
   url: string;
@@ -26,9 +26,21 @@ type PushPayload = {
 
 const STAFF_ROLES = ["OWNER", "MANAGER"] as const;
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+// Mirrors apps/admin/src/push-client.native.ts. See native-order-sound contract test.
+const ADMIN_ORDER_CHANNEL_ID = "new-orders-v3";
+const ADMIN_ORDER_SOUND_FILE = "new_order_alert.mp3";
+const customerStatusText: Partial<Record<OrderStatus, { title: string; body: string }>> = {
+  PREPARING: { title: "Đơn hàng đang chế biến", body: "Bếp đã bắt đầu chuẩn bị món của bạn." },
+  READY: { title: "Đơn hàng đã sẵn sàng", body: "Món đã chuẩn bị xong và đang chờ giao." },
+  DELIVERING: { title: "Đơn hàng đang được giao", body: "Cửa hàng đang giao món đến bạn." },
+  DELIVERED: { title: "Đơn hàng đã giao", body: "Cửa hàng đã hoàn tất giao đơn hàng." },
+  CANCELED: { title: "Đơn hàng đã bị hủy", body: "Cửa hàng đã hủy đơn hàng của bạn." },
+  DELIVERY_FAILED: { title: "Giao hàng chưa thành công", body: "Đơn hàng của bạn chưa giao thành công." },
+};
 
 @Injectable()
 export class PushService {
+  private readonly logger = new Logger(PushService.name);
   private fcmAuth: GoogleAuth | null | undefined;
   private readonly testCooldowns = new Map<string, number>();
   private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null; status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device" }>();
@@ -221,6 +233,22 @@ export class PushService {
     }, false);
   }
 
+  async notifyCustomerStatus(
+    customerId: string, orderId: string, status: OrderStatus, reason?: string | null,
+  ): Promise<void> {
+    const message = customerStatusText[status];
+    if (!message) return;
+    const endpoints = await this.prisma.database.pushEndpoint.findMany({
+      where: { scope: "CUSTOMER", userId: customerId },
+    });
+    const note = (status === "CANCELED" || status === "DELIVERY_FAILED")
+      && reason?.trim() ? " Lý do: " + reason.trim().slice(0, 120) : "";
+    await this.deliver(endpoints, {
+      ...message, body: message.body + note, kind: "ORDER_STATUS",
+      orderId, url: "/?order=" + encodeURIComponent(orderId),
+    }, false);
+  }
+
   private async deliver(
     endpoints: Array<{
       id: string; token: string; transport: PushTransport;
@@ -229,11 +257,17 @@ export class PushService {
     payload: PushPayload,
     admin: boolean,
   ): Promise<void> {
-    await Promise.allSettled(endpoints.map(endpoint =>
+    const results = await Promise.allSettled(endpoints.map(endpoint =>
       endpoint.transport === "WEB_PUSH"
         ? this.sendWebPush(endpoint, payload)
         : this.sendFcm(endpoint, payload, admin),
     ));
+    const failed = results.filter(result => result.status === "rejected").length;
+    if (failed > 0) {
+      // Never log device tokens, credentials, user addresses or notification content.
+      this.logger.warn("Push " + payload.kind + ": " + failed + "/" + results.length
+        + " device deliveries failed; check FCM/Web Push configuration.");
+    }
   }
 
   private webPushSettings() {
@@ -309,8 +343,8 @@ export class PushService {
             android: {
               priority: "HIGH",
               notification: {
-                channel_id: admin ? "new-orders-v2" : "customer-orders-v1",
-                sound: admin ? "new_order_alert.mp3" : "default",
+                channel_id: admin ? ADMIN_ORDER_CHANNEL_ID : "customer-orders-v1",
+                sound: admin ? ADMIN_ORDER_SOUND_FILE : "default",
                 notification_priority: "PRIORITY_MAX",
               },
             },

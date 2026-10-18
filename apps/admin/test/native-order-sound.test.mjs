@@ -20,11 +20,17 @@ test("approved long order sound is wired through native channel and FCM payload"
   assert.ok(approvedSound.length > 100_000, "approved order sound must not collapse to a tiny placeholder");
   assert.match(soundPlugin, /sound-native-android\.mp3/);
   assert.match(soundPlugin, /new_order_alert\.mp3/);
-  assert.match(pushClient, /setNotificationChannelAsync\("new-orders-v2"/);
-  assert.match(pushClient, /sound: "new_order_alert\.mp3"/);
+  assert.match(pushClient, /ORDER_CHANNEL_ID = "new-orders-v3"/);
+  assert.match(pushService, /ADMIN_ORDER_CHANNEL_ID = "new-orders-v3"/);
+  assert.match(pushService, /ADMIN_ORDER_SOUND_FILE = "new_order_alert\.mp3"/);
+  const config = app.expo.plugins.find(p => Array.isArray(p) && p[0] === "expo-notifications");
+  assert.equal(config[1].defaultChannel, undefined,
+    "a default channel could steal the custom channel ID before its sound is configured");
+  assert.match(pushClient, /setNotificationChannelAsync\(ORDER_CHANNEL_ID/);
+  assert.match(pushClient, /ORDER_SOUND_FILE = "new_order_alert\.mp3"/);
   assert.match(pushClient, /AndroidImportance\.MAX/);
-  assert.match(pushService, /channel_id: admin \? "new-orders-v2" : "customer-orders-v1"/);
-  assert.match(pushService, /sound: admin \? "new_order_alert\.mp3" : "default"/);
+  assert.match(pushService, /channel_id: admin \? ADMIN_ORDER_CHANNEL_ID : "customer-orders-v1"/);
+  assert.match(pushService, /sound: admin \? ADMIN_ORDER_SOUND_FILE : "default"/);
 });
 
 test("foreground notification presentation still delegates sound to the notification channel", () => {

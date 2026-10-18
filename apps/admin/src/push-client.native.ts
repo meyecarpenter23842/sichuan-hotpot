@@ -4,17 +4,25 @@ import { request } from "./api";
 import { Platform } from "react-native";
 
 const ENDPOINT_KEY = "sichuan.admin.push-endpoint.v1";
-
-async function registerNative(token: string, branchId: string): Promise<string> {
-  await Notifications.setNotificationChannelAsync("new-orders-v2", {
-    name: "Đơn hàng mới",
+// A channel's sound is immutable once Android creates it. v2 may have been
+// created with the default sound before the custom audio was configured.
+const ORDER_CHANNEL_ID = "new-orders-v3";
+const ORDER_SOUND_FILE = "new_order_alert.mp3";
+async function ensureOrderSoundChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(ORDER_CHANNEL_ID, {
+    name: "Đơn hàng mới (âm riêng)",
     description: "Đơn mới cần quản trị xác nhận",
     importance: Notifications.AndroidImportance.MAX,
-    sound: "new_order_alert.mp3",
+    sound: ORDER_SOUND_FILE,
     vibrationPattern: [0, 450, 180, 450],
     enableVibrate: true,
     showBadge: true,
   });
+}
+
+async function registerNative(token: string, branchId: string): Promise<string> {
+  await ensureOrderSoundChannel();
   let permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) throw new Error("Chưa cấp quyền thông báo cho ứng dụng Admin.");
@@ -33,6 +41,8 @@ async function registerNative(token: string, branchId: string): Promise<string> 
 }
 
 export async function configureAdminNotificationPresentation(): Promise<void> {
+  // Initialize the real FCM channel before any token can be registered.
+  await ensureOrderSoundChannel();
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldPlaySound: true,
@@ -83,32 +93,35 @@ export type PushTestStatus = { permission: string; firebase: string; token: stri
 export async function adminPushTestStatus(): Promise<PushTestStatus> {
   if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
   const permission = await Notifications.getPermissionsAsync();
+  const channel = await Notifications.getNotificationChannelAsync(ORDER_CHANNEL_ID);
+  const channelSound = channel?.sound ?? null;
+  const sound = !channel ? "Chưa tạo channel âm riêng"
+    : channelSound === ORDER_SOUND_FILE || channelSound === "new_order_alert"
+      ? ORDER_SOUND_FILE + " · channel " + ORDER_CHANNEL_ID + " đã cấu hình (chưa nghe thực tế)"
+      : "Channel " + ORDER_CHANNEL_ID + " đang dùng âm " + (channelSound ?? "mặc định")
+        + ". Kiểm tra thiết lập thông báo Android.";
   if (!permission.granted) return { permission: permission.canAskAgain ? "Chưa cấp" : "Bị từ chối",
-    firebase: "Chưa xác minh", token: "Chưa đăng ký", sound: "new_order_alert.mp3 (chưa thử nghe)" };
+    firebase: "Chưa xác minh", token: "Chưa đăng ký", sound };
   try {
     const device = await Notifications.getDevicePushTokenAsync();
     return { permission: "Đã cấp", firebase: "Khởi tạo Firebase và lấy token thành công",
       token: device.type === "android" && typeof device.data === "string" ? "Sẵn sàng" : "Không hợp lệ",
-      sound: "new_order_alert.mp3 (chưa thử nghe)" };
+      sound };
   } catch (error) {
     return { permission: "Đã cấp", firebase: error instanceof Error ? error.message : "Không truy cập được Firebase",
-      token: "Không khả dụng", sound: "new_order_alert.mp3 (chưa thử nghe)" };
+      token: "Không khả dụng", sound };
   }
 }
 export async function adminTestLocalSound(): Promise<void> {
   if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) throw new Error("Phải cấp quyền thông báo để kiểm tra âm thanh hệ thống Android.");
-  await Notifications.setNotificationChannelAsync("new-orders-v2", {
-    name: "Đơn hàng mới",
-    importance: Notifications.AndroidImportance.MAX,
-    sound: "new_order_alert.mp3",
-  });
+  await ensureOrderSoundChannel();
   await Notifications.scheduleNotificationAsync({
     content: { title: "Kiểm tra âm thanh", body: "Âm thử cục bộ, không tạo đơn hàng.",
       sound: "new_order_alert.mp3", data: { kind: "LOCAL_SOUND_TEST" } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 1, channelId: "new-orders-v2" },
+      seconds: 1, channelId: ORDER_CHANNEL_ID },
   });
 }
 export async function adminTestRemotePush(token: string, branchId: string, delaySeconds = 0): Promise<string> {

@@ -4,11 +4,12 @@ import { test } from "node:test";
 
 const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("new orders alert staff while customer push waits for CONFIRMED", () => {
+test("new orders alert staff and customer receives status push when order changes", () => {
   const customerOrders = read("../src/orders/orders.service.ts");
   const adminOrders = read("../src/orders/admin-orders.service.ts");
   assert.match(customerOrders, /notifyStaffNewOrder\(input\.branchId, created\.orderId\)/);
   assert.match(adminOrders, /if \(changed\.status === "CONFIRMED"\)[\s\S]*notifyCustomerConfirmed/);
+  assert.match(adminOrders, /notifyCustomerStatus\(changed\.customerId, orderId, changed\.status, reason\)/);
   assert.doesNotMatch(customerOrders, /notifyCustomerConfirmed/);
 });
 
@@ -17,8 +18,8 @@ test("PWA uses system notification banner and Android Admin uses approved custom
   const customerPush = read("../../customer/src/push-client.native.ts");
   const adminWorker = read("../../admin/public/hotpot-sw.js");
   const customerWorker = read("../../customer/public/hotpot-sw.js");
-  assert.match(adminPush, /new-orders-v2/);
-  assert.match(adminPush, /sound: "new_order_alert\.mp3"/);
+  assert.match(adminPush, /new-orders-v3/);
+  assert.match(adminPush, /ORDER_SOUND_FILE = "new_order_alert\.mp3"/);
   assert.match(customerPush, /customer-orders-v1/);
   assert.match(customerPush, /sound: "default"/);
   for (const worker of [adminWorker, customerWorker]) {
