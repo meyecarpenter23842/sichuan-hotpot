@@ -28,7 +28,7 @@ if (!existsSync(nativeGoogleServices) ||
     readFileSync(nativeGoogleServices, "utf8") !== readFileSync(firebase.file, "utf8")) {
   throw new Error("Generated Android Firebase config is missing/stale. Run npm run android:prebuild --workspace @hotpot/" + app + " again.");
 }
-if (firebase.fixture) throw new Error("Release distribution cannot use CI Firebase fixture.");
+if (firebase.fixture) console.warn("CI FIREBASE FIXTURE: nonfunctional APK for Gradle/Metro checks only; NEVER distribute.");
 
 // Under NODE_ENV=production, npm ci silently omits dev dependencies even
 // though Expo's Metro bundler needs them to build release JS.

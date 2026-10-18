@@ -7,7 +7,7 @@ const packageJson = readFileSync(new URL("../package.json", import.meta.url), "u
 const prebuild = readFileSync(new URL("../scripts/prebuild-android.mjs", import.meta.url), "utf8");
 const nativePush = readFileSync(new URL("../src/push-client.native.ts", import.meta.url), "utf8");
 
-test("local Android prebuild does not require Firebase or Google Maps config", () => {
+test("tracked app.json stays credential-free while native build requires Firebase", () => {
   assert.doesNotMatch(appJson, /googleServicesFile/);
   assert.doesNotMatch(appJson, /googleMaps|GOOGLE_MAPS_ANDROID_KEY|mapsApiKey/i);
   assert.match(
@@ -16,8 +16,8 @@ test("local Android prebuild does not require Firebase or Google Maps config", (
   );
 });
 
-test("prebuild enables FCM only when the gitignored descriptor exists", () => {
-  assert.match(prebuild, /existsSync\(googleServicesPath\)/);
+test("prebuild refuses missing/wrong Firebase config, never silently omits FCM", () => {
+  assert.match(prebuild, /assertFirebaseConfig\(appDirectory, "customer"\)/);
   assert.match(prebuild, /buildConfig\.expo\.android\.googleServicesFile = "\.\/google-services\.json"/);
   assert.match(prebuild, /writeFileSync\(appJsonPath, originalText\)/);
   assert.match(prebuild, /spawnSync\(\s*process\.execPath/);
