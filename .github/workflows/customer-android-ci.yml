@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 35
     env:
       CI: "1"
+      HOTPOT_FIREBASE_CI_FIXTURE: "1"
       EXPO_NO_DOTENV: "1"
       EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: "ci-web.apps.googleusercontent.com"
@@ -47,13 +48,18 @@ jobs:
       - name: Generate customer icon assets
         run: npm run icons:generate --workspace @hotpot/customer
 
-      - name: Prove local prebuild needs no Firebase descriptor
+      - name: Verify no Firebase descriptor was committed
         shell: bash
         run: |
-          set -euo pipefail
           test ! -e apps/customer/google-services.json
+          git ls-files --error-unmatch apps/customer/google-services.json >/dev/null 2>&1 && exit 1 || true
 
-      - name: Clean Expo prebuild for Android without Firebase descriptor
+      - name: Generate synthetic CI-only Firebase descriptor (not functional)
+        env:
+          HOTPOT_FIREBASE_CI_FIXTURE: "1"
+        run: node scripts/android/write-ci-firebase-fixture.mjs customer
+
+      - name: Clean Expo prebuild with Firebase Gradle plugin
         run: npm run android:prebuild --workspace @hotpot/customer
 
       - name: Prove Metro root is pinned to the app directory
@@ -122,7 +128,7 @@ jobs:
       - name: Archive customer debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: customer-android-debug-apk
+          name: customer-android-CI-FIREBASE-FIXTURE-debug-apk
           path: apps/customer/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -130,7 +136,7 @@ jobs:
       - name: Archive customer release-equivalent APK
         uses: actions/upload-artifact@v4
         with:
-          name: customer-android-release-equivalent-apk
+          name: customer-android-CI-FIREBASE-FIXTURE-release-equivalent-apk
           path: apps/customer/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7

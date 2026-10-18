@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 35
     env:
       CI: "1"
+      HOTPOT_FIREBASE_CI_FIXTURE: "1"
       EXPO_NO_DOTENV: "1"
       EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
     steps:
@@ -49,14 +50,18 @@ jobs:
       - name: Generate Admin icon assets
         run: npm run icons:generate --workspace @hotpot/admin
 
-      - name: Prove repository contains no Firebase descriptor
+      - name: Verify no Firebase descriptor was committed
         shell: bash
         run: |
-          set -euo pipefail
           test ! -e apps/admin/google-services.json
-          node -e 'const app=require("./apps/admin/app.json"); if (app.expo.android.googleServicesFile) process.exit(1)'
+          git ls-files --error-unmatch apps/admin/google-services.json >/dev/null 2>&1 && exit 1 || true
 
-      - name: Clean Expo prebuild for Admin Android
+      - name: Generate synthetic CI-only Firebase descriptor (not functional)
+        env:
+          HOTPOT_FIREBASE_CI_FIXTURE: "1"
+        run: node scripts/android/write-ci-firebase-fixture.mjs admin
+
+      - name: Clean Expo prebuild with Firebase Gradle plugin
         run: npm run android:prebuild --workspace @hotpot/admin
 
       - name: Prove Metro root is pinned to the app directory
@@ -134,7 +139,7 @@ jobs:
       - name: Archive Admin debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: admin-android-debug-apk
+          name: admin-android-CI-FIREBASE-FIXTURE-debug-apk
           path: apps/admin/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -142,7 +147,7 @@ jobs:
       - name: Archive Admin release-equivalent APK
         uses: actions/upload-artifact@v4
         with:
-          name: admin-android-release-equivalent-apk
+          name: admin-android-CI-FIREBASE-FIXTURE-release-equivalent-apk
           path: apps/admin/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7

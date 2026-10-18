@@ -3,15 +3,15 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { configureGeneratedAndroid } from "../../../scripts/android/release-gradle.mjs";
+import { assertFirebaseConfig } from "../../../scripts/android/firebase-config.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const appDirectory = dirname(scriptDirectory);
 const workspaceRoot = resolve(appDirectory, "..", "..");
 const appJsonPath = join(appDirectory, "app.json");
-const googleServicesPath = join(appDirectory, "google-services.json");
 
 const originalText = readFileSync(appJsonPath, "utf8");
-const withFirebase = existsSync(googleServicesPath);
+const firebase = assertFirebaseConfig(appDirectory, "admin");
 
 function findExpoCli() {
   const candidates = [
@@ -26,14 +26,10 @@ function findExpoCli() {
 }
 
 try {
-  if (withFirebase) {
-    const buildConfig = JSON.parse(originalText);
-    buildConfig.expo.android.googleServicesFile = "./google-services.json";
-    writeFileSync(appJsonPath, JSON.stringify(buildConfig, null, 2) + "\n");
-    console.log("Admin Android prebuild: Firebase descriptor detected; FCM native config enabled.");
-  } else {
-    console.log("Admin Android prebuild: no google-services.json; compiling native shell without FCM registration.");
-  }
+  const buildConfig = JSON.parse(originalText);
+  buildConfig.expo.android.googleServicesFile = "./google-services.json";
+  writeFileSync(appJsonPath, JSON.stringify(buildConfig, null, 2) + "\n");
+  console.log("Firebase configuration validated for Admin" + (firebase.fixture ? " [CI fixture only]" : ""));
 
   const result = spawnSync(
     process.execPath,
