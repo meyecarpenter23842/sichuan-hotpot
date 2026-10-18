@@ -1,0 +1,96 @@
+name: Configure free Apps Script FCM relay (owner only)
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+jobs:
+  relay:
+    if: >-
+      github.event.issue.number == 3 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/configure-hotpot-fcm-appscript' &&
+      github.actor == 'meyecarpenter23842'
+    runs-on: ubuntu-latest
+    environment: production-api
+    timeout-minutes: 12
+    concurrency:
+      group: hotpot-production-vps-change
+      cancel-in-progress: false
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      RELAY_URL: ${{ secrets.HOTPOT_FCM_RELAY_URL }}
+      RELAY_SECRET: ${{ secrets.HOTPOT_FCM_RELAY_SECRET_HEX }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Confirm protected main, provider URL, secret and local tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test "$VPS_USER" = ubuntu
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
+          test -n "$VPS_HOST" && test -n "$VPS_DEPLOY_SSH_KEY" && test -n "$VPS_KNOWN_HOSTS"
+          test -n "$RELAY_URL" && test -n "$RELAY_SECRET" || {
+            echo "::error::Missing production-api HOTPOT_FCM_RELAY_URL or HOTPOT_FCM_RELAY_SECRET_HEX; VPS unchanged."
+            exit 1
+          }
+          python3 -m unittest discover -s infra/vps/tests -p 'test_fcm_appscript_config.py' -v
+      - name: Signed gateway probe, protected VPS config and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$VPS_DEPLOY_SSH_KEY" > "$RUNNER_TEMP/ssh.key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/hosts"
+          chmod 600 "$RUNNER_TEMP/ssh.key" "$RUNNER_TEMP/hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/ssh.key" >/dev/null 2>&1
+          python3 - "$RUNNER_TEMP/payload.json" <<'PY'
+          import json,os,sys
+          fd=os.open(sys.argv[1],os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+          with os.fdopen(fd,"w") as output:
+              json.dump({"url":os.environ["RELAY_URL"],"secret":os.environ["RELAY_SECRET"]},output)
+          PY
+          ssh_opts=(-T -p "$VPS_PORT" -i "$RUNNER_TEMP/ssh.key"
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/hosts" -o ConnectTimeout=10)
+          ssh "${ssh_opts[@]}" "$VPS_USER@$VPS_HOST" \
+            'sudo -n /usr/bin/tee /run/hotpot-fcm-appscript.py >/dev/null && sudo -n /usr/bin/chmod 0700 /run/hotpot-fcm-appscript.py' \
+            < infra/vps/hotpot-fcm-appscript-config.py >/dev/null 2>/dev/null || {
+              echo "::error::Pinned SSH failed to stage relay helper."
+              exit 1
+            }
+          if ! ssh "${ssh_opts[@]}" "$VPS_USER@$VPS_HOST" \
+              'sudo -n /usr/bin/python3 /run/hotpot-fcm-appscript.py' \
+              < "$RUNNER_TEMP/payload.json" > "$RUNNER_TEMP/result" 2>/dev/null; then
+            grep -E '^relay=BLOCKED;reason=[a-z_]+$' "$RUNNER_TEMP/result" || true
+            echo "::error::FCM relay setup blocked or rolled back."
+            exit 1
+          fi
+          grep -Eq '^relay=(APPLIED|ALREADY_READY);probe=PASS;api=PASS$' "$RUNNER_TEMP/result" || {
+            echo "::error::Missing relay verification proof."
+            exit 1
+          }
+          echo "FCM relay probe and VPS API health: PASS"
+      - name: Clean temporary credentials and root helper
+        if: always()
+        shell: bash
+        run: |
+          if [[ -s "$RUNNER_TEMP/ssh.key" && -s "$RUNNER_TEMP/hosts" ]]; then
+            ssh -T -p "$VPS_PORT" -i "$RUNNER_TEMP/ssh.key" -o IdentitiesOnly=yes \
+              -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/hosts" -o ConnectTimeout=10 \
+              "$VPS_USER@$VPS_HOST" \
+              'sudo -n /usr/bin/rm -f /run/hotpot-fcm-appscript.py' </dev/null >/dev/null 2>/dev/null || true
+          fi
+          rm -f "$RUNNER_TEMP/ssh.key" "$RUNNER_TEMP/hosts" "$RUNNER_TEMP/payload.json" "$RUNNER_TEMP/result"
