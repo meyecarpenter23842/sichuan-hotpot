@@ -25,6 +25,21 @@ class RegisterPushInput {
   auth?: string;
 }
 
+class TestPushInput {
+  @IsString() @MinLength(16) @MaxLength(4096)
+  token!: string;
+}
+
+class TestReceiptInput extends TestPushInput {
+  @IsUUID("4")
+  testId!: string;
+}
+
+class TestStatusInput {
+  @IsUUID("4")
+  testId!: string;
+}
+
 class RemovePushInput {
   @IsString() @MinLength(16) @MaxLength(4096)
   token!: string;
@@ -52,6 +67,27 @@ export class PushController {
       ...(input.p256dh ? { p256dh: input.p256dh } : {}),
       ...(input.auth ? { auth: input.auth } : {}),
     });
+  }
+
+  @Post("test")
+  @Header("Cache-Control", "no-store")
+  test(@Headers("authorization") authorization: string | undefined,
+    @Body() input: TestPushInput) {
+    return this.push.sendTest(authorization, input.token);
+  }
+
+  @Post("test/receipt")
+  @Header("Cache-Control", "no-store")
+  receipt(@Headers("authorization") authorization: string | undefined,
+    @Body() input: TestReceiptInput) {
+    return this.push.acknowledgeTest(authorization, input.testId, input.token);
+  }
+
+  @Post("test/status")
+  @Header("Cache-Control", "no-store")
+  testStatus(@Headers("authorization") authorization: string | undefined,
+    @Body() input: TestStatusInput) {
+    return this.push.testStatus(authorization, input.testId);
   }
 
   @Post("subscriptions/remove")

@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { PushScope, PushTransport } from "@prisma/client";
 import { GoogleAuth } from "google-auth-library";
 import webpush from "web-push";
@@ -17,8 +18,9 @@ export interface PushRegistration {
 type PushPayload = {
   title: string;
   body: string;
-  kind: "NEW_ORDER" | "ORDER_CONFIRMED";
-  orderId: string;
+  kind: "NEW_ORDER" | "ORDER_CONFIRMED" | "TEST";
+  orderId?: string;
+  testId?: string;
   url: string;
 };
 
@@ -28,6 +30,8 @@ const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 @Injectable()
 export class PushService {
   private fcmAuth: GoogleAuth | null | undefined;
+  private readonly testCooldowns = new Map<string, number>();
+  private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -110,6 +114,71 @@ export class PushService {
       where: { token, userId: principal.id },
     });
     return { status: "removed" as const };
+  }
+
+
+  // Sends only to the token owned by the authenticated session. No Order records are touched.
+  async sendTest(authorization: string | undefined, tokenInput: string) {
+    const principal = await this.authService.principal(authorization);
+    const token = tokenInput.trim();
+    if (token.length < 16 || token.length > 4096) throw new BadRequestException("PUSH_TOKEN_INVALID");
+    const endpoint = await this.prisma.database.pushEndpoint.findFirst({
+      where: { userId: principal.id, token },
+    });
+    if (!endpoint) throw new ForbiddenException("PUSH_DEVICE_NOT_REGISTERED_FOR_USER");
+    await this.authorizeRegistration(authorization, {
+      scope: endpoint.scope, transport: endpoint.transport, token,
+      branchId: endpoint.branchId,
+    });
+    if (endpoint.transport !== "FCM") throw new BadRequestException("FCM_TEST_REQUIRES_ANDROID");
+
+    const now = Date.now();
+    // Bound memory even on a long-running VPS process; no migration needed.
+    for (const [key, value] of this.testCooldowns) {
+      if (now - value > 60_000) this.testCooldowns.delete(key);
+    }
+    for (const [key, value] of this.testReceipts) {
+      if (now - value.createdAt > 600_000) this.testReceipts.delete(key);
+    }
+    const cooldownKey = principal.id + ":" + endpoint.id;
+    if (now - (this.testCooldowns.get(cooldownKey) ?? 0) < 30_000) {
+      throw new HttpException("PUSH_TEST_RATE_LIMIT_30_SECONDS", 429);
+    }
+    this.testCooldowns.set(cooldownKey, now);
+    const testId = randomUUID();
+    this.testReceipts.set(testId, { userId: principal.id, token, createdAt: now, receivedAt: null });
+    try {
+      await this.sendFcm(endpoint, {
+        title: "Kiểm tra thông báo Sichuan Hotpot",
+        body: "Đây là thông báo thử, không tạo đơn hàng.",
+        kind: "TEST", testId, url: "/",
+      }, endpoint.scope === "STAFF");
+    } catch (error) {
+      this.testReceipts.delete(testId);
+      throw error;
+    }
+    return { status: "sent_to_fcm" as const, testId, received: false };
+  }
+
+  async acknowledgeTest(authorization: string | undefined, testId: string, token: string) {
+    const principal = await this.authService.principal(authorization);
+    const item = this.testReceipts.get(testId);
+    if (!item || item.userId !== principal.id || item.token !== token ||
+      Date.now() - item.createdAt > 600_000) {
+      throw new ForbiddenException("PUSH_TEST_RECEIPT_FORBIDDEN_OR_EXPIRED");
+    }
+    item.receivedAt = Date.now();
+    return { status: "received_on_device" as const, receivedAt: new Date(item.receivedAt).toISOString() };
+  }
+
+  async testStatus(authorization: string | undefined, testId: string) {
+    const principal = await this.authService.principal(authorization);
+    const item = this.testReceipts.get(testId);
+    if (!item || item.userId !== principal.id || Date.now() - item.createdAt > 600_000) {
+      throw new ForbiddenException("PUSH_TEST_NOT_FOUND_OR_EXPIRED");
+    }
+    return { status: item.receivedAt ? "received_on_device" : "sent_to_fcm",
+      received: item.receivedAt !== null };
   }
 
   async notifyStaffNewOrder(branchId: string, orderId: string): Promise<void> {
@@ -208,7 +277,7 @@ export class PushService {
     admin: boolean,
   ): Promise<void> {
     const auth = await this.fcmAccessToken();
-    if (!auth) return;
+    if (!auth) throw new ServiceUnavailableException("FCM_SERVER_NOT_CONFIGURED");
     const response = await fetch(
       "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(auth.projectId) + "/messages:send",
       {
@@ -221,7 +290,8 @@ export class PushService {
           message: {
             token: endpoint.token,
             notification: { title: payload.title, body: payload.body },
-            data: { kind: payload.kind, orderId: payload.orderId, url: payload.url },
+            data: { kind: payload.kind, orderId: payload.orderId ?? "",
+              testId: payload.testId ?? "", url: payload.url },
             android: {
               priority: "HIGH",
               notification: {
@@ -236,8 +306,13 @@ export class PushService {
     );
     if (response.ok) return;
     const body = await response.text().catch(() => "");
-    if (response.status === 404 || /UNREGISTERED|registration-token-not-registered/i.test(body)) {
+    if (/UNREGISTERED|registration-token-not-registered/i.test(body)) {
       await this.prisma.database.pushEndpoint.deleteMany({ where: { id: endpoint.id } });
+      throw new BadRequestException("FCM_DEVICE_TOKEN_EXPIRED");
     }
+    if (response.status === 401 || response.status === 403) {
+      throw new ServiceUnavailableException("FCM_SERVER_CREDENTIALS_OR_PERMISSION_INVALID");
+    }
+    throw new ServiceUnavailableException("FCM_SEND_FAILED_HTTP_" + response.status);
   }
 }
