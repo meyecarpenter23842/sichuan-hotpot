@@ -55,7 +55,7 @@ def credential_values(raw: str) -> tuple[dict[str, str], dict]:
     return {
         'FCM_PROJECT_ID': EXPECTED_PROJECT_ID,
         'FCM_CLIENT_EMAIL': address,
-        'FCM_PRIVATE_KEY': key.replace('\n', r'\n'),
+        'FCM_PRIVATE_KEY': key.replace('\n', r'\\n'),  # systemd unquotes double slashes
     }, account
 
 
