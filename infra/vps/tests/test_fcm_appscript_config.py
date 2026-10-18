@@ -47,5 +47,38 @@ class ConfigTests(unittest.TestCase):
                 module.settings(json.dumps(obj))
 
 
+
+    def test_remote_probe_returns_safe_categories_without_leaking_url(self):
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+        address = "https://script.google.com/macros/s/AKfycb-unit-test/exec"
+        secret = "a" * 64
+        for status, expected in [
+            (401, "relay_http_forbidden_check_anyone_access"),
+            (403, "relay_http_forbidden_check_anyone_access"),
+            (404, "relay_http_not_found_check_deployment"),
+            (429, "relay_http_rate_limited"),
+        ]:
+            with patch.object(module.urllib.request, "urlopen",
+                              side_effect=HTTPError(address, status, "rejected", {}, None)):
+                with self.assertRaises(module.Blocked) as err:
+                    module.proof(address, secret)
+                self.assertEqual(str(err.exception), expected)
+                self.assertNotIn(address, str(err.exception))
+                self.assertNotIn(secret, str(err.exception))
+
+    def test_unexpected_html_is_identified_without_echoing_body(self):
+        from unittest.mock import patch
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, _limit):
+                return b"<html>login</html>"
+        with patch.object(module.urllib.request, "urlopen", return_value=Response()):
+            with self.assertRaisesRegex(module.Blocked, "relay_non_json_check_public_access"):
+                module.proof("https://script.google.com/macros/s/ABC/exec", "a" * 64)
+
 if __name__ == "__main__":
     unittest.main()
