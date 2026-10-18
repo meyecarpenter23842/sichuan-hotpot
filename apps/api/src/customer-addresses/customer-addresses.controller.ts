@@ -5,7 +5,7 @@ import {
 import { IsOptional, IsString, Length, Matches } from "class-validator";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
-import { validateAdministrativeSelection } from "@hotpot/shared";
+import { validateAdministrativeSelection, isWardAllowedForNewDelivery } from "@hotpot/shared";
 
 export class CreateAddressInput {
   @IsString() @Length(1, 100)
@@ -68,6 +68,9 @@ export class CustomerAddressesController {
       && !validateAdministrativeSelection(input)) {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
     }
+    if (!isWardAllowedForNewDelivery(input.provinceCode, input.wardCode)) {
+      throw new BadRequestException("ADDRESS_WARD_NOT_SERVED");
+    }
     // Atomic profile phone + address save; only verified JWT owner can create.
     return this.prisma.database.$transaction(async tx => {
       const count = await tx.address.count({ where: { userId } });
@@ -104,6 +107,9 @@ export class CustomerAddressesController {
     if ([input.catalogVersion, input.provinceCode, input.wardCode].some(Boolean)
       && !validateAdministrativeSelection(input)) {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
+    }
+    if (!isWardAllowedForNewDelivery(input.provinceCode, input.wardCode)) {
+      throw new BadRequestException("ADDRESS_WARD_NOT_SERVED");
     }
     // Update only this customer's existing record. Never create a duplicate during edit.
     return this.prisma.database.$transaction(async tx => {
