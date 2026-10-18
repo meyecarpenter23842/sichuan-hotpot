@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sichuan Hotpot Admin",
+    "name": "Hotpot Admin",
     "slug": "sichuan-hotpot-admin",
     "scheme": "sichuanhotpotadmin",
     "version": "0.4.1",
@@ -12,7 +12,7 @@
       "package": "vn.sichuanhotpot.admin",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#1F3546"
       }
     },
     "ios": {
