@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { configureGeneratedAndroid } from "./release-gradle.mjs";
 import { synchronizeAndroidIdentity } from "./release-identity.mjs";
 import { assertAndroidReleaseEnv, resolveAndroidReleaseEnv } from "./release-env.mjs";
+import { assertFirebaseConfig } from "./firebase-config.mjs";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const app = process.argv[2];
@@ -18,6 +20,15 @@ if (!["customer", "admin"].includes(app) || process.argv.length !== 3) {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const appDirectory = join(repoRoot, "apps", app);
+
+// Prevent stale native projects from producing APKs with missing/wrong Google Services setup.
+const firebase = assertFirebaseConfig(appDirectory, app);
+const nativeGoogleServices = join(appDirectory, "android", "app", "google-services.json");
+if (!existsSync(nativeGoogleServices) ||
+    readFileSync(nativeGoogleServices, "utf8") !== readFileSync(firebase.file, "utf8")) {
+  throw new Error("Generated Android Firebase config is missing/stale. Run npm run android:prebuild --workspace @hotpot/" + app + " again.");
+}
+if (firebase.fixture) console.warn("CI FIREBASE FIXTURE: nonfunctional APK for Gradle/Metro checks only; NEVER distribute.");
 
 // Under NODE_ENV=production, npm ci silently omits dev dependencies even
 // though Expo's Metro bundler needs them to build release JS.

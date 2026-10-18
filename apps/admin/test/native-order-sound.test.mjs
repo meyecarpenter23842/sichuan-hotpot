@@ -20,10 +20,10 @@ test("approved long order sound is wired through native channel and FCM payload"
   assert.ok(approvedSound.length > 100_000, "approved order sound must not collapse to a tiny placeholder");
   assert.match(soundPlugin, /sound-native-android\.mp3/);
   assert.match(soundPlugin, /new_order_alert\.mp3/);
-  assert.match(pushClient, /setNotificationChannelAsync\("new-orders-v1"/);
+  assert.match(pushClient, /setNotificationChannelAsync\("new-orders-v2"/);
   assert.match(pushClient, /sound: "new_order_alert\.mp3"/);
   assert.match(pushClient, /AndroidImportance\.MAX/);
-  assert.match(pushService, /channel_id: admin \? "new-orders-v1" : "customer-orders-v1"/);
+  assert.match(pushService, /channel_id: admin \? "new-orders-v2" : "customer-orders-v1"/);
   assert.match(pushService, /sound: admin \? "new_order_alert\.mp3" : "default"/);
 });
 
