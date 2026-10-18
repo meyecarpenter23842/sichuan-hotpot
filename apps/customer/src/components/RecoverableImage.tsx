@@ -4,9 +4,9 @@ import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet,
 
 /** Retries transient native image/CDN failures without changing the original URL. */
 export function RecoverableImage({ uri, style, resizeMode = "cover", accessibilityLabel,
-  compact = false }: {
+  compact = false, passThrough = false }: {
   uri: string; style: StyleProp<ViewStyle>; resizeMode?: ImageResizeMode;
-  accessibilityLabel: string; compact?: boolean;
+  accessibilityLabel: string; compact?: boolean; passThrough?: boolean;
 }) {
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
@@ -23,7 +23,7 @@ export function RecoverableImage({ uri, style, resizeMode = "cover", accessibili
     });
     return () => listener.remove();
   }, [retry]);
-  return <View style={[style, styles.frame]}>
+  return <View style={[style, styles.frame]} pointerEvents={passThrough ? "none" : "auto"}>
     <Image key={uri + ":" + attempt} source={{uri, cache: attempt ? "reload" : "default"}}
       style={StyleSheet.absoluteFillObject} resizeMode={resizeMode}
       accessibilityLabel={accessibilityLabel} onLoad={() => setPhase("ready")}

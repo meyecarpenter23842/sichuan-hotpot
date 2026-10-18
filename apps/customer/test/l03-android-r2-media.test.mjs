@@ -21,3 +21,10 @@ test("L03: native login, catalog, QR and promo images expose image recovery", ()
     assert.doesNotMatch(s, /!failed.includes\(slide.id\)/);
   }
 });
+
+test("L03: image failures never swallow Home offer card activation", () => {
+  const s=read("../src/components/RecoverableImage.tsx");
+  const app=read("../App.tsx");
+  assert.match(s, /pointerEvents=\{passThrough \? "none" : "auto"\}/);
+  assert.match(app, /RecoverableImage uri=\{safeProductImageUrl\(offer.imageKey\)!\} passThrough/);
+});

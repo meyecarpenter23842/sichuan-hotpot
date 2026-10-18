@@ -1079,7 +1079,7 @@ function CustomerApp() {
               accessibilityRole="button" style={[styles.pill, categoryId === cat.id && styles.pillActive]}
             >
               {safeProductImageUrl(cat.imageKey)
-                ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact
+                ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact passThrough
                     style={{width:24,height:24,borderRadius:6,marginRight:5}}
                     accessibilityLabel={"Ảnh danh mục "+cat.name}/>
                 : null}
@@ -1091,7 +1091,7 @@ function CustomerApp() {
           <View key={cat.id} style={styles.categoryBlock}>
             <View style={{flexDirection:"row",alignItems:"center",gap:8}}>
                {safeProductImageUrl(cat.imageKey)
-                 ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact
+                 ? <RecoverableImage uri={safeProductImageUrl(cat.imageKey)!} compact passThrough
                     style={{width:32,height:32,borderRadius:8}}
                     accessibilityLabel={"Ảnh danh mục "+cat.name}/>
                  : null}
@@ -1312,7 +1312,7 @@ function CustomerApp() {
                   accessibilityLabel={"Xem ưu đãi "+offer.title}
                   style={[styles.homeOfferCard,{width:Math.min(254,Math.max(158,viewportWidth*.58))}]}
                   onPress={()=>setSelectedOffer(offer)}>
-                  {safeProductImageUrl(offer.imageKey)&&<RecoverableImage uri={safeProductImageUrl(offer.imageKey)!} resizeMode="cover"
+                  {safeProductImageUrl(offer.imageKey)&&<RecoverableImage uri={safeProductImageUrl(offer.imageKey)!} passThrough resizeMode="cover"
                     accessibilityLabel={"Ảnh ưu đãi "+offer.title} style={styles.homeOfferImage}/>}
                   <View style={styles.homeOfferCardShade}>
                     <Text style={styles.homeOfferCardTitle} numberOfLines={1}>{offer.title}</Text>
