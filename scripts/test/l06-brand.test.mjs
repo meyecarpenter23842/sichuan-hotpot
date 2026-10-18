@@ -22,6 +22,8 @@ test("logo source is the approved raster, not the legacy icon", () => {
     assert.match(generator, /ASSET_VERSION = "v20261016d"/);
     assert.match(generator, /icon-512-\$\{ASSET_VERSION\}\.png/);
     assert.equal(config.expo.web.favicon, "./public/icon-192-v20261016d.png");
-    assert.equal(config.expo.android.adaptiveIcon.backgroundColor, "#FFFFFF");
+    // Preserve the approved red emblem; distinguish only the Admin launcher tint.
+    assert.equal(config.expo.android.adaptiveIcon.backgroundColor,
+      app === "admin" ? "#1F3546" : "#FFFFFF");
   }
 });
