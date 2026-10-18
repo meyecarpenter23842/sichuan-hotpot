@@ -183,6 +183,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
               {detail.statusHistory.map((event, index) => (
                 <View key={index} style={styles.timeline}>
                   <Text style={styles.text}>• {statusName(event.toStatus)}</Text>
+                  {!!event.reason && <Text style={styles.muted}>Lý do: {event.reason}</Text>}
                   <Text style={styles.muted}>{new Date(event.createdAt).toLocaleString("vi-VN")}</Text>
                 </View>
               ))}

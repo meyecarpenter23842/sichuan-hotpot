@@ -53,3 +53,19 @@ Backend production requires a separately approved deployment after merge. Until 
 **Test đầy đủ** delays the actual server-side FCM send by 12 seconds so the operator can background or normally close the app before delivery. The HTTP response is `scheduled`, **not** proof of send or receipt. Test status: `POST /push/test/status` with `testId`; a receipt is confirmed only by an observed device callback.
 
 Admin Android notification channel is now `new-orders-v2` because Android channel sound settings are immutable once created. Local audio checks target that same channel with an explicit channelId. Older builds need to be rebuilt to receive the updated sound channel.
+
+
+## L01 #195: real Android order sound and customer status push
+- Android notification channels have immutable sound settings. A fresh channel `new-orders-v3`
+  now points to bundled raw `new_order_alert.mp3`; local test and real FCM use the **same**
+  channel. Admin Expo does not pre-create this channel via `defaultChannel`.
+- Requires **new Admin APK**. Installing/updating JS alone does not bundle raw native sound.
+  Android users can mute/change individual channel settings; the app cannot bypass system silence.
+- Settings diagnostic reads the Android channel's actual sound name. Do not mark audio PASS
+  until verified by ear on a device.
+- Backend now notifies customers about CONFIRMED, PREPARING, READY, DELIVERING, DELIVERED,
+  CANCELED and DELIVERY_FAILED. Cancellation and failed delivery include reasons when provided.
+  A push tap opens existing order detail; reason also appears in status history.
+- Test a **real** customer checkout and admin rejection, in foreground, background and when
+  the app was normally closed (not Force Stop); compare against remote FCM test.
+  CI builds and contract tests cannot certify delivery/audio on physical devices.
