@@ -23,6 +23,10 @@ export async function customerTestLocalSound(): Promise<void> {
 export async function customerTestRemotePush(_accessToken: string, _delaySeconds = 0): Promise<string> {
   throw new Error("Platform-specific implementation was not resolved.");
 }
+export type CustomerFcmTestState = { status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device"; received: boolean; failureCode?: string | null };
+export async function customerPushRemoteTestStatus(_accessToken: string, _testId: string): Promise<CustomerFcmTestState> {
+  throw new Error("Platform-specific implementation was not resolved.");
+}
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {
   throw new Error("Platform-specific implementation was not resolved.");
 }

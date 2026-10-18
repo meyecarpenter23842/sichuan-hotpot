@@ -94,6 +94,10 @@ export async function customerTestLocalSound(): Promise<void> {
 export async function customerTestRemotePush(_accessToken: string, _delaySeconds = 0): Promise<string> {
   throw new Error("Kiểm tra FCM chỉ hỗ trợ APK Android.");
 }
+export type CustomerFcmTestState = { status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device"; received: boolean; failureCode?: string | null };
+export async function customerPushRemoteTestStatus(_accessToken: string, _testId: string): Promise<CustomerFcmTestState> {
+  throw new Error("FCM chỉ hỗ trợ Android.");
+}
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {
   return () => undefined;
 }

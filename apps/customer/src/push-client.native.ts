@@ -145,6 +145,10 @@ export async function customerTestRemotePush(accessToken: string, delaySeconds =
   const result = await apiRequest<{ testId: string }>("/push/test", { method: "POST", accessToken, body: { token: deviceToken, delaySeconds } });
   return result.testId;
 }
+export type CustomerFcmTestState = { status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device"; received: boolean; failureCode?: string | null };
+export async function customerPushRemoteTestStatus(accessToken: string, testId: string): Promise<CustomerFcmTestState> {
+  return apiRequest<CustomerFcmTestState>("/push/test/status", { method: "POST", accessToken, body: { testId } });
+}
 export function listenCustomerTestReceipts(
   accessToken: string, onReceipt: (testId: string) => void,
 ): () => void {

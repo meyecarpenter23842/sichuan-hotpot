@@ -15,3 +15,12 @@ test("customer account has device-only FCM and audio tests without creating orde
   assert.match(native, /POST", accessToken, body: \{ token: deviceToken, delaySeconds \}/);
   assert.doesNotMatch(native, /\/orders\/create/);
 });
+
+test("Customer Android shows provider failure and polls server receipt on app resume", () => {
+  const tester = read("../src/components/NotificationTester.tsx");
+  const native = read("../src/push-client.native.ts");
+  assert.match(tester, /customerPushRemoteTestStatus/);
+  assert.match(tester, /AppState.addEventListener/);
+  assert.match(tester, /result.status === "failed"/);
+  assert.match(native, /"\/push\/test\/status"/);
+});

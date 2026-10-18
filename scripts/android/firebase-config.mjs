@@ -24,5 +24,17 @@ export function assertFirebaseConfig(appDirectory, app) {
     }
     return { fixture: true, projectId: cfg.project_info.project_id, file };
   }
+  // The service account used by the VPS sends only within this Firebase project.
+  // A valid-looking google-services.json from another project silently obtains
+  // a token that our backend cannot deliver to. Reject it before building APKs.
+  const expectedProject = "project-0fc02e8a-d32e-4ea9-884";
+  const expectedSender = "265040680128";
+  if (cfg.project_info.project_id !== expectedProject
+    || String(cfg.project_info.project_number) !== expectedSender
+    || !String(matching.client_info.mobilesdk_app_id).startsWith("1:" + expectedSender + ":android:")) {
+    throw new Error("Firebase project/sender mismatch for " + app
+      + ". Download google-services.json from project " + expectedProject
+      + " (sender " + expectedSender + "), then rebuild. Do not use another Firebase project.");
+  }
   return { fixture: false, projectId: cfg.project_info.project_id, file };
 }
