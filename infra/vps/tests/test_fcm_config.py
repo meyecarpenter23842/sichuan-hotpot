@@ -23,7 +23,7 @@ class FcmConfigTest(unittest.TestCase):
     def test_valid_shape_and_pem_escape(self):
         values, account = module.credential_values(self.credential())
         self.assertEqual(values['FCM_PROJECT_ID'], module.EXPECTED_PROJECT_ID)
-        self.assertIn(r'\n', values['FCM_PRIVATE_KEY'])
+        self.assertIn(r'\\n', values['FCM_PRIVATE_KEY'])
         self.assertNotIn('\n', values['FCM_PRIVATE_KEY'])
         self.assertEqual(account['type'], 'service_account')
 
