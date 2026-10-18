@@ -19,8 +19,10 @@ test("owner zone pricing is editable inside the delivery settings overlay", () =
 });
 
 test("Android Admin uses approved packaged long-sound channel; websocket cleanup remains safe", () => {
-  assert.match(nativePush, /setNotificationChannelAsync\("new-orders-v2"/);
-  assert.match(nativePush, /sound: "new_order_alert\.mp3"/);
+  assert.match(nativePush, /ORDER_CHANNEL_ID = "new-orders-v3"/);
+  assert.match(nativePush, /setNotificationChannelAsync\(ORDER_CHANNEL_ID/);
+  assert.match(nativePush, /ORDER_SOUND_FILE = "new_order_alert\.mp3"/);
+  assert.match(nativePush, /sound: ORDER_SOUND_FILE/);
   assert.match(nativePush, /AndroidImportance\.MAX/);
   assert.match(soundPlugin, /sound-native-android\.mp3/);
   assert.match(soundPlugin, /new_order_alert\.mp3/);
