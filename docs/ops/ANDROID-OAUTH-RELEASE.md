@@ -37,6 +37,32 @@ npm run android:release:admin
 
 The release script now checks inputs **before** Gradle so it cannot silently package an empty/test API origin on a normal local build. It does not re-run `prebuild --clean` or remove uncommitted Android native files.
 
+## Separate APK filenames and launcher identities
+
+From repository root on Windows, build the two apps independently:
+
+```powershell
+npm run android:release:customer
+npm run android:release:admin
+```
+
+The release helper checks that the generated native Android `applicationId` matches each app's configured package and synchronizes an existing Admin launcher label without deleting the Android native directory. It produces two distinct files, safe to copy into the **same folder**:
+
+- `dist/android/sichuan-hotpot-customer-release.apk` — launcher **Sichuan Hotpot**, `vn.sichuanhotpot.customer`.
+- `dist/android/sichuan-hotpot-admin-release.apk` — launcher **Hotpot Admin**, `vn.sichuanhotpot.admin`.
+
+Android installs packages based on their `applicationId`, **not** the APK filename. The generic Gradle `app-release.apk` source still exists under each app's own build directory and should not be mixed up when transferring APKs. Neither app's release helper invokes destructive `prebuild --clean`.
+
+Install both on an emulator/device where ADB is connected:
+
+```powershell
+adb install -r ".\dist\android\sichuan-hotpot-customer-release.apk"
+adb install -r ".\dist\android\sichuan-hotpot-admin-release.apk"
+adb shell pm list packages | findstr /I "vn.sichuanhotpot"
+```
+
+Expect **both** package IDs. A Sichuan launcher icon with a Chrome badge is the installed **web PWA**, not proof the Admin native APK is installed.
+
 ## Troubleshooting
 
 - **Admin: Missing/invalid API configuration** means the release APK has no valid API origin. Check the app-specific .env file and rebuild.
