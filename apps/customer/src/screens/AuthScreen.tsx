@@ -9,6 +9,7 @@ import { palette, typeScale } from "../theme";
 import { actionDepth } from "../components/action-depth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useGoogleLogin } from "../auth/google-login";
+import { RecoverableImage } from "../components/RecoverableImage";
 
 type Mode = "login" | "register" | "verify" | "forgot" | "reset";
 type Props = {
@@ -73,7 +74,6 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [imageFailed, setImageFailed] = useState(false);
   const [remember, setRemember] = useState(true);
   const [rememberSaving, setRememberSaving] = useState(false);
 
@@ -252,13 +252,8 @@ export function AuthScreen({ onAuthenticated, onGuest }: Props) {
     <View style={[s.frame, { maxWidth: 510 }]}>
       <View style={[s.hero, { height: login
         ? Math.min(290, Math.max(176, height * (compact ? 0.31 : 0.33))) : 125 }]}>
-        {imageFailed ? (
-          <View style={s.heroFallback}>
-            <Text style={s.fallbackSymbol}>♨</Text>
-            <Text style={s.fallbackBrand}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
-          </View>
-        ) : <Image source={{ uri: heroUrl }} style={s.heroImage} resizeMode="cover"
-            accessibilityLabel="Ảnh lẩu Tứ Xuyên" onError={() => setImageFailed(true)} />}
+        <RecoverableImage uri={heroUrl} style={s.heroImage} resizeMode="cover"
+          accessibilityLabel="Ảnh lẩu Tứ Xuyên đăng nhập" />
         {/* The approved hero artwork includes its own brand lettering; do not duplicate it. */}
         {login && !compact && (
           <View style={s.heroWelcome}>

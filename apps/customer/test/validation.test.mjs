@@ -21,7 +21,8 @@ test("login references exact owner R2 key and backend auth flow", () => {
   assert.match(auth, /r2\.dev\/system-image\/login-hero\.png/);
   assert.match(auth, /"\/auth\/google"/);
   assert.match(app, /"\/auth\/me"/);
-  assert.match(auth, /imageFailed/);
+  assert.match(auth, /RecoverableImage uri=\{heroUrl\}/);
+  assert.doesNotMatch(auth, /imageFailed/);
   assert.match(auth, /Xem thực đơn mà không cần đăng nhập/);
 });
 

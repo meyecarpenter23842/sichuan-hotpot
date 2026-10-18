@@ -1,9 +1,10 @@
 import { displayAdministrativeSelection } from "../../../../packages/shared/src/vietnam-admin";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { watchCustomerOrderEvents } from "../order-realtime";
 import { palette, typeScale } from "../theme";
+import { RecoverableImage } from "../components/RecoverableImage";
 import { actionDepth } from "../components/action-depth";
 import { vnd } from "../validation";
 
@@ -167,7 +168,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
               {detail.payment?.qr && detail.payment.status === "PENDING" && (
                 <View style={styles.qrPanel}>
                   <Text style={styles.headingSmall}>Quét mã VietQR chuyển khoản</Text>
-                  <Image source={{ uri: detail.payment.qr.imageUrl }}
+                  <RecoverableImage uri={detail.payment.qr.imageUrl}
                     style={styles.qrImage} resizeMode="contain"
                     accessibilityLabel="Mã QR chuyển khoản theo số tiền đơn hàng" />
                   <Text style={styles.text}>Ngân hàng BIN: {detail.payment.qr.bankBin}</Text>

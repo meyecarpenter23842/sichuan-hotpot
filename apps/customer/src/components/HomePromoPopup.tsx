@@ -3,6 +3,7 @@ import { AccessibilityInfo,Animated,AppState,Image,Modal,PanResponder,Platform,P
   StyleSheet,Text,View,useWindowDimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeProductImageUrl,type HomePopupPayload } from "../api";
+import { RecoverableImage } from "./RecoverableImage";
 
 type Receipt={revision:number;shownAt:number};
 const receiptKey=(branchId:string)=>"hotpot.home-popup.v1:"+branchId;
@@ -16,7 +17,6 @@ export function HomePromoPopup({branchId,payload,active}:{
   const [visible,setVisible]=useState(false);
   const [index,setIndex]=useState(0);
   const [previousIndex,setPreviousIndex]=useState<number|null>(null);
-  const [failed,setFailed]=useState<string[]>([]);
   const [foreground,setForeground]=useState(true);
   const [reducedMotion,setReducedMotion]=useState(false);
   const progress=useRef(new Animated.Value(1)).current;
@@ -43,7 +43,7 @@ export function HomePromoPopup({branchId,payload,active}:{
   },[]);
 
   const slides=useMemo(()=>(payload?.slides??[]).filter(slide=>
-    !!safeProductImageUrl(slide.imageKey)&&!failed.includes(slide.id)),[payload,failed]);
+    !!safeProductImageUrl(slide.imageKey)),[payload]);
   const revision=payload?.settings.revision??0;
   const enabled=payload?.settings.enabled===true;
 
@@ -124,7 +124,6 @@ export function HomePromoPopup({branchId,payload,active}:{
     },
     onPanResponderTerminationRequest:()=>true,
   }),[goTo,index]);
-  const fail=(id:string)=>setFailed(old=>old.includes(id)?old:[...old,id]);
   const current=slides[index]??null;
   const previous=previousIndex===null?null:slides[previousIndex]??null;
   const incoming={transform:[{translateX:progress.interpolate({inputRange:[0,1],outputRange:[frameWidth,0]})}]};
@@ -132,8 +131,8 @@ export function HomePromoPopup({branchId,payload,active}:{
   const image=(slide:HomePopupPayload["slides"][number])=>{
     const uri=safeProductImageUrl(slide.imageKey);if(!uri)return null;
     return <View style={{width:frameWidth,height:frameHeight}}>
-      <Image source={{uri}} resizeMode="contain" style={StyleSheet.absoluteFillObject}
-        accessibilityLabel={slide.altText} onError={()=>fail(slide.id)}/>
+      <RecoverableImage uri={uri} resizeMode="contain" style={StyleSheet.absoluteFillObject}
+        accessibilityLabel={slide.altText}/>
     </View>;
   };
 
