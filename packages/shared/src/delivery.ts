@@ -1,3 +1,5 @@
+import { isWardAllowedForNewDelivery } from "./tien-giang-service-area.js";
+
 /**
  * Pure server-authoritative delivery fee calculation.
  * distanceMeters MUST come from a road-routing provider, never a straight-line distance.
@@ -156,6 +158,11 @@ export function quoteZoneDelivery(
   if (subtotalVnd < policy.minSubtotalVnd) throw new DeliveryQuoteError("BELOW_MINIMUM");
   if (!address.provinceCode || !address.wardCode || !address.catalogVersion) {
     throw new DeliveryQuoteError("ADDRESS_REGION_UNCONFIRMED");
+  }
+  // Enforce current service area even for legacy province-wide fallback rates.
+  // Existing stored quotes/orders are untouched; only NEW pricing is blocked.
+  if (!isWardAllowedForNewDelivery(address.provinceCode, address.wardCode)) {
+    throw new DeliveryQuoteError("ZONE_NOT_SERVED");
   }
   const candidates = rates.filter(rate => rate.isActive && rate.provinceCode === address.provinceCode
     && rate.catalogVersion === address.catalogVersion);
