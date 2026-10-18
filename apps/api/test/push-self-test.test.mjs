@@ -44,6 +44,7 @@ test("FCM test sends only to registered current user's device, no Order mutation
   assert.equal(events[0].admin, true);
   assert.equal(events[0].payload.orderId, undefined);
   assert.equal((await service.testStatus("Bearer current", sent.testId)).received, false);
+  assert.equal((await service.testStatus("Bearer current", sent.testId)).failureCode, null);
   await assert.rejects(service.acknowledgeTest("Bearer stranger", sent.testId, token), /PUSH_TEST_RECEIPT_FORBIDDEN/);
   await assert.rejects(service.acknowledgeTest("Bearer current", sent.testId, "other-device"), /PUSH_TEST_RECEIPT_FORBIDDEN/);
   assert.equal((await service.acknowledgeTest("Bearer current", sent.testId, token)).status, "received_on_device");
@@ -61,6 +62,12 @@ test("MANAGER branch membership can test own token, unauthorized role cannot", a
 test("missing FCM server, invalid token, or missing own endpoint never returns delivery success", async () => {
   const { service, token } = mockService();
   service.sendFcm = async () => { throw new Error("FCM_SERVER_NOT_CONFIGURED"); };
+  let failureId;
+  const originalSet = service.testReceipts.set.bind(service.testReceipts);
+  service.testReceipts.set = (id, entry) => { failureId = id; return originalSet(id, entry); };
   await assert.rejects(service.sendTest("Bearer current", token), /FCM_SERVER_NOT_CONFIGURED/);
+  const detail = await service.testStatus("Bearer current", failureId);
+  assert.equal(detail.status, "failed");
+  assert.equal(detail.failureCode, "FCM_SERVER_NOT_CONFIGURED");
   await assert.rejects(service.sendTest("Bearer current", "short"), /PUSH_TOKEN_INVALID/);
 });

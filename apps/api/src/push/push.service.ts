@@ -43,7 +43,8 @@ export class PushService {
   private readonly logger = new Logger(PushService.name);
   private fcmAuth: GoogleAuth | null | undefined;
   private readonly testCooldowns = new Map<string, number>();
-  private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null; status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device" }>();
+  private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null;
+    status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device"; failureCode: string | null }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -159,9 +160,9 @@ export class PushService {
     this.testCooldowns.set(cooldownKey, now);
     const testId = randomUUID();
     const entry: { userId: string; token: string; createdAt: number; receivedAt: number | null;
-      status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device" } = {
+      status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device"; failureCode: string | null } = {
       userId: principal.id, token, createdAt: now, receivedAt: null,
-      status: delaySeconds > 0 ? "scheduled" : "sent_to_fcm",
+      status: delaySeconds > 0 ? "scheduled" : "sent_to_fcm", failureCode: null,
     };
     this.testReceipts.set(testId, entry);
     const deliver = async () => {
@@ -174,6 +175,15 @@ export class PushService {
         if (entry.status === "scheduled") entry.status = "sent_to_fcm";
       } catch (error) {
         entry.status = "failed";
+        // Only allowlisted diagnostics: no raw FCM payload, credentials or token.
+        const code = error instanceof Error ? error.message : "";
+        entry.failureCode = [
+          "FCM_SERVER_NOT_CONFIGURED",
+          "FCM_SERVER_CREDENTIALS_OR_PERMISSION_INVALID",
+          "FCM_DEVICE_TOKEN_EXPIRED",
+        ].includes(code) ? code : code.startsWith("FCM_SEND_FAILED_HTTP_")
+          ? "FCM_PROVIDER_REJECTED" : "FCM_SEND_FAILED";
+        this.logger.warn("FCM test send failed: " + entry.failureCode);
         throw error;
       }
     };
@@ -204,7 +214,8 @@ export class PushService {
     if (!item || item.userId !== principal.id || Date.now() - item.createdAt > 600_000) {
       throw new ForbiddenException("PUSH_TEST_NOT_FOUND_OR_EXPIRED");
     }
-    return { status: item.status, received: item.receivedAt !== null };
+    return { status: item.status, received: item.receivedAt !== null,
+      failureCode: item.failureCode };
   }
 
   async notifyStaffNewOrder(branchId: string, orderId: string): Promise<void> {

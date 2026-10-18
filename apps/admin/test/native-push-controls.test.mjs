@@ -10,6 +10,10 @@ test("Admin settings exposes FCM push and local notification audio tests", () =>
   assert.match(settings, /<NotificationTester token={token} branchId={branch.id}/);
   assert.match(tester, /adminTestLocalSound/);
   assert.match(tester, /adminTestRemotePush/);
+  assert.match(tester, /adminPushRemoteTestStatus/);
+  assert.match(tester, /AppState.addEventListener\("change"/);
+  assert.match(tester, /result.status === "failed"/);
+  assert.match(native, /"\/push\/test\/status"/);
   assert.match(tester, /Date.now\(\) - lastPush.current < 30000/);
   assert.match(native, /sound: "new_order_alert.mp3"/);
   assert.match(native, /scheduleNotificationAsync/);

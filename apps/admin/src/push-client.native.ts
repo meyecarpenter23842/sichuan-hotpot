@@ -131,6 +131,11 @@ export async function adminTestRemotePush(token: string, branchId: string, delay
   const result = await request<{ testId: string }>("/push/test", token, "POST", { token: deviceToken, delaySeconds });
   return result.testId;
 }
+export type AdminFcmTestState = { status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device";
+  received: boolean; failureCode?: string | null };
+export async function adminPushRemoteTestStatus(token: string, testId: string): Promise<AdminFcmTestState> {
+  return request<AdminFcmTestState>("/push/test/status", token, "POST", { testId });
+}
 export function listenAdminTestReceipts(
   token: string, onReceipt: (testId: string) => void,
 ): () => void {
