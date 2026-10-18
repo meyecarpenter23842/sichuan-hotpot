@@ -309,7 +309,7 @@ export class PushService {
             android: {
               priority: "HIGH",
               notification: {
-                channel_id: admin ? "new-orders-v1" : "customer-orders-v1",
+                channel_id: admin ? "new-orders-v2" : "customer-orders-v1",
                 sound: admin ? "new_order_alert.mp3" : "default",
                 notification_priority: "PRIORITY_MAX",
               },

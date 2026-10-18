@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 const ENDPOINT_KEY = "sichuan.admin.push-endpoint.v1";
 
 async function registerNative(token: string, branchId: string): Promise<string> {
-  await Notifications.setNotificationChannelAsync("new-orders-v1", {
+  await Notifications.setNotificationChannelAsync("new-orders-v2", {
     name: "Đơn hàng mới",
     description: "Đơn mới cần quản trị xác nhận",
     importance: Notifications.AndroidImportance.MAX,
@@ -99,7 +99,7 @@ export async function adminTestLocalSound(): Promise<void> {
   if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) throw new Error("Phải cấp quyền thông báo để kiểm tra âm thanh hệ thống Android.");
-  await Notifications.setNotificationChannelAsync("new-orders-v1", {
+  await Notifications.setNotificationChannelAsync("new-orders-v2", {
     name: "Đơn hàng mới",
     importance: Notifications.AndroidImportance.MAX,
     sound: "new_order_alert.mp3",
@@ -107,7 +107,8 @@ export async function adminTestLocalSound(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: { title: "Kiểm tra âm thanh", body: "Âm thử cục bộ, không tạo đơn hàng.",
       sound: "new_order_alert.mp3", data: { kind: "LOCAL_SOUND_TEST" } },
-    trigger: null,
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 1, channelId: "new-orders-v2" },
   });
 }
 export async function adminTestRemotePush(token: string, branchId: string, delaySeconds = 0): Promise<string> {

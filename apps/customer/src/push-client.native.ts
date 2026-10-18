@@ -134,7 +134,8 @@ export async function customerTestLocalSound(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: { title: "Kiểm tra âm thanh", body: "Âm thử cục bộ, không tạo đơn hàng.",
       sound: "default", data: { kind: "LOCAL_SOUND_TEST" } },
-    trigger: null,
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 1, channelId: "customer-orders-v1" },
   });
 }
 export async function customerTestRemotePush(accessToken: string, delaySeconds = 0): Promise<string> {

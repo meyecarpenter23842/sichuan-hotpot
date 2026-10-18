@@ -6,7 +6,7 @@ This document records configuration names only. **Never commit Firebase service-
 
 - Admin new order: backend event after the non-idempotent order create succeeds.
   - Admin PWA: Web Push notification; browser/OS system sound.
-  - Android Admin: FCM notification on channel `new-orders-v1`; packaged `new_order_alert.mp3`.
+  - Android Admin: FCM notification on channel `new-orders-v2`; packaged `new_order_alert.mp3`.
 - Customer: push is sent only when an order reaches `CONFIRMED`.
   - Customer PWA: Web Push notification; browser/OS system sound.
   - Android Customer: FCM channel `customer-orders-v1` with default system sound.
@@ -51,3 +51,5 @@ After changing the custom Admin sound, use a new Android notification-channel ID
 Backend production requires a separately approved deployment after merge. Until then the API test endpoint is **not available** in production. WebSocket order sync stays independent.
 
 **Test đầy đủ** delays the actual server-side FCM send by 12 seconds so the operator can background or normally close the app before delivery. The HTTP response is `scheduled`, **not** proof of send or receipt. Test status: `POST /push/test/status` with `testId`; a receipt is confirmed only by an observed device callback.
+
+Admin Android notification channel is now `new-orders-v2` because Android channel sound settings are immutable once created. Local audio checks target that same channel with an explicit channelId. Older builds need to be rebuilt to receive the updated sound channel.
