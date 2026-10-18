@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, HttpException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { OrderStatus, PushScope, PushTransport } from "@prisma/client";
 import { GoogleAuth } from "google-auth-library";
 import webpush from "web-push";
@@ -181,6 +181,9 @@ export class PushService {
           "FCM_SERVER_NOT_CONFIGURED",
           "FCM_SERVER_CREDENTIALS_OR_PERMISSION_INVALID",
           "FCM_DEVICE_TOKEN_EXPIRED",
+          "FCM_RELAY_NOT_CONFIGURED",
+          "FCM_RELAY_SEND_FAILED",
+          "FCM_RELAY_PROVIDER_REJECTED",
         ].includes(code) ? code : code.startsWith("FCM_SEND_FAILED_HTTP_")
           ? "FCM_PROVIDER_REJECTED" : "FCM_SEND_FAILED";
         this.logger.warn("FCM test send failed: " + entry.failureCode);
@@ -335,6 +338,60 @@ export class PushService {
     payload: PushPayload,
     admin: boolean,
   ): Promise<void> {
+    const message = {
+      token: endpoint.token,
+      notification: { title: payload.title, body: payload.body },
+      data: { kind: payload.kind, orderId: payload.orderId ?? "",
+        testId: payload.testId ?? "", url: payload.url },
+      android: {
+        priority: "HIGH",
+        notification: {
+          channel_id: admin ? ADMIN_ORDER_CHANNEL_ID : "customer-orders-v1",
+          sound: admin ? ADMIN_ORDER_SOUND_FILE : "default",
+          notification_priority: "PRIORITY_MAX",
+        },
+      },
+    };
+
+    const relayUrl = process.env.FCM_RELAY_URL?.trim() || "";
+    const relaySecret = process.env.FCM_RELAY_SECRET_HEX?.trim() || "";
+    if (relayUrl || relaySecret) {
+      if (!/^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]+\/exec$/.test(relayUrl)
+          || !/^[a-f0-9]{64}$/i.test(relaySecret)) {
+        throw new ServiceUnavailableException("FCM_RELAY_NOT_CONFIGURED");
+      }
+      // Google Apps Script executes as the operator; only HMAC-authenticated
+      // short-lived requests may cause the app script to send an FCM message.
+      const signedPayload = Buffer.from(JSON.stringify({
+        ts: Date.now(), nonce: randomUUID(), message,
+      }), "utf8").toString("base64url");
+      const signature = createHmac("sha256", Buffer.from(relaySecret, "hex"))
+        .update(signedPayload).digest("base64url");
+      let result: Response;
+      try {
+        result = await fetch(relayUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: signedPayload, signature }),
+          signal: AbortSignal.timeout(15_000),
+          redirect: "follow",
+        });
+      } catch {
+        throw new ServiceUnavailableException("FCM_RELAY_SEND_FAILED");
+      }
+      if (!result.ok) throw new ServiceUnavailableException("FCM_RELAY_SEND_FAILED");
+      // Apps Script web apps send HTTP 200 for business errors. Inspect body.
+      const answer: unknown = await result.json().catch(() => null);
+      if (answer && typeof answer === "object" && "ok" in answer && answer.ok === true) return;
+      if (answer && typeof answer === "object" && "code" in answer
+        && answer.code === "TOKEN_EXPIRED") {
+        await this.prisma.database.pushEndpoint.deleteMany({ where: { id: endpoint.id } });
+        throw new BadRequestException("FCM_DEVICE_TOKEN_EXPIRED");
+      }
+      throw new ServiceUnavailableException("FCM_RELAY_PROVIDER_REJECTED");
+    }
+
+    // Original private service-account HTTP v1 path remains available.
     const auth = await this.fcmAccessToken();
     if (!auth) throw new ServiceUnavailableException("FCM_SERVER_NOT_CONFIGURED");
     const response = await fetch(
@@ -345,22 +402,7 @@ export class PushService {
           Authorization: "Bearer " + auth.token,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message: {
-            token: endpoint.token,
-            notification: { title: payload.title, body: payload.body },
-            data: { kind: payload.kind, orderId: payload.orderId ?? "",
-              testId: payload.testId ?? "", url: payload.url },
-            android: {
-              priority: "HIGH",
-              notification: {
-                channel_id: admin ? ADMIN_ORDER_CHANNEL_ID : "customer-orders-v1",
-                sound: admin ? ADMIN_ORDER_SOUND_FILE : "default",
-                notification_priority: "PRIORITY_MAX",
-              },
-            },
-          },
-        }),
+        body: JSON.stringify({ message }),
       },
     );
     if (response.ok) return;
