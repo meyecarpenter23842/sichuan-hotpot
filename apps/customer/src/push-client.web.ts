@@ -97,6 +97,13 @@ export async function customerTestRemotePush(_accessToken: string): Promise<stri
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {
   return () => undefined;
 }
-export async function disableCustomerPush(_accessToken: string): Promise<void> {
-  // PWA uses a browser subscription, not Android FCM.
+export async function disableCustomerPush(accessToken: string): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return;
+  await apiRequest("/push/subscriptions/remove", {
+    method: "POST", accessToken, body: { token: subscription.endpoint },
+  });
+  await subscription.unsubscribe();
 }

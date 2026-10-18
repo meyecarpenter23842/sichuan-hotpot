@@ -97,7 +97,7 @@ export async function watchCustomerNotificationResponses(
     response: Awaited<ReturnType<NotificationsModule["getLastNotificationResponseAsync"]>>,
   ) => {
     const data = response?.notification.request.content.data;
-    if (data && typeof data.orderId === "string") onOpenOrder(data.orderId);
+    if (data?.kind !== "TEST" && typeof data?.orderId === "string" && data.orderId) onOpenOrder(data.orderId);
   };
   handle(await Notifications.getLastNotificationResponseAsync());
   const subscription = Notifications.addNotificationResponseReceivedListener(handle);
