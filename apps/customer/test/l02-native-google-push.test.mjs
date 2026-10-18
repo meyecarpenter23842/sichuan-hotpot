@@ -17,7 +17,8 @@ test("Android Google login uses native Google Sign-In, never browser custom redi
   assert.match(nativeGoogle, /GoogleSignin\.configure/);
   assert.match(nativeGoogle, /GoogleSignin\.signIn\(\)/);
   assert.match(nativeGoogle, /webClientId: googleWebId/);
-  assert.match(nativeGoogle, /package\/SHA-1/);
+  assert.match(nativeGoogle, /package name \+ SHA-1/);
+  assert.match(nativeGoogle, /Đăng nhập Google chưa sẵn sàng/);
   assert.doesNotMatch(nativeGoogle, /expo-auth-session/);
   assert.doesNotMatch(nativeGoogle, /oauthredirect/);
   assert.match(authScreen, /useGoogleLogin/);

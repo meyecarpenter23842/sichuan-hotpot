@@ -27,7 +27,8 @@ test("Google cancel/config errors and Android API origin have explicit guards", 
   assert.match(auth, /response\.type === "cancel"/);
   assert.match(auth, /Bạn đã hủy đăng nhập Google/);
   assert.match(nativeGoogle, /DEVELOPER_ERROR/);
-  assert.match(nativeGoogle, /package\/SHA-1/);
+  assert.match(nativeGoogle, /package name \+ SHA-1/);
+  assert.match(nativeGoogle, /Đăng nhập Google chưa sẵn sàng/);
   assert.match(api, /Platform\.OS !== "web" && isLocal/);
   assert.match(api, /không dùng localhost/);
 });

@@ -2,10 +2,12 @@
 // prebuild. Existing native files are preserved; only the known Gradle
 // release-bundling contract is upgraded before assembling an APK.
 import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configureGeneratedAndroid } from "./release-gradle.mjs";
+import { synchronizeAndroidIdentity } from "./release-identity.mjs";
 import { assertAndroidReleaseEnv, resolveAndroidReleaseEnv } from "./release-env.mjs";
 
 const require = createRequire(import.meta.url);
@@ -46,6 +48,7 @@ if (runtime.isCiPlaceholder) {
 // Validates Expo's entry file, refuses unexpected Gradle customizations,
 // and repairs an existing #186 native project without --clean/prebuild.
 configureGeneratedAndroid(appDirectory);
+synchronizeAndroidIdentity(appDirectory, app);
 
 const gradleDirectory = join(appDirectory, "android");
 const isWindows = process.platform === "win32";
@@ -57,4 +60,15 @@ console.log(`Building ${app} Android release APK using verified Expo Gradle conf
 const build = spawnSync(command, args, { cwd: gradleDirectory, stdio: "inherit" });
 if (build.error) throw build.error;
 if (build.status !== 0) process.exitCode = build.status ?? 1;
-else console.log(`Release APK: ${join(gradleDirectory, "app", "build", "outputs", "apk", "release", "app-release.apk")}`);
+else {
+  const apk = join(gradleDirectory, "app", "build", "outputs", "apk", "release", "app-release.apk");
+  if (!existsSync(apk)) throw new Error("Gradle reported success but release APK was not found.");
+  // Publish stable app-specific file names. Android installs by applicationId,
+  // not the source filename, but copying two generic app-release.apk files
+  // into one folder can silently overwrite one of them.
+  const dist = join(repoRoot, "dist", "android");
+  mkdirSync(dist, { recursive: true });
+  const namedApk = join(dist, `sichuan-hotpot-${app}-release.apk`);
+  copyFileSync(apk, namedApk);
+  console.log(`Release APK (${app}): ${namedApk}`);
+}

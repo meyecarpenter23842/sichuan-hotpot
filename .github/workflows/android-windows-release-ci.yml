@@ -105,6 +105,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.app }}-windows-release-apk
-          path: apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          path: dist/android/sichuan-hotpot-${{ matrix.app }}-release.apk
           if-no-files-found: error
           retention-days: 7
