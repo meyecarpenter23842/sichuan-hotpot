@@ -35,8 +35,9 @@ import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
   validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
+import { NotificationTester } from "./src/components/NotificationTester";
 import {
-  configureCustomerNotificationPresentation, enableCustomerPush,
+  configureCustomerNotificationPresentation, disableCustomerPush, enableCustomerPush,
   refreshCustomerPushIfAllowed, watchCustomerNotificationResponses,
 } from "./src/push-client";
 
@@ -597,6 +598,7 @@ function CustomerApp() {
     setPendingDeleteAddress(null);
     setFocusOrderId(null);
     setAddress({ label: "Nhà", phone: "", line1: "", latitude: "", longitude: "" });
+    if (token) await disableCustomerPush(token).catch(() => undefined);
     const cleared = await Promise.allSettled([
       AsyncStorage.removeItem(ADDRESS_KEY),
       clearRefresh(),
@@ -1868,6 +1870,7 @@ function CustomerApp() {
                     <Text style={styles.addressQuickChevron}>›</Text>
                   </Pressable>
                 </View>
+                <NotificationTester accessToken={accessToken} />
                 <View style={styles.accountLogout}>
                   <Pressable accessibilityRole="button" style={({ pressed }) => [
                     styles.logoutButton, pressed && actionDepth.pressed,

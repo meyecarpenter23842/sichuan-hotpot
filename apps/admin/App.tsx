@@ -422,6 +422,7 @@ export default function AdminApp() {
   async function signOut() {
     sessionGeneration.current++;
     const old = token;
+    if (old) await disableAdminPush(old).catch(() => undefined);
     setToken(null); setPrincipal(null); setCatalog(null);
     setBranches([]); setBranchId(null); setNotice(""); setAuthError("");
     setAccessExpiresAt(0); setRetryAt(0); retryCount.current = 0;

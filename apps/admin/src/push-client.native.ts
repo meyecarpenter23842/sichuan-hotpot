@@ -81,7 +81,6 @@ export async function watchAdminNotificationResponses(
 
 export type PushTestStatus = { permission: string; firebase: string; token: string; sound: string };
 export async function adminPushTestStatus(): Promise<PushTestStatus> {
-  const Notifications = Notifications;
   if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) return { permission: permission.canAskAgain ? "Chưa cấp" : "Bị từ chối",
@@ -97,7 +96,6 @@ export async function adminPushTestStatus(): Promise<PushTestStatus> {
   }
 }
 export async function adminTestLocalSound(): Promise<void> {
-  const Notifications = Notifications;
   if (!Notifications) throw new Error("Expo Notifications chưa sẵn sàng.");
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) throw new Error("Phải cấp quyền thông báo để kiểm tra âm thanh hệ thống Android.");

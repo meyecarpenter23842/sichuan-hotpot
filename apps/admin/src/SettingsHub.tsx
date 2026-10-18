@@ -12,6 +12,7 @@ import { ChatbotPanel } from "./ChatbotPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { StatusSwitch } from "./StatusSwitch";
+import { NotificationTester } from "./NotificationTester";
 import { Action, Notice } from "./ui";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
@@ -101,6 +102,7 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
                   onValueChange={onChimeChange} />
               </View>
               {!!chimeError && <Notice text={chimeError} error />}
+              <NotificationTester token={token} branchId={branch.id} />
               <Text style={s.note}>WebSocket vẫn đồng bộ danh sách đơn; push chỉ chịu trách nhiệm cảnh báo nền/khóa màn.</Text>
             </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
