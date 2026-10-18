@@ -173,7 +173,24 @@ async function rotateSession(): Promise<AuthTokens | null> {
     const result = await webSession<Omit<AuthTokens, "refreshToken">>("refresh");
     return revision === sessionRevision ? { ...result, refreshToken: "" } : null;
   }
-  const old = await SecureStore.getItemAsync(REFRESH_KEY);
+  // Android may invalidate the encryption key after backup/restore, keystore
+  // rotation, or an emulator snapshot. Retrying this corrupted ciphertext is
+  // not useful; discard only this unreadable refresh credential.
+  let old: string | null;
+  try {
+    old = await SecureStore.getItemAsync(REFRESH_KEY);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const invalidKey = /Could not decrypt the value|Keystore operation failed|KeyPermanentlyInvalidatedException|AEADBadTagException|BadPaddingException|UnrecoverableKeyException/i.test(message);
+    if (!invalidKey) throw error; // unknown/transient storage faults: do not erase credentials
+    if (revision !== sessionRevision) return null;
+    try {
+      await SecureStore.deleteItemAsync(REFRESH_KEY);
+    } catch {
+      throw new Error("Không thể khôi phục khóa Android. Vui lòng kiểm tra bộ nhớ ứng dụng.");
+    }
+    return null; // the user must authenticate again; never fake a valid session
+  }
   if (!old || revision !== sessionRevision) return null;
   const next = await request<AuthTokens>("/auth/refresh", undefined, "POST", { refreshToken: old });
   if (revision !== sessionRevision) return null;

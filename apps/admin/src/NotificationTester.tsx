@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { adminPushTestStatus, adminTestLocalSound, adminTestRemotePush,
-  listenAdminTestReceipts, type PushTestStatus } from "./push-client";
+  adminPushRemoteTestStatus, listenAdminTestReceipts, type PushTestStatus } from "./push-client";
 
 export function NotificationTester({ token, branchId }: { token: string; branchId: string }) {
   const [status, setStatus] = useState<PushTestStatus | null>(null);
@@ -12,6 +12,7 @@ export function NotificationTester({ token, branchId }: { token: string; branchI
   const current = useRef<string | null>(null);
   const received = useRef(new Set<string>());
   const lastPush = useRef(0);
+  const [testId, setTestId] = useState<string | null>(null);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const stop = listenAdminTestReceipts(token, id => {
@@ -24,12 +25,63 @@ export function NotificationTester({ token, branchId }: { token: string; branchI
     void adminPushTestStatus().then(setStatus).catch(() => undefined);
     return stop;
   }, [token]);
+  useEffect(() => {
+    if (!testId) return;
+    let stopped = false;
+    let checking = false;
+    const deadline = Date.now() + 90_000;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const stop = () => { stopped = true; if (timer) clearInterval(timer); };
+    const check = async () => {
+      if (stopped || checking || AppState.currentState !== "active") return;
+      if (Date.now() >= deadline) {
+        setMessage("Hết thời gian theo dõi: thiết bị chưa xác nhận nhận FCM. Kiểm tra khay thông báo Android và âm báo.");
+        stop(); return;
+      }
+      checking = true;
+      try {
+        const result = await adminPushRemoteTestStatus(token, testId);
+        if (stopped || current.current !== testId) return;
+        if (result.status === "received_on_device" || result.received) {
+          setConfirmed(true); setError(false);
+          setMessage("ĐÃ NHẬN FCM trên thiết bị khi ứng dụng mở.");
+          stop();
+        } else if (result.status === "failed") {
+          setError(true);
+          setMessage("Máy chủ gửi FCM THẤT BẠI: " + (result.failureCode || "FCM_SEND_FAILED")
+            + ". Kiểm tra Firebase trên VPS.");
+          stop();
+        } else if (result.status === "sent_to_fcm") {
+          setMessage("FCM đã chấp nhận gửi; CHƯA xác nhận Android nhận. Khi app chạy nền, kiểm tra banner/chuông Android.");
+        } else {
+          setMessage("Đang chờ máy chủ gửi FCM sau 12 giây...");
+        }
+      } catch (cause) {
+        if (!stopped && current.current === testId) {
+          setError(true);
+          setMessage("Không kiểm tra được trạng thái FCM: " +
+            (cause instanceof Error ? cause.message : "Lỗi kết nối"));
+        }
+      } finally { checking = false; }
+    };
+    void check();
+    timer = setInterval(() => { void check(); }, 2500);
+    const resume = AppState.addEventListener("change", state => {
+      if (state === "active") void check();
+    });
+    return () => { stop(); resume.remove(); };
+  }, [testId, token]);
+
   async function execute(mode: "status" | "sound" | "push" | "full") {
     if (busy) return;
     if ((mode === "push" || mode === "full") && Date.now() - lastPush.current < 30000) {
       setError(true); setMessage("Giới hạn: 30 giây giữa hai lần gửi FCM."); return;
     }
     setBusy(mode); setError(false); setConfirmed(false);
+    if (mode === "push" || mode === "full") {
+      setTestId(null);
+      current.current = null;
+    }
     try {
       if (mode === "status") {
         setStatus(await adminPushTestStatus());
@@ -42,6 +94,7 @@ export function NotificationTester({ token, branchId }: { token: string; branchI
         current.current = null;
         const id = await adminTestRemotePush(token, branchId, mode === "full" ? 12 : 0);
         current.current = id;
+        setTestId(id);
         if (received.current.has(id)) {
           setConfirmed(true); setMessage("ĐÃ NHẬN FCM thực tế trên thiết bị.");
         } else {
@@ -85,8 +138,9 @@ export function NotificationTester({ token, branchId }: { token: string; branchI
       {message}
     </Text>
     <Text style={s.hint}>Âm thử là thông báo CỤC BỘ, không phải FCM. Test push không tạo đơn.
-      Đã gửi không đồng nghĩa đã nhận. Khi app chạy nền/đóng bình thường, hãy kiểm tra
-      banner và âm thật; Force Stop của Android không được bảo đảm nhận push.</Text>
+      Trạng thái gửi được đồng bộ khi app mở/trở lại từ nền; FCM đã chấp nhận
+      KHÔNG chứng minh Android hiển thị banner hoặc phát chuông. Khi app chạy nền,
+      hãy kiểm tra khay thông báo và âm thật; Force Stop không được bảo đảm nhận push.</Text>
   </View>;
 }
 const s = StyleSheet.create({

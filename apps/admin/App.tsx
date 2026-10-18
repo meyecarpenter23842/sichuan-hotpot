@@ -404,7 +404,16 @@ export default function AdminApp() {
     renewing.current = true;
     const epoch = sessionGeneration.current;
     try {
-      await recoverAccess(token);
+      const nextAccess = await recoverAccess(token);
+      if (!nextAccess && epoch === sessionGeneration.current) {
+        // Refresh secret is missing/unreadable. Clear only live authentication,
+        // preserving orders, settings and other local app data.
+        liveAccess.current = null;
+        setToken(null); setPrincipal(null); setBranches([]); setCatalog(null);
+        setAccessExpiresAt(0); setRetryAt(0); retryCount.current = 0;
+        setNotice("");
+        setAuthError("Phiên đăng nhập trên thiết bị không còn đọc được. Vui lòng đăng nhập lại.");
+      }
     } catch (e) {
       if (epoch !== sessionGeneration.current) return;
       if (e instanceof AdminApiError && e.status === 401) {
