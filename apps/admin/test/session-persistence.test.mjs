@@ -11,6 +11,16 @@ test("Admin native persists refresh credentials only in SecureStore", () => {
   assert.match(api, /SecureStore\.deleteItemAsync\(REFRESH_KEY\)/);
   assert.doesNotMatch(api, /AsyncStorage\.setItem\(REFRESH_KEY/);
 });
+test("Android keystore invalidation clears only unreadable refresh credential", () => {
+  assert.match(api, /Could not decrypt the value/);
+  assert.match(api, /Keystore operation failed/);
+  assert.match(api, /if \(!invalidKey\) throw error/);
+  assert.match(api, /SecureStore\.deleteItemAsync\(REFRESH_KEY\)/);
+  assert.match(api, /return null; \/\/ the user must authenticate again/);
+  assert.doesNotMatch(api, /AsyncStorage\.setItem\(REFRESH_KEY/);
+  assert.match(app, /const nextAccess = await recoverAccess\(token\)/);
+  assert.match(app, /if \(!nextAccess && epoch === sessionGeneration.current\)/);
+});
 test("Admin serializes one-time refresh rotation, does not replay ambiguous failures", () => {
   assert.match(api, /if \(refreshPending\) return refreshPending/);
   assert.match(api, /if \(refreshPending === work\) refreshPending = null/);
