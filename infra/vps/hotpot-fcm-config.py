@@ -161,6 +161,30 @@ def restart_and_check() -> bool:
     return False
 
 
+def runtime_loaded(updates: dict[str, str]) -> bool:
+    """Check systemd actually passed the expected key into the live Node process."""
+    try:
+        response = subprocess.run(
+            ['/usr/bin/systemctl', 'show', '--property=MainPID', '--value', SERVICE],
+            check=True, capture_output=True, text=True, timeout=5)
+        pid = int(response.stdout.strip())
+        if pid < 1:
+            return False
+        rows = Path('/proc') .joinpath(str(pid), 'environ').read_bytes().split(b'\0')
+        actual: dict[str, str] = {}
+        for row in rows:
+            key, sep, value = row.partition(b'=')
+            if sep and key.decode('utf-8', errors='ignore') in FCM_KEYS:
+                actual[key.decode('ascii')] = value.decode('utf-8')
+        # Two backslashes in systemd's env file decode to a literal \n.
+        expected_key = updates['FCM_PRIVATE_KEY'].replace(r'\\n', r'\n')
+        return (actual.get('FCM_PROJECT_ID') == updates['FCM_PROJECT_ID']
+                and actual.get('FCM_CLIENT_EMAIL') == updates['FCM_CLIENT_EMAIL']
+                and actual.get('FCM_PRIVATE_KEY') == expected_key)
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def configure(raw: str) -> str:
     require(os.geteuid() == 0, 'root_required')
     updates, account = credential_values(raw)
@@ -174,10 +198,10 @@ def configure(raw: str) -> str:
     verify_provider(account)
     updated = render_env(original, updates)
     if updated == original:
-        require(restart_and_check(), 'api_health_failed')
+        require(restart_and_check() and runtime_loaded(updates), 'runtime_fcm_not_loaded')
         return 'ALREADY_READY'
     atomic_write(updated, st)
-    if restart_and_check():
+    if restart_and_check() and runtime_loaded(updates):
         return 'APPLIED'
     atomic_write(original, st)
     require(restart_and_check(), 'rollback_health_failed')
