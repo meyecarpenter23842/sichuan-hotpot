@@ -14,6 +14,8 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.error
+import socket
 
 ENV = Path("/etc/sichuan-hotpot/api.env")
 SERVICE = "hotpot-api.service"
@@ -74,13 +76,50 @@ def proof(url, secret):
     request = urllib.request.Request(
         url, data=payload, method="POST", headers={"Content-Type": "application/json"}
     )
+    # Distinguish public deployment permissions, slow Google endpoints, and
+    # non-JSON sign-in/redirect pages without printing the private /exec URL.
     try:
-        with urllib.request.urlopen(request, timeout=18) as response:
-            result = json.loads(response.read(4096))
-    except Exception as exc:
-        raise Blocked("relay_probe_unavailable") from exc
+        with urllib.request.urlopen(request, timeout=35) as response:
+            body = response.read(4097)
+            if len(body) > 4096:
+                raise Blocked("relay_response_too_large")
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise Blocked("relay_http_forbidden_check_anyone_access") from exc
+        if exc.code in (404, 405):
+            raise Blocked("relay_http_not_found_check_deployment") from exc
+        if exc.code == 429:
+            raise Blocked("relay_http_rate_limited") from exc
+        raise Blocked("relay_http_provider_error") from exc
+    except (socket.timeout, TimeoutError) as exc:
+        raise Blocked("relay_probe_timeout") from exc
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, (socket.timeout, TimeoutError)):
+            raise Blocked("relay_probe_timeout") from exc
+        raise Blocked("relay_dns_tls_or_network_unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise Blocked("relay_network_unavailable") from exc
+    try:
+        result = json.loads(body)
+    except (ValueError, UnicodeError) as exc:
+        raise Blocked("relay_non_json_check_public_access") from exc
     if result != {"ok": True}:
-        raise Blocked("relay_auth_or_provider_failed")
+        if isinstance(result, dict):
+            code = result.get("code")
+            if code == "INVALID_SIGNATURE":
+                raise Blocked("relay_signature_mismatch")
+            if code == "NOT_CONFIGURED":
+                raise Blocked("relay_script_secret_missing")
+            if code == "FCM_REJECTED":
+                raise Blocked("relay_firebase_permission_failed")
+            if code == "GATEWAY_ERROR":
+                raise Blocked("relay_script_execution_error")
+            if code == "INVALID_PAYLOAD":
+                raise Blocked("relay_payload_mismatch")
+            if code == "REPLAYED":
+                raise Blocked("relay_duplicate_probe")
+        raise Blocked("relay_probe_rejected")
 
 
 def atomic_write(text, owner):
