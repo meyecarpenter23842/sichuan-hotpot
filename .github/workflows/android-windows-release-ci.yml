@@ -7,6 +7,7 @@ on:
       - "apps/admin/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
+      - "scripts/test/android-release-env.test.mjs"
       - "package-lock.json"
       - "package.json"
       - ".github/workflows/android-windows-release-ci.yml"
@@ -17,6 +18,7 @@ on:
       - "apps/admin/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
+      - "scripts/test/android-release-env.test.mjs"
       - "package-lock.json"
       - "package.json"
       - ".github/workflows/android-windows-release-ci.yml"
@@ -93,6 +95,10 @@ jobs:
             throw "Release APK does not contain assets/index.android.bundle"
           }
           Write-Host "Release APK includes embedded JS bundle: $apk"
+        shell: pwsh
+
+      - name: Check APK signer SHA-1 (CI-only signing certificate)
+        run: npm run android:sha1:${{ matrix.app }}
         shell: pwsh
 
       - name: Archive Windows release APK

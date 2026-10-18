@@ -19,6 +19,8 @@
     "build": "tsc -p packages/shared/tsconfig.json && tsc -p apps/api/tsconfig.json",
     "android:release:customer": "node scripts/android/build-release.mjs customer",
     "android:release:admin": "node scripts/android/build-release.mjs admin",
+    "android:sha1:customer": "node scripts/android/apk-fingerprint.mjs customer",
+    "android:sha1:admin": "node scripts/android/apk-fingerprint.mjs admin",
     "check": "npm run lint && npm run typecheck && npm test",
     "prisma:validate": "prisma validate --schema apps/api/prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
