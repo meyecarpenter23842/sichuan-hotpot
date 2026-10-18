@@ -196,6 +196,13 @@ export function apiBaseUrl(): string {
   return configured.replace(/\/+$/, "");
 }
 
+type SessionRecovery = (rejectedAccessToken: string) => Promise<string | null>;
+let sessionRecovery: SessionRecovery | null = null;
+export function setCustomerSessionRecovery(handler: SessionRecovery): () => void {
+  sessionRecovery = handler;
+  return () => { if (sessionRecovery === handler) sessionRecovery = null; };
+}
+
 export async function apiRequest<T>(
   path: string,
   options: { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; accessToken?: string; signal?: AbortSignal } = {},
@@ -205,16 +212,23 @@ export async function apiRequest<T>(
   const timeout = setTimeout(() => controller.abort(), 15000);
   const signal = options.signal ?? controller.signal;
   try {
-    const response = await fetch(url, {
+    const send = (access?: string) => fetch(url, {
       method: options.method ?? "GET",
       headers: {
         Accept: "application/json",
         ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(options.accessToken ? { Authorization: "Bearer " + options.accessToken } : {}),
+        ...(access ? { Authorization: "Bearer " + access } : {}),
       },
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       signal,
     });
+    let response = await send(options.accessToken);
+    if (response.status === 401 && options.accessToken && sessionRecovery &&
+        !path.startsWith("/auth/")) {
+      // Retry only an explicitly rejected request; no replay on network/5xx.
+      const refreshed = await sessionRecovery(options.accessToken);
+      if (refreshed && refreshed !== options.accessToken) response = await send(refreshed);
+    }
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       if (response.status === 401) {

@@ -72,8 +72,11 @@ test("CI Windows APK validation may use explicit placeholders but never implies 
 
 test("Admin exposes invalid API config instead of mislabeling it as network outage", () => {
   const api = readFileSync(new URL("../../apps/admin/src/api.ts", import.meta.url), "utf8");
-  assert.match(api, /const origin = apiOrigin\(\);\s*let response: Response;\s*try \{/);
-  assert.match(api, /fetch\(origin \+ path/);
+  // URL configuration validation happens before the request/retry catch,
+  // so malformed EXPO_PUBLIC_API_BASE_URL is never reported as a network outage.
+  assert.match(api, /const origin = apiOrigin\(\);/);
+  assert.match(api, /const send = \(access\?: string\) => fetch\(origin \+ path/);
+  assert.ok(api.indexOf("const origin = apiOrigin();") < api.indexOf("  try {\n    response = await send(token);"));
 });
 
 test("release builder validates runtime env and can show signer fingerprint", () => {

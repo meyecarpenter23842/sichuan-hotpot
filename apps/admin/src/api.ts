@@ -79,6 +79,14 @@ function apiOrigin(): string {
 export class AdminApiError extends Error {
   constructor(message: string, public readonly status: number) { super(message); }
 }
+// The root App owns the persisted session and its live React state.
+type SessionRecovery = (rejectedAccessToken: string) => Promise<string | null>;
+let sessionRecovery: SessionRecovery | null = null;
+export function setAdminSessionRecovery(handler: SessionRecovery): () => void {
+  sessionRecovery = handler;
+  return () => { if (sessionRecovery === handler) sessionRecovery = null; };
+}
+
 export async function request<T>(path: string, token?: string, method = "GET",
   body?: unknown): Promise<T> {
   const controller = new AbortController();
@@ -86,20 +94,30 @@ export async function request<T>(path: string, token?: string, method = "GET",
   // Config errors must not be disguised as a network outage.
   const origin = apiOrigin();
   let response: Response;
+  const send = (access?: string) => fetch(origin + path, {
+    method, signal: controller.signal,
+    headers: {
+      Accept: "application/json",
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(access ? { Authorization: "Bearer " + access } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
   try {
-    response = await fetch(origin + path, {
-      method, signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(token ? { Authorization: "Bearer " + token } : {}),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    response = await send(token);
+    // A 15-minute access JWT expiring does NOT mean the stored login is gone.
+    // Refresh and retry exactly once on 401, never on network/5xx, so actions
+    // cannot be accidentally submitted twice on an uncertain response.
+    if (response.status === 401 && token && sessionRecovery && !path.startsWith("/auth/")) {
+      const refreshed = await sessionRecovery(token);
+      if (refreshed && refreshed !== token) response = await send(refreshed);
+    }
   } catch (error) {
+    if (error instanceof AdminApiError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("API không phản hồi trong 15 giây. Kiểm tra máy chủ và kết nối.");
     }
+    if (error instanceof Error && error.name !== "TypeError") throw error;
     throw new Error("Không kết nối được API qua HTTPS. Kiểm tra tên miền, chứng chỉ TLS và máy chủ.");
   } finally { clearTimeout(timer); }
   if (!response.ok) {
@@ -133,25 +151,49 @@ async function webSession<T>(step: "start" | "refresh" | "logout", body?: object
     return response.json() as Promise<T>;
   } finally { clearTimeout(timer); }
 }
+let sessionRevision = 0;
+let refreshPending: Promise<AuthTokens | null> | null = null;
+
 export async function rememberSession(refreshToken: string): Promise<void> {
+  const revision = ++sessionRevision;
   if (Platform.OS === "web") {
     await webSession("start", { refreshToken });
+    if (revision !== sessionRevision) return;
     await AsyncStorage.setItem(WEB_SESSION_MARKER, "1");
-  } else await SecureStore.setItemAsync(REFRESH_KEY, refreshToken);
+  } else {
+    await SecureStore.setItemAsync(REFRESH_KEY, refreshToken);
+  }
 }
-export async function refreshSession(): Promise<AuthTokens | null> {
+
+async function rotateSession(): Promise<AuthTokens | null> {
+  const revision = sessionRevision;
   if (Platform.OS === "web") {
     if (await AsyncStorage.getItem(WEB_SESSION_MARKER) !== "1") return null;
+    if (revision !== sessionRevision) return null;
     const result = await webSession<Omit<AuthTokens, "refreshToken">>("refresh");
-    return { ...result, refreshToken: "" };
+    return revision === sessionRevision ? { ...result, refreshToken: "" } : null;
   }
   const old = await SecureStore.getItemAsync(REFRESH_KEY);
-  if (!old) return null;
+  if (!old || revision !== sessionRevision) return null;
   const next = await request<AuthTokens>("/auth/refresh", undefined, "POST", { refreshToken: old });
-  await rememberSession(next.refreshToken);
+  if (revision !== sessionRevision) return null;
+  await SecureStore.setItemAsync(REFRESH_KEY, next.refreshToken);
+  if (revision !== sessionRevision) return null;
   return next;
 }
+
+/** Rotation is one-time on the backend: multiple foreground/API calls share one request. */
+export async function refreshSession(): Promise<AuthTokens | null> {
+  if (refreshPending) return refreshPending;
+  const work = rotateSession();
+  refreshPending = work;
+  try { return await work; }
+  finally { if (refreshPending === work) refreshPending = null; }
+}
+
 export async function forgetSession(token: string | null): Promise<void> {
+  ++sessionRevision; // stop any in-flight rotation from reinstating a logged-out user
+  if (refreshPending) await refreshPending.catch(() => null);
   if (Platform.OS === "web") {
     await AsyncStorage.removeItem(WEB_SESSION_MARKER);
     await webSession("logout").catch(() => undefined);
