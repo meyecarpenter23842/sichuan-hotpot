@@ -71,7 +71,7 @@ function doPost(e) {
     if (!Number.isSafeInteger(signed.ts) || Math.abs(Date.now() - signed.ts) > 60000
       || typeof signed.nonce !== "string"
       || !/^[0-9a-f-]{36}$/.test(signed.nonce)
-      || !hotpotValidMessage_(signed.message)) {
+      || (signed.mode !== "PROBE" && !hotpotValidMessage_(signed.message))) {
       return hotpotReply_({ ok: false, code: "INVALID_PAYLOAD" });
     }
     var lock = LockService.getScriptLock();
@@ -86,11 +86,15 @@ function doPost(e) {
       lock.releaseLock();
     }
 
+    var messageBody = signed.mode === "PROBE"
+      ? { validate_only: true, message: { topic: "hotpot-auth-check",
+          notification: { title: "Test", body: "Test" } } }
+      : { message: signed.message };
     var response = UrlFetchApp.fetch(HOTPOT_FCM_URL, {
       method: "post",
       contentType: "application/json",
       headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
-      payload: JSON.stringify({ message: signed.message }),
+      payload: JSON.stringify(messageBody),
       muteHttpExceptions: true,
     });
     if (response.getResponseCode() === 200) return hotpotReply_({ ok: true });
