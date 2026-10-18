@@ -31,7 +31,7 @@ const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 export class PushService {
   private fcmAuth: GoogleAuth | null | undefined;
   private readonly testCooldowns = new Map<string, number>();
-  private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null }>();
+  private readonly testReceipts = new Map<string, { userId: string; token: string; createdAt: number; receivedAt: number | null; status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device" }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -118,7 +118,7 @@ export class PushService {
 
 
   // Sends only to the token owned by the authenticated session. No Order records are touched.
-  async sendTest(authorization: string | undefined, tokenInput: string) {
+  async sendTest(authorization: string | undefined, tokenInput: string, delaySeconds = 0) {
     const principal = await this.authService.principal(authorization);
     const token = tokenInput.trim();
     if (token.length < 16 || token.length > 4096) throw new BadRequestException("PUSH_TOKEN_INVALID");
@@ -146,17 +146,31 @@ export class PushService {
     }
     this.testCooldowns.set(cooldownKey, now);
     const testId = randomUUID();
-    this.testReceipts.set(testId, { userId: principal.id, token, createdAt: now, receivedAt: null });
-    try {
-      await this.sendFcm(endpoint, {
+    const entry: { userId: string; token: string; createdAt: number; receivedAt: number | null;
+      status: "scheduled" | "sent_to_fcm" | "failed" | "received_on_device" } = {
+      userId: principal.id, token, createdAt: now, receivedAt: null,
+      status: delaySeconds > 0 ? "scheduled" : "sent_to_fcm",
+    };
+    this.testReceipts.set(testId, entry);
+    const deliver = async () => {
+      try {
+        await this.sendFcm(endpoint, {
         title: "Kiểm tra thông báo Sichuan Hotpot",
         body: "Đây là thông báo thử, không tạo đơn hàng.",
         kind: "TEST", testId, url: "/",
-      }, endpoint.scope === "STAFF");
-    } catch (error) {
-      this.testReceipts.delete(testId);
-      throw error;
+        }, endpoint.scope === "STAFF");
+        if (entry.status === "scheduled") entry.status = "sent_to_fcm";
+      } catch (error) {
+        entry.status = "failed";
+        throw error;
+      }
+    };
+    if (delaySeconds > 0) {
+      // Run on the backend so Android can be backgrounded or closed before FCM sends.
+      setTimeout(() => { void deliver().catch(() => undefined); }, delaySeconds * 1000);
+      return { status: "scheduled" as const, testId, received: false, delaySeconds };
     }
+    await deliver();
     return { status: "sent_to_fcm" as const, testId, received: false };
   }
 
@@ -168,6 +182,7 @@ export class PushService {
       throw new ForbiddenException("PUSH_TEST_RECEIPT_FORBIDDEN_OR_EXPIRED");
     }
     item.receivedAt = Date.now();
+    item.status = "received_on_device";
     return { status: "received_on_device" as const, receivedAt: new Date(item.receivedAt).toISOString() };
   }
 
@@ -177,8 +192,7 @@ export class PushService {
     if (!item || item.userId !== principal.id || Date.now() - item.createdAt > 600_000) {
       throw new ForbiddenException("PUSH_TEST_NOT_FOUND_OR_EXPIRED");
     }
-    return { status: item.receivedAt ? "received_on_device" : "sent_to_fcm",
-      received: item.receivedAt !== null };
+    return { status: item.status, received: item.receivedAt !== null };
   }
 
   async notifyStaffNewOrder(branchId: string, orderId: string): Promise<void> {

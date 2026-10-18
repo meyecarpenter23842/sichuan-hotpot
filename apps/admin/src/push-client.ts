@@ -25,7 +25,7 @@ export async function adminPushTestStatus(): Promise<PushTestStatus> {
 export async function adminTestLocalSound(): Promise<void> {
   throw new Error("Platform-specific implementation was not resolved.");
 }
-export async function adminTestRemotePush(_token: string, _branchId: string): Promise<string> {
+export async function adminTestRemotePush(_token: string, _branchId: string, _delaySeconds = 0): Promise<string> {
   throw new Error("Platform-specific implementation was not resolved.");
 }
 export function listenAdminTestReceipts(_token: string, _onReceipt: (testId: string) => void): () => void {

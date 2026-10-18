@@ -91,7 +91,7 @@ export async function customerPushTestStatus(): Promise<PushTestStatus> {
 export async function customerTestLocalSound(): Promise<void> {
   throw new Error("Kiểm tra âm thanh riêng chỉ hỗ trợ APK Android.");
 }
-export async function customerTestRemotePush(_accessToken: string): Promise<string> {
+export async function customerTestRemotePush(_accessToken: string, _delaySeconds = 0): Promise<string> {
   throw new Error("Kiểm tra FCM chỉ hỗ trợ APK Android.");
 }
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {

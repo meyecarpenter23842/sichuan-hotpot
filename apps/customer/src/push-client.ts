@@ -20,7 +20,7 @@ export async function customerPushTestStatus(): Promise<PushTestStatus> {
 export async function customerTestLocalSound(): Promise<void> {
   throw new Error("Platform-specific implementation was not resolved.");
 }
-export async function customerTestRemotePush(_accessToken: string): Promise<string> {
+export async function customerTestRemotePush(_accessToken: string, _delaySeconds = 0): Promise<string> {
   throw new Error("Platform-specific implementation was not resolved.");
 }
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {

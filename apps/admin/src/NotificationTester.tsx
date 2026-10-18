@@ -40,13 +40,14 @@ export function NotificationTester({ token, branchId }: { token: string; branchI
       } else {
         lastPush.current = Date.now();
         current.current = null;
-        const id = await adminTestRemotePush(token, branchId);
+        const id = await adminTestRemotePush(token, branchId, mode === "full" ? 12 : 0);
         current.current = id;
         if (received.current.has(id)) {
           setConfirmed(true); setMessage("ĐÃ NHẬN FCM thực tế trên thiết bị.");
         } else {
-          setMessage("FCM đã nhận yêu cầu gửi" + (mode === "full" ? " kèm âm thanh" : "") +
-            ". CHƯA xác nhận thiết bị nhận. Quan sát banner/âm và kiểm tra khi nền hoặc đóng thường.");
+          setMessage(mode === "full"
+            ? "Đã hẹn gửi FCM sau 12 giây. Hãy đưa app về nền hoặc đóng bình thường; CHƯA xác nhận đã nhận."
+            : "FCM đã nhận yêu cầu gửi. CHƯA xác nhận thiết bị nhận. Quan sát banner/âm khi ứng dụng mở.");
         }
         setStatus(await adminPushTestStatus());
       }

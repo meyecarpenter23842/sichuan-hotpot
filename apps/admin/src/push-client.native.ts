@@ -110,11 +110,11 @@ export async function adminTestLocalSound(): Promise<void> {
     trigger: null,
   });
 }
-export async function adminTestRemotePush(token: string, branchId: string): Promise<string> {
+export async function adminTestRemotePush(token: string, branchId: string, delaySeconds = 0): Promise<string> {
   const deviceToken = await registerNative(token, branchId);
   if (!deviceToken) throw new Error("Thiết bị chưa có FCM token.");
   await AsyncStorage.setItem(ENDPOINT_KEY, deviceToken);
-  const result = await request<{ testId: string }>("/push/test", token, "POST", { token: deviceToken });
+  const result = await request<{ testId: string }>("/push/test", token, "POST", { token: deviceToken, delaySeconds });
   return result.testId;
 }
 export function listenAdminTestReceipts(

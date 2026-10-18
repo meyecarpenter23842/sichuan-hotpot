@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, Headers, Post } from "@nestjs/common";
 import {
-  IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength,
+  IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength,
 } from "class-validator";
 import type { PushScope, PushTransport } from "@prisma/client";
 import { PushService } from "./push.service";
@@ -28,6 +28,9 @@ class RegisterPushInput {
 class TestPushInput {
   @IsString() @MinLength(16) @MaxLength(4096)
   token!: string;
+
+  @IsOptional() @IsInt() @Min(0) @Max(20)
+  delaySeconds?: number;
 }
 
 class TestReceiptInput extends TestPushInput {
@@ -73,7 +76,7 @@ export class PushController {
   @Header("Cache-Control", "no-store")
   test(@Headers("authorization") authorization: string | undefined,
     @Body() input: TestPushInput) {
-    return this.push.sendTest(authorization, input.token);
+    return this.push.sendTest(authorization, input.token, input.delaySeconds ?? 0);
   }
 
   @Post("test/receipt")

@@ -49,3 +49,5 @@ After changing the custom Admin sound, use a new Android notification-channel ID
 9. CI uses an explicitly labeled, **nonfunctional** synthetic Firebase project solely to prove Gradle packaging with Google Services configured; these APK artifacts must not be used to sign off FCM.
 
 Backend production requires a separately approved deployment after merge. Until then the API test endpoint is **not available** in production. WebSocket order sync stays independent.
+
+**Test đầy đủ** delays the actual server-side FCM send by 12 seconds so the operator can background or normally close the app before delivery. The HTTP response is `scheduled`, **not** proof of send or receipt. Test status: `POST /push/test/status` with `testId`; a receipt is confirmed only by an observed device callback.
