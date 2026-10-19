@@ -114,6 +114,60 @@ export class AdminOrdersService {
     return memberships.map(({ branch, role }) => ({ ...branch, staffRole: role }));
   }
 
+  // Only the store owner can browse customers who actually ordered here.
+  // Never return address snapshots, GPS, auth credentials or unrelated branches.
+  async customers(authorization: string | undefined, branchId: string,
+    cursor?: string, limit = 20) {
+    const actor = await this.role(authorization, branchId);
+    if (actor.role !== "OWNER") throw new ForbiddenException("CUSTOMERS_OWNER_ONLY");
+    const rows = await this.prisma.database.user.findMany({
+      where: {
+        orders: { some: { branchId } },
+        ...(cursor ? { id: { gt: cursor } } : {}),
+      },
+      orderBy: { id: "asc" },
+      take: limit + 1,
+      select: {
+        id: true,
+        phoneE164: true,
+        _count: { select: { orders: { where: { branchId } } } },
+        orders: {
+          where: { branchId },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { phoneSnapshot: true, createdAt: true },
+        },
+      },
+    });
+    const page = rows.slice(0, limit);
+    return {
+      items: page.map(user => ({
+        id: user.id,
+        phone: user.orders[0]?.phoneSnapshot ?? user.phoneE164 ?? null,
+        orderCount: user._count.orders,
+        lastOrderAt: user.orders[0]?.createdAt ?? null,
+      })),
+      nextCursor: rows.length > limit ? page[page.length - 1]?.id ?? null : null,
+    };
+  }
+
+  async customerHistory(authorization: string | undefined, branchId: string,
+    customerId: string) {
+    const actor = await this.role(authorization, branchId);
+    if (actor.role !== "OWNER") throw new ForbiddenException("CUSTOMERS_OWNER_ONLY");
+    const orders = await this.prisma.database.order.findMany({
+      where: { branchId, customerId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+      select: {
+        id: true, status: true, createdAt: true, totalVnd: true,
+        payment: { select: { method: true, status: true } },
+      },
+    });
+    if (!orders.length) throw new NotFoundException("BRANCH_CUSTOMER_NOT_FOUND");
+    return { customerId, items: orders };
+  }
+
   async list(authorization: string | undefined, branchId: string, status?: OrderStatus) {
     const staff = await this.role(authorization, branchId);
     return this.prisma.database.order.findMany({

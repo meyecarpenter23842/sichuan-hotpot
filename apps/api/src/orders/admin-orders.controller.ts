@@ -123,6 +123,33 @@ export class AdminOrdersController {
     return this.orders.listPage(auth, branchId, group as (typeof allowed)[number], cursor, limit);
   }
 
+  @Get(":branchId/customers")
+  @Header("Cache-Control", "no-store")
+  customers(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") rawLimit?: string,
+  ) {
+    if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))
+      throw new BadRequestException("INVALID_CUSTOMER_CURSOR");
+    if (rawLimit && !/^[1-9][0-9]?$/.test(rawLimit))
+      throw new BadRequestException("INVALID_CUSTOMER_LIMIT");
+    const limit = rawLimit ? Number(rawLimit) : 20;
+    if (limit > 25) throw new BadRequestException("INVALID_CUSTOMER_LIMIT");
+    return this.orders.customers(auth, branchId, cursor, limit);
+  }
+
+  @Get(":branchId/customers/:customerId")
+  @Header("Cache-Control", "no-store")
+  customerHistory(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Param("customerId", new ParseUUIDPipe({ version: "4" })) customerId: string,
+  ) {
+    return this.orders.customerHistory(auth, branchId, customerId);
+  }
+
   @Get(":branchId/drivers")
   @Header("Cache-Control", "no-store")
   drivers(
