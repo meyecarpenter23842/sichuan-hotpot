@@ -645,11 +645,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
-    {!!error && <Notice error text={error} />}
-    {!!laneError && <Notice error text={laneError} />}
-    {!!notice && <Notice text={notice} />}
-    {overdueCount > 0 && !kitchenOnly && <Notice error
-      text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
     {mode === "orders" && <View style={s.tabsToolbar}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="always" style={s.groupScroll}
