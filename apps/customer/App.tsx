@@ -36,6 +36,7 @@ import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAd
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
   validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
 import { isWardAllowedForNewDelivery } from "../../packages/shared/src/tien-giang-service-area";
+import { canReorderDeliveredOrder } from "../../packages/shared/src/orders";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 import { NotificationTester } from "./src/components/NotificationTester";
@@ -1165,6 +1166,9 @@ function CustomerApp() {
   }
 
   function reorder(order: CustomerOrderDetail): string | null {
+    if (!canReorderDeliveredOrder(order.status)) {
+      return "Chỉ đặt lại được các món trong đơn đã giao thành công.";
+    }
     if (order.branchId !== branchId) return "Chọn đúng chi nhánh đã đặt trước khi đặt lại.";
     let updated = [...cart];
     for (const item of order.items) {
@@ -1178,8 +1182,7 @@ function CustomerApp() {
       const modifierIds: string[] = [];
       const available = product.modifierGroups.flatMap(group => group.options);
       for (const modifier of item.modifiers) {
-        const matches = available.filter(v => v.name === modifier.name
-          && v.isAvailable && v.priceDeltaVnd === modifier.priceVnd);
+        const matches = available.filter(v => v.name === modifier.name && v.isAvailable);
         if (matches.length !== 1) return "Topping đơn cũ đã thay đổi, vui lòng chọn lại.";
         // Duplicate snapshot rows preserve extra topping quantities.
         modifierIds.push(matches[0]!.id);
@@ -1404,9 +1407,10 @@ function CustomerApp() {
           </>
         );
       case "orders":
-        return <OrdersScreen accessToken={accessToken} focusOrderId={focusOrderId}
-          onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
-          onReorder={reorder} />;
+      case "purchased":
+        // Both order sub-tabs stay mounted below the fixed tab bar, outside
+        // the global ScrollView. This keeps scroll and live order state.
+        return null;
       case "detail": {
         const item = selectedProduct;
         if (!item) return <View style={styles.section}>
@@ -1860,10 +1864,6 @@ function CustomerApp() {
             )}
           </View>
         );
-      case "purchased":
-        return <PurchasedProductsScreen accessToken={accessToken}
-          onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
-          onReorder={reorder} />;
       case "account":
         return (
           <View style={styles.accountPage}>
@@ -2070,14 +2070,53 @@ function CustomerApp() {
                 </Pressable>
               </View>
             )}
+            {(screen === "orders" || screen === "purchased") &&
+              <View style={styles.orderTabs} accessibilityRole="tablist">
+                {([
+                  ["orders", "Đơn hàng"],
+                  ["purchased", "Món đã mua"],
+                ] as const).map(([tab, label]) => (
+                  <Pressable key={tab} accessibilityRole="tab"
+                    accessibilityLabel={label}
+                    accessibilityState={{ selected: screen === tab }}
+                    style={[styles.orderTab, screen === tab && styles.orderTabActive]}
+                    onPress={() => { setNotice(""); setScreen(tab); }}>
+                    <Text style={[styles.orderTabText, screen === tab && styles.orderTabTextActive]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>}
             <KeyboardAvoidingView style={[styles.body, screen === "address" && styles.addressBody]}
               behavior={Platform.OS === "ios" ? "padding" : undefined}>
-              <ScrollView keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}>
-                {notice ? <Notice message={notice} /> : null}
-                {mainContent()}
-              </ScrollView>
+              {(screen === "orders" || screen === "purchased") ? (
+                <>
+                  <ScrollView keyboardShouldPersistTaps="handled"
+                    style={screen === "orders" ? styles.historyScrollActive : styles.historyScrollHidden}
+                    contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {screen === "orders" && notice ? <Notice message={notice} /> : null}
+                    <OrdersScreen accessToken={accessToken} focusOrderId={focusOrderId}
+                      onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
+                      onReorder={reorder} />
+                  </ScrollView>
+                  <ScrollView keyboardShouldPersistTaps="handled"
+                    style={screen === "purchased" ? styles.historyScrollActive : styles.historyScrollHidden}
+                    contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {screen === "purchased" && notice ? <Notice message={notice} /> : null}
+                    <PurchasedProductsScreen accessToken={accessToken}
+                      active={screen === "purchased"}
+                      onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
+                      onReorder={reorder} />
+                  </ScrollView>
+                </>
+              ) : (
+                <ScrollView keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.scrollContent}
+                  showsVerticalScrollIndicator={false}>
+                  {notice ? <Notice message={notice} /> : null}
+                  {mainContent()}
+                </ScrollView>
+              )}
             </KeyboardAvoidingView>
             {screen !== "address" && <View style={styles.bottomNavigation}>
               {([
@@ -2087,10 +2126,10 @@ function CustomerApp() {
                 ["account", "Tôi", "user"],
               ] as const).map(([target, label, icon]) => (
                 <Pressable key={target} style={styles.navItem}
-                  accessibilityRole="tab" accessibilityState={{ selected: screen === target }}
+                  accessibilityRole="tab" accessibilityState={{ selected: screen === target || (target === "orders" && screen === "purchased") }}
                   accessibilityLabel={label} onPress={() => { setNotice(""); if (target === "orders") setFocusOrderId(null); setScreen(target); }}>
-                  <HotpotNavIcon name={icon} active={screen === target} size={23} />
-                  <Text style={[styles.navLabel, screen === target && styles.navActive]}>{label}</Text>
+                  <HotpotNavIcon name={icon} active={screen === target || (target === "orders" && screen === "purchased")} size={23} />
+                  <Text style={[styles.navLabel, (screen === target || (target === "orders" && screen === "purchased")) && styles.navActive]}>{label}</Text>
                 </Pressable>
               ))}
             </View>}
@@ -2255,6 +2294,15 @@ const styles = StyleSheet.create({
   addressBackArrow: { color: palette.text, fontSize: 26, fontWeight: "400" },
   addressPageTitle: { color: palette.text, fontSize: 18, fontWeight: "800", marginLeft: 7 },
   scrollContent: { paddingBottom: 22, backgroundColor: palette.white, flexGrow: 1 },
+  historyScrollActive: { flex: 1 },
+  historyScrollHidden: { display: "none" },
+  orderTabs: { flexDirection: "row", paddingHorizontal: 16,
+    backgroundColor: palette.white, borderBottomWidth: 1, borderBottomColor: palette.line },
+  orderTab: { flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center",
+    borderBottomWidth: 3, borderBottomColor: "transparent" },
+  orderTabActive: { borderBottomColor: palette.red },
+  orderTabText: { fontSize: typeScale.action, fontWeight: "700", color: palette.muted },
+  orderTabTextActive: { color: palette.red, fontWeight: "800" },
   loginPage: { backgroundColor: "#FFFFFF", paddingBottom: 24 },
   loginHeroFrame: { width: "100%", height: 160, backgroundColor: palette.red, overflow: "hidden" },
   loginHeroImage: { width: "100%", height: "100%" },
