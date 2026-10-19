@@ -242,6 +242,19 @@ jobs:
           set -euo pipefail
           npm run build --workspace "apps/$TARGET_APP"
           test -s "apps/$TARGET_APP/dist/index.html"
+          if [[ "$TARGET_APP" == admin ]]; then
+            node - "$REQUESTED_SHA" <<'NODE'
+          const fs = require('node:fs');
+          const sha = process.argv[2];
+          const metadata = JSON.parse(fs.readFileSync('apps/admin/dist/admin-release.json', 'utf8'));
+          const html = fs.readFileSync('apps/admin/dist/index.html', 'utf8');
+          if (metadata.id !== sha || !html.includes(
+            '<meta name="hotpot-admin-release" content="' + sha + '" />')) {
+            throw Error('Admin PWA release identity differs from verified current main SHA');
+          }
+          console.log('Immutable Admin release marker and endpoint: PASS');
+          NODE
+          fi
           grep -FRq "$PWA_API_ORIGIN" "apps/$TARGET_APP/dist/_expo/static/js/web" || {
             echo "::error::Expo bundle did not embed the approved production API URL."
             exit 1

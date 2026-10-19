@@ -38,5 +38,19 @@ for (const tag of tags) {
   if (!source.includes(tag)) source = source.replace("</head>", tag + "\n</head>");
 }
 
+// Use the exact immutable main SHA verified by the release workflow. PR CI
+// builds use GITHUB_SHA, while local preview builds have no update target.
+if (app === "admin") {
+  const id = process.env.REQUESTED_SHA || process.env.GITHUB_SHA
+    || process.env.VERCEL_GIT_COMMIT_SHA || "";
+  const release = /^[a-f0-9]{40}$/.test(id) ? id : "development";
+  const marker = '<meta name="hotpot-admin-release" content="' + release + '" />';
+  if (source.includes('name="hotpot-admin-release"')) {
+    throw new Error("Duplicate Admin PWA release metadata");
+  }
+  source = source.replace("</head>", marker + "\n</head>");
+  writeFileSync(resolve(dir, "admin-release.json"), JSON.stringify({ id: release }) + "\n");
+}
+
 writeFileSync(html, source);
 console.log("Installed PWA metadata for", app, "asset", ASSET_VERSION);
