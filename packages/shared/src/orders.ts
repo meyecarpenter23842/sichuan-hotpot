@@ -60,3 +60,45 @@ export function canTransitionOrder(request: OrderTransitionRequest): boolean {
 export function assertOrderTransition(request: OrderTransitionRequest): void {
   if (!canTransitionOrder(request)) throw new OrderTransitionError();
 }
+
+
+/** A reorder creates a NEW cart; it is never a retry or transition of an active order. */
+export function canReorderDeliveredOrder(status: string): boolean {
+  return status === "DELIVERED";
+}
+
+export interface HistoricalPurchaseSelection {
+  readonly productId: string | null;
+  readonly variantName: string | null;
+  readonly modifiers: readonly { readonly name: string; readonly priceVnd: number }[];
+  readonly comboItems: readonly {
+    readonly kind: "FIXED" | "CHOICE";
+    readonly groupName: string | null;
+    readonly productId: string | null;
+    readonly variantId: string | null;
+    readonly modifierOptionId: string | null;
+    readonly productName: string;
+    readonly variantName: string | null;
+    readonly quantity: number;
+    readonly priceDeltaVnd: number;
+  }[];
+}
+
+/** Key from immutable order snapshots, not current menu prices.
+ * Prevent different combo choices, variant sizes and topping multiplicity
+ * from being collapsed into one purchased-product row. Sorting is intentional:
+ * the order of historical snapshot rows is not part of a customer's choice. */
+export function historicalPurchaseKey(
+  branchId: string, item: HistoricalPurchaseSelection,
+): string {
+  const modifiers = item.modifiers.map(mod => [mod.name, mod.priceVnd]);
+  const combo = item.comboItems.map(child => [
+    child.kind, child.groupName, child.productId, child.variantId,
+    child.modifierOptionId, child.productName, child.variantName,
+    child.quantity, child.priceDeltaVnd,
+  ]);
+  const canonical = (values: unknown[][]) =>
+    values.map(entry => JSON.stringify(entry)).sort();
+  return JSON.stringify([branchId, item.productId, item.variantName,
+    canonical(modifiers), canonical(combo)]);
+}
