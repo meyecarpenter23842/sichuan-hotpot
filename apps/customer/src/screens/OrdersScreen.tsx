@@ -35,16 +35,47 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
   const [problem, setProblem] = useState("");
   const [reorderProblem, setReorderProblem] = useState("");
   const selectedOrderId = useRef<string | null>(null);
+  const activeToken = useRef(accessToken);
+  activeToken.current = accessToken;
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [paging, setPaging] = useState(false);
+  const pagingRef = useRef(false);
   const load = useCallback(async (silent = false) => {
-    if (!accessToken) return;
+    if (!accessToken) { setOrders([]); setNextCursor(null); setBusy(false); return; }
     if (!silent) { setBusy(true); setProblem(""); }
     try {
-      const rows = await apiRequest<CustomerOrderSummary[]>("/customer/orders", { accessToken });
-      setOrders(rows);
+      const page = await apiRequest<{ items: CustomerOrderSummary[]; nextCursor: string | null }>(
+        "/customer/orders/pages?limit=25", { accessToken });
+      if (activeToken.current !== accessToken) return;
+      // A realtime refresh must not erase already browsed historical pages.
+      setOrders(previous => silent
+        ? [...page.items, ...previous.filter(item => !page.items.some(latest => latest.id === item.id))]
+        : page.items);
+      if (!silent) setNextCursor(page.nextCursor);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "Không tải được đơn hàng.");
-    } finally { if (!silent) setBusy(false); }
+      if (activeToken.current === accessToken)
+        setProblem(error instanceof Error ? error.message : "Không tải được đơn hàng.");
+    } finally { if (!silent && activeToken.current === accessToken) setBusy(false); }
   }, [accessToken]);
+
+  const loadMore = useCallback(async () => {
+    if (!accessToken || !nextCursor || pagingRef.current) return;
+    pagingRef.current = true; setPaging(true); setProblem("");
+    try {
+      const page = await apiRequest<{ items: CustomerOrderSummary[]; nextCursor: string | null }>(
+        "/customer/orders/pages?limit=25&cursor=" + encodeURIComponent(nextCursor),
+        { accessToken });
+      if (activeToken.current !== accessToken) return;
+      setOrders(previous => {
+        const seen = new Set(previous.map(order => order.id));
+        return [...previous, ...page.items.filter(order => !seen.has(order.id))];
+      });
+      setNextCursor(page.nextCursor);
+    } catch (error) {
+      if (activeToken.current === accessToken)
+        setProblem(error instanceof Error ? error.message : "Không tải thêm được đơn.");
+    } finally { pagingRef.current = false; if (activeToken.current === accessToken) setPaging(false); }
+  }, [accessToken, nextCursor]);
 
   const openOrder = useCallback(async (id: string, silent = false) => {
     if (!accessToken) return;
@@ -58,15 +89,21 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
       const next = await apiRequest<CustomerOrderDetail>(
         "/customer/orders/" + encodeURIComponent(id), { accessToken },
       );
-      if (selectedOrderId.current === id) setDetail(next);
+      if (selectedOrderId.current === id && activeToken.current === accessToken) setDetail(next);
     } catch (error) {
-      if (selectedOrderId.current === id) {
+      if (selectedOrderId.current === id && activeToken.current === accessToken) {
         setProblem(error instanceof Error ? error.message : "Không tải được chi tiết đơn.");
       }
     } finally { if (!silent) setBusy(false); }
   }, [accessToken]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // Auth scope changes must immediately clear the previous customer's
+    // order list/detail; only new scoped API responses may repopulate them.
+    selectedOrderId.current = null; setDetail(null);
+    setOrders([]); setNextCursor(null);
+    void load();
+  }, [load]);
 
   // A bottom-tab reselect clears the pushed/deep-linked order detail.
   useEffect(() => {
@@ -228,6 +265,14 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
                   </View>
                 </Pressable>
               ))}
+              {!!nextCursor && <Pressable accessibilityRole="button"
+                accessibilityLabel="Tải thêm đơn hàng cũ"
+                accessibilityState={{ disabled: paging }}
+                disabled={paging} style={styles.outline} onPress={() => void loadMore()}>
+                <Text style={styles.outlineText}>
+                  {paging ? "Đang tải đơn cũ..." : "Xem thêm đơn hàng cũ"}
+                </Text>
+              </Pressable>}
             </>
           )}
         </>

@@ -401,3 +401,62 @@ test("L04 failed delivery can be reassigned, but an unassigned driver has no aut
   await client.patch(url + "/status").set(headers(kitchen.token))
     .send({ expectedStatus: "DELIVERY_FAILED", toStatus: "DELIVERING" }).expect(409);
 });
+
+
+test("L06 order lanes show history despite >100 newer orders and paginate same-timestamp ties", async () => {
+  const policy = (await db.deliveryPolicyVersion.findFirstOrThrow({ where: { branchId } })).id;
+  const timestamp = new Date("2024-01-01T12:00:00.000Z");
+  const pending = Array.from({ length: 112 }, () => ({
+    id: randomUUID(), branchId, customerId: outsider.id,
+    deliveryPolicyVersionId: policy, idempotencyKey: randomUUID(),
+    status: "PENDING", roadDistanceMeters: 2100,
+    subtotalVnd: 100000, deliveryFeeVnd: 10000,
+    totalVnd: 110000, latitudeSnapshot: "10.7731", longitudeSnapshot: "106.7032",
+    addressLineSnapshot: "Nhiều đơn trên cùng timestamp", createdAt: timestamp,
+  }));
+  await db.order.createMany({ data: pending });
+  const first = await client.get(branchBase() + "/pages?group=new&limit=25")
+    .set(headers(manager.token)).expect(200);
+  assert.ok(first.body.total >= 112);
+  assert.equal(first.body.items.length, 25);
+  assert.ok(first.body.nextCursor);
+  const ids = new Set(first.body.items.map(o => o.id));
+  let next = first.body.nextCursor;
+  let rounds = 0;
+  while (next && rounds++ < 12) {
+    const response = await client.get(branchBase() + "/pages?group=new&limit=25&cursor=" + next)
+      .set(headers(owner.token)).expect(200);
+    for (const row of response.body.items) {
+      assert.ok(!ids.has(row.id), "cursor must never duplicate a row");
+      ids.add(row.id);
+    }
+    next = response.body.nextCursor;
+  }
+  assert.equal(next, null, "history must eventually finish");
+  assert.ok(pending.every(item => ids.has(item.id)));
+  const historical = await order("DELIVERED");
+  const history = await client.get(branchBase() + "/pages?group=history")
+    .set(headers(manager.token)).expect(200);
+  assert.ok(history.body.items.some(row => row.id === historical.id),
+    "completed orders must not disappear behind the 100-order cap");
+  const kitchenPage = await client.get(branchBase() + "/pages?group=kitchen")
+    .set(headers(kitchen.token)).expect(200);
+  assert.ok(kitchenPage.body.items.every(row => row.phoneSnapshot === undefined
+    && row.payment === undefined && row.totalVnd === undefined));
+  await client.get(branchBase() + "/pages?group=history").set(headers(kitchen.token)).expect(403);
+  await client.get(branchBase() + "/pages?group=new").set(headers(driver.token)).expect(403);
+  const driverPage = await client.get(branchBase() + "/pages?group=delivery")
+    .set(headers(driver.token)).expect(200);
+  assert.ok(driverPage.body.items.every(row => row.phoneSnapshot === undefined));
+  const foreign = await order("PENDING", randomUUID(), otherBranchId);
+  await client.get(branchBase() + "/pages?group=new&cursor=" + foreign.id)
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=new&cursor=" + randomUUID())
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=wrong")
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=new&limit=51")
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=new")
+    .set(headers(outsider.token)).expect(403);
+});

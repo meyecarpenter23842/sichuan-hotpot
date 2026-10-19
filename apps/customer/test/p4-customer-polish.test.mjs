@@ -35,7 +35,11 @@ test("account address editor is a dismissible modal and saved pins open maps", (
 
 test("purchased products are backed by delivered orders, reorders revalidate in catalogue", () => {
   assert.match(purchased, /\/customer\/orders/);
-  assert.match(purchased, /order\.status === "DELIVERED"/);
+  // L06 loads only delivered pages from a server-side status filter. The
+  // shared helper independently guards both the derived history and reorder.
+  assert.match(purchased, /\/customer\/orders\/pages\?delivered=1&limit=20/);
+  assert.match(purchased, /if \(!canReorderDeliveredOrder\(order\.status\)\) continue/);
+  assert.match(purchased, /if \(!canReorderDeliveredOrder\(purchase\.order\.status\)\)/);
   assert.match(purchased, /onReorder\(\{/);
   assert.match(app, /optionSelectionError\(product\.modifierGroups, modifierIds\)/);
   assert.match(app, /product\.isAvailable/);

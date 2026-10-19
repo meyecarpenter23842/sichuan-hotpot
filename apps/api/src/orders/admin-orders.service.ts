@@ -125,6 +125,53 @@ export class AdminOrdersService {
     });
   }
 
+  // Old clients still use list() for latest order alerts. This scoped endpoint
+  // pages each status lane independently, so >100 new orders cannot hide history.
+  async listPage(authorization: string | undefined, branchId: string,
+    group: "new" | "confirmed" | "preparing" | "ready" | "delivering"
+      | "history" | "kitchen" | "delivery",
+    cursorId?: string, limit = 25) {
+    const staff = await this.role(authorization, branchId);
+    const groups: Record<typeof group, OrderStatus[]> = {
+      new: ["PENDING"], confirmed: ["CONFIRMED"], preparing: ["PREPARING"],
+      ready: ["READY"], delivering: ["DELIVERING"],
+      history: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"],
+      kitchen: ["CONFIRMED", "PREPARING", "READY"],
+      delivery: ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"],
+    };
+    // Only the kitchen or assigned drivers may use their specialized lanes.
+    if (staff.role === "KITCHEN" && group !== "kitchen")
+      throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
+    if (staff.role === "DRIVER" && group !== "delivery")
+      throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
+    const scope: Prisma.OrderWhereInput = {
+      branchId, status: { in: groups[group] },
+      ...(staff.role === "DRIVER"
+        ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),
+    };
+    const cursor = cursorId ? await this.prisma.database.order.findFirst({
+      where: { ...scope, id: cursorId }, select: { createdAt: true, id: true },
+    }) : null;
+    if (cursorId && !cursor) throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
+    const [rows, total] = await Promise.all([
+      this.prisma.database.order.findMany({
+        where: { ...scope, ...(cursor ? { OR: [
+          { createdAt: { lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+        ] } : {}) },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        select: staff.role === "KITCHEN" ? kitchenOrderSelect
+          : staff.role === "DRIVER" ? driverOrderSelect : selectOrder,
+      }),
+      this.prisma.database.order.count({ where: scope }),
+    ]);
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit);
+    return { items, total, nextCursor: hasMore
+      ? items[items.length - 1]?.id ?? null : null };
+  }
+
   async detail(authorization: string | undefined, branchId: string, orderId: string) {
     const staff = await this.role(authorization, branchId);
     const record = await this.prisma.database.order.findFirst({

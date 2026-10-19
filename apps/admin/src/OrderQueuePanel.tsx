@@ -132,8 +132,6 @@ const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] 
   { id: "delivering", label: "Đang giao", statuses: ["DELIVERING"] },
   { id: "history", label: "Lịch sử", statuses: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] },
 ];
-const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
-const deliveryStatuses: OrderStatus[] = ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"];
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
@@ -141,6 +139,16 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
+  const activeLane = mode === "orders" ? group : mode;
+  const [laneOrders, setLaneOrders] = useState<StaffOrder[]>([]);
+  const [laneCursor, setLaneCursor] = useState<string | null>(null);
+  const [laneTotal, setLaneTotal] = useState<number | null>(null);
+  const [laneLoading, setLaneLoading] = useState(true);
+  const [laneLoadingMore, setLaneLoadingMore] = useState(false);
+  const [laneError, setLaneError] = useState("");
+  const laneRequest = useRef(0);
+  const pagingBusy = useRef(false);
+  const loadedHistory = useRef(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
@@ -168,6 +176,62 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const lastIds = useRef<Set<string> | null>(null);
   const pendingAlerts = useRef<Set<string>>(new Set());
 
+  const refreshLane = useCallback(async () => {
+    if (!active) return;
+    const current = ++laneRequest.current;
+    setLaneLoading(true);
+    try {
+      const page = await request<{ items: StaffOrder[]; nextCursor: string | null; total: number }>(
+        "/admin/orders/" + branchId + "/pages?group=" + encodeURIComponent(activeLane)
+        + "&limit=25", token);
+      if (current !== laneRequest.current) return;
+      setLaneOrders(prev => {
+        if (!loadedHistory.current) return page.items;
+        const seen = new Set(page.items.map(item => item.id));
+        return [...page.items, ...prev.filter(item => !seen.has(item.id))];
+      });
+      if (!loadedHistory.current) setLaneCursor(page.nextCursor);
+      setLaneTotal(page.total);
+      setLaneError("");
+    } catch (e) {
+      if (current === laneRequest.current)
+        setLaneError(e instanceof Error ? e.message : "Không tải được nhóm đơn này.");
+    } finally { if (current === laneRequest.current) setLaneLoading(false); }
+  }, [active, token, branchId, activeLane]);
+
+  const loadMoreLane = async () => {
+    if (!laneCursor || pagingBusy.current) return;
+    pagingBusy.current = true; setLaneLoadingMore(true); setLaneError("");
+    const current = laneRequest.current;
+    try {
+      const page = await request<{ items: StaffOrder[]; nextCursor: string | null; total: number }>(
+        "/admin/orders/" + branchId + "/pages?group=" + encodeURIComponent(activeLane)
+        + "&limit=25&cursor=" + encodeURIComponent(laneCursor), token);
+      if (current !== laneRequest.current) return;
+      loadedHistory.current = true;
+      setLaneOrders(prev => {
+        const seen = new Set(prev.map(x => x.id));
+        return [...prev, ...page.items.filter(item => !seen.has(item.id))];
+      });
+      setLaneCursor(page.nextCursor);
+      setLaneTotal(page.total);
+    } catch (e) {
+      if (current === laneRequest.current)
+        setLaneError(e instanceof Error ? e.message : "Không tải thêm được lịch sử.");
+    } finally { pagingBusy.current = false; if (current === laneRequest.current) setLaneLoadingMore(false); }
+  };
+
+  useEffect(() => {
+    laneRequest.current++;
+    loadedHistory.current = false;
+    setLaneOrders([]); setLaneCursor(null); setLaneTotal(null); setLaneError("");
+    setLaneLoading(true);
+    if (active) void refreshLane();
+    return () => { laneRequest.current++; };
+  }, [active, refreshLane]);
+
+  const refreshLaneRef = useRef(refreshLane);
+  refreshLaneRef.current = refreshLane;
   const sync = useCallback(async () => {
     const current = ++requestId.current;
     setSyncing(true);
@@ -188,6 +252,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       }
       lastIds.current = new Set(pending.map(x => x.id));
       setOrders(fresh); setError(""); setLastSync(new Date());
+      // A socket/poll update refreshes the currently selected lane as well.
+      // The callback ref avoids clearing alert state whenever a tab changes.
+      void refreshLaneRef.current();
     } catch (e) {
       if (current === requestId.current) {
         setError(e instanceof Error ? e.message : "Mất kết nối với máy chủ.");
@@ -538,11 +605,10 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     } finally { setEditBusy(false); }
   };
 
-  const visible = orders.filter(order => {
-    if (mode === "kitchen") return kitchenStatuses.includes(order.status);
-    if (mode === "delivery") return deliveryStatuses.includes(order.status);
-    return orderGroups.find(item => item.id === group)?.statuses.includes(order.status) ?? false;
-  });
+  // Paging is performed server-side by lane. A backlog of new orders cannot
+  // crowd older DELIVERED/CANCELED orders out of the history tab.
+  const visible = laneOrders;
+  const visibleCount = laneTotal ?? visible.length;
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
     && clock - Date.parse(x.createdAt) >= 300000).length;
@@ -560,7 +626,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           : "Đơn thật · cập nhật tức thời khi có kết nối, đồng bộ dự phòng 10 giây"}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
-        disabled={syncing} onPress={() => void sync()} style={s.refresh}>
+        disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
         <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
       </Pressable>
     </View>
@@ -579,12 +645,14 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Text style={s.note}>{label}</Text>
       </View>)}
     </View>
+    <Text style={s.note}>Tổng quan gần đây; số đơn chính xác của từng nhóm hiển thị khi mở tab.</Text>
     <Text style={[s.sync, error && s.syncError]}>
       {error ? "Mất đồng bộ — dữ liệu có thể đã cũ" :
         syncing ? "Đang đồng bộ..." :
         lastSync ? "Đã đồng bộ lúc " + lastSync.toLocaleTimeString("vi-VN") : "Chưa đồng bộ"}
     </Text>
     {!!error && <Notice error text={error} />}
+    {!!laneError && <Notice error text={laneError} />}
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
@@ -592,20 +660,21 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       keyboardShouldPersistTaps="always" style={s.groupScroll}
       contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
       {orderGroups.map(item => {
-        const count = orders.filter(order => item.statuses.includes(order.status)).length;
+        const count = item.id === group && laneTotal !== null ? laneTotal : null;
         return <Pressable key={item.id} accessibilityRole="tab"
           accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
           style={[s.groupTab, group === item.id && s.groupTabActive]}
           onPress={() => onGroupChange(item.id)}>
           <Text style={[s.groupLabel, group === item.id && s.groupLabelActive]}>
-            {item.label} <Text style={s.groupCount}>{count}</Text>
+            {item.label}{count !== null && <Text style={s.groupCount}> {count}</Text>}
           </Text>
         </Pressable>;
       })}
     </ScrollView>}
     <ScrollView style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
-    {loading ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
+    {loading || (laneLoading && laneOrders.length === 0)
+      ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
       visible.length === 0 ? <View style={s.empty}>
         <View style={s.emptyIcon}>
           <Icon name={mode === "kitchen" ? "kitchen" :
@@ -670,6 +739,15 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           </Pressable>
         </View>)}
       </View>}
+      {!!laneCursor && <Pressable accessibilityRole="button"
+        accessibilityLabel="Xem thêm đơn hàng cũ trong nhóm"
+        disabled={laneLoadingMore} accessibilityState={{ disabled: laneLoadingMore }}
+        style={s.moreButton} onPress={() => void loadMoreLane()}>
+        <Text style={s.moreText}>{laneLoadingMore ? "Đang tải lịch sử..." : "Xem thêm đơn cũ"}</Text>
+      </Pressable>}
+      {!laneCursor && visible.length > 0 && <Text style={s.note}>
+        Đã hiển thị hết {visibleCount} đơn thuộc nhóm này.
+      </Text>}
     </ScrollView>
     {opening && <ActivityIndicator color={c.red} />}
     <Modal visible={!!selected} transparent animationType="slide"
@@ -1061,6 +1139,10 @@ const s = StyleSheet.create({
   groupCount: { fontSize: 11, fontWeight: "600" },
   orderListScroll: { flex: 1 },
   orderListContent: { paddingBottom: 20, flexGrow: 1 },
+  moreButton: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 18,
+    alignItems: "center", justifyContent: "center", marginVertical: 10,
+    borderRadius: 9, borderWidth: 1, borderColor: c.red },
+  moreText: { color: c.redDeep, fontWeight: "800", fontSize: font.note },
   quickButton: { minHeight: 44, backgroundColor: "#DDF4E5", borderRadius: 8,
     alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
   quickButtonText: { color: "#175A30", fontSize: font.note, fontWeight: "800" },
