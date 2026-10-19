@@ -95,3 +95,18 @@ test("L02: PATCH rejects historical Đồng Tháp wards, preserving existing add
   });
   assert.equal(accepted.wardCode, "28261");
 });
+
+test("L02 PATCH blocks hidden wards before changing existing customer data", async () => {
+  const f = fixture();
+  const before = { ...f.rows[0] };
+  for (const wardCode of ["29944", "30001", "29869"]) {
+    await assert.rejects(f.controller.update("Bearer test", "addr1", {
+      ...payload, catalogVersion: "vn-2026-09-08", provinceCode: "82", wardCode,
+    }), e => e.getStatus?.() === 400 && e.message === "ADDRESS_WARD_NOT_SERVED");
+  }
+  assert.deepEqual(f.rows[0], before);
+  const valid = await f.controller.update("Bearer test", "addr1", {
+    ...payload, catalogVersion: "vn-2026-09-08", provinceCode: "82", wardCode: "28261",
+  });
+  assert.equal(valid.wardCode, "28261");
+});
