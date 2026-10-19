@@ -1,6 +1,13 @@
 export async function configureCustomerNotificationPresentation(): Promise<void> {
   throw new Error("Platform-specific notification implementation was not resolved.");
 }
+import type { CustomerPushSettings } from "./push-preference";
+export async function getCustomerPushSettings(): Promise<CustomerPushSettings> {
+  return { enabled: false, available: false, detail: "Thông báo không được hỗ trợ." };
+}
+export async function setCustomerPushEnabled(_accessToken: string, _enabled: boolean): Promise<void> {
+  throw new Error("Platform-specific notification implementation was not resolved.");
+}
 export async function enableCustomerPush(_accessToken: string): Promise<void> {
   throw new Error("Platform-specific notification implementation was not resolved.");
 }

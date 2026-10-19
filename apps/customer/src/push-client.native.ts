@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest } from "./api";
+import { mayRefreshCustomerPush, queueCustomerPushWork, saveCustomerPushChoice,
+  type CustomerPushSettings } from "./push-preference";
 
 type NotificationsModule = typeof import("expo-notifications");
 
@@ -80,11 +82,47 @@ export async function configureCustomerNotificationPresentation(): Promise<void>
 }
 
 export async function enableCustomerPush(accessToken: string): Promise<void> {
-  await registerNative(accessToken, true);
+  await queueCustomerPushWork(async () => {
+    const token = await registerNative(accessToken, true);
+    if (!token) throw new Error("Thiết bị chưa thể bật thông báo.");
+    await saveCustomerPushChoice(true);
+  });
 }
 
 export async function refreshCustomerPushIfAllowed(accessToken: string): Promise<void> {
-  await registerNative(accessToken, false);
+  await queueCustomerPushWork(async () => {
+    if (await mayRefreshCustomerPush()) await registerNative(accessToken, false);
+  });
+}
+
+export async function getCustomerPushSettings(): Promise<CustomerPushSettings> {
+  if (Platform.OS !== "android") return { enabled: false, available: false,
+    detail: "Thông báo chỉ khả dụng trong ứng dụng Android." };
+  const Notifications = await loadNotifications(false);
+  if (!Notifications) return { enabled: false, available: false,
+    detail: "Phiên bản ứng dụng này chưa hỗ trợ thông báo." };
+  const [permission, endpoint, allowed] = await Promise.all([
+    Notifications.getPermissionsAsync(), AsyncStorage.getItem(ENDPOINT_KEY),
+    mayRefreshCustomerPush(),
+  ]);
+  if (!allowed) return { enabled: false, available: true, detail: "Đang tắt" };
+  if (!permission.granted) return { enabled: false, available: true,
+    detail: permission.canAskAgain ? "Chưa bật" : "Đã chặn trong cài đặt điện thoại" };
+  return { enabled: !!endpoint, available: true,
+    detail: endpoint ? "Đang bật" : "Chưa đăng ký trên thiết bị" };
+}
+
+export async function setCustomerPushEnabled(accessToken: string, enabled: boolean): Promise<void> {
+  await queueCustomerPushWork(async () => {
+    if (enabled) {
+      const token = await registerNative(accessToken, true);
+      if (!token) throw new Error("Thiết bị chưa thể bật thông báo.");
+      await saveCustomerPushChoice(true);
+    } else {
+      await unregisterNative(accessToken);
+      await saveCustomerPushChoice(false);
+    }
+  });
 }
 
 export async function watchCustomerNotificationResponses(
@@ -168,9 +206,14 @@ export function listenCustomerTestReceipts(
   return () => { active = false; listener?.remove(); };
 }
 
-export async function disableCustomerPush(accessToken: string): Promise<void> {
+async function unregisterNative(accessToken: string): Promise<void> {
   const token = await AsyncStorage.getItem(ENDPOINT_KEY);
   if (!token) return;
   await apiRequest("/push/subscriptions/remove", { method: "POST", accessToken, body: { token } });
   await AsyncStorage.removeItem(ENDPOINT_KEY);
+}
+
+// Logout removes only this session's endpoint; it does NOT overwrite the user's choice.
+export async function disableCustomerPush(accessToken: string): Promise<void> {
+  await queueCustomerPushWork(() => unregisterNative(accessToken));
 }

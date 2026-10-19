@@ -3,6 +3,8 @@ import {
   ensureHotpotServiceWorkerRegistration,
   webPushSupportError,
 } from "./web-push-service-worker";
+import { mayRefreshCustomerPush, queueCustomerPushWork, saveCustomerPushChoice,
+  type CustomerPushSettings } from "./push-preference";
 
 type PushConfig = { enabled: boolean; publicKey: string | null };
 
@@ -70,11 +72,44 @@ export async function configureCustomerNotificationPresentation(): Promise<void>
 }
 
 export async function enableCustomerPush(accessToken: string): Promise<void> {
-  await registerWeb(accessToken, true);
+  await queueCustomerPushWork(async () => {
+    await registerWeb(accessToken, true);
+    await saveCustomerPushChoice(true);
+  });
 }
 
 export async function refreshCustomerPushIfAllowed(accessToken: string): Promise<void> {
-  await registerWeb(accessToken, false);
+  await queueCustomerPushWork(async () => {
+    if (await mayRefreshCustomerPush()) await registerWeb(accessToken, false);
+  });
+}
+
+export async function getCustomerPushSettings(): Promise<CustomerPushSettings> {
+  const supportError = webPushSupportError();
+  if (supportError) return { enabled: false, available: false, detail: supportError };
+  const [allowed, registration] = await Promise.all([
+    mayRefreshCustomerPush(), navigator.serviceWorker.getRegistration("/"),
+  ]);
+  if (!allowed) return { enabled: false, available: true, detail: "Đang tắt" };
+  if (Notification.permission !== "granted") return {
+    enabled: false, available: true,
+    detail: Notification.permission === "denied" ? "Đã chặn trong cài đặt thiết bị" : "Chưa bật",
+  };
+  const subscription = await registration?.pushManager.getSubscription();
+  return { enabled: !!subscription, available: true,
+    detail: subscription ? "Đang bật" : "Chưa đăng ký trên thiết bị" };
+}
+
+export async function setCustomerPushEnabled(accessToken: string, enabled: boolean): Promise<void> {
+  await queueCustomerPushWork(async () => {
+    if (enabled) {
+      await registerWeb(accessToken, true);
+      await saveCustomerPushChoice(true);
+    } else {
+      await unregisterWeb(accessToken);
+      await saveCustomerPushChoice(false);
+    }
+  });
 }
 
 export async function watchCustomerNotificationResponses(
@@ -101,7 +136,7 @@ export async function customerPushRemoteTestStatus(_accessToken: string, _testId
 export function listenCustomerTestReceipts(_accessToken: string, _onReceipt: (testId: string) => void): () => void {
   return () => undefined;
 }
-export async function disableCustomerPush(accessToken: string): Promise<void> {
+async function unregisterWeb(accessToken: string): Promise<void> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
   const registration = await navigator.serviceWorker.getRegistration("/");
   const subscription = await registration?.pushManager.getSubscription();
@@ -109,5 +144,11 @@ export async function disableCustomerPush(accessToken: string): Promise<void> {
   await apiRequest("/push/subscriptions/remove", {
     method: "POST", accessToken, body: { token: subscription.endpoint },
   });
-  await subscription.unsubscribe();
+  const removed = await subscription.unsubscribe();
+  if (!removed) throw new Error("Không tắt được thông báo trên thiết bị. Hãy thử lại.");
+}
+
+// Logout removes only this account's registration; it does not reset device preference.
+export async function disableCustomerPush(accessToken: string): Promise<void> {
+  await queueCustomerPushWork(() => unregisterWeb(accessToken));
 }
