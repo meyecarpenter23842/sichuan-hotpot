@@ -667,6 +667,14 @@ export function CatalogPanel({ catalog, token, reload }: {
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false} contentContainerStyle={st.modalBody}>
                     <View style={st.details}>
+              <View style={st.detailPhotoBlock}>
+                {uri ? <Image source={{ uri }} style={st.detailPhoto}
+                  accessibilityLabel={"Ảnh món " + product.name} /> :
+                  <View style={st.detailPhotoEmpty}>
+                    <Text style={st.sub}>Món chưa có ảnh</Text>
+                  </View>}
+                <Text style={st.sub}>Ảnh khách nhìn thấy trong thực đơn</Text>
+              </View>
               {product.kind === "COMBO" && <>
                 <View style={st.detailHead}>
                   <View style={{ flex: 1 }}>
@@ -912,15 +920,43 @@ export function CatalogPanel({ catalog, token, reload }: {
             {!!error && <Notice text={error} error />}
             {!!notice && <Notice text={notice} />}
             {busy && <Text style={st.emptyNote}>Đang lưu / tải ảnh, vui lòng đợi...</Text>}
-            {editor.id && ["category","group","option"].includes(editor.kind) && <>
-               <Action label="＋ Gắn / thay ảnh" secondary disabled={busy}
-                 onPress={() => pickCatalogMedia(editor.kind === "category" ? "categories"
-                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
-               <Action label="Gỡ ảnh" secondary disabled={busy}
-                 onPress={() => void removeCatalogMedia(editor.kind === "category" ? "categories"
-                   : editor.kind === "group" ? "groups" : "options", editor.id!)} />
-               <Text style={st.sub}>Ảnh mới được lưu độc lập với tên và giá. Mục mới lưu nháp trước để có mã tải ảnh.</Text>
-             </>}
+            {editor.id && ["category","group","option"].includes(editor.kind) && (() => {
+              const key = editor.kind === "category" ? catalog.categories.find(c => c.id === editor.id)?.imageKey
+                : editor.kind === "group" ? catalog.modifierLibrary?.find(g => g.id === editor.id)?.imageKey
+                : catalog.modifierLibrary?.flatMap(g => g.options).find(o => o.id === editor.id)?.imageKey;
+              const mediaKind = editor.kind === "category" ? "categories"
+                : editor.kind === "group" ? "groups" : "options";
+              const uri = imageUrl(key ?? null);
+              return <View style={st.photoEditor}>
+                <Text style={st.contentHeading}>Hình ảnh đang lưu</Text>
+                {uri ? <Image source={{ uri }} style={st.catalogPhoto}
+                  accessibilityLabel={"Ảnh " + editor.values.name} /> :
+                  <View style={st.photoFallback}><Text style={st.sub}>Chưa có ảnh</Text></View>}
+                <Action label={uri ? "Thay ảnh R2" : "＋ Tải ảnh"} secondary disabled={busy}
+                  onPress={() => pickCatalogMedia(mediaKind, editor.id!)} />
+                {!!uri && <Action label="Gỡ ảnh" secondary disabled={busy}
+                  onPress={() => setPhotoRemoval({ kind: mediaKind, id: editor.id!,
+                    name: editor.values.name })} />}
+                {photoRemoval?.kind === mediaKind && photoRemoval.id === editor.id &&
+                  <View style={st.removeConfirm}>
+                    <Text style={st.previewWarning}>
+                      Gỡ ảnh khỏi {photoRemoval.name}? Nếu đang bán, API có thể yêu cầu
+                      tắt bán trước. Ảnh đang dùng nơi khác vẫn được giữ trên R2.
+                    </Text>
+                    <View style={st.pills}>
+                      <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
+                      <Action label="Xác nhận gỡ" dangerous disabled={busy}
+                        onPress={() => {
+                          const current = photoRemoval; setPhotoRemoval(null);
+                          if (current) void removeCatalogMedia(
+                            current.kind as "categories"|"groups"|"options", current.id);
+                        }} />
+                    </View>
+                  </View>}
+                <Text style={st.sub}>Mục mới cần lưu nháp trước để có mã tải ảnh.
+                  Thay ảnh R2 sẽ được cập nhật độc lập với tên và giá.</Text>
+              </View>;
+            })()}
             {confirmDelete && <Notice text="Xác nhận xóa? Món đã có lịch sử đơn không thể xóa; hãy chuyển sang tạm hết." error />}
             <View style={st.modalActions}>
               {editor.id && <Action label={confirmDelete ? "Xác nhận xóa" : "Xóa"}
@@ -1109,6 +1145,13 @@ const st = StyleSheet.create({
   previewLink: { color: c.red, fontSize: font.note, fontWeight: "800" },
   previewWarning: { color: "#9B2C2C", fontSize: font.note, lineHeight: 18 },
   photoEditor: { gap: 9, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.line },
+  detailPhotoBlock: { alignItems: "center", gap: 5, paddingVertical: 8 },
+  detailPhoto: { width: "100%", maxWidth: 320, aspectRatio: 1.6,
+    borderRadius: 12, backgroundColor: c.pale, resizeMode: "contain" },
+  detailPhotoEmpty: { width: "100%", maxWidth: 320, minHeight: 115,
+    backgroundColor: c.pale, justifyContent: "center", alignItems: "center", borderRadius: 12 },
+  catalogPhoto: { width: "100%", maxWidth: 260, aspectRatio: 1.6,
+    borderRadius: 10, backgroundColor: c.pale, resizeMode: "contain" },
   photoCompare: { flexDirection: "row", gap: 10 },
   photoColumn: { flex: 1, minWidth: 0, gap: 5 },
   photoPreview: { width: "100%", aspectRatio: 1.45, borderRadius: 9,
