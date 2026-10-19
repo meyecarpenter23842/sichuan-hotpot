@@ -261,6 +261,8 @@ function CustomerApp() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
+  const [purchaseRevision, setPurchaseRevision] = useState(0);
+  const notifyPurchaseRevision = useCallback(() => setPurchaseRevision(n => n + 1), []);
   const [addressReturnTo, setAddressReturnTo] = useState<"cart" | "account">("cart");
   const [addressBusy, setAddressBusy] = useState(false);
   const [addressSaving, setAddressSaving] = useState(false);
@@ -2096,6 +2098,7 @@ function CustomerApp() {
                     contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     {screen === "orders" && notice ? <Notice message={notice} /> : null}
                     <OrdersScreen accessToken={accessToken} focusOrderId={focusOrderId}
+                      onOrderEvent={notifyPurchaseRevision}
                       onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
                       onReorder={reorder} />
                   </ScrollView>
@@ -2104,7 +2107,7 @@ function CustomerApp() {
                     contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     {screen === "purchased" && notice ? <Notice message={notice} /> : null}
                     <PurchasedProductsScreen accessToken={accessToken}
-                      active={screen === "purchased"}
+                      active={screen === "purchased"} refreshSignal={purchaseRevision}
                       onLogin={() => { setLoginReturnTo("account"); setScreen("login"); }}
                       onReorder={reorder} />
                   </ScrollView>
