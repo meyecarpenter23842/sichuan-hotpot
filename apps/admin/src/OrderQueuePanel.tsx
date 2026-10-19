@@ -232,6 +232,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     return () => { laneRequest.current++; };
   }, [active, refreshLane]);
 
+  const refreshLaneRef = useRef(refreshLane);
+  refreshLaneRef.current = refreshLane;
   const sync = useCallback(async () => {
     const current = ++requestId.current;
     setSyncing(true);
@@ -252,7 +254,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       }
       lastIds.current = new Set(pending.map(x => x.id));
       setOrders(fresh); setError(""); setLastSync(new Date());
-      // Status lanes query their own scoped windows, not just the latest 100.
+      // A socket/poll update refreshes the currently selected lane as well.
+      // The callback ref avoids clearing alert state whenever a tab changes.
+      void refreshLaneRef.current();
     } catch (e) {
       if (current === requestId.current) {
         setError(e instanceof Error ? e.message : "Mất kết nối với máy chủ.");
@@ -624,9 +628,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           : "Đơn thật · cập nhật tức thời khi có kết nối, đồng bộ dự phòng 10 giây"}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
-        disabled={syncing || laneLoading} onPress={() => {
-          void sync(); void refreshLane();
-        }} style={s.refresh}>
+        disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
         <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
       </Pressable>
     </View>
@@ -645,6 +647,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Text style={s.note}>{label}</Text>
       </View>)}
     </View>
+    <Text style={s.note}>Tổng quan gần đây; số đơn chính xác của từng nhóm hiển thị khi mở tab.</Text>
     <Text style={[s.sync, error && s.syncError]}>
       {error ? "Mất đồng bộ — dữ liệu có thể đã cũ" :
         syncing ? "Đang đồng bộ..." :
@@ -659,14 +662,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       keyboardShouldPersistTaps="always" style={s.groupScroll}
       contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
       {orderGroups.map(item => {
-        const count = item.id === group ? visibleCount
-          : orders.filter(order => item.statuses.includes(order.status)).length;
+        const count = item.id === group && laneTotal !== null ? laneTotal : null;
         return <Pressable key={item.id} accessibilityRole="tab"
           accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
           style={[s.groupTab, group === item.id && s.groupTabActive]}
           onPress={() => onGroupChange(item.id)}>
           <Text style={[s.groupLabel, group === item.id && s.groupLabelActive]}>
-            {item.label} <Text style={s.groupCount}>{count}</Text>
+            {item.label}{count !== null && <Text style={s.groupCount}> {count}</Text>}
           </Text>
         </Pressable>;
       })}
