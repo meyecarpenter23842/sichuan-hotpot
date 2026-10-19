@@ -630,3 +630,66 @@ test("L06 paged order/purchase history reaches older delivered orders and isolat
   await client.get("/customer/orders/pages?limit=51").set(headers).expect(400);
   await client.get("/customer/orders/pages").expect(401);
 });
+
+test("customer cancellation is PENDING-only, owned, audited exactly once and payment-preserving", async () => {
+  const policy = await db.deliveryPolicyVersion.findFirstOrThrow({ where: { branchId } });
+  const make = async (status, method = "COD", paymentStatus = "PENDING") => db.order.create({
+    data: {
+      branchId, customerId: userId, deliveryPolicyVersionId: policy.id,
+      idempotencyKey: randomUUID(), status,
+      roadDistanceMeters: 2100, subtotalVnd: 100000,
+      deliveryFeeVnd: 10000, totalVnd: 110000,
+      addressLineSnapshot: "Khách test hủy đơn",
+      latitudeSnapshot: "10.8", longitudeSnapshot: "106.7",
+      payment: { create: { method, status: paymentStatus, amountVnd: 110000 } },
+      statusHistory: { create: { toStatus: status, actorId: userId } },
+    },
+  });
+  const headers = { Authorization: "Bearer " + token };
+  const pending = await make("PENDING");
+  const url = "/customer/orders/" + pending.id + "/cancel";
+  await client.post(url).set(headers).send({ reason: "sai" }).expect(400);
+  await client.post(url).send({ reason: "Nhầm món" }).expect(401);
+  const first = await client.post(url).set(headers).send({
+    reason: "Mình đặt nhầm món",
+  }).expect(201);
+  assert.equal(first.body.status, "CANCELED");
+  assert.equal(first.body.alreadyCanceled, false);
+  assert.equal(first.body.paymentReviewRequired, false);
+  const repeat = await client.post(url).set(headers).send({
+    reason: "Mình đặt nhầm món",
+  }).expect(201);
+  assert.equal(repeat.body.alreadyCanceled, true);
+  const saved = await db.order.findUniqueOrThrow({
+    where: { id: pending.id }, include: { payment: true, statusHistory: true },
+  });
+  assert.equal(saved.status, "CANCELED");
+  assert.equal(saved.payment.status, "PENDING");
+  assert.equal(saved.statusHistory.filter(x => x.toStatus === "CANCELED").length, 1);
+  assert.equal(saved.statusHistory.at(-1).actorId, userId);
+  assert.equal(saved.statusHistory.at(-1).reason, "Mình đặt nhầm món");
+  const accepted = await make("CONFIRMED");
+  await client.post("/customer/orders/" + accepted.id + "/cancel")
+    .set(headers).send({ reason: "Tôi muốn hủy đơn này" }).expect(409);
+  assert.equal((await db.order.findUniqueOrThrow({ where: { id: accepted.id } })).status, "CONFIRMED");
+  const paid = await make("PENDING", "QR", "CONFIRMED");
+  const refund = await client.post("/customer/orders/" + paid.id + "/cancel")
+    .set(headers).send({ reason: "Đặt nhầm combo và món" }).expect(201);
+  assert.equal(refund.body.paymentReviewRequired, true);
+  assert.equal((await db.payment.findFirstOrThrow({ where: { orderId: paid.id } })).status, "CONFIRMED");
+  const foreignUser = await db.user.create({ data: { role: "CUSTOMER" } });
+  const foreign = await db.order.create({
+    data: {
+      branchId, customerId: foreignUser.id, deliveryPolicyVersionId: policy.id,
+      idempotencyKey: randomUUID(), roadDistanceMeters: 2100,
+      subtotalVnd: 100000, deliveryFeeVnd: 10000, totalVnd: 110000,
+      addressLineSnapshot: "Không được phép truy cập",
+      latitudeSnapshot: "10.8", longitudeSnapshot: "106.7",
+    },
+  });
+  await client.post("/customer/orders/" + foreign.id + "/cancel")
+    .set(headers).send({ reason: "Hủy đơn người khác" }).expect(404);
+  assert.equal((await db.order.findUniqueOrThrow({ where: { id: foreign.id } })).status, "PENDING");
+  await client.post("/customer/orders/" + randomUUID() + "/cancel")
+    .set(headers).send({ reason: "Không thấy đơn" }).expect(404);
+});
