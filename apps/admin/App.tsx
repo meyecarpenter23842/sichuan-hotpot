@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -13,7 +13,7 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
-import { OrderQueuePanel, type StaffOrder } from "./src/OrderQueuePanel";
+import { OrderQueuePanel, type OrderGroup, type StaffOrder } from "./src/OrderQueuePanel";
 import { watchOrderEvents } from "./src/order-realtime";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import {
@@ -50,6 +50,7 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
   const [syncError, setSyncError] = useState("");
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<StaffOrder | null>(null);
   const sequence = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -114,9 +115,12 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
     try {
       await request("/admin/orders/" + branchId + "/" + order.id + "/status",
         token, "PATCH", { expectedStatus: "PENDING", toStatus: "CONFIRMED" });
+      setConfirmTarget(null);
       await refresh();
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "Không xác nhận được đơn.");
+      setSyncError((error instanceof Error ? error.message : "Không xác nhận được đơn.")
+        + " Danh sách được làm mới để tránh xử lý trạng thái cũ.");
+      setConfirmTarget(null);
       await refresh();
     } finally { setConfirming(null); }
   };
@@ -185,14 +189,31 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
               Xem / từ chối
             </Text></Pressable>
           <Pressable accessibilityRole="button" disabled={confirming !== null}
-            onPress={() => void confirm(order)} style={styles.orderPrimaryButton}>
+            onPress={() => setConfirmTarget(order)} style={styles.orderPrimaryButton}>
             <Icon name="check" color={c.white} size={20} />
             <Text style={styles.orderPrimaryText}>
-              {confirming === order.id ? "Đang xác nhận..." : "Xác nhận"}
+              Xác nhận
             </Text>
           </Pressable>
         </View>
       </View>)}
+    <Modal visible={!!confirmTarget} transparent animationType="fade"
+      onRequestClose={() => { if (!confirming) setConfirmTarget(null); }}>
+      <View style={styles.confirmOverlay}>
+        <View style={styles.confirmSheet}>
+          <Text style={styles.sectionTitle}>Xác nhận nhận đơn?</Text>
+          <Text style={styles.caption}>
+            {confirmTarget ? "Đơn #" + confirmTarget.id.slice(0, 8).toUpperCase() : ""}
+            {" · Chỉ xác nhận đơn đang Mới. Hành động được ghi lịch sử."}
+          </Text>
+          <Action label={confirming ? "Đang xác nhận..." : "Xác nhận đơn"}
+            disabled={!!confirming || !confirmTarget}
+            onPress={() => { if (confirmTarget) void confirm(confirmTarget); }} />
+          <Action secondary label="Quay lại" disabled={!!confirming}
+            onPress={() => setConfirmTarget(null)} />
+        </View>
+      </View>
+    </Modal>
     <Text style={styles.dashboardFootnote}>Số liệu từ API theo chi nhánh · Không dùng dữ liệu mẫu.
       Giá trị đã giao không đồng nghĩa tiền COD đã đối soát.</Text>
   </View>;
@@ -225,6 +246,8 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
+  // Parent-owned: switching between bottom tabs must not reset order sub-filter.
+  const [orderGroup, setOrderGroup] = useState<OrderGroup>("new");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -298,6 +321,7 @@ export default function AdminApp() {
     setBranchId(old => old && available.some(b => b.id === old)
       ? old : (available[0]?.id ?? null));
     if (available[0]?.staffRole === "KITCHEN") setTab("kitchen");
+    else if (available[0]?.staffRole === "DRIVER") setTab("delivery");
   }, []);
 
   useEffect(() => {
@@ -515,9 +539,11 @@ export default function AdminApp() {
   const selectedBranch = branches.find(b => b.id === branchId);
   const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
   const kitchenOnly = branchRole === "KITCHEN";
-  const visibleTabs = tabs.filter(item =>
-    ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id)
-    && (!kitchenOnly || item.id === "kitchen"));
+  const driverOnly = branchRole === "DRIVER";
+  const operator = branchRole === "OWNER" || branchRole === "MANAGER";
+  const visibleTabs = tabs.filter(item => driverOnly ? item.id === "delivery"
+    : kitchenOnly ? item.id === "kitchen"
+    : ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id));
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle={token ? "light-content" : "dark-content"}
@@ -595,11 +621,11 @@ export default function AdminApp() {
                 Quản lý đơn hàng · Vận hành cửa hàng
               </Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
+            {operator && <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
               onPress={() => { setChooseBranch(false); setTab("settings"); }}
               style={styles.heroAction}>
               <Icon name="settings" size={22} color="#F8E8D0" />
-            </Pressable>
+            </Pressable>}
             <Pressable accessibilityRole="button" accessibilityLabel="Mở tài khoản"
               onPress={() => { setChooseBranch(false); setTab("account"); }}
               style={styles.heroAction}>
@@ -638,8 +664,13 @@ export default function AdminApp() {
         </View>
         {!!headerToast && <View pointerEvents="none" style={[styles.headerToastLayer,
           { top: headerHeight + 4 }]}><Notice text={headerToast} error /></View>}
-        {tab === "catalog" && catalog && branches.length > 0 && !loadError ?
+        {tab === "catalog" && catalog && branches.length > 0 && !loadError && operator ?
           <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
+          (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId
+            && branches.length > 0 ?
+            <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
+              role={branchRole} mode={tab} active group={orderGroup}
+              onGroupChange={setOrderGroup} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
@@ -651,10 +682,7 @@ export default function AdminApp() {
                 onCancel={() => setCreateBranch(false)} /> :
                 <Action label="Tạo chi nhánh đầu tiên" onPress={() => setCreateBranch(true)} />}
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
-          </View> : (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId ?
-            <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active /> :
-            tab === "account" ? <View style={styles.account}>
+          </View> : tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
               <Text style={styles.caption}>Dữ liệu được phân quyền theo chi nhánh tại backend.</Text>
@@ -698,7 +726,9 @@ export default function AdminApp() {
                 accessibilityLabel={"Chọn chi nhánh " + branch.name}
                 style={styles.branchItem} onPress={() => {
                   setBranchId(branch.id); setChooseBranch(false);
-                  setTab(branch.staffRole === "KITCHEN" ? "kitchen" : "overview");
+                  setTab(branch.staffRole === "KITCHEN" ? "kitchen"
+                    : branch.staffRole === "DRIVER" ? "delivery" : "overview");
+                  setOrderGroup("new");
                 }}>
                 <Text style={styles.branchItemText} numberOfLines={2}>{branch.name}</Text>
                 {branch.id === branchId && <Text style={styles.selectedMark}>✓</Text>}
@@ -719,6 +749,10 @@ const styles = StyleSheet.create({
   caption: { fontSize: font.note, color: c.secondary, lineHeight: 18 },
   sectionTitle: { color: c.ink, fontSize: font.section, fontWeight: "800" },
   rowTitle: { color: c.ink, fontSize: font.body, fontWeight: "700" },
+  confirmOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.42)",
+    justifyContent: "center", paddingHorizontal: 20 },
+  confirmSheet: { backgroundColor: c.white, padding: 20, borderRadius: 14,
+    gap: 14, width: "100%", maxWidth: 430, alignSelf: "center" },
   loginPage: { flex: 1, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 20, backgroundColor: c.white },
   loginPanel: { width: "100%", maxWidth: 410, gap: 14 },

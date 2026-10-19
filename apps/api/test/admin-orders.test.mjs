@@ -15,7 +15,7 @@ process.env.AUTH_JWT_SECRET = secret;
 process.env.CORS_ALLOWED_ORIGINS = "http://localhost:8081";
 
 let app, client, db, branchId, otherBranchId, pendingId, kitchenId;
-let owner, manager, kitchen, outsider;
+let owner, manager, kitchen, driver, outsider;
 const headers = auth => ({ Authorization: "Bearer " + auth });
 const branchBase = () => "/admin/orders/" + branchId;
 
@@ -76,8 +76,9 @@ before(async () => {
     } });
   }
   outsider = await user("CUSTOMER");
-  [owner, manager, kitchen] = await Promise.all([
+  [owner, manager, kitchen, driver] = await Promise.all([
     user("OWNER"), user("CUSTOMER", "MANAGER"), user("CUSTOMER", "KITCHEN"),
+    user("CUSTOMER", "DRIVER"),
   ]);
   pendingId = (await order("PENDING")).id;
   kitchenId = (await order("CONFIRMED")).id;
@@ -321,4 +322,82 @@ test("order edit rejects unavailable catalog data and settled payments without m
     }).expect(409);
   assert.equal(await db.orderItem.count({ where: { orderId: editable.id } }), 1);
   assert.equal(await db.orderEditAudit.count({ where: { orderId: editable.id } }), 0);
+});
+
+test("L04 driver sees ONLY assigned orders and their delivery/COD data, never another order", async () => {
+  const assigned = await order("READY");
+  const unassigned = await order("READY");
+  await db.payment.create({ data: { orderId: assigned.id, method: "COD",
+    status: "PENDING", amountVnd: 140000 } });
+  const url = branchBase() + "/" + assigned.id;
+  const roster = await client.get(branchBase() + "/drivers")
+    .set(headers(manager.token)).expect(200);
+  assert.ok(roster.body.some(d => d.userId === driver.id));
+  await client.get(branchBase() + "/drivers").set(headers(driver.token)).expect(403);
+  await client.put(url + "/driver").set(headers(driver.token))
+    .send({ driverId: driver.id }).expect(403);
+  await client.put(url + "/driver").set(headers(manager.token))
+    .send({ driverId: outsider.id }).expect(400);
+  await client.put(url + "/driver").set(headers(kitchen.token))
+    .send({ driverId: driver.id }).expect(403);
+  await client.put(url + "/driver").set(headers(owner.token))
+    .send({ driverId: driver.id }).expect(200);
+  const assignment = await db.deliveryAssignment.findUniqueOrThrow({
+    where: { orderId: assigned.id },
+  });
+  assert.equal(assignment.driverId, driver.id);
+  const list = await client.get(branchBase()).set(headers(driver.token)).expect(200);
+  assert.ok(list.body.some(o => o.id === assigned.id));
+  assert.ok(!list.body.some(o => o.id === unassigned.id));
+  assert.equal(list.body.find(o => o.id === assigned.id).payment.method, "COD");
+  assert.equal(list.body.find(o => o.id === assigned.id).subtotalVnd, undefined);
+  assert.equal(list.body.find(o => o.id === assigned.id).phoneSnapshot, undefined);
+  const detail = await client.get(url).set(headers(driver.token)).expect(200);
+  assert.equal(detail.body.phoneSnapshot, "+84901111222");
+  assert.equal(detail.body.addressLineSnapshot, "12 Đường bí mật");
+  assert.equal(detail.body.latitudeSnapshot, "10.7731");
+  assert.equal(detail.body.longitudeSnapshot, "106.7032");
+  assert.equal(detail.body.totalVnd, 140000);
+  assert.equal(detail.body.edits, undefined);
+  assert.equal(detail.body.subtotalVnd, undefined);
+  await client.get(branchBase() + "/" + unassigned.id)
+    .set(headers(driver.token)).expect(404);
+  await client.patch(branchBase() + "/" + unassigned.id + "/status")
+    .set(headers(driver.token))
+    .send({ expectedStatus: "READY", toStatus: "DELIVERING" }).expect(404);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "READY", toStatus: "DELIVERED" }).expect(409);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "READY", toStatus: "DELIVERING" }).expect(200);
+  await client.put(url + "/driver").set(headers(manager.token))
+    .send({ driverId: driver.id }).expect(409);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "DELIVERING", toStatus: "DELIVERED" }).expect(200);
+  const finished = await db.order.findUniqueOrThrow({
+    where: { id: assigned.id }, include: { payment: true },
+  });
+  assert.equal(finished.payment.status, "CONFIRMED");
+  assert.equal(finished.status, "DELIVERED");
+  const history = await db.orderStatusHistory.findMany({ where: { orderId: assigned.id },
+    orderBy: { createdAt: "asc" } });
+  assert.deepEqual(history.slice(-2).map(h => h.toStatus), ["DELIVERING", "DELIVERED"]);
+  assert.deepEqual(history.slice(-2).map(h => h.actorId), [driver.id, driver.id]);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "DELIVERED", toStatus: "DELIVERING" }).expect(409);
+});
+
+test("L04 failed delivery can be reassigned, but an unassigned driver has no authority", async () => {
+  const failed = await order("DELIVERY_FAILED");
+  const url = branchBase() + "/" + failed.id;
+  await client.put(url + "/driver").set(headers(manager.token))
+    .send({ driverId: driver.id }).expect(200);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "DELIVERY_FAILED", toStatus: "DELIVERING" }).expect(200);
+  await client.patch(url + "/status").set(headers(driver.token))
+    .send({ expectedStatus: "DELIVERING", toStatus: "DELIVERY_FAILED",
+      reason: "Không liên hệ được khách" }).expect(200);
+  await client.put(url + "/driver").set(headers(manager.token))
+    .send({ driverId: driver.id }).expect(200);
+  await client.patch(url + "/status").set(headers(kitchen.token))
+    .send({ expectedStatus: "DELIVERY_FAILED", toStatus: "DELIVERING" }).expect(409);
 });

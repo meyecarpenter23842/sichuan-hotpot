@@ -47,6 +47,7 @@ export interface StaffOrder {
   }[];
 }
 interface OrderDetail extends StaffOrder {
+  deliveryAssignment?: { driverId: string } | null;
   phoneSnapshot?: string | null; addressLineSnapshot?: string | null;
   latitudeSnapshot?: string | null; longitudeSnapshot?: string | null;
   roadDistanceMeters?: number | null;
@@ -110,23 +111,33 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
   if (status === "PREPARING" && kitchen) return [
     { value: "READY", label: "Báo món đã sẵn sàng" },
   ];
-  if (status === "READY" && manager) return [
+  if (status === "READY" && (manager || role === "DRIVER")) return [
     { value: "DELIVERING", label: "Bắt đầu giao" },
   ];
-  if (status === "DELIVERING" && manager) return [
+  if (status === "DELIVERING" && (manager || role === "DRIVER")) return [
     { value: "DELIVERED", label: "Đã giao thành công" },
     { value: "DELIVERY_FAILED", label: "Giao thất bại" },
   ];
-  if (status === "DELIVERY_FAILED" && manager) return [
+  if (status === "DELIVERY_FAILED" && (manager || role === "DRIVER")) return [
     { value: "DELIVERING", label: "Giao lại" },
   ];
   return [];
 }
+export type OrderGroup = "new" | "confirmed" | "preparing" | "ready" | "delivering" | "history";
+const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] = [
+  { id: "new", label: "Mới", statuses: ["PENDING"] },
+  { id: "confirmed", label: "Đã nhận", statuses: ["CONFIRMED"] },
+  { id: "preparing", label: "Đang nấu", statuses: ["PREPARING"] },
+  { id: "ready", label: "Chờ giao", statuses: ["READY"] },
+  { id: "delivering", label: "Đang giao", statuses: ["DELIVERING"] },
+  { id: "history", label: "Lịch sử", statuses: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] },
+];
 const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
 const deliveryStatuses: OrderStatus[] = ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"];
 
-export function OrderQueuePanel({ token, branchId, role, mode, active }: {
-  token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery"; active: boolean;
+export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange }: {
+  token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
+  active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -142,7 +153,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  const [filter, setFilter] = useState<"active" | "all">("active");
+  const [drivers, setDrivers] = useState<{ userId: string; user: { phoneE164: string | null } }[]>([]);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignError, setAssignError] = useState("");
   const [editingOrder, setEditingOrder] = useState(false);
   const [editCatalog, setEditCatalog] = useState<AdminCatalog | null>(null);
   const [editLines, setEditLines] = useState<EditLine[]>([]);
@@ -224,18 +237,48 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     });
   }, [active, token, branchId, kitchenOnly, sync]);
 
-  const openDetail = async (id: string) => {
+  const openDetail = async (id: string, quickAction?: ActionStatus) => {
     setOpening(true); setNotice(""); setSelected(null); setAction(null); setReason("");
     setEditingOrder(false); setEditCatalog(null); setEditLines([]); setEditReason("");
     setEditError(""); setAddingProduct(false); setProductSearch("");
-    setContactError("");
+    setContactError(""); setAssignError("");
     try {
       const detail = await request<OrderDetail>("/admin/orders/" + branchId + "/" + id, token);
       setSelected(detail);
+      // Quick actions always read the authoritative latest status before opening
+      // the existing confirmation sheet. A stale row cannot skip steps.
+      if (quickAction && availableActions(detail.status, role).some(a => a.value === quickAction))
+        setAction(quickAction);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không tải được đơn hàng.");
     } finally { setOpening(false); }
   };
+  useEffect(() => {
+    if (!active || !token || !branchId || (role !== "OWNER" && role !== "MANAGER")) return;
+    let mounted = true;
+    void request<typeof drivers>("/admin/orders/" + branchId + "/drivers", token)
+      .then(rows => { if (mounted) setDrivers(rows); })
+      .catch(() => { if (mounted) setDrivers([]); });
+    return () => { mounted = false; };
+  }, [active, token, branchId, role]);
+
+  const assignDriver = async (driverId: string) => {
+    if (!selected || assignBusy) return;
+    setAssignBusy(true); setAssignError("");
+    try {
+      await request("/admin/orders/" + branchId + "/" + selected.id + "/driver",
+        token, "PUT", { driverId });
+      const detail = await request<OrderDetail>(
+        "/admin/orders/" + branchId + "/" + selected.id, token);
+      setSelected(detail);
+      setNotice("Đã phân công giao hàng cho nhân viên.");
+      await sync();
+    } catch (error) {
+      setAssignError((error instanceof Error ? error.message : "Không phân công được.")
+        + " Kiểm tra trạng thái đơn và quyền tài xế.");
+    } finally { setAssignBusy(false); }
+  };
+
   const openOrderContact = async (url: string) => {
     setContactError("");
     try {
@@ -498,7 +541,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   const visible = orders.filter(order => {
     if (mode === "kitchen") return kitchenStatuses.includes(order.status);
     if (mode === "delivery") return deliveryStatuses.includes(order.status);
-    return filter === "all" || !["DELIVERED", "CANCELED", "DELIVERY_FAILED"].includes(order.status);
+    return orderGroups.find(item => item.id === group)?.statuses.includes(order.status) ?? false;
   });
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
@@ -545,10 +588,23 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
-    {mode === "orders" && <View style={s.filter}>
-      <Pill label="Đang xử lý" active={filter === "active"} onPress={() => setFilter("active")} />
-      <Pill label="Tất cả" active={filter === "all"} onPress={() => setFilter("all")} />
-    </View>}
+    {mode === "orders" && <ScrollView horizontal showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="always" style={s.groupScroll}
+      contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
+      {orderGroups.map(item => {
+        const count = orders.filter(order => item.statuses.includes(order.status)).length;
+        return <Pressable key={item.id} accessibilityRole="tab"
+          accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
+          style={[s.groupTab, group === item.id && s.groupTabActive]}
+          onPress={() => onGroupChange(item.id)}>
+          <Text style={[s.groupLabel, group === item.id && s.groupLabelActive]}>
+            {item.label} <Text style={s.groupCount}>{count}</Text>
+          </Text>
+        </Pressable>;
+      })}
+    </ScrollView>}
+    <ScrollView style={s.orderListScroll} contentContainerStyle={s.orderListContent}
+      keyboardShouldPersistTaps="handled">
     {loading ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
       visible.length === 0 ? <View style={s.empty}>
         <View style={s.emptyIcon}>
@@ -594,6 +650,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
                 <Text style={s.paymentChip}>{order.payment.method}</Text>}
             </View>}
           </View>
+          {availableActions(order.status, role).filter(a => a.value !== "CANCELED"
+            && a.value !== "DELIVERY_FAILED").slice(0, 1).map(a =>
+            <Pressable key={a.value} accessibilityRole="button"
+              accessibilityLabel={a.label + " đơn " + order.id.slice(0, 8)}
+              style={s.quickButton} onPress={() => void openDetail(order.id, a.value)}>
+              <Text style={s.quickButtonText}>{a.label} →</Text>
+            </Pressable>)}
           <Pressable accessibilityRole="button"
             accessibilityLabel={"Xem đơn " + order.id.slice(0, 8)}
             style={({ pressed }) => [s.detailButton, pressed && s.pressed]}
@@ -607,6 +670,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
           </Pressable>
         </View>)}
       </View>}
+    </ScrollView>
     {opening && <ActivityIndicator color={c.red} />}
     <Modal visible={!!selected} transparent animationType="slide"
       onRequestClose={() => { if (!saving) { setSelected(null); setAction(null); } }}>
@@ -898,6 +962,33 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
                     </Text>}
                   {!!contactError && <Notice error text={contactError} />}
                 </View>
+                {manager && ["READY", "DELIVERY_FAILED"].includes(selected.status) && (
+                  <View style={s.driverAssign}>
+                    <Text style={s.itemName}>Phân công nhân viên giao</Text>
+                    <Text style={s.note}>
+                      {selected.deliveryAssignment?.driverId
+                        ? "Đã phân công · có thể chọn lại trước khi giao."
+                        : "Chưa phân công. Chủ/quản lý vẫn có thể tự giao."}
+                    </Text>
+                    {drivers.map(driver => <Pressable key={driver.userId}
+                      accessibilityRole="button"
+                      accessibilityLabel={"Giao cho tài xế " + (driver.user.phoneE164 ?? driver.userId.slice(0, 8))}
+                      disabled={assignBusy}
+                      onPress={() => void assignDriver(driver.userId)}
+                      style={[s.driverOption,
+                        selected.deliveryAssignment?.driverId === driver.userId && s.driverOptionActive]}>
+                      <Icon name="delivery" size={19} color={c.redDeep} />
+                      <Text style={s.driverOptionText}>
+                        {driver.user.phoneE164 ?? ("Tài xế #" + driver.userId.slice(0, 8))}
+                        {selected.deliveryAssignment?.driverId === driver.userId ? " ✓" : ""}
+                      </Text>
+                    </Pressable>)}
+                    {drivers.length === 0 && <Text style={s.note}>
+                      Chưa có nhân viên DRIVER trong chi nhánh này.
+                    </Text>}
+                    {!!assignError && <Notice text={assignError} error />}
+                  </View>
+                )}
               </>}
               {!!selected.edits?.length && <>
                 <Text style={s.detailSectionTitle}>Lịch sử sửa đơn</Text>
@@ -942,7 +1033,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
 }
 
 const s = StyleSheet.create({
-  page: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 16, gap: 9 },
+  page: { flex: 1, minHeight: 0, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 16, gap: 9 },
   head: { flexDirection: "row", gap: 10, alignItems: "center" },
   headInfo: { flex: 1, gap: 3 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
@@ -956,6 +1047,24 @@ const s = StyleSheet.create({
   sync: { fontSize: font.caption, color: c.green },
   syncError: { color: c.red },
   filter: { flexDirection: "row", gap: 8 },
+  groupScroll: { flexGrow: 0, borderBottomWidth: 1, borderColor: c.line },
+  groupRow: { gap: 6, paddingVertical: 6, paddingHorizontal: 2 },
+  groupTab: { minHeight: 44, paddingHorizontal: 12, alignItems: "center",
+    justifyContent: "center", borderBottomWidth: 3, borderColor: "transparent" },
+  groupTabActive: { borderBottomColor: c.red },
+  groupLabel: { fontSize: font.note, color: c.secondary, fontWeight: "700" },
+  groupLabelActive: { color: c.redDeep, fontWeight: "900" },
+  groupCount: { fontSize: 11, fontWeight: "600" },
+  orderListScroll: { flex: 1 },
+  orderListContent: { paddingBottom: 20, flexGrow: 1 },
+  quickButton: { minHeight: 44, backgroundColor: "#DDF4E5", borderRadius: 8,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  quickButtonText: { color: "#175A30", fontSize: font.note, fontWeight: "800" },
+  driverAssign: { paddingVertical: 12, gap: 7 },
+  driverOption: { minHeight: 44, flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 10, gap: 9, borderWidth: 1, borderColor: c.line, borderRadius: 9 },
+  driverOptionActive: { borderColor: c.red, backgroundColor: "#FFF0F0" },
+  driverOptionText: { color: c.ink, fontSize: font.note, fontWeight: "700" },
   rows: { gap: 4 },
   row: { paddingVertical: 13, paddingHorizontal: 4, gap: 7,
     borderBottomWidth: 1, borderColor: c.line, minHeight: 100 },

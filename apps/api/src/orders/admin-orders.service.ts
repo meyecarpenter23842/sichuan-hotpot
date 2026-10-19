@@ -10,7 +10,7 @@ import { priceCart, productSelect } from "../delivery/pricing";
 import { OrderRealtimeService } from "./order-realtime.service";
 import { PushService } from "../push/push.service";
 
-const operatingRoles = ["OWNER", "MANAGER", "KITCHEN"] as const;
+const operatingRoles = ["OWNER", "MANAGER", "KITCHEN", "DRIVER"] as const;
 type OperationalRole = (typeof operatingRoles)[number];
 const allowedTargets = [
   "CONFIRMED", "CANCELED", "PREPARING", "READY",
@@ -42,6 +42,19 @@ const kitchenOrderSelect = {
     comboItems: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { kind: true, groupName: true, productName: true,
         variantName: true, quantity: true } },
+  } },
+} as const satisfies Prisma.OrderSelect;
+
+const driverOrderSelect = {
+  id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
+  totalVnd: true,
+  payment: { select: { method: true, status: true, amountVnd: true } },
+  items: { select: {
+    productName: true, variantName: true, quantity: true,
+    modifiers: { select: { name: true } },
+    comboItems: { select: {
+      kind: true, groupName: true, productName: true, variantName: true, quantity: true,
+    } },
   } },
 } as const satisfies Prisma.OrderSelect;
 
@@ -104,17 +117,22 @@ export class AdminOrdersService {
   async list(authorization: string | undefined, branchId: string, status?: OrderStatus) {
     const staff = await this.role(authorization, branchId);
     return this.prisma.database.order.findMany({
-      where: { branchId, ...(status ? { status } : {}) },
+      where: { branchId, ...(status ? { status } : {}),
+        ...(staff.role === "DRIVER" ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 100, select: staff.role === "KITCHEN" ? kitchenOrderSelect : selectOrder,
+      take: 100, select: staff.role === "KITCHEN" ? kitchenOrderSelect
+        : staff.role === "DRIVER" ? driverOrderSelect : selectOrder,
     });
   }
 
   async detail(authorization: string | undefined, branchId: string, orderId: string) {
     const staff = await this.role(authorization, branchId);
     const record = await this.prisma.database.order.findFirst({
-      where: { id: orderId, branchId }, select: {
-        ...(staff.role === "KITCHEN" ? kitchenOrderSelect : selectOrder),
+      where: { id: orderId, branchId,
+        ...(staff.role === "DRIVER" ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}) },
+      select: {
+        ...(staff.role === "KITCHEN" ? kitchenOrderSelect
+          : staff.role === "DRIVER" ? driverOrderSelect : selectOrder),
         statusHistory: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: { fromStatus: true, toStatus: true, reason: true, createdAt: true },
@@ -122,9 +140,11 @@ export class AdminOrdersService {
         ...(staff.role === "KITCHEN" ? {} : {
           phoneSnapshot: true, addressLineSnapshot: true, roadDistanceMeters: true,
           latitudeSnapshot: true, longitudeSnapshot: true,
+          ...(staff.role === "DRIVER" ? {} : {
           pricingMode: true, zoneNameSnapshot: true,
           provinceCodeSnapshot: true, wardCodeSnapshot: true,
           catalogVersionSnapshot: true,
+          deliveryAssignment: { select: { driverId: true } },
           edits: {
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             select: {
@@ -132,6 +152,7 @@ export class AdminOrdersService {
               beforeTotalVnd: true, afterTotalVnd: true, createdAt: true,
             },
           },
+          }),
         }),
       },
     });
@@ -163,6 +184,7 @@ export class AdminOrdersService {
           where: { id: orderId, branchId },
           select: {
             status: true, customerId: true,
+            deliveryAssignment: { select: { driverId: true } },
             payment: { select: { id: true, method: true, status: true } },
           },
         });
@@ -170,10 +192,17 @@ export class AdminOrdersService {
         if (order.status !== input.expectedStatus) {
           throw new ConflictException("ORDER_CHANGED_REFRESH");
         }
+        const isAssignedDriver = actor.role === "DRIVER"
+          && order.deliveryAssignment?.driverId === actor.actorId;
+        // A driver may change only their own assigned delivery. No other order
+        // details leak through status mutations, even if IDs are guessed.
+        if (actor.role === "DRIVER" && !isAssignedDriver) {
+          throw new NotFoundException("ORDER_NOT_FOUND");
+        }
         try {
           assertOrderTransition({
             from: order.status, to: input.toStatus,
-            role: actor.role as Role, isAssignedDriver: false,
+            role: actor.role as Role, isAssignedDriver,
           });
         } catch (error) {
           if (error instanceof OrderTransitionError) {
@@ -224,6 +253,58 @@ export class AdminOrdersService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
         throw new ConflictException("ORDER_CHANGED_REFRESH");
       }
+      throw error;
+    }
+  }
+
+  async drivers(authorization: string | undefined, branchId: string) {
+    const actor = await this.role(authorization, branchId);
+    if (actor.role !== "OWNER" && actor.role !== "MANAGER")
+      throw new ForbiddenException("DRIVER_ASSIGN_FORBIDDEN");
+    return this.prisma.database.branchMember.findMany({
+      where: { branchId, role: "DRIVER" }, orderBy: { createdAt: "asc" },
+      select: { userId: true, user: { select: { phoneE164: true } } },
+    });
+  }
+
+  async assignDriver(authorization: string | undefined, branchId: string,
+    orderId: string, driverId: string) {
+    const actor = await this.role(authorization, branchId);
+    if (actor.role !== "OWNER" && actor.role !== "MANAGER")
+      throw new ForbiddenException("DRIVER_ASSIGN_FORBIDDEN");
+    try {
+      const changed = await this.prisma.database.$transaction(async tx => {
+        const [member, order] = await Promise.all([
+          tx.branchMember.findUnique({
+            where: { branchId_userId: { branchId, userId: driverId } },
+            select: { role: true },
+          }),
+          tx.order.findFirst({
+            where: { id: orderId, branchId },
+            select: { status: true, customerId: true },
+          }),
+        ]);
+        if (!order) throw new NotFoundException("ORDER_NOT_FOUND");
+        if (member?.role !== "DRIVER") throw new BadRequestException("DRIVER_NOT_IN_BRANCH");
+        // Assignment changes only before dispatch. A failed delivery may be
+        // reassigned for retry, never a completed or in-transit delivery.
+        if (order.status !== "READY" && order.status !== "DELIVERY_FAILED")
+          throw new ConflictException("DRIVER_ASSIGN_STATUS_LOCKED");
+        await tx.deliveryAssignment.upsert({
+          where: { orderId },
+          create: { orderId, driverId },
+          update: { driverId, assignedAt: new Date() },
+        });
+        return { customerId: order.customerId, status: order.status };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      void this.realtime.publish({
+        type: "order.updated", orderId, branchId, customerId: changed.customerId,
+        status: changed.status,
+      });
+      return { orderId, driverId, status: changed.status };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034")
+        throw new ConflictException("ORDER_CHANGED_REFRESH");
       throw error;
     }
   }
