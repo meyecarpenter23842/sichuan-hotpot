@@ -38,6 +38,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
   const [revision, setRevision] = useState(0);
   const activeToken = useRef(accessToken);
   activeToken.current = accessToken;
+  const lastLoadedToken = useRef<string | null>(null);
   const [history, setHistory] = useState<CustomerOrderDetail[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -59,13 +60,20 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
   }, [accessToken]);
   useEffect(() => {
     if (!accessToken) {
+      lastLoadedToken.current = null;
       setPurchases([]); setHistory([]); setNextCursor(null);
+      setLoadingMore(false);
       setError(""); setLoading(false); return;
     }
     if (!active) return;
     let mounted = true;
-    // Never show the previous account's purchases while a new token loads.
-    setHistory([]); setPurchases([]); setNextCursor(null);
+    // Keep previously loaded pages visible during normal realtime refresh.
+    // Clear synchronously in the effect only when the account scope changes.
+    if (lastLoadedToken.current !== accessToken) {
+      setHistory([]); setPurchases([]); setNextCursor(null);
+      setLoadingMore(false);
+    }
+    lastLoadedToken.current = accessToken;
     setLoading(true); setError(""); setReorderError("");
     void fetchDelivered().then(page => {
       if (!mounted) return;
