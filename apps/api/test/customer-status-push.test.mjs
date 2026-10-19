@@ -28,19 +28,32 @@ test("customer status push targets only the customer, carries reason and opens t
   assert.equal(deliveries.length, 1, "PENDING is not a new status alert");
 });
 
-test("status notifications cover cooking, ready, delivery, completion and delivery failure", async () => {
+test("customer receives no push for cooking, ready, delivered or delivery failed", async () => {
   const sent = [];
+  let endpointLookups = 0;
   const service = new PushService({ database: {
-    pushEndpoint: { findMany: async () => [] },
+    pushEndpoint: { findMany: async () => { endpointLookups++; return []; } },
   } }, {});
   service.deliver = async (_endpoints, payload) => sent.push(payload);
-  for (const status of ["PREPARING", "READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"]) {
-    await service.notifyCustomerStatus("user", "order", status,
-      status === "DELIVERY_FAILED" ? "Khách không nghe máy" : null);
+  for (const status of ["PENDING", "CONFIRMED", "PREPARING", "READY",
+    "DELIVERING", "DELIVERED", "CANCELED", "DELIVERY_FAILED"]) {
+    await service.notifyCustomerStatus("user", "order", status, null);
   }
-  assert.equal(sent.length, 5);
-  assert.ok(sent.every(payload => payload.kind === "ORDER_STATUS"
-    && payload.url === "/?order=order" && payload.body && payload.title));
-  assert.match(sent.at(-1).body, /Khách không nghe máy/);
-  assert.ok(!sent[0].body.includes("Lý do:"), "only relevant statuses include a reason");
+  assert.deepEqual(sent.map(p => p.title), [
+    "Đơn hàng đang được giao", "Đơn hàng đã bị hủy",
+  ]);
+  assert.equal(endpointLookups, 2, "silenced statuses must not even query push endpoints");
+  assert.ok(sent.every(p => p.kind === "ORDER_STATUS" && p.url === "/?order=order"));
+  assert.ok(sent.every(p => !p.body.includes("Lý do:")));
+});
+test("customer confirmed push remains separate and targeted", async () => {
+  const queries = [], sent = [];
+  const service = new PushService({ database: {
+    pushEndpoint: { findMany: async q => { queries.push(q); return []; } },
+  } }, {});
+  service.deliver = async (_endpoints, payload) => sent.push(payload);
+  await service.notifyCustomerConfirmed("my-customer", "order-123");
+  assert.deepEqual(queries[0], { where: { scope: "CUSTOMER", userId: "my-customer" } });
+  assert.equal(sent[0].kind, "ORDER_CONFIRMED");
+  assert.equal(sent[0].url, "/?order=order-123");
 });
