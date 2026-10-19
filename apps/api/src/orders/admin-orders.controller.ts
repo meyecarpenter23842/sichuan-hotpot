@@ -30,6 +30,11 @@ class OrderActionInput {
   reason?: string;
 }
 
+class AssignDriverInput {
+  @IsUUID("4")
+  driverId!: string;
+}
+
 class OrderEditLineInput {
   @IsUUID("4")
   productId!: string;
@@ -88,6 +93,15 @@ export class AdminOrdersController {
     return this.orders.list(auth, branchId, status as OrderStatus | undefined);
   }
 
+  @Get(":branchId/drivers")
+  @Header("Cache-Control", "no-store")
+  drivers(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+  ) {
+    return this.orders.drivers(auth, branchId);
+  }
+
   @Get(":branchId/:orderId")
   @Header("Cache-Control", "no-store")
   detail(
@@ -107,6 +121,17 @@ export class AdminOrdersController {
     @Body() input: OrderActionInput,
   ) {
     return this.orders.transition(auth, branchId, orderId, input);
+  }
+
+  @Put(":branchId/:orderId/driver")
+  @Header("Cache-Control", "no-store")
+  assignDriver(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Param("orderId", new ParseUUIDPipe({ version: "4" })) orderId: string,
+    @Body() input: AssignDriverInput,
+  ) {
+    return this.orders.assignDriver(auth, branchId, orderId, input.driverId);
   }
 
   @Put(":branchId/:orderId/items")
