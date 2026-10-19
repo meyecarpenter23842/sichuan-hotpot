@@ -16,7 +16,7 @@ test("L05 modal stages, optimizes and previews product images BEFORE upload", ()
   assert.match(catalog, /URL\.revokeObjectURL\(previewRef\.current\)/);
   assert.match(catalog, /setPhotoDraft\(/);
   assert.match(catalog, /Ảnh khi lưu/);
-  assert.match(catalog, /Chưa tải lên R2/);
+  assert.match(catalog, /Chưa lưu/);
   assert.match(catalog, /selectProductPhoto\(\)/);
   assert.match(catalog, /Bỏ ảnh vừa chọn/);
   assert.match(catalog, /onPress=\{closeEditor\}/);

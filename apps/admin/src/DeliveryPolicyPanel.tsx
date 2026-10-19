@@ -152,25 +152,25 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     <Text style={st.title}>{mode === "orders" ? "Nhận đơn trực tuyến" : "Phí giao theo khu vực"}</Text>
     {loading ? <ActivityIndicator color={c.red} /> : <>
       {current?.pricingMode === "DISTANCE" &&
-        <Notice text="Chính sách cũ vẫn lưu để đối soát. Thiết lập vùng giao mới trước khi chuyển sang phí theo khu vực." />}
-      {!current && <Notice text="Chưa cấu hình phí giao. Đơn sẽ không tự được tính phí 0đ." />}
+        <Notice text="Phí giao cũ tính theo khoảng cách. Hãy thiết lập vùng giao trước khi chuyển sang cách tính mới." />}
+      {!current && <Notice text="Chưa thiết lập phí giao. Khách chưa thể đặt giao hàng." />}
       {!active && <Notice text="Chi nhánh chưa hoạt động. Không thể nhận đơn mới." />}
       {current?.pricingMode === "ZONE" &&
-        <Text style={st.note}>Chính sách hiện tại: phiên bản {current.version} · {current.zones.length} vùng · Không dùng định tuyến OSRM.</Text>}
+        <Text style={st.note}>Đã thiết lập {current.zones.length} vùng giao.</Text>}
       {mode === "orders" ? <>
-        <Text style={st.note}>Bật/tắt nhận đơn sẽ tạo phiên bản chính sách mới, giữ nguyên phí vùng đang có.</Text>
+        <Text style={st.note}>Bật hoặc tắt nhận đơn không thay đổi mức phí giao đã lưu.</Text>
         <StatusSwitch value={acceptingOrders} busy={saving}
           disabled={current?.pricingMode !== "ZONE" || (!active && !acceptingOrders)}
           label="Cho phép nhận đơn" hint="Chỉ lưu khi vùng giao đã được thiết lập"
           onValueChange={next => { setAcceptingOrders(next); setSuccess(""); }} />
       </> : <>
-        <Text style={st.note}>Tính phí bằng mã tỉnh/TP và mã phường/xã/đặc khu theo phiên bản danh mục. Danh sách phường trong cùng vùng dùng chung một mức phí. Để trống phường để làm mức dự phòng toàn tỉnh; riêng Đồng Tháp chỉ áp dụng cho 57 xã/phường Tiền Giang cũ. Mức phường cụ thể được ưu tiên.</Text>
+        <Text style={st.note}>Phí giao dựa trên tỉnh/thành và phường/xã. Các phường trong một vùng có cùng phí. Nếu không chọn phường, phí áp dụng toàn tỉnh; riêng Đồng Tháp chỉ nhận khu vực Tiền Giang cũ. Phí theo phường được ưu tiên.</Text>
         <Field label="Giá trị đơn tối thiểu (VND)" numeric value={minimum}
           onChangeText={setMinimum} placeholder="0" />
         <Field label="Miễn phí giao từ (VND, để trống nếu không áp dụng)" numeric
           value={freeFrom} onChangeText={setFreeFrom} placeholder="Không miễn phí" />
         <Text style={st.section}>Các vùng giao</Text>
-        {zones.length === 0 && <Notice text="Chưa có vùng nào. Chỉ bật nhận đơn khi đã thiết lập và xác minh đầy đủ các mã hành chính." />}
+        {zones.length === 0 && <Notice text="Chưa có vùng giao. Hãy thêm vùng trước khi bật nhận đơn." />}
         {zones.map((zone, index) => <View key={index} style={st.zone}>
           <View style={st.row}>
             <View style={st.flex}>
@@ -205,7 +205,7 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
           hint="Tắt trước khi cấu hình đủ vùng" disabled={saving || !active} busy={saving}
           onValueChange={setAcceptingOrders} />
       </>}
-      {hasChanges && <Notice text="Thay đổi chưa được lưu trên máy chủ." />}
+      {hasChanges && <Notice text="Thay đổi chưa được lưu." />}
       {!!error && <Notice error text={error} />}
       {!!success && <Notice text={success} />}
       <Action label={saving ? "Đang lưu..." : "Lưu chính sách phí vùng"}

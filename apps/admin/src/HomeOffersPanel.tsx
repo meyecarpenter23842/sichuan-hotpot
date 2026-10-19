@@ -106,7 +106,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
        setEditor(fromOffer(created));
      }
      setUnsaved(false);onDirtyChange(false);
-   },"Đã lưu nội dung ưu đãi lên máy chủ. Thêm ảnh và bật hiển thị khi sẵn sàng.");
+   },"Đã lưu nội dung ưu đãi. Có thể thêm ảnh và bật hiển thị.");
  };
  const toggle=(offer:HomeOffer,value:boolean)=>{
    if(unsaved){setError("Lưu nội dung đang sửa trước khi đổi trạng thái.");return;}
@@ -139,11 +139,11 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
      const sent=await FileSystem.uploadAsync(ticket.uploadUrl,blob.uri,{
        httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
        headers:{"Content-Type":ticket.contentType}});
-     if(sent.status<200||sent.status>=300)throw Error("R2 từ chối ảnh, hãy kiểm tra kết nối.");
+     if(sent.status<200||sent.status>=300)throw Error("Không tải được ảnh, hãy kiểm tra kết nối.");
    }else{
      const sent=await fetch(ticket.uploadUrl,{
        method:"PUT",headers:{"Content-Type":ticket.contentType},body:blob});
-     if(!sent.ok)throw Error("R2 từ chối ảnh. Kiểm tra CORS bucket media.");
+     if(!sent.ok)throw Error("Không tải được ảnh. Vui lòng thử lại.");
    }
    await request(endpoint+"/attach",token,"POST",{key:ticket.key});
  }
@@ -157,7 +157,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
        void run(async()=>{
          const prepared=await prepareProductImage(file);
          await doUpload(id,prepared.blob,prepared.contentType);
-       },"Đã tải ảnh ưu đãi lên R2 và xác nhận lưu thành công.");
+       },"Đã tải và lưu ảnh ưu đãi thành công.");
      };input.click();return;
    }
    void (async()=>{
@@ -171,7 +171,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
      const size=info.exists?info.size:undefined;
      if(!size||size>2097152){setError("Ảnh Android phải nhỏ hơn 2 MB.");return;}
      await run(()=>doUpload(id,{uri:asset.uri,size,mime},mime),
-       "Đã tải ảnh ưu đãi lên R2.");
+       "Đã tải ảnh ưu đãi.");
    })().catch(e=>setError(e instanceof Error?e.message:"Không chọn được ảnh."));
  };
  const current=editor?.id?offers.find(item=>item.id===editor.id):null;
@@ -240,7 +240,7 @@ export function HomeOffersPanel({token,branchId,onDirtyChange}:{
        {current?.imageKey&&imageUrl(current.imageKey)&&
          <Image source={{uri:imageUrl(current.imageKey)!}} resizeMode="cover"
            style={s.preview}/>}
-       <Action secondary label={busy?"Đang tải ảnh…":"Chọn / thay ảnh R2"}
+       <Action secondary label={busy?"Đang tải ảnh…":"Chọn hoặc thay ảnh"}
          onPress={pickImage} disabled={busy}/>
        {current?.imageKey&&!current.enabled&&<Action secondary label="Gỡ ảnh"
          disabled={busy} onPress={()=>void run(()=>request(root+"/"+editor.id+"/image",

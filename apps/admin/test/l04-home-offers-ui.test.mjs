@@ -12,7 +12,7 @@ test("L04 Settings uses owner-scoped popup with real CRUD and signed R2 workflow
  assert.match(panel,/\/ticket"/);
  assert.match(panel,/\/attach"/);
  assert.match(panel,/\/order"/);
- assert.match(panel,/Đã lưu nội dung ưu đãi lên máy chủ/);
+ assert.match(panel,/Đã lưu nội dung ưu đãi/);
  assert.match(panel,/onDirtyChange\(true\)/);
  assert.match(panel,/accessibilityRole="checkbox"/);
 });

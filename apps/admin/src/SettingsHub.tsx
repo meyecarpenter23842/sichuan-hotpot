@@ -19,14 +19,14 @@ import { adminDensity } from "./density";
 
 type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup" | "chatbot";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
-  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Banner + âm khi khóa màn", owner: false },
-  { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, vị trí GPS", owner: true },
+  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Báo đơn mới và âm chuông", owner: false },
+  { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, ghim bản đồ", owner: true },
   { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
   { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", hint: "Ảnh, nội dung, lịch hiển thị", owner: true },
-  { id: "hero", label: "Banner trang chủ", icon: "banner", hint: "Ảnh, motion, CTA", owner: true },
-  { id: "popup", label: "Popup trang chủ", icon: "popup", hint: "Nhiều ảnh, tần suất hiện", owner: true },
+  { id: "hero", label: "Banner trang chủ", icon: "banner", hint: "Ảnh, hiệu ứng, nút mở món", owner: true },
+  { id: "popup", label: "Ảnh nổi trang chủ", icon: "popup", hint: "Nhiều ảnh, thời gian hiện", owner: true },
   { id: "chatbot", label: "Chatbot AI", icon: "chat", hint: "Dialogflow CX + Zalo", owner: true },
-  { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Km, phụ phí, giá trị đơn", owner: true },
+  { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Vùng giao, phí và đơn tối thiểu", owner: true },
   { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
   { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
   { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
@@ -42,20 +42,21 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
   const [selected, setSelected] = useState<Setting | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const { width } = useWindowDimensions();
   const mobile = width < 640;
-  useEffect(() => { setSelected(null); setDirty(false); setConfirmClose(false); }, [branch.id]);
+  useEffect(() => { setSelected(null); setDirty(false); setConfirmClose(false); setShowDiagnostics(false); }, [branch.id]);
   const close = () => {
     if (dirty) { setConfirmClose(true); return; }
     setSelected(null);
   };
   const forceClose = () => { setSelected(null); setDirty(false); setConfirmClose(false); };
-  const open = (id: Setting) => { setSelected(id); setDirty(false); setConfirmClose(false); };
+  const open = (id: Setting) => { setSelected(id); setDirty(false); setConfirmClose(false); setShowDiagnostics(false); };
   const current = items.find(item => item.id === selected);
 
   return <View style={s.page}>
     <Text style={s.title}>Thiết lập</Text>
-    <Text style={s.note}>Chạm biểu tượng để mở cài đặt. Mỗi chức năng được quản lý độc lập.</Text>
+    <Text style={s.note}>Chọn mục cần thay đổi.</Text>
     <View style={s.grid}>
       {items.filter(item => owner || !item.owner).map(item =>
         <Pressable key={item.id} accessibilityRole="button"
@@ -67,7 +68,7 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
           <Text style={s.tileHint} numberOfLines={2}>{item.hint}</Text>
         </Pressable>)}
     </View>
-    {!owner && <Notice text="Chỉ chủ cửa hàng có quyền thay đổi thông tin chi nhánh, nhận đơn và phí giao. Quản lý có thể cấu hình giờ bán nếu được API cho phép." />}
+    {!owner && <Notice text="Chỉ chủ cửa hàng được thay đổi thông tin chi nhánh, nhận đơn và phí giao." />}
     <Modal visible={selected !== null} animationType="slide" transparent
       onRequestClose={close}>
       <KeyboardAvoidingView style={[s.overlay, !mobile && s.desktopOverlay]}
@@ -91,8 +92,8 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
             showsVerticalScrollIndicator={false}>
             {selected === "alerts" && <View style={{ gap: 12 }}>
               <Text style={s.note}>{Platform.OS === "web"
-                ? "Admin PWA dùng banner hệ thống và âm mặc định của điện thoại, kể cả khi khóa màn."
-                : "Android Admin dùng banner hệ thống và âm đơn hàng dài đã đóng gói trong ứng dụng."}</Text>
+                ? "Bật thông báo để nhận tin về đơn mới ngay trên thiết bị."
+                : "Android có âm báo riêng khi có đơn hàng mới."}</Text>
               <View style={s.toggleRow}>
                 <View style={s.toggleCopy}>
                   <Text style={s.toggleTitle}>Thông báo đơn mới</Text>
@@ -102,8 +103,10 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
                   onValueChange={onChimeChange} />
               </View>
               {!!chimeError && <Notice text={chimeError} error />}
-              <NotificationTester token={token} branchId={branch.id} />
-              <Text style={s.note}>WebSocket vẫn đồng bộ danh sách đơn; push chỉ chịu trách nhiệm cảnh báo nền/khóa màn.</Text>
+              <Action secondary
+                label={showDiagnostics ? "Ẩn phần kiểm tra" : "Kiểm tra thông báo và âm thanh"}
+                onPress={() => setShowDiagnostics(value => !value)} />
+              {showDiagnostics && <NotificationTester token={token} branchId={branch.id} />}
             </View>}
             {selected === "branch" && <BranchPanel key={branch.id} token={token}
               branch={branch} mode="details" onDirtyChange={setDirty}
@@ -144,7 +147,7 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
           {confirmClose && <View style={s.confirmBackdrop}>
             <View style={s.confirm}>
               <Text style={s.confirmTitle}>Bỏ thay đổi chưa lưu?</Text>
-              <Text style={s.note}>Thông tin bạn vừa chỉnh sửa sẽ không được lưu lên máy chủ.</Text>
+              <Text style={s.note}>Những thay đổi vừa nhập sẽ bị bỏ.</Text>
               <View style={s.confirmActions}>
                 <Action label="Tiếp tục sửa" secondary onPress={() => setConfirmClose(false)} />
                 <Action label="Bỏ thay đổi" dangerous onPress={forceClose} />

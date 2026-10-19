@@ -214,8 +214,8 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
         </View>
       </View>
     </Modal>
-    <Text style={styles.dashboardFootnote}>Số liệu từ API theo chi nhánh · Không dùng dữ liệu mẫu.
-      Giá trị đã giao không đồng nghĩa tiền COD đã đối soát.</Text>
+    <Text style={styles.dashboardFootnote}>Số liệu đơn hàng của chi nhánh.
+      Giá trị đã giao không đồng nghĩa số tiền đã thu.</Text>
   </View>;
 }
 
@@ -685,7 +685,7 @@ export default function AdminApp() {
           </View> : tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
-              <Text style={styles.caption}>Dữ liệu được phân quyền theo chi nhánh tại backend.</Text>
+              <Text style={styles.caption}>Mỗi nhân viên chỉ xem được thông tin theo quyền của mình.</Text>
               <Action label="Đăng xuất" dangerous onPress={() => void signOut()} />
             </View> : loading && !catalog ? <View style={styles.center}>
             <ActivityIndicator color={c.red} />

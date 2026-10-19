@@ -178,9 +178,9 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
           </Pressable>
         ))}
       </View>
-      {!qrAvailable && <Text style={styles.subtle}>QR chưa được cửa hàng cấu hình. Anh/chị vẫn có thể thanh toán COD.</Text>}
+      {!qrAvailable && <Text style={styles.subtle}>Quán chưa nhận chuyển khoản QR. Vui lòng chọn tiền mặt khi nhận hàng.</Text>}
       {paymentMethod === "QR" && (
-        <Text style={styles.subtle}>Chuyển khoản cần mã QR/tài khoản của cửa hàng. Đơn ở trạng thái chờ xác nhận, không tự đánh dấu đã thanh toán.</Text>
+        <Text style={styles.subtle}>Quán sẽ xác nhận thanh toán sau khi nhận được tiền chuyển khoản.</Text>
       )}
       <Pressable accessibilityRole="button" style={[styles.action, (busy || !addressId || !items) && styles.disabled]}
         disabled={busy || !addressId || !items || !addressRegionConfirmed} onPress={() => void requestQuote()}>
@@ -189,16 +189,16 @@ export function CheckoutPanel({ accessToken, userId, branchId, branchActive, add
       </Pressable>
       {!!quote && (
         <View style={styles.summary}>
-          <View style={styles.row}><Text style={styles.subtle}>Tạm tính từ máy chủ</Text><Text style={styles.value}>{vnd(quote.subtotalVnd)}</Text></View>
+          <View style={styles.row}><Text style={styles.subtle}>Tiền món</Text><Text style={styles.value}>{vnd(quote.subtotalVnd)}</Text></View>
           <View style={styles.row}><Text style={styles.subtle}>{quote.pricingMode === "ZONE" ? "Khu vực giao" : "Đường xe chạy"}</Text>
             <Text style={styles.value}>{quote.pricingMode === "ZONE" ? quote.zoneName : quote.routeDistanceMeters !== null ? (quote.routeDistanceMeters / 1000).toFixed(2) + " km" : "Không xác định"}</Text></View>
           <View style={styles.row}><Text style={styles.subtle}>Phí giao</Text><Text style={styles.value}>{vnd(quote.feeVnd)}</Text></View>
           <View style={styles.row}><Text style={styles.totalLabel}>Tổng thanh toán</Text><Text style={styles.total}>{vnd(quote.totalVnd)}</Text></View>
-          <Text style={styles.subtle}>Báo phí có hạn. Máy chủ sẽ tính và kiểm tra lại khi tạo đơn.</Text>
+          <Text style={styles.subtle}>Phí giao có thể thay đổi nếu bạn đặt hàng sau khi báo phí hết hạn.</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }}
             style={[styles.action, actionDepth.primary, busy && styles.disabled]} disabled={busy}
             onPress={() => void placeOrder()}>
-            <Text style={styles.actionText}>{busy ? "Đang gửi đơn..." : "Xác nhận đặt đơn " + paymentMethod}</Text>
+            <Text style={styles.actionText}>{busy ? "Đang gửi đơn..." : "Xác nhận đặt hàng"}</Text>
           </Pressable>
         </View>
       )}

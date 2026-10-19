@@ -37,7 +37,7 @@ test("L07 branch status stays server-owned and requires explicit confirmation", 
 test("L07 acceptance toggle is only draft, cannot enable inactive/unconfigured branch", () => {
   assert.match(policy, /disabled=\{current\?\.pricingMode !== "ZONE" \|\| \(!active && !acceptingOrders\)\}/);
   assert.match(policy, /setAcceptingOrders\(next\)/);
-  assert.match(policy, /Thay đổi chưa được lưu trên máy chủ/);
+  assert.match(policy, /Thay đổi chưa được lưu/);
   assert.match(policy, /"POST", payload/);
   assert.match(policy, /applyPolicy\(value\)/);
   assert.match(policy, /setAcceptingOrders\(value\?\.acceptingOrders \?\? false\)/);
