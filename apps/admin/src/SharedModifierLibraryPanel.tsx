@@ -96,7 +96,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        const assigned=(verified.modifierLibrary??[]).find(g=>g.id===savedGroupId)?.usedByProductIds;
        if(!assigned||assigned.length!==selectedProducts.length
          ||assigned.some(id=>!selectedProducts.includes(id))){
-         throw new Error("Liên kết nhóm chưa được xác nhận trên máy chủ. Hãy thử lưu lại.");
+         throw new Error("Chưa lưu được nhóm vào món. Vui lòng thử lại.");
        }
      }
      await reload();
@@ -182,7 +182,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
       </View>
       {removeImage?.kind==="groups"&&removeImage.id===group.id&&<View style={s.mediaConfirm}>
        <Text style={s.hint}>Xác nhận gỡ ảnh nhóm “{group.name}”?
-        Nhóm này liên kết {removeImage.usedBy} món; ảnh dùng chung sẽ được giữ trên R2.</Text>
+        Nhóm này liên kết {removeImage.usedBy} món; ảnh dùng chung vẫn được giữ lại.</Text>
        <View style={s.actions}>
         <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
         <Action dangerous label="Xác nhận gỡ" onPress={()=>{
@@ -232,7 +232,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
       {removeImage?.kind==="options"&&group.options.some(o=>o.id===removeImage.id)&&
        <View style={s.mediaConfirm}>
         <Text style={s.hint}>Xác nhận gỡ ảnh topping “{removeImage.label}”?
-         Có {removeImage.usedBy} món liên kết; ảnh dùng chung được giữ trên R2.</Text>
+         Có {removeImage.usedBy} món liên kết; ảnh dùng chung vẫn được giữ lại.</Text>
         <View style={s.actions}>
          <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
          <Action dangerous label="Xác nhận gỡ" onPress={()=>{
@@ -381,7 +381,7 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
         root+"/products/"+target.id+"/group-assignments/"+group.id,
         token,"PATCH",{attached:next});
       if(result.productId!==target.id||result.groupId!==group.id||result.attached!==next){
-        throw Error("Máy chủ chưa xác nhận liên kết nhóm. Vui lòng thử lại.");
+        throw Error("Chưa lưu được nhóm vào món. Vui lòng thử lại.");
       }
       const snapshot=await request<AdminCatalog>(root,token);
       const serverProduct=snapshot.categories.flatMap(c=>c.products)
@@ -436,7 +436,7 @@ export function ProductGroupAssignmentModal({catalog,product,token,root,reload,o
           </Pressable>;
         })}
       </ScrollView>
-      {busy&&<Notice text="Đang lưu và kiểm tra nhóm trên máy chủ..."/>}
+      {busy&&<Notice text="Đang lưu nhóm..."/>}
       {!!notice&&!busy&&<Notice text={notice}/>}
       {!!error&&!busy&&<Notice text={error} error/>}
       <View style={s.actions}>

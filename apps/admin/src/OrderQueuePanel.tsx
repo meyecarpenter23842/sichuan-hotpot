@@ -257,7 +257,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       void refreshLaneRef.current();
     } catch (e) {
       if (current === requestId.current) {
-        setError(e instanceof Error ? e.message : "Mất kết nối với máy chủ.");
+        setError(e instanceof Error ? e.message : "Mất kết nối. Hãy thử tải lại danh sách đơn.");
       }
     } finally {
       if (current === requestId.current) { setLoading(false); setSyncing(false); }
@@ -595,7 +595,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
             ...(line.pricingMode === "SEPARATE" ? { pricingMode: "SEPARATE" } : {}),
           })),
         });
-      setNotice("Đã sửa đơn, tính lại giá trên máy chủ và lưu lịch sử thay đổi.");
+      setNotice("Đã sửa đơn, cập nhật tổng tiền và lưu lịch sử thay đổi.");
       setEditingOrder(false); setEditCatalog(null); setEditLines([]); setEditReason("");
       await sync();
       await openDetail(selected.id);
@@ -685,7 +685,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
             : mode === "delivery" ? "Chưa có đơn trong danh sách giao"
             : "Chưa có đơn hàng trong nhóm này"}
         </Text>
-        <Text style={s.note}>Danh sách chỉ hiển thị dữ liệu thật từ máy chủ.</Text>
+        <Text style={s.note}>Danh sách đơn của cửa hàng được cập nhật khi có thay đổi.</Text>
       </View> : <View style={s.rows}>
         {visible.map(order => <View key={order.id} style={s.orderCard}>
           <View style={s.orderHeader}>
@@ -803,7 +803,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
               {!!editError && <Notice error text={editError} />}
               {editingOrder && editCatalog ? <View style={s.editPanel}>
                 <Text style={s.editHint}>
-                  Chỉ OWNER/MANAGER sửa được trước khi bếp bắt đầu nấu. Giá được tính lại từ catalog trên máy chủ.
+                  Chỉ chủ quán hoặc quản lý được sửa đơn trước khi bếp bắt đầu nấu. Tổng tiền sẽ được cập nhật theo thực đơn hiện tại.
                 </Text>
                 {editLines.map((line, lineIndex) => {
                   const product = productFor(line);
