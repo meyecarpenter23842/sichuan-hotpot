@@ -608,7 +608,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   // Paging is performed server-side by lane. A backlog of new orders cannot
   // crowd older DELIVERED/CANCELED orders out of the history tab.
   const visible = laneOrders;
-  const visibleCount = laneTotal ?? visible.length;
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
     && clock - Date.parse(x.createdAt) >= 300000).length;
@@ -617,48 +616,44 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const deliveredCount = orders.filter(x => x.status === "DELIVERED").length;
 
   return <View style={s.page}>
-    <View style={s.head}>
-      <View style={s.headInfo}>
-        <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp"
-          : mode === "delivery" ? "Giao hàng" : "Đơn hàng"}</Text>
-        <Text style={s.note}>{mode === "delivery"
-          ? "Cửa hàng có thể tự giao: bắt đầu giao, hoàn thành hoặc ghi nhận giao thất bại."
-          : "Đơn thật · cập nhật tức thời khi có kết nối, đồng bộ dự phòng 10 giây"}</Text>
+    {mode !== "orders" && <>
+      <View style={s.head}>
+        <View style={s.headInfo}>
+          <Text style={s.title}>{mode === "kitchen" ? "Phiếu bếp" : "Giao hàng"}</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
+          disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
+          <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
+        </Pressable>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ đơn hàng"
-        disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
-        <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
-      </Pressable>
-    </View>
-    <View style={s.summary}>
-      {(mode === "delivery" ? [
-        ["Chờ giao", orders.filter(x => x.status === "READY").length],
-        ["Đang giao", deliveryCount],
-        ["Đã giao", deliveredCount],
-      ] : [
-        ["Đơn mới", pendingCount],
-        ["Đang nấu", kitchenCount],
-        ["Chờ giao", orders.filter(x => x.status === "READY").length],
-      ]).map(([label, value], index) => <View key={String(label)}
-        style={[s.summaryMetric, index === 0 && s.summaryMetricHot]}>
-        <Text style={s.summaryNum}>{value}</Text>
-        <Text style={s.note}>{label}</Text>
-      </View>)}
-    </View>
-    <Text style={s.note}>Tổng quan gần đây; số đơn chính xác của từng nhóm hiển thị khi mở tab.</Text>
-    <Text style={[s.sync, error && s.syncError]}>
-      {error ? "Mất đồng bộ — dữ liệu có thể đã cũ" :
-        syncing ? "Đang đồng bộ..." :
-        lastSync ? "Đã đồng bộ lúc " + lastSync.toLocaleTimeString("vi-VN") : "Chưa đồng bộ"}
-    </Text>
+      <View style={s.summary}>
+        {(mode === "delivery" ? [
+          ["Chờ giao", orders.filter(x => x.status === "READY").length],
+          ["Đang giao", deliveryCount], ["Đã giao", deliveredCount],
+        ] : [
+          ["Đơn mới", pendingCount], ["Đang nấu", kitchenCount],
+          ["Chờ giao", orders.filter(x => x.status === "READY").length],
+        ]).map(([label, value], index) => <View key={String(label)}
+          style={[s.summaryMetric, index === 0 && s.summaryMetricHot]}>
+          <Text style={s.summaryNum}>{value}</Text>
+          <Text style={s.note}>{label}</Text>
+        </View>)}
+      </View>
+    </>}
     {!!error && <Notice error text={error} />}
     {!!laneError && <Notice error text={laneError} />}
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
-    {mode === "orders" && <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      keyboardShouldPersistTaps="always" style={s.groupScroll}
-      contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
+    {!!error && <Notice error text={error} />}
+    {!!laneError && <Notice error text={laneError} />}
+    {!!notice && <Notice text={notice} />}
+    {overdueCount > 0 && !kitchenOnly && <Notice error
+      text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
+    {mode === "orders" && <View style={s.tabsToolbar}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always" style={s.groupScroll}
+        contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
       {orderGroups.map(item => {
         const count = item.id === group && laneTotal !== null ? laneTotal : null;
         return <Pressable key={item.id} accessibilityRole="tab"
@@ -670,7 +665,16 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           </Text>
         </Pressable>;
       })}
-    </ScrollView>}
+      </ScrollView>
+      <Pressable accessibilityRole="button"
+        accessibilityLabel={syncing ? "Đang tải đơn hàng" :
+          lastSync ? "Đồng bộ đơn hàng. Đã đồng bộ lúc " +
+            lastSync.toLocaleTimeString("vi-VN") : "Đồng bộ đơn hàng"}
+        accessibilityState={{ disabled: syncing || laneLoading }}
+        disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
+        <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
+      </Pressable>
+    </View>}
     <ScrollView style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
     {loading || (laneLoading && laneOrders.length === 0)
@@ -685,7 +689,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
             : mode === "delivery" ? "Chưa có đơn trong danh sách giao"
             : "Chưa có đơn hàng trong nhóm này"}
         </Text>
-        <Text style={s.note}>Danh sách đơn của cửa hàng được cập nhật khi có thay đổi.</Text>
       </View> : <View style={s.rows}>
         {visible.map(order => <View key={order.id} style={s.orderCard}>
           <View style={s.orderHeader}>
@@ -745,9 +748,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         style={s.moreButton} onPress={() => void loadMoreLane()}>
         <Text style={s.moreText}>{laneLoadingMore ? "Đang tải lịch sử..." : "Xem thêm đơn cũ"}</Text>
       </Pressable>}
-      {!laneCursor && visible.length > 0 && <Text style={s.note}>
-        Đã hiển thị hết {visibleCount} đơn thuộc nhóm này.
-      </Text>}
     </ScrollView>
     {opening && <ActivityIndicator color={c.red} />}
     <Modal visible={!!selected} transparent animationType="slide"
@@ -1129,7 +1129,9 @@ const s = StyleSheet.create({
   sync: { fontSize: font.caption, color: c.green },
   syncError: { color: c.red },
   filter: { flexDirection: "row", gap: 8 },
-  groupScroll: { flexGrow: 0, borderBottomWidth: 1, borderColor: c.line },
+  tabsToolbar: { flexDirection: "row", alignItems: "center",
+    borderBottomWidth: 1, borderColor: c.line },
+  groupScroll: { flex: 1, minWidth: 0 },
   groupRow: { gap: 6, paddingVertical: 6, paddingHorizontal: 2 },
   groupTab: { minHeight: 44, paddingHorizontal: 12, alignItems: "center",
     justifyContent: "center", borderBottomWidth: 3, borderColor: "transparent" },
