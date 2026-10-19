@@ -36,46 +36,60 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
   const [error, setError] = useState("");
   const [reorderError, setReorderError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [history, setHistory] = useState<CustomerOrderDetail[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const reload = useCallback(() => setRevision(n => n + 1), []);
+  const fetchDelivered = useCallback(async (cursor?: string) => {
+    const page = await apiRequest<{ items: CustomerOrderSummary[]; nextCursor: string | null }>(
+      "/customer/orders/pages?delivered=1&limit=20"
+      + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), { accessToken });
+    const details: CustomerOrderDetail[] = [];
+    // Bound simultaneous detail requests; no unbounded waterfall or 50-order cap.
+    for (let offset = 0; offset < page.items.length; offset += 3) {
+      const rows = await Promise.all(page.items.slice(offset, offset + 3).map(order =>
+        apiRequest<CustomerOrderDetail>("/customer/orders/" + encodeURIComponent(order.id),
+          { accessToken })));
+      details.push(...rows);
+    }
+    return { details, nextCursor: page.nextCursor };
+  }, [accessToken]);
   useEffect(() => {
     if (!accessToken) {
-      setPurchases([]);
-      setError("");
-      setLoading(false);
-      return;
+      setPurchases([]); setHistory([]); setNextCursor(null);
+      setError(""); setLoading(false); return;
     }
     if (!active) return;
     let mounted = true;
-    async function load() {
-      setLoading(true);
-      setError("");
-      setReorderError("");
-      try {
-        const summaries = await apiRequest<CustomerOrderSummary[]>("/customer/orders", { accessToken });
-        const delivered = summaries.filter(order => order.status === "DELIVERED").slice(0, 20);
-        const details: CustomerOrderDetail[] = [];
-        // Bounded requests: do not overwhelm the order API with large purchase histories.
-        for (let offset = 0; offset < delivered.length; offset += 3) {
-          const results = await Promise.allSettled(delivered.slice(offset, offset + 3).map(order =>
-            apiRequest<CustomerOrderDetail>("/customer/orders/" + encodeURIComponent(order.id),
-              { accessToken })));
-          if (!mounted) return;
-          for (const result of results) {
-            if (result.status === "fulfilled") details.push(result.value);
-            else throw result.reason;
-          }
-        }
-        if (mounted) setPurchases(uniquePurchases(details));
-      } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : "Không tải được sản phẩm đã mua.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-    void load();
+    setLoading(true); setError(""); setReorderError("");
+    void fetchDelivered().then(page => {
+      if (!mounted) return;
+      setHistory(page.details);
+      setPurchases(uniquePurchases(page.details));
+      setNextCursor(page.nextCursor);
+    }).catch(e => {
+      if (mounted) setError(e instanceof Error ? e.message : "Không tải được sản phẩm đã mua.");
+    }).finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [accessToken, active, revision, refreshSignal]);
+  }, [accessToken, active, revision, refreshSignal, fetchDelivered]);
+
+  async function morePurchases() {
+    if (!active || !nextCursor || loadingMore) return;
+    const cursor = nextCursor;
+    setLoadingMore(true); setError("");
+    try {
+      const page = await fetchDelivered(cursor);
+      // Server pagination produces distinct order IDs; deduplicate defensively.
+      const seen = new Set(history.map(x => x.id));
+      const combined = [...history, ...page.details.filter(x => !seen.has(x.id))];
+      setHistory(combined);
+      setPurchases(uniquePurchases(combined));
+      setNextCursor(page.nextCursor);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không tải được lịch sử món cũ.");
+    } finally { setLoadingMore(false); }
+  }
 
   return (
     <View style={styles.page}>
@@ -136,7 +150,13 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
             </View>
           ))}
           {!!reorderError && <Text accessibilityRole="alert" style={styles.error}>{reorderError}</Text>}
-          <Text style={styles.footerNote}>Hiển thị món trong tối đa 20 đơn đã giao gần nhất thuộc danh sách đơn hàng được máy chủ trả về.</Text>
+          {!!nextCursor && <Pressable accessibilityRole="button"
+            accessibilityLabel="Tải thêm món đã mua từ đơn cũ" disabled={loadingMore}
+            accessibilityState={{ disabled: loadingMore }} style={styles.reload}
+            onPress={() => void morePurchases()}>
+            <Text style={styles.reloadText}>{loadingMore ? "Đang tải đơn cũ..." : "Xem thêm món đã mua"}</Text>
+          </Pressable>}
+          <Text style={styles.footerNote}>Món từ các đơn đã giao thành công; có thể tải thêm lịch sử cũ. Giá hiện tại được kiểm tra khi mua lại.</Text>
         </>
       )}
     </View>
