@@ -20,7 +20,8 @@ test("PWA and Android both persist rotating refresh sessions", () => {
 
 test("home cart has no counterfeit counter, notification links to real orders", () => {
   assert.match(app, /name="notifications" active size=\{27\}/);
-  assert.match(app, /accessibilityLabel="Thông báo đơn hàng, xem đơn hàng"/);
+  assert.match(app, /accessibilityLabel="Xem đơn hàng và cập nhật trạng thái"/);
+  assert.match(app, /setFocusOrderId\(null\); setScreen\("orders"\);/);
   assert.doesNotMatch(app, /\{itemCount\}/);
   assert.doesNotMatch(app, /<View style=\{styles\.cartIconSurface\}>/);
 });

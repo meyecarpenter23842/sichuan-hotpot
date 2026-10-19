@@ -39,9 +39,9 @@ import { isWardAllowedForNewDelivery } from "../../packages/shared/src/tien-gian
 import { canReorderDeliveredOrder } from "../../packages/shared/src/orders";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
-import { NotificationTester } from "./src/components/NotificationTester";
+import { CustomerNotificationSettings } from "./src/components/CustomerNotificationSettings";
 import {
-  configureCustomerNotificationPresentation, disableCustomerPush, enableCustomerPush,
+  configureCustomerNotificationPresentation, disableCustomerPush,
   refreshCustomerPushIfAllowed, watchCustomerNotificationResponses,
 } from "./src/push-client";
 
@@ -1922,7 +1922,7 @@ function CustomerApp() {
                     <Text style={styles.addressQuickChevron}>›</Text>
                   </Pressable>
                 </View>
-                <NotificationTester accessToken={accessToken} />
+                <CustomerNotificationSettings accessToken={accessToken} />
                 <View style={styles.accountLogout}>
                   <Pressable accessibilityRole="button" style={({ pressed }) => [
                     styles.logoutButton, pressed && actionDepth.pressed,
@@ -2034,18 +2034,9 @@ function CustomerApp() {
                     </Text>
                   </Pressable>
                   <View style={styles.homeHeaderActions}>
-                    <Pressable style={styles.headerIconAction} onPress={() => {
-                      setScreen("orders");
-                      if (!accessToken) {
-                        setNotice("Đăng nhập để bật thông báo trạng thái đơn hàng.");
-                        return;
-                      }
-                      void enableCustomerPush(accessToken)
-                        .then(() => setNotice("Đã bật thông báo đơn hàng trên thiết bị này."))
-                        .catch(error => setNotice(error instanceof Error
-                          ? error.message : "Không bật được thông báo trên thiết bị."));
-                    }}
-                      accessibilityRole="button" accessibilityLabel="Thông báo đơn hàng, xem đơn hàng">
+                    <Pressable style={styles.headerIconAction}
+                      onPress={() => { setFocusOrderId(null); setScreen("orders"); }}
+                      accessibilityRole="button" accessibilityLabel="Xem đơn hàng và cập nhật trạng thái">
                       <HotpotNavIcon name="notifications" active size={27} />
                     </Pressable>
                     <Pressable style={styles.headerIconAction} onPress={() => setScreen("cart")}
