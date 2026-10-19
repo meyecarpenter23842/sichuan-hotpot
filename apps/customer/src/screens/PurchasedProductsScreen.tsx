@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { canReorderDeliveredOrder, historicalPurchaseKey } from "../../../../packages/shared/src/orders";
@@ -36,6 +36,8 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
   const [error, setError] = useState("");
   const [reorderError, setReorderError] = useState("");
   const [revision, setRevision] = useState(0);
+  const activeToken = useRef(accessToken);
+  activeToken.current = accessToken;
   const [history, setHistory] = useState<CustomerOrderDetail[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,6 +64,8 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
     }
     if (!active) return;
     let mounted = true;
+    // Never show the previous account's purchases while a new token loads.
+    setHistory([]); setPurchases([]); setNextCursor(null);
     setLoading(true); setError(""); setReorderError("");
     void fetchDelivered().then(page => {
       if (!mounted) return;
@@ -80,6 +84,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
     setLoadingMore(true); setError("");
     try {
       const page = await fetchDelivered(cursor);
+      if (activeToken.current !== accessToken) return;
       // Server pagination produces distinct order IDs; deduplicate defensively.
       const seen = new Set(history.map(x => x.id));
       const combined = [...history, ...page.details.filter(x => !seen.has(x.id))];
@@ -87,8 +92,9 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
       setPurchases(uniquePurchases(combined));
       setNextCursor(page.nextCursor);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Không tải được lịch sử món cũ.");
-    } finally { setLoadingMore(false); }
+      if (activeToken.current === accessToken)
+        setError(e instanceof Error ? e.message : "Không tải được lịch sử món cũ.");
+    } finally { if (activeToken.current === accessToken) setLoadingMore(false); }
   }
 
   return (
