@@ -522,8 +522,10 @@ function CustomerApp() {
           if (Platform.OS === "web") {
             await AsyncStorage.removeItem(WEB_SESSION_MARKER).catch(() => undefined);
           } else await clearRefresh().catch(() => undefined);
-        } else if (active) {
-          setAuthRestoreError(error instanceof Error ? error.message : "Không thể khôi phục phiên.");
+        } else if (active && epoch === authEpoch.current) {
+          // A transient proxy/network failure is NOT proof that the login expired.
+          // Keep the refresh marker/cookie, but never block public menu browsing.
+          setAuthRestoreError("Chưa thể khôi phục đăng nhập. Bạn vẫn có thể xem thực đơn và thử lại.");
         }
       } finally {
         if (active && epoch === authEpoch.current) setAuthReady(true);
@@ -1933,6 +1935,11 @@ function CustomerApp() {
               </>
             ) : (
               <View style={styles.accountGroup}>
+                {!!authRestoreError && <>
+                  <Notice message={authRestoreError} error />
+                  <Button label="Thử khôi phục đăng nhập" alternate
+                    onPress={() => setAuthRestoreAttempt(n => n + 1)} />
+                </>}
                 <Text style={styles.muted}>Đăng nhập để lưu địa chỉ và xem các món đã mua.</Text>
                 <Button label="Đăng nhập / Tạo tài khoản"
                   onPress={() => { setLoginReturnTo("account"); setScreen("login"); }} />
@@ -2002,14 +2009,6 @@ function CustomerApp() {
           <View style={styles.sessionLoading}>
             <ActivityIndicator size="large" color={brand} />
             <Text style={styles.muted}>Đang khôi phục phiên đăng nhập…</Text>
-          </View>
-        ) : authRestoreError ? (
-          <View style={styles.sessionLoading}>
-            <Notice message={authRestoreError} error />
-            <Button label="Thử khôi phục phiên" onPress={() => setAuthRestoreAttempt(n => n + 1)} />
-            <Button label="Xem thực đơn" alternate onPress={() => {
-              setAuthRestoreError(""); setScreen("home");
-            }} />
           </View>
         ) : screen === "login" ? (
           <AuthScreen onAuthenticated={saveLogin} onGuest={() => { setNotice(""); setScreen("home"); }} />

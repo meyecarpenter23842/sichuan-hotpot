@@ -270,6 +270,30 @@ jobs:
           cp -a "apps/$TARGET_APP/.vercel/output" .vercel/output
           ./node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
           echo "Target $TARGET_APP released from verified main SHA $REQUESTED_SHA"
+      - name: Verify canonical PWA session proxy after deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET_APP" in
+            customer) canonical="https://www.bepsi.click" ;;
+            admin) canonical="https://admin.bepsi.click" ;;
+            *) exit 1 ;;
+          esac
+          # A browser without session cookies must get an AUTH 401 response.
+          # 404/405 or 200 HTML would mean the PWA is missing its session rewrite.
+          status=""
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl -sS --connect-timeout 8 --max-time 18 -o /dev/null \
+              -w '%{http_code}' -X POST -H 'Accept: application/json' \
+              "$canonical/api/session/refresh" || true)"
+            if [[ "$status" == 401 ]]; then break; fi
+            sleep 4
+          done
+          test "$status" = 401 || {
+            echo "::error::Production $TARGET_APP session proxy returned HTTP $status (expected 401); release not verified."
+            exit 1
+          }
+          echo "Canonical $TARGET_APP browser session refresh: PASS (401 without cookie)"
       - name: Remove downloaded production environment values
         if: always()
         shell: bash
