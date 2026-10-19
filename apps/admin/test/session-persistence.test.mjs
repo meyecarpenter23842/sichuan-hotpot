@@ -6,7 +6,8 @@ const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
 const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
 test("Admin native persists refresh credentials only in SecureStore", () => {
-  assert.match(api, /SecureStore\.setItemAsync\(REFRESH_KEY, refreshToken\)/);
+  assert.match(api, /await persistNativeRefresh\(refreshToken\)/);
+  assert.match(api, /SecureStore\.setItemAsync\(REFRESH_KEY, value\)/);
   assert.match(api, /SecureStore\.getItemAsync\(REFRESH_KEY\)/);
   assert.match(api, /SecureStore\.deleteItemAsync\(REFRESH_KEY\)/);
   assert.doesNotMatch(api, /AsyncStorage\.setItem\(REFRESH_KEY/);
@@ -34,4 +35,16 @@ test("Admin updates live token after refresh, reconnects order feeds and never c
   assert.match(app, /setToken\(next\.accessToken\)/);
   assert.match(app, /setRestoreAttempt\(n => n \+ 1\)/);
   assert.match(app, /error instanceof AdminApiError && \(error\.status === 401 \|\| error\.status === 403\)/);
+});
+
+test("Admin Android persists one-time rotated successor before next refresh and never resurrects after logout", () => {
+  assert.match(api, /activeNativeRefresh = next\.refreshToken/);
+  assert.match(api, /await persistNativeRefresh\(next\.refreshToken\)/);
+  assert.match(api, /if \(!old\) old = await SecureStore\.getItemAsync\(REFRESH_KEY\)/);
+  assert.match(api, /if \(pendingNativePersistence\) await persistNativeRefresh\(old\)/);
+  assert.match(api, /activeNativeRefresh = value/);
+  assert.match(api, /if \(attempt < 2\) await new Promise/);
+  assert.match(api, /if \(refreshPending\) await refreshPending\.catch/);
+  assert.match(api, /activeNativeRefresh = null/);
+  assert.doesNotMatch(api, /AsyncStorage\.setItem\(REFRESH_KEY/);
 });
