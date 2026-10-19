@@ -108,6 +108,8 @@ test("kitchen detail excludes phone/address while OWNER detail keeps delivery sn
     .set(headers(kitchen.token)).expect(200);
   assert.equal(kitchenResponse.body.addressLineSnapshot, undefined);
   assert.equal(kitchenResponse.body.phoneSnapshot, undefined);
+  assert.equal(kitchenResponse.body.latitudeSnapshot, undefined);
+  assert.equal(kitchenResponse.body.longitudeSnapshot, undefined);
   assert.equal(kitchenResponse.body.totalVnd, undefined);
   assert.equal(kitchenResponse.body.payment, undefined);
   assert.equal(kitchenResponse.body.items[0].lineTotalVnd, undefined);
@@ -116,6 +118,12 @@ test("kitchen detail excludes phone/address while OWNER detail keeps delivery sn
     .set(headers(owner.token)).expect(200);
   assert.equal(ownerResponse.body.phoneSnapshot, "+84901111222");
   assert.equal(ownerResponse.body.addressLineSnapshot, "12 Đường bí mật");
+  assert.equal(ownerResponse.body.latitudeSnapshot, "10.7731");
+  assert.equal(ownerResponse.body.longitudeSnapshot, "106.7032");
+  const managerResponse = await client.get(branchBase() + "/" + kitchenId)
+    .set(headers(manager.token)).expect(200);
+  assert.equal(managerResponse.body.latitudeSnapshot, "10.7731");
+  assert.equal(managerResponse.body.longitudeSnapshot, "106.7032");
   await client.get(branchBase() + "/" + randomUUID())
     .set(headers(manager.token)).expect(404);
   await client.get("/admin/orders/" + otherBranchId + "/" + kitchenId)
