@@ -260,7 +260,7 @@ export function ComboEditorModal({
               </View>
             </View>
             {confirmRemoveImage && <View style={st.mediaConfirm}>
-              <Text style={st.warning}>Gỡ ảnh combo "{product.name}"?
+              <Text style={st.warning}>Gỡ ảnh combo “{product.name}”?
                 Ảnh bị gỡ khỏi món này, nhưng object R2 còn dùng ở nơi khác vẫn được giữ.</Text>
               <View style={st.imageActions}>
                 <Action label="Giữ ảnh" secondary onPress={() => setConfirmRemoveImage(false)} />
