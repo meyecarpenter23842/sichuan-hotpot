@@ -6,8 +6,6 @@
  * inference from place names, GPS coordinates, or code prefixes at runtime.
  * Leave the full official catalogue intact for display of historical records.
  */
-import { wardsForProvince, type AdministrativeWard } from "./vietnam-admin.js";
-
 export const TIEN_GIANG_OLD_WARD_CODES: readonly string[] = Object.freeze([
   "28249", "28261", "28270", "28273", "28285", "28297", "28306", "28315",
   "28435", "28436", "28439", "28477", "28729", "28321", "28327", "28336",
@@ -30,7 +28,8 @@ export function isWardAllowedForNewDelivery(
 }
 
 /** For new Customer address and Admin zone selections; do NOT use on history. */
-export function selectableWardsForProvince(code: string): AdministrativeWard[] {
-  const entries = wardsForProvince(code);
-  return code === "82" ? entries.filter(ward => accepted.has(ward.code)) : entries;
+export function selectableWardsForProvince<T extends { code: string }>(
+  code: string, entries: readonly T[],
+): T[] {
+  return code === "82" ? entries.filter(ward => accepted.has(ward.code)) : [...entries];
 }
