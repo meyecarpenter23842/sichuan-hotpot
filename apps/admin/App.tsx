@@ -24,6 +24,7 @@ import { Icon, type IconName } from "./src/Icon";
 import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 import { adminDensity } from "./src/density";
+import { AdminPwaReleaseNotice } from "./src/AdminPwaReleaseNotice";
 
 type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account";
 const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
@@ -757,6 +758,7 @@ export default function AdminApp() {
           </View>
         </View>}
       </View>}
+      <AdminPwaReleaseNotice />
     </SafeAreaView>
   </SafeAreaProvider>;
 }
