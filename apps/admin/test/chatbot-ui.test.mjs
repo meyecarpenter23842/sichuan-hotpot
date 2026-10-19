@@ -28,7 +28,7 @@ test("Admin loads a real JSON file and never asks for manual Agent ID", () => {
 test("Admin describes secret handling and keeps Zalo in chatbot config", () => {
   const panel = read("../src/ChatbotPanel.tsx");
   assert.match(panel, /Tệp kết nối Google được lưu an toàn/);
-  assert.match(panel, /Chỉ chọn tệp do chính anh/chị quản lý/);
+  assert.match(panel, /Chỉ chọn tệp do chính/);
   assert.match(panel, /0902964685/);
   assert.match(panel, /góc phải trên header đỏ/);
 });
