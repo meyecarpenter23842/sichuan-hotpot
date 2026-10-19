@@ -22,7 +22,6 @@ function uniquePurchases(orders: CustomerOrderDetail[]): Purchase[] {
   for (const order of orders) {
     if (!canReorderDeliveredOrder(order.status)) continue;
     for (const item of order.items) {
-      if (!item.productId) continue;
       const key = historicalPurchaseKey(order.branchId, item);
       if (!unique.has(key)) unique.set(key, { order, item, key });
     }
@@ -99,6 +98,9 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
             <View key={purchase.key} style={styles.card}>
               <View style={styles.cardCopy}>
                 <Text style={styles.name}>{purchase.item.productName}</Text>
+                {!purchase.item.productId && <Text style={styles.unavailable}>
+                  Món này không còn trong thực đơn hiện tại; chỉ hiển thị lịch sử đã mua.
+                </Text>
                 {!!purchase.item.variantName && <Text style={styles.muted}>{purchase.item.variantName}</Text>}
                 {purchase.item.modifiers.length > 0 &&
                   <Text style={styles.muted}>Topping: {purchase.item.modifiers.map(x => x.name).join(" · ")}</Text>}
@@ -115,7 +117,10 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
               </View>
               <Pressable accessibilityRole="button"
                 accessibilityLabel={"Mua lại " + purchase.item.productName}
-                style={[styles.reorderButton, actionDepth.primary]}
+                disabled={!purchase.item.productId}
+                accessibilityState={{ disabled: !purchase.item.productId }}
+                style={[styles.reorderButton, actionDepth.primary,
+                  !purchase.item.productId && styles.buttonDisabled]}
                 onPress={() => {
                   if (!canReorderDeliveredOrder(purchase.order.status)) {
                     setReorderError("Chỉ được mua lại món từ đơn đã giao thành công.");
@@ -123,7 +128,9 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
                   }
                   setReorderError(onReorder({ ...purchase.order, items: [purchase.item] }) ?? "");
                 }}>
-                <Text style={styles.reorderText}>＋ Mua lại</Text>
+                <Text style={styles.reorderText}>
+                  {purchase.item.productId ? "＋ Mua lại" : "Ngừng bán"}
+                </Text>
               </Pressable>
             </View>
           ))}
@@ -142,6 +149,8 @@ const styles = StyleSheet.create({
   empty: { borderRadius: 13, padding: 15, backgroundColor: palette.graySurface,
     color: palette.muted, fontSize: typeScale.body, lineHeight: 21 },
   error: { color: palette.red, fontSize: typeScale.body, lineHeight: 19 },
+  unavailable: { color: "#A34213", fontSize: typeScale.small, lineHeight: 18 },
+  buttonDisabled: { backgroundColor: palette.muted, opacity: 0.68 },
   reload: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
   reloadText: { fontSize: typeScale.body, color: palette.red, fontWeight: "700" },
   card: { borderBottomWidth: 1, borderBottomColor: palette.line,
