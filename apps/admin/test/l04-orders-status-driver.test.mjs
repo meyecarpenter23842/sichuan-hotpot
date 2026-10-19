@@ -20,7 +20,8 @@ test("L04 six real status groups with count and selected accessibility", () => {
   // L06 moved group filtering/counts to the scoped paged API. The tabs
   // still render the same six groups, but use an authoritative group total.
   assert.match(panel, /const activeLane = mode === "orders" \? group : mode/);
-  assert.match(panel, /"\/pages\?group=" \+ encodeURIComponent\(activeLane\)/);
+  assert.match(panel, /encodeURIComponent\(activeLane\) \+ historyQuery/);
+  assert.match(panel, /onGroupChange\("history"\)/);
   assert.match(panel, /const count = item.id === group && laneTotal !== null \? laneTotal : null/);
 });
 
