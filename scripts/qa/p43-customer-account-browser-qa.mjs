@@ -84,12 +84,24 @@ try {
   }
   await history.click();
   await page.getByText("Đơn hàng của tôi").waitFor();
+  const purchasesTab = page.getByRole("tab", { name: "Món đã mua", exact: true });
+  await purchasesTab.waitFor();
+  await purchasesTab.click();
+  await page.getByText("Các món đã nhận", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: "Đơn hàng", exact: true }).first().click();
+  await page.getByText("Đơn hàng của tôi").waitFor();
   await page.getByRole("tab", { name: "Tôi" }).click();
   await bought.click();
-  await page.getByText("Sản phẩm đã mua", { exact: true }).first().waitFor();
+  await page.getByText("Các món đã nhận", { exact: true }).waitFor();
+  for (const width of [320, 360, 390, 428]) {
+    await page.setViewportSize({ width, height: 780 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "Purchased order sub-tab overflows at " + width);
+    await page.screenshot({ path: output + "/l03-purchased-tab-" + width + ".png" });
+  }
   assert.deepEqual(exceptions, []);
   await context.close();
-  console.log("PASS P4.3: real account address PATCH, modal cancel and flat mobile order navigation");
+  console.log("PASS P4.3 / L03: address PATCH, flat account navigation, sticky orders/purchases tab interactions");
 } finally {
   await browser.close();
   await db.$disconnect();
