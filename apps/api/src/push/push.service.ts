@@ -29,13 +29,12 @@ const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 // Mirrors apps/admin/src/push-client.native.ts. See native-order-sound contract test.
 const ADMIN_ORDER_CHANNEL_ID = "new-orders-v3";
 const ADMIN_ORDER_SOUND_FILE = "new_order_alert.mp3";
+// Customer push is intentionally quiet: CONFIRMED uses notifyCustomerConfirmed,
+// while only CANCELED and DELIVERING produce generic status notifications.
+// Cooking, ready, delivered and delivery-failed remain visible via order sync.
 const customerStatusText: Partial<Record<OrderStatus, { title: string; body: string }>> = {
-  PREPARING: { title: "Đơn hàng đang chế biến", body: "Bếp đã bắt đầu chuẩn bị món của bạn." },
-  READY: { title: "Đơn hàng đã sẵn sàng", body: "Món đã chuẩn bị xong và đang chờ giao." },
   DELIVERING: { title: "Đơn hàng đang được giao", body: "Cửa hàng đang giao món đến bạn." },
-  DELIVERED: { title: "Đơn hàng đã giao", body: "Cửa hàng đã hoàn tất giao đơn hàng." },
   CANCELED: { title: "Đơn hàng đã bị hủy", body: "Cửa hàng đã hủy đơn hàng của bạn." },
-  DELIVERY_FAILED: { title: "Giao hàng chưa thành công", body: "Đơn hàng của bạn chưa giao thành công." },
 };
 
 @Injectable()
@@ -255,8 +254,8 @@ export class PushService {
     const endpoints = await this.prisma.database.pushEndpoint.findMany({
       where: { scope: "CUSTOMER", userId: customerId },
     });
-    const note = (status === "CANCELED" || status === "DELIVERY_FAILED")
-      && reason?.trim() ? " Lý do: " + reason.trim().slice(0, 120) : "";
+    const note = status === "CANCELED" && reason?.trim()
+      ? " Lý do: " + reason.trim().slice(0, 120) : "";
     await this.deliver(endpoints, {
       ...message, body: message.body + note, kind: "ORDER_STATUS",
       orderId, url: "/?order=" + encodeURIComponent(orderId),

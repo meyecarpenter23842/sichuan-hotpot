@@ -5,7 +5,7 @@ import { c } from "./theme";
 /** Consistent line icons drawn with React Native primitives (web and Android, no font glyphs). */
 export type IconName = "dashboard" | "catalog" | "settings" | "account" | "store" |
   "clock" | "delivery" | "power" | "bell" | "users" | "plus" | "chevron" |
-  "edit" | "pin" | "check" | "close" | "orders" | "kitchen" | "banner" | "popup" | "chat";
+  "edit" | "pin" | "phone" | "check" | "close" | "orders" | "kitchen" | "banner" | "popup" | "chat";
 
 export function Icon({ name, size = 24, color = c.ink }: {
   name: IconName; size?: number; color?: string;
@@ -77,6 +77,18 @@ export function Icon({ name, size = 24, color = c.ink }: {
       {outline(9, 6, 6, 6, 6)}
       {part(9, 15, 7, 7, { borderLeftWidth: stroke, borderBottomWidth: stroke,
         borderColor: color, transform: [{ rotate: "-45deg" }] })}</>; break;
+    case "phone": shape = <>{part(6, 2, 5, 7, {
+      borderLeftWidth: stroke * 1.4, borderBottomWidth: stroke * 1.4,
+      borderColor: color, borderBottomLeftRadius: 4 * scale,
+      transform: [{ rotate: "-32deg" }] })}
+      {part(7, 8, 9, 9, {
+        borderLeftWidth: stroke * 1.4, borderBottomWidth: stroke * 1.4,
+        borderColor: color, borderBottomLeftRadius: 8 * scale,
+        transform: [{ rotate: "-45deg" }] })}
+      {part(15, 14, 5, 7, {
+        borderRightWidth: stroke * 1.4, borderTopWidth: stroke * 1.4,
+        borderColor: color, borderTopRightRadius: 4 * scale,
+        transform: [{ rotate: "-32deg" }] })}</>; break;
     case "check": shape = <>{part(4, 13, 8, 2, { backgroundColor: color,
       transform: [{ rotate: "42deg" }], borderRadius: stroke })}
       {part(10, 10, 12, 2, { backgroundColor: color,

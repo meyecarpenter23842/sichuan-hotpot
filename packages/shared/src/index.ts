@@ -4,3 +4,4 @@ export * from "./cart.js";
 
 export * from "./vietnam-admin.js";
 export * from "./tien-giang-service-area.js";
+export * from "./order-contact.js";
