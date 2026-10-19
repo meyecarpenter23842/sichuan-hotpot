@@ -460,3 +460,68 @@ test("L06 order lanes show history despite >100 newer orders and paginate same-t
   await client.get(branchBase() + "/pages?group=new")
     .set(headers(outsider.token)).expect(403);
 });
+
+
+test("daily overview is complete, branch-scoped and uses delivery history rather than updatedAt", async () => {
+  const url = branchBase() + "/summary";
+  const old = (await client.get(url).set(headers(owner.token)).expect(200)).body;
+  const day = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())
+    - 7 * 60 * 60 * 1000);
+  assert.equal(old.date, day.toISOString().slice(0, 10));
+
+  const deliveredCases = [
+    ["COD", "CONFIRMED"],
+    ["QR", "CONFIRMED"],
+    ["QR", "PENDING"],
+    ["QR", "REFUNDED"],
+  ];
+  for (const [method, status] of deliveredCases) {
+    const delivered = await order("DELIVERED");
+    await db.payment.create({ data: {
+      orderId: delivered.id, method, status, amountVnd: 140000,
+    } });
+  }
+  const duplicate = await order("DELIVERED");
+  await db.payment.create({ data: {
+    orderId: duplicate.id, method: "COD", status: "CONFIRMED", amountVnd: 140000,
+  } });
+  await db.orderStatusHistory.create({ data: {
+    orderId: duplicate.id, toStatus: "DELIVERED", actorId: owner.id,
+  } });
+
+  const yesterday = await order("DELIVERED");
+  await db.orderStatusHistory.updateMany({ where: { orderId: yesterday.id },
+    data: { createdAt: new Date(start.getTime() - 1000) } });
+  await db.order.update({ where: { id: yesterday.id },
+    data: { customerNote: "Đơn cũ cập nhật hôm nay" } });
+  const foreign = await order("DELIVERED", randomUUID(), otherBranchId);
+  await db.payment.create({ data: {
+    orderId: foreign.id, method: "COD", status: "CONFIRMED", amountVnd: 140000,
+  } });
+  await order("PENDING");
+  await order("CONFIRMED");
+  await order("PREPARING");
+  await order("READY");
+  const current = (await client.get(url).set(headers(manager.token)).expect(200)).body;
+
+  assert.equal(current.deliveredCount, old.deliveredCount + 5);
+  assert.equal(current.deliveredValueVnd, old.deliveredValueVnd + 700000);
+  assert.equal(current.confirmedPaymentVnd, old.confirmedPaymentVnd + 420000);
+  assert.equal(current.pending, old.pending + 1);
+  assert.equal(current.preparing, old.preparing + 2);
+  assert.equal(current.ready, old.ready + 1);
+
+  // An operator sees full counts even if the alert endpoint is capped at 100.
+  const latest = (await client.get(branchBase()).set(headers(owner.token)).expect(200)).body;
+  assert.ok(latest.length <= 100);
+  assert.ok(current.pending >= latest.filter(row => row.status === "PENDING").length);
+
+  await client.get(url).expect(401);
+  await client.get(url).set(headers(outsider.token)).expect(403);
+  await client.get(url).set(headers(kitchen.token)).expect(403);
+  await client.get(url).set(headers(driver.token)).expect(403);
+  await client.get("/admin/orders/" + otherBranchId + "/summary")
+    .set(headers(manager.token)).expect(403);
+  await client.get("/admin/orders/not-an-id/summary").set(headers(owner.token)).expect(400);
+});
