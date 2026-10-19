@@ -89,15 +89,21 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
       const next = await apiRequest<CustomerOrderDetail>(
         "/customer/orders/" + encodeURIComponent(id), { accessToken },
       );
-      if (selectedOrderId.current === id) setDetail(next);
+      if (selectedOrderId.current === id && activeToken.current === accessToken) setDetail(next);
     } catch (error) {
-      if (selectedOrderId.current === id) {
+      if (selectedOrderId.current === id && activeToken.current === accessToken) {
         setProblem(error instanceof Error ? error.message : "Không tải được chi tiết đơn.");
       }
     } finally { if (!silent) setBusy(false); }
   }, [accessToken]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // Auth scope changes must immediately clear the previous customer's
+    // order list/detail; only new scoped API responses may repopulate them.
+    selectedOrderId.current = null; setDetail(null);
+    setOrders([]); setNextCursor(null);
+    void load();
+  }, [load]);
 
   // A bottom-tab reselect clears the pushed/deep-linked order detail.
   useEffect(() => {
