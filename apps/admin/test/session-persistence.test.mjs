@@ -17,7 +17,8 @@ test("Android keystore invalidation clears only unreadable refresh credential", 
   assert.match(api, /Keystore operation failed/);
   assert.match(api, /if \(!invalidKey\) throw error/);
   assert.match(api, /SecureStore\.deleteItemAsync\(REFRESH_KEY\)/);
-  assert.match(api, /return null; \/\/ the user must authenticate again/);
+  assert.match(api, /return null; \/\/ Only an irrecoverably unreadable credential needs login/);
+  assert.match(api, /if \(activeNativeRefresh\) old = activeNativeRefresh/);
   assert.doesNotMatch(api, /AsyncStorage\.setItem\(REFRESH_KEY/);
   assert.match(app, /const nextAccess = await recoverAccess\(token\)/);
   assert.match(app, /if \(!nextAccess && epoch === sessionGeneration.current\)/);
