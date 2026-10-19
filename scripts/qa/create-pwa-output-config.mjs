@@ -51,8 +51,23 @@ export function buildPwaOutputConfig(app, apiOrigin) {
       dest: apiOrigin + "/auth/browser/$1",
     });
   }
+  if (app === "admin") {
+    // Prebuilt output rules, not apps/admin/vercel.json, control production
+    // caching. HTML and the release probe must never be reused across deploys.
+    // Content-hashed Expo bundles remain cacheable under their unique URLs.
+    const neverCache = { "Cache-Control": "no-store, max-age=0, must-revalidate" };
+    routes.push({
+      src: "^/(?:index\\.html|admin-release\\.json|hotpot-sw\\.js)$",
+      headers: neverCache,
+      continue: true,
+    });
+    routes.push({ src: "^/$", headers: neverCache, continue: true });
+  }
   routes.push({ handle: "filesystem" });
-  routes.push({ src: "/(.*)", dest: "/index.html" });
+  routes.push(app === "admin"
+    ? { src: "/(.*)", dest: "/index.html",
+      headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" } }
+    : { src: "/(.*)", dest: "/index.html" });
   return { version: 3, routes };
 }
 
