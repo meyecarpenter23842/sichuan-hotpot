@@ -35,6 +35,7 @@ import { AddressPinMap } from "./src/components/AddressPinMap";
 import { VietnamAdministrativeAreaPicker } from "../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, displayAdministrativeSelection,
   validateAdministrativeSelection, approximateWardDistanceKm } from "../../packages/shared/src/vietnam-admin";
+import { isWardAllowedForNewDelivery } from "../../packages/shared/src/tien-giang-service-area";
 import { actionDepth } from "./src/components/action-depth";
 import { startBrowserSession, refreshBrowserSession, endBrowserSession } from "./src/auth/browser-session";
 import { NotificationTester } from "./src/components/NotificationTester";
@@ -760,6 +761,10 @@ function CustomerApp() {
     if (error) { setAddressErrorText(error); return; }
     if (!validateAdministrativeSelection(address)) {
       setAddressErrorText("Vui lòng chọn lại Tỉnh/TP và Phường/Xã từ danh mục hiện hành.");
+      return;
+    }
+    if (!isWardAllowedForNewDelivery(address.provinceCode, address.wardCode)) {
+      setAddressErrorText("Khu vực này thuộc Đồng Tháp cũ, hiện ngoài phạm vi giao. Hãy chọn một trong 57 xã/phường Tiền Giang cũ.");
       return;
     }
     if (!address.label.trim() || address.label.trim().length > 100) {
@@ -1847,7 +1852,9 @@ function CustomerApp() {
                 {!!principal && <CheckoutPanel accessToken={accessToken} userId={principal.id}
                   branchId={branchId} branchActive={menu?.isActive ?? false} addressId={selectedAddressId}
                   addressRevision={JSON.stringify(savedAddresses.find(a => a.id === selectedAddressId) ?? null)}
-                  addressRegionConfirmed={!!savedAddresses.find(a => a.id === selectedAddressId && validateAdministrativeSelection(a))}
+                  addressRegionConfirmed={!!savedAddresses.find(a => a.id === selectedAddressId &&
+                    validateAdministrativeSelection(a) &&
+                    isWardAllowedForNewDelivery(a.provinceCode, a.wardCode))}
                   cart={cart} onPlaced={orderPlaced} />}
               </>
             )}
