@@ -27,7 +27,7 @@ test("Admin PWA secures refresh through its own host-only same-origin cookie pro
         status: 307, headers: { Location: "https://admin.bepsi.click/$1" } },
       { src: "^/api/session/(start|refresh|logout)$", methods: ["POST"],
         dest: "https://api.example.com/auth/browser/$1" },
-      { src: "^/(?:index\\\\.html|admin-release\\\\.json|hotpot-sw\\\\.js)$",
+      { src: "^/(?:index\\.html|admin-release\\.json|hotpot-sw\\.js)$",
         headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" }, continue: true },
       { src: "^/$", headers: { "Cache-Control": "no-store, max-age=0, must-revalidate" }, continue: true },
       { handle: "filesystem" },
