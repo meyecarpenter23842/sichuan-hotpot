@@ -3,7 +3,7 @@ import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet,
   Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ADMIN_CATALOG_VERSION, provinceByCode, provinces, searchAdministrativeAreas,
-  wardByCode, type AdministrativeArea } from "../../shared/src/vietnam-admin";
+  wardByCode, wardsForProvince, type AdministrativeArea } from "../../shared/src/vietnam-admin";
 import { selectableWardsForProvince, isWardAllowedForNewDelivery } from "../../shared/src/tien-giang-service-area";
 
 type Choice = { code: string; name: string };
@@ -66,7 +66,7 @@ export function VietnamAdministrativeAreaPicker({ provinceCode, wardCode, onChan
   const [open, setOpen] = useState<"province" | "ward" | null>(null);
   const province = provinceByCode(provinceCode);
   const ward = wardByCode(wardCode);
-  const wards = useMemo(() => province ? selectableWardsForProvince(province.code) : [], [province?.code]);
+  const wards = useMemo(() => province ? selectableWardsForProvince(province.code, wardsForProvince(province.code)) : [], [province?.code]);
   const validWard = !!ward && ward.provinceCode === provinceCode;
   return <View style={s.picker}>
     <Text style={s.label}>Tỉnh/Thành phố *</Text>
@@ -106,7 +106,7 @@ export function VietnamWardMultiPicker({ provinceCode, selected, onChange, disab
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const values = useMemo(() => provinceCode ? selectableWardsForProvince(provinceCode) : [], [provinceCode]);
+  const values = useMemo(() => provinceCode ? selectableWardsForProvince(provinceCode, wardsForProvince(provinceCode)) : [], [provinceCode]);
   const valid = selected.filter(code => values.some(v => v.code === code));
   const excludedCount = selected.length - valid.length;
   return <View style={s.picker}>
