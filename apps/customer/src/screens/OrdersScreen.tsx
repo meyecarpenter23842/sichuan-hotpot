@@ -1,7 +1,7 @@
 import { displayAdministrativeSelection } from "../../../../packages/shared/src/vietnam-admin";
 import { canReorderDeliveredOrder } from "../../../../packages/shared/src/orders";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
 import { watchCustomerOrderEvents } from "../order-realtime";
 import { palette, typeScale } from "../theme";
@@ -34,6 +34,18 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
   const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState("");
   const [reorderProblem, setReorderProblem] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const cancelInFlight = useRef(false);
+  const [cancelError, setCancelError] = useState("");
+  const [contactError, setContactError] = useState("");
+  const SHOP_PHONE = "0902964685";
+  const callShop = () => {
+    setContactError("");
+    void Linking.openURL("tel:" + SHOP_PHONE)
+      .catch(() => setContactError("Không thể mở ứng dụng gọi điện. Vui lòng gọi 0902964685."));
+  };
   const selectedOrderId = useRef<string | null>(null);
   const activeToken = useRef(accessToken);
   activeToken.current = accessToken;
@@ -101,6 +113,7 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
     // Auth scope changes must immediately clear the previous customer's
     // order list/detail; only new scoped API responses may repopulate them.
     selectedOrderId.current = null; setDetail(null);
+    setCancelOpen(false); setCancelReason(""); setCancelError("");
     setOrders([]); setNextCursor(null);
     void load();
   }, [load]);
@@ -153,9 +166,44 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
     };
   }, [accessToken, detailId, load, openOrder]);
 
+  const cancelCurrentOrder = async () => {
+    const order = detail;
+    if (!order || order.status !== "PENDING" || !accessToken || cancelInFlight.current)
+      return;
+    if (cancelReason.trim().length < 5) {
+      setCancelError("Nhập lý do ít nhất 5 ký tự để quán biết vì sao hủy.");
+      return;
+    }
+    cancelInFlight.current = true; setCancelBusy(true); setCancelError("");
+    try {
+      const saved = await apiRequest<{
+        status: string; alreadyCanceled: boolean; paymentReviewRequired: boolean;
+      }>("/customer/orders/" + encodeURIComponent(order.id) + "/cancel", {
+        method: "POST", accessToken, body: { reason: cancelReason.trim() },
+      });
+      if (activeToken.current !== accessToken) return;
+      setCancelOpen(false); setCancelReason("");
+      await Promise.all([openOrder(order.id, true), load(true)]);
+      onOrderEvent?.();
+      if (saved.paymentReviewRequired) {
+        setProblem("Đơn đã hủy. Nếu đã chuyển khoản QR, gọi 0902964685 để đối soát và trao đổi hoàn tiền.");
+      }
+    } catch(e) {
+      if (activeToken.current !== accessToken) return;
+      setCancelError(e instanceof Error ? e.message : "Không thể hủy đơn. Hãy gọi quán.");
+      // Staff may have accepted the order concurrently; refresh authoritative status.
+      void openOrder(order.id, true); void load(true);
+    } finally { cancelInFlight.current = false; setCancelBusy(false); }
+  };
+
   return (
     <View style={styles.content}>
       <Text style={styles.heading}>Đơn hàng của tôi</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Gọi quán 0902964685"
+        style={styles.contactAction} onPress={callShop}>
+        <Text style={styles.contactText}>☎ Gọi quán · 0902964685</Text>
+      </Pressable>
+      {!!contactError && <Text style={styles.warning} accessibilityRole="alert">{contactError}</Text>}
       {!accessToken ? (
         <>
           <Text style={styles.muted}>Đăng nhập để xem đơn hàng và theo dõi trạng thái.</Text>
@@ -225,6 +273,17 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
                   <Text style={styles.muted}>Vui lòng kiểm tra kỹ tài khoản nhận trước khi chuyển. Đơn chỉ được xác nhận đã thanh toán sau khi cửa hàng đối soát.</Text>
                 </View>
               )}
+              {detail.status === "PENDING" && <>
+                <Text style={styles.muted}>Chỉ được tự hủy khi đơn đang chờ quán xác nhận.
+                  Sau khi quán nhận đơn, vui lòng gọi 0902964685 để được hỗ trợ.</Text>
+                <Pressable accessibilityRole="button" style={styles.cancelOutline}
+                  onPress={() => { setCancelError(""); setCancelOpen(true); }}>
+                  <Text style={styles.cancelOutlineText}>Hủy đơn đang chờ xác nhận</Text>
+                </Pressable>
+              </>}
+              {detail.status === "CONFIRMED" && <Text style={styles.muted}>
+                Quán đã nhận đơn. Cần thay đổi hoặc muốn hủy? Hãy gọi 0902964685 để trao đổi trực tiếp.
+              </Text>}
               <Text style={styles.headingSmall}>Tiến trình đơn</Text>
               {detail.statusHistory.map((event, index) => (
                 <View key={index} style={styles.timeline}>
@@ -277,6 +336,44 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
           )}
         </>
       )}
+      <Modal visible={cancelOpen} transparent animationType="fade"
+        onRequestClose={() => { if (!cancelBusy) setCancelOpen(false); }}>
+        <KeyboardAvoidingView style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView contentContainerStyle={styles.modalScroll}
+            keyboardShouldPersistTaps="handled">
+            <View style={styles.cancelSheet}>
+              <Text style={styles.headingSmall}>Xác nhận hủy đơn</Text>
+              <Text style={styles.text}>Chỉ hủy được khi quán chưa xác nhận đơn.
+                Nếu quán nhận đơn trước lúc gửi yêu cầu, thao tác sẽ bị từ chối.</Text>
+              <TextInput value={cancelReason} onChangeText={setCancelReason}
+                maxLength={500} multiline
+                editable={!cancelBusy}
+                accessibilityLabel="Lý do hủy đơn"
+                placeholder="Ví dụ: Tôi đặt nhầm món, xin hủy đơn này"
+                style={styles.cancelInput} />
+              {!!cancelError && <Text accessibilityRole="alert"
+                style={styles.warning}>{cancelError}</Text>}
+              <View style={styles.cancelActions}>
+                <Pressable accessibilityRole="button" disabled={cancelBusy}
+                  style={[styles.outline, styles.cancelAction]} onPress={() => setCancelOpen(false)}>
+                  <Text style={styles.outlineText}>Giữ đơn</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={cancelBusy}
+                  accessibilityState={{ disabled: cancelBusy }}
+                  style={[styles.button, styles.cancelAction, cancelBusy && styles.disabled]}
+                  onPress={() => void cancelCurrentOrder()}>
+                  <Text style={styles.buttonText}>
+                    {cancelBusy ? "Đang xử lý..." : "Xác nhận hủy"}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={styles.muted}>Đã chuyển khoản QR? Sau khi hủy,
+                liên hệ quán để xác minh thanh toán/hoàn tiền.</Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -308,4 +405,20 @@ const styles = StyleSheet.create({
   buttonText: { color: palette.white, fontSize: typeScale.action, fontWeight: "800" },
   outline: { minHeight: 46, borderRadius: 9, borderWidth: 1, borderColor: palette.line, justifyContent: "center", paddingHorizontal: 12 },
   outlineText: { color: palette.red, fontSize: typeScale.body, fontWeight: "700" },
+  contactAction: { minHeight: 48, borderWidth: 1, borderColor: palette.red,
+    borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  contactText: { color: palette.red, fontSize: typeScale.body, fontWeight: "800" },
+  cancelOutline: { minHeight: 46, borderWidth: 1, borderColor: palette.red,
+    borderRadius: 9, justifyContent: "center", alignItems: "center" },
+  cancelOutlineText: { color: palette.red, fontSize: typeScale.body, fontWeight: "700" },
+  modalOverlay: { flex: 1, backgroundColor: "#0008", justifyContent: "center" },
+  modalScroll: { flexGrow: 1, justifyContent: "center", padding: 16, paddingBottom: 32 },
+  cancelSheet: { width: "100%", maxWidth: 480, alignSelf: "center",
+    backgroundColor: palette.white, borderRadius: 14, padding: 18, gap: 12 },
+  cancelInput: { borderWidth: 1, borderColor: palette.line,
+    borderRadius: 9, minHeight: 84, maxHeight: 148, padding: 12,
+    textAlignVertical: "top", color: palette.text, fontSize: typeScale.body },
+  cancelActions: { flexDirection: "row", gap: 10 },
+  cancelAction: { flex: 1, alignItems: "center", justifyContent: "center" },
+  disabled: { opacity: 0.6 },
 });
