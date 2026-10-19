@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -50,6 +50,7 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
   const [syncError, setSyncError] = useState("");
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<StaffOrder | null>(null);
   const sequence = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -114,9 +115,12 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
     try {
       await request("/admin/orders/" + branchId + "/" + order.id + "/status",
         token, "PATCH", { expectedStatus: "PENDING", toStatus: "CONFIRMED" });
+      setConfirmTarget(null);
       await refresh();
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "Không xác nhận được đơn.");
+      setSyncError((error instanceof Error ? error.message : "Không xác nhận được đơn.")
+        + " Danh sách được làm mới để tránh xử lý trạng thái cũ.");
+      setConfirmTarget(null);
       await refresh();
     } finally { setConfirming(null); }
   };
@@ -185,14 +189,31 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
               Xem / từ chối
             </Text></Pressable>
           <Pressable accessibilityRole="button" disabled={confirming !== null}
-            onPress={() => void confirm(order)} style={styles.orderPrimaryButton}>
+            onPress={() => setConfirmTarget(order)} style={styles.orderPrimaryButton}>
             <Icon name="check" color={c.white} size={20} />
             <Text style={styles.orderPrimaryText}>
-              {confirming === order.id ? "Đang xác nhận..." : "Xác nhận"}
+              Xác nhận
             </Text>
           </Pressable>
         </View>
       </View>)}
+    <Modal visible={!!confirmTarget} transparent animationType="fade"
+      onRequestClose={() => { if (!confirming) setConfirmTarget(null); }}>
+      <View style={styles.confirmOverlay}>
+        <View style={styles.confirmSheet}>
+          <Text style={styles.sectionTitle}>Xác nhận nhận đơn?</Text>
+          <Text style={styles.caption}>
+            {confirmTarget ? "Đơn #" + confirmTarget.id.slice(0, 8).toUpperCase() : ""}
+            {" · Chỉ xác nhận đơn đang Mới. Hành động được ghi lịch sử."}
+          </Text>
+          <Action label={confirming ? "Đang xác nhận..." : "Xác nhận đơn"}
+            disabled={!!confirming || !confirmTarget}
+            onPress={() => { if (confirmTarget) void confirm(confirmTarget); }} />
+          <Action secondary label="Quay lại" disabled={!!confirming}
+            onPress={() => setConfirmTarget(null)} />
+        </View>
+      </View>
+    </Modal>
     <Text style={styles.dashboardFootnote}>Số liệu từ API theo chi nhánh · Không dùng dữ liệu mẫu.
       Giá trị đã giao không đồng nghĩa tiền COD đã đối soát.</Text>
   </View>;
@@ -728,6 +749,10 @@ const styles = StyleSheet.create({
   caption: { fontSize: font.note, color: c.secondary, lineHeight: 18 },
   sectionTitle: { color: c.ink, fontSize: font.section, fontWeight: "800" },
   rowTitle: { color: c.ink, fontSize: font.body, fontWeight: "700" },
+  confirmOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.42)",
+    justifyContent: "center", paddingHorizontal: 20 },
+  confirmSheet: { backgroundColor: c.white, padding: 20, borderRadius: 14,
+    gap: 14, width: "100%", maxWidth: 430, alignSelf: "center" },
   loginPage: { flex: 1, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 20, backgroundColor: c.white },
   loginPanel: { width: "100%", maxWidth: 410, gap: 14 },
