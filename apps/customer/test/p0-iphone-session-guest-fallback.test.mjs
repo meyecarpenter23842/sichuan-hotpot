@@ -32,5 +32,8 @@ test("release workflow deploys the same-origin session route and verifies canoni
   assert.match(workflow, /canonical="https:\/\/www\.bepsi\.click"/);
   assert.match(workflow, /canonical="https:\/\/admin\.bepsi\.click"/);
   assert.match(workflow, /\$canonical\/api\/session\/refresh/);
+  assert.match(workflow, /Origin: \$canonical/);
+  assert.match(workflow, /if \[\[ "\$status" == 429 \]\]/);
+  assert.match(workflow, /sleep 65/);
   assert.match(workflow, /test "\$status" = 401/);
 });

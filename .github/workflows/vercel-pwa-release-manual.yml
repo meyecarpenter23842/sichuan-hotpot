@@ -279,15 +279,24 @@ jobs:
             admin) canonical="https://admin.bepsi.click" ;;
             *) exit 1 ;;
           esac
-          # A browser without session cookies must get an AUTH 401 response.
-          # 404/405 or 200 HTML would mean the PWA is missing its session rewrite.
+          # The NestJS browser auth route REQUIRES a trusted Origin.
+          # POST without this header is 403; repeated probes may hit its 12/min
+          # throttle and return 429. Use the exact browser origin, no cookie.
           status=""
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3; do
             status="$(curl -sS --connect-timeout 8 --max-time 18 -o /dev/null \
-              -w '%{http_code}' -X POST -H 'Accept: application/json' \
-              "$canonical/api/session/refresh" || true)"
+              -w '%{http_code}' -X POST -H "Origin: $canonical" \
+              -H 'Accept: application/json' "$canonical/api/session/refresh" || true)"
             if [[ "$status" == 401 ]]; then break; fi
-            sleep 4
+            if [[ "$status" == 429 ]]; then
+              # Do not hammer the production sign-in throttle.
+              sleep 65
+            elif [[ "$status" == 000 || "$status" == 502 || "$status" == 503 || "$status" == 504 ]]; then
+              sleep 10
+            else
+              # A deterministic 403/404/405 or 200 HTML is a genuine release failure.
+              break
+            fi
           done
           test "$status" = 401 || {
             echo "::error::Production $TARGET_APP session proxy returned HTTP $status (expected 401); release not verified."
