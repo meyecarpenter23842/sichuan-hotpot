@@ -79,3 +79,19 @@ test("server rejects forged, version-stale and cross-province address codes", as
     catalogVersion:"vn-2026-09-08",provinceCode:"79",wardCode:"25747"});
   assert.equal(value.wardCode,"25747");
 });
+
+test("L02: PATCH rejects historical Đồng Tháp wards, preserving existing address records", async () => {
+  const f = fixture();
+  const old = { ...f.rows[0] };
+  for (const wardCode of ["29944", "30001", "29869"]) {
+    await assert.rejects(f.controller.update("Bearer test", "addr1", {
+      ...payload, catalogVersion: "vn-2026-09-08", provinceCode: "82", wardCode,
+    }), e => e.getStatus?.() === 400 && e.message === "ADDRESS_WARD_NOT_SERVED");
+  }
+  assert.deepEqual(f.rows[0], old);
+  const accepted = await f.controller.update("Bearer test", "addr1", {
+    ...payload, catalogVersion: "vn-2026-09-08",
+    provinceCode: "82", wardCode: "28261",
+  });
+  assert.equal(accepted.wardCode, "28261");
+});
