@@ -580,6 +580,7 @@ test("L06 paged order/purchase history reaches older delivered orders and isolat
     deliveryPolicyVersionId: policy, idempotencyKey: randomUUID(),
     status: i % 2 === 0 ? "DELIVERED" : "PENDING",
     subtotalVnd: 70000, deliveryFeeVnd: 10000, totalVnd: 80000,
+    roadDistanceMeters: 2100,
     latitudeSnapshot: "10.7731", longitudeSnapshot: "106.7032",
     addressLineSnapshot: "Đơn lịch sử nhiều trang", createdAt: timestamp,
   }));
