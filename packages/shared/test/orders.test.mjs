@@ -52,7 +52,7 @@ test("L03 reorder is allowed only after delivery across all eight statuses", () 
 
 test("L03 historical purchases distinguish combo options, sizes and repeated modifiers", () => {
   const product = {
-    productId: "combo-a", variantName: "Lớn",
+    productId: "combo-a", productName: "Combo A", variantName: "Lớn",
     modifiers: [{name: "Nấm", priceVnd: 10000}],
     comboItems: [{
       kind: "CHOICE", groupName: "Chọn nước",
@@ -64,6 +64,9 @@ test("L03 historical purchases distinguish combo options, sizes and repeated mod
   const key = historicalPurchaseKey("branch-1", product);
   assert.equal(key, historicalPurchaseKey("branch-1", structuredClone(product)));
   assert.notEqual(key, historicalPurchaseKey("branch-2", product));
+  assert.notEqual(historicalPurchaseKey("branch-1", {...product, productId: null}),
+    historicalPurchaseKey("branch-1", {...product, productId: null, productName: "Combo B"}),
+    "different deleted products must remain distinct in historical purchase list");
   assert.notEqual(key, historicalPurchaseKey("branch-1", {...product, variantName: "Nhỏ"}));
   assert.notEqual(key, historicalPurchaseKey("branch-1", {...product,
     comboItems: [{...product.comboItems[0], productId: "soup-b"}]}));
