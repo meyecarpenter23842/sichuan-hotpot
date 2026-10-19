@@ -581,3 +581,48 @@ test("OWNER customer directory and history stay branch-scoped, bounded, and priv
       .set(headers(staff.token)).expect(403);
   }
 });
+
+test("P0 server filters canceled/delivered independently and identifies cancellation actor", async () => {
+  const customerCanceled = await order("CANCELED");
+  const staffCanceled = await order("PENDING");
+  await client.patch(branchBase() + "/" + staffCanceled.id + "/status")
+    .set(headers(manager.token))
+    .send({ expectedStatus: "PENDING", toStatus: "CANCELED",
+      reason: "Quán không thể nhận đơn" }).expect(200);
+
+  const canceledPage = await client.get(branchBase() + "/pages?group=history&status=CANCELED&limit=25")
+    .set(headers(owner.token)).expect(200);
+  assert.ok(canceledPage.body.items.some(row => row.id === customerCanceled.id));
+  assert.ok(canceledPage.body.items.some(row => row.id === staffCanceled.id));
+  assert.ok(canceledPage.body.items.every(row => row.status === "CANCELED"));
+  const canceledTotal = await db.order.count({ where: { branchId, status: "CANCELED" } });
+  assert.equal(canceledPage.body.total, canceledTotal);
+
+  const deliveredPage = await client.get(branchBase() + "/pages?group=history&status=DELIVERED")
+    .set(headers(manager.token)).expect(200);
+  assert.ok(deliveredPage.body.items.every(row => row.status === "DELIVERED"));
+  assert.equal(deliveredPage.body.total, await db.order.count({
+    where: { branchId, status: "DELIVERED" },
+  }));
+
+  const fromCustomer = (await client.get(branchBase() + "/" + customerCanceled.id)
+    .set(headers(owner.token)).expect(200)).body;
+  const fromShop = (await client.get(branchBase() + "/" + staffCanceled.id)
+    .set(headers(manager.token)).expect(200)).body;
+  assert.equal(fromCustomer.statusHistory.at(-1).source, "CUSTOMER");
+  assert.equal(fromShop.statusHistory.at(-1).source, "SHOP");
+  assert.equal(fromShop.statusHistory.at(-1).reason, "Quán không thể nhận đơn");
+  assert.equal(fromShop.customerId, undefined);
+  assert.equal(fromShop.statusHistory.at(-1).actorId, undefined);
+
+  await client.get(branchBase() + "/pages?group=new&status=CANCELED")
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=history&status=PENDING")
+    .set(headers(manager.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=history&status=not-a-status")
+    .set(headers(manager.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=history&status=CANCELED")
+    .set(headers(kitchen.token)).expect(403);
+  await client.get("/admin/orders/" + otherBranchId + "/pages?group=history&status=CANCELED")
+    .set(headers(manager.token)).expect(403);
+});

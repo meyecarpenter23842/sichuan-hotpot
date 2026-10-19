@@ -108,7 +108,7 @@ export class AdminOrdersController {
     @Headers("authorization") auth: string | undefined,
     @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
     @Query("group") group?: string, @Query("cursor") cursor?: string,
-    @Query("limit") rawLimit?: string,
+    @Query("limit") rawLimit?: string, @Query("status") status?: string,
   ) {
     const allowed = ["new", "confirmed", "preparing", "ready",
       "delivering", "history", "kitchen", "delivery"] as const;
@@ -120,7 +120,13 @@ export class AdminOrdersController {
       throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
     const limit = rawLimit ? Number(rawLimit) : 25;
     if (limit > 50) throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
-    return this.orders.listPage(auth, branchId, group as (typeof allowed)[number], cursor, limit);
+    const historyStatuses = ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] as const;
+    if (status && (group !== "history" || !historyStatuses.includes(
+      status as (typeof historyStatuses)[number]))) {
+      throw new BadRequestException("INVALID_HISTORY_FILTER");
+    }
+    return this.orders.listPage(auth, branchId, group as (typeof allowed)[number],
+      cursor, limit, status as (typeof historyStatuses)[number] | undefined);
   }
 
   @Get(":branchId/customers")

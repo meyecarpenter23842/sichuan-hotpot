@@ -55,7 +55,7 @@ interface OrderDetail extends StaffOrder {
   wardCodeSnapshot?: string | null; catalogVersionSnapshot?: string | null;
   statusHistory: {
     fromStatus: OrderStatus | null; toStatus: OrderStatus;
-    createdAt: string; reason: string | null;
+    createdAt: string; reason: string | null; source: "CUSTOMER" | "SHOP" | "UNKNOWN";
   }[];
   edits?: {
     reason: string; status: OrderStatus; beforeSubtotalVnd: number; afterSubtotalVnd: number;
@@ -68,6 +68,20 @@ const statusName: Record<OrderStatus, string> = {
   READY: "Chờ giao", DELIVERING: "Đang giao", DELIVERED: "Hoàn thành",
   CANCELED: "Đã hủy", DELIVERY_FAILED: "Giao thất bại",
 };
+// One palette shared by queue rows and order detail. Terminal failure is never green.
+const statusTone: Record<OrderStatus, { background: string; text: string }> = {
+  PENDING: { background: "#FFE5E9", text: "#B51E2A" },
+  CONFIRMED: { background: "#E7F0FF", text: "#205A9A" },
+  PREPARING: { background: "#FFF0D7", text: "#8A510B" },
+  READY: { background: "#DFF0FF", text: "#205A9A" },
+  DELIVERING: { background: "#EEEAFE", text: "#6241A2" },
+  DELIVERED: { background: "#DDF4E5", text: "#175A30" },
+  CANCELED: { background: "#FDE4E8", text: "#B31E30" },
+  DELIVERY_FAILED: { background: "#FFF0D8", text: "#9A4C12" },
+};
+const cancellationSourceLabel = {
+  CUSTOMER: "Khách hủy", SHOP: "Quán hủy / từ chối", UNKNOWN: "Chưa rõ bên hủy",
+} as const;
 const money = (n: number) => n.toLocaleString("vi-VN") + "đ";
 type AdminComboChoice = {
   id: string; sourceType: "PRODUCT" | "TOPPING";
@@ -124,6 +138,13 @@ function availableActions(status: OrderStatus, role: string): { value: ActionSta
   return [];
 }
 export type OrderGroup = "new" | "confirmed" | "preparing" | "ready" | "delivering" | "history";
+export type HistoryStatusFilter = "ALL" | "DELIVERED" | "CANCELED" | "DELIVERY_FAILED";
+const historyFilters: { value: HistoryStatusFilter; label: string }[] = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "DELIVERED", label: "Hoàn thành" },
+  { value: "CANCELED", label: "Đã hủy" },
+  { value: "DELIVERY_FAILED", label: "Giao thất bại" },
+];
 const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] = [
   { id: "new", label: "Mới", statuses: ["PENDING"] },
   { id: "confirmed", label: "Đã nhận", statuses: ["CONFIRMED"] },
@@ -133,9 +154,12 @@ const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] 
   { id: "history", label: "Lịch sử", statuses: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] },
 ];
 
-export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange }: {
+export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange,
+  historyStatus, onHistoryStatusChange }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
   active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
+  historyStatus: HistoryStatusFilter;
+  onHistoryStatusChange: (value: HistoryStatusFilter) => void;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -148,7 +172,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const [laneError, setLaneError] = useState("");
   const laneRequest = useRef(0);
   const pagingBusy = useRef(false);
-  const loadedHistory = useRef(false);
+  // Number of visible rows to re-query from the server after a realtime/poll update.
+  // Never merge stale client rows from a previous status or filter into refreshed pages.
+  const loadedCount = useRef(25);
+  const historyQuery = mode === "orders" && group === "history" && historyStatus !== "ALL"
+    ? "&status=" + encodeURIComponent(historyStatus) : "";
+  const laneUrl = "/admin/orders/" + branchId + "/pages?group="
+    + encodeURIComponent(activeLane) + historyQuery;
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
@@ -181,49 +211,63 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     const current = ++laneRequest.current;
     setLaneLoading(true);
     try {
-      const page = await request<{ items: StaffOrder[]; nextCursor: string | null; total: number }>(
-        "/admin/orders/" + branchId + "/pages?group=" + encodeURIComponent(activeLane)
-        + "&limit=25", token);
+      const target = Math.max(25, loadedCount.current);
+      const rows: StaffOrder[] = [];
+      let cursor: string | null = null;
+      let total = 0;
+      // Re-fetch the full visible keyset window. A changed status on page 2 must
+      // disappear just as reliably as one on page 1.
+      do {
+        const limit = Math.min(50, target - rows.length);
+        const page: { items: StaffOrder[]; nextCursor: string | null; total: number } =
+          await request<{ items: StaffOrder[]; nextCursor: string | null; total: number }>(
+            laneUrl + "&limit=" + limit + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""),
+            token);
+        if (current !== laneRequest.current) return;
+        rows.push(...page.items);
+        total = page.total;
+        cursor = page.nextCursor;
+      } while (rows.length < target && cursor);
       if (current !== laneRequest.current) return;
-      setLaneOrders(prev => {
-        if (!loadedHistory.current) return page.items;
-        const seen = new Set(page.items.map(item => item.id));
-        return [...page.items, ...prev.filter(item => !seen.has(item.id))];
-      });
-      if (!loadedHistory.current) setLaneCursor(page.nextCursor);
-      setLaneTotal(page.total);
+      setLaneOrders(rows);
+      loadedCount.current = rows.length;
+      setLaneCursor(cursor);
+      setLaneTotal(total);
       setLaneError("");
     } catch (e) {
       if (current === laneRequest.current)
         setLaneError(e instanceof Error ? e.message : "Không tải được nhóm đơn này.");
     } finally { if (current === laneRequest.current) setLaneLoading(false); }
-  }, [active, token, branchId, activeLane]);
+  }, [active, token, laneUrl]);
 
   const loadMoreLane = async () => {
-    if (!laneCursor || pagingBusy.current) return;
+    if (!laneCursor || pagingBusy.current || laneLoading) return;
     pagingBusy.current = true; setLaneLoadingMore(true); setLaneError("");
     const current = laneRequest.current;
     try {
       const page = await request<{ items: StaffOrder[]; nextCursor: string | null; total: number }>(
-        "/admin/orders/" + branchId + "/pages?group=" + encodeURIComponent(activeLane)
-        + "&limit=25&cursor=" + encodeURIComponent(laneCursor), token);
+        laneUrl + "&limit=25&cursor=" + encodeURIComponent(laneCursor), token);
       if (current !== laneRequest.current) return;
-      loadedHistory.current = true;
       setLaneOrders(prev => {
-        const seen = new Set(prev.map(x => x.id));
-        return [...prev, ...page.items.filter(item => !seen.has(item.id))];
+        const seen = new Set(prev.map(item => item.id));
+        const updated = [...prev, ...page.items.filter(item => !seen.has(item.id))];
+        loadedCount.current = updated.length;
+        return updated;
       });
       setLaneCursor(page.nextCursor);
       setLaneTotal(page.total);
     } catch (e) {
       if (current === laneRequest.current)
         setLaneError(e instanceof Error ? e.message : "Không tải thêm được lịch sử.");
-    } finally { pagingBusy.current = false; if (current === laneRequest.current) setLaneLoadingMore(false); }
+    } finally {
+      pagingBusy.current = false;
+      setLaneLoadingMore(false);
+    }
   };
 
   useEffect(() => {
     laneRequest.current++;
-    loadedHistory.current = false;
+    loadedCount.current = 25;
     setLaneOrders([]); setLaneCursor(null); setLaneTotal(null); setLaneError("");
     setLaneLoading(true);
     if (active) void refreshLane();
@@ -614,6 +658,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const kitchenCount = orders.filter(x => x.status === "PREPARING").length;
   const deliveryCount = orders.filter(x => x.status === "DELIVERING").length;
   const deliveredCount = orders.filter(x => x.status === "DELIVERED").length;
+  const canceledChange = selected?.status === "CANCELED"
+    ? selected.statusHistory.find(change => change.toStatus === "CANCELED") : undefined;
 
   return <View style={s.page}>
     {mode !== "orders" && <>
@@ -649,7 +695,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="always" style={s.groupScroll}
         contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
-      {orderGroups.map(item => {
+      {orderGroups.filter(item => item.id !== "history").map(item => {
         const count = item.id === group && laneTotal !== null ? laneTotal : null;
         return <Pressable key={item.id} accessibilityRole="tab"
           accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
@@ -661,6 +707,15 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         </Pressable>;
       })}
       </ScrollView>
+      <Pressable accessibilityRole="tab" accessibilityLabel="Lịch sử đơn hàng"
+        accessibilityState={{ selected: group === "history" }}
+        style={[s.groupTab, s.historyTab, group === "history" && s.groupTabActive]}
+        onPress={() => onGroupChange("history")}>
+        <Text style={[s.groupLabel, group === "history" && s.groupLabelActive]}>
+          Lịch sử{group === "history" && laneTotal !== null
+            && <Text style={s.groupCount}> {laneTotal}</Text>}
+        </Text>
+      </Pressable>
       <Pressable accessibilityRole="button"
         accessibilityLabel={syncing ? "Đang tải đơn hàng" :
           lastSync ? "Đồng bộ đơn hàng. Đã đồng bộ lúc " +
@@ -670,6 +725,21 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
       </Pressable>
     </View>}
+    {mode === "orders" && group === "history" && <ScrollView horizontal
+      showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always"
+      accessibilityLabel="Lọc lịch sử đơn hàng" style={s.historyScroll}
+      contentContainerStyle={s.historyFilters}>
+      {historyFilters.map(item => <Pressable key={item.value} accessibilityRole="button"
+        accessibilityLabel={"Lọc lịch sử " + item.label}
+        accessibilityState={{ selected: historyStatus === item.value }}
+        style={[s.historyFilter, historyStatus === item.value && s.historyFilterActive]}
+        onPress={() => onHistoryStatusChange(item.value)}>
+        <Text style={[s.historyFilterLabel,
+          historyStatus === item.value && s.historyFilterLabelActive]}>
+          {item.label}
+        </Text>
+      </Pressable>)}
+    </ScrollView>}
     <ScrollView style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
     {loading || (laneLoading && laneOrders.length === 0)
@@ -688,8 +758,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         {visible.map(order => <View key={order.id} style={s.orderCard}>
           <View style={s.orderHeader}>
             <Text style={s.orderId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
-            <View style={[s.statusPill, order.status === "PENDING" && s.statusPillUrgent]}>
-              <Text style={[s.status, order.status === "PENDING" && s.urgent]}>
+            <View style={[s.statusPill, { backgroundColor: statusTone[order.status].background }]}>
+              <Text style={[s.status, { color: statusTone[order.status].text }]}>
                 {statusName[order.status]}
               </Text>
             </View>
@@ -739,7 +809,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </View>}
       {!!laneCursor && <Pressable accessibilityRole="button"
         accessibilityLabel="Xem thêm đơn hàng cũ trong nhóm"
-        disabled={laneLoadingMore} accessibilityState={{ disabled: laneLoadingMore }}
+        disabled={laneLoading || laneLoadingMore} accessibilityState={{ disabled: laneLoading || laneLoadingMore }}
         style={s.moreButton} onPress={() => void loadMoreLane()}>
         <Text style={s.moreText}>{laneLoadingMore ? "Đang tải lịch sử..." : "Xem thêm đơn cũ"}</Text>
       </Pressable>}
@@ -761,9 +831,23 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           <ScrollView contentContainerStyle={s.sheetContent} keyboardShouldPersistTaps="handled">
             {selected && <>
               <View style={s.detailStatusRow}>
-                <View style={s.statusPill}><Text style={s.status}>{statusName[selected.status]}</Text></View>
+                <View style={[s.statusPill, { backgroundColor: statusTone[selected.status].background }]}>
+                  <Text style={[s.status, { color: statusTone[selected.status].text }]}>
+                    {statusName[selected.status]}
+                  </Text>
+                </View>
                 <Text style={s.note}>Đặt lúc {when(selected.createdAt)}</Text>
               </View>
+              {selected.status === "CANCELED" && <View style={s.cancelInfo}>
+                <Text style={s.cancelTitle}>Đơn đã hủy</Text>
+                <Text style={s.cancelText}>{canceledChange
+                  ? "Hủy lúc " + new Date(canceledChange.createdAt).toLocaleString("vi-VN")
+                    + " · " + cancellationSourceLabel[canceledChange.source]
+                  : "Chưa có lịch sử xác định thời điểm và bên hủy."}</Text>
+                {canceledChange?.reason && <Text style={s.cancelText}>
+                  Lý do: {canceledChange.reason}
+                </Text>}
+              </View>}
               <View style={s.timeline}>
                 {(["PENDING", "CONFIRMED", "PREPARING", "READY"] as const).map((status, index) => {
                   const history = selected.statusHistory.find(row => row.toStatus === status);
@@ -1078,6 +1162,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
               {selected.statusHistory.map((h,i) =>
                 <Text key={i} style={s.note}>
                   {when(h.createdAt)} · {statusName[h.toStatus]}
+                  {h.toStatus === "CANCELED" ? " · " + cancellationSourceLabel[h.source] : ""}
                   {h.reason ? " · " + h.reason : ""}
                 </Text>)}
               {availableActions(selected.status, role).length > 0 && <View style={s.actions}>
@@ -1134,6 +1219,14 @@ const s = StyleSheet.create({
   groupLabel: { fontSize: font.note, color: c.secondary, fontWeight: "700" },
   groupLabelActive: { color: c.redDeep, fontWeight: "900" },
   groupCount: { fontSize: 11, fontWeight: "600" },
+  historyTab: { paddingHorizontal: 8, flexShrink: 0 },
+  historyScroll: { flexGrow: 0, maxHeight: 48 },
+  historyFilters: { gap: 6, alignItems: "center", paddingVertical: 2, paddingHorizontal: 2 },
+  historyFilter: { borderRadius: 9, backgroundColor: "#F6F1EC", paddingHorizontal: 11,
+    minHeight: 40, justifyContent: "center" },
+  historyFilterActive: { backgroundColor: "#FDE4E8" },
+  historyFilterLabel: { color: c.secondary, fontWeight: "700", fontSize: 12 },
+  historyFilterLabelActive: { color: c.redDeep },
   orderListScroll: { flex: 1 },
   orderListContent: { paddingBottom: 20, flexGrow: 1 },
   moreButton: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 18,
@@ -1212,6 +1305,10 @@ const s = StyleSheet.create({
     alignItems: "center", justifyContent: "center" },
   emptyHeading: { fontSize: 14, fontWeight: "800", color: c.ink },
   detailStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cancelInfo: { borderRadius: 10, padding: 10, gap: 5, backgroundColor: "#FFF0F1",
+    borderWidth: 1, borderColor: "#F6CDD2" },
+  cancelTitle: { color: "#B31E30", fontWeight: "800", fontSize: 13 },
+  cancelText: { color: c.ink, fontSize: 12, lineHeight: 19 },
   timeline: { backgroundColor: "#FFF9F3", paddingVertical: 10, paddingHorizontal: 6,
     flexDirection: "row", borderRadius: 12, borderWidth: 1, borderColor: "#F2E7D9" },
   timelineStep: { flex: 1, alignItems: "center", gap: 4 },

@@ -19,14 +19,35 @@ test("L06 admin history has independent backend-paged status lanes, never 100-or
   assert.match(panel, /"\/pages\?group="/);
   assert.match(panel, /setLaneTotal\(page\.total\)/);
   assert.match(panel, /Xem thêm đơn cũ/);
-  assert.match(panel, /loadedHistory\.current/);
+  assert.match(panel, /loadedCount = useRef\(25\)/);
+  assert.match(panel, /historyQuery/);
+  assert.match(service, /historyStatus \?\? \{ in: groups\[group\] \}/);
 });
 
 test("L06 old orders persist when realtime/10s refreshes newest status lane", () => {
   assert.match(panel, /refreshLaneRef\.current\(\)/);
   assert.match(panel, /setLaneOrders\(prev => \{/);
-  assert.match(panel, /\[\.\.\.page\.items, \.\.\.prev\.filter/);
-  assert.match(panel, /new Set\(prev\.map\(x => x\.id\)\)/);
+  assert.match(panel, /setLaneOrders\(rows\)/);
+  assert.match(panel, /loadedCount\.current/);
+  assert.match(panel, /while \(rows\.length < target && cursor\)/);
+  assert.match(panel, /new Set\(prev\.map\(item => item\.id\)\)/);
   assert.match(panel, /mode !== "orders" && <>/);
   assert.match(panel, /laneTotal !== null/);
+});
+
+test("P0 history filter is server-owned, cancel color and actor audit are consistent", () => {
+  assert.match(controller, /INVALID_HISTORY_FILTER/);
+  assert.match(controller, /historyStatuses = \["DELIVERED", "CANCELED", "DELIVERY_FAILED"\]/);
+  assert.match(service, /historyStatus && group !== "history"/);
+  assert.match(service, /status: historyStatus \?\? \{ in: groups\[group\] \}/);
+  assert.match(service, /source: actorId === null \? "UNKNOWN"/);
+  assert.match(service, /actorId === customerId \? "CUSTOMER"/);
+  assert.match(panel, /CANCELED: \{ background: "#FDE4E8", text: "#B31E30" \}/);
+  assert.match(panel, /DELIVERY_FAILED: \{ background: "#FFF0D8"/);
+  assert.match(panel, /historyFilters\.map/);
+  assert.match(panel, /onHistoryStatusChange\(item\.value\)/);
+  assert.match(panel, /onGroupChange\("history"\)/);
+  assert.match(panel, /cancellationSourceLabel\[canceledChange\.source\]/);
+  assert.doesNotMatch(panel, /loadedHistory\.current/);
+  assert.doesNotMatch(panel, /\.\.\.prev\.filter\(item => !seen\.has\(item\.id\)\)/);
 });
