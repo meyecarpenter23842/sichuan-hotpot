@@ -144,6 +144,7 @@ export class AdminOrdersService {
           pricingMode: true, zoneNameSnapshot: true,
           provinceCodeSnapshot: true, wardCodeSnapshot: true,
           catalogVersionSnapshot: true,
+          deliveryAssignment: { select: { driverId: true } },
           edits: {
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             select: {
