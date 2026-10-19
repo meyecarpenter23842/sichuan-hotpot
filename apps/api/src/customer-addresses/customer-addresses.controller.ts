@@ -69,7 +69,7 @@ export class CustomerAddressesController {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
     }
     if (!isWardAllowedForNewDelivery(input.provinceCode, input.wardCode)) {
-      throw new BadRequestException("ADDRESS_WARD_NOT_SERVED");
+      throw new BadRequestException({ code: "ADDRESS_WARD_NOT_SERVED" });
     }
     // Atomic profile phone + address save; only verified JWT owner can create.
     return this.prisma.database.$transaction(async tx => {
@@ -109,7 +109,7 @@ export class CustomerAddressesController {
       throw new BadRequestException("ADDRESS_REGION_INCOMPLETE");
     }
     if (!isWardAllowedForNewDelivery(input.provinceCode, input.wardCode)) {
-      throw new BadRequestException("ADDRESS_WARD_NOT_SERVED");
+      throw new BadRequestException({ code: "ADDRESS_WARD_NOT_SERVED" });
     }
     // Update only this customer's existing record. Never create a duplicate during edit.
     return this.prisma.database.$transaction(async tx => {
