@@ -409,7 +409,8 @@ test("L06 order lanes show history despite >100 newer orders and paginate same-t
   const pending = Array.from({ length: 112 }, () => ({
     id: randomUUID(), branchId, customerId: outsider.id,
     deliveryPolicyVersionId: policy, idempotencyKey: randomUUID(),
-    status: "PENDING", subtotalVnd: 100000, deliveryFeeVnd: 10000,
+    status: "PENDING", roadDistanceMeters: 2100,
+    subtotalVnd: 100000, deliveryFeeVnd: 10000,
     totalVnd: 110000, latitudeSnapshot: "10.7731", longitudeSnapshot: "106.7032",
     addressLineSnapshot: "Nhiều đơn trên cùng timestamp", createdAt: timestamp,
   }));
