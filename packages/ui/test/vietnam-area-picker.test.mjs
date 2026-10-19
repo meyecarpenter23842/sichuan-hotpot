@@ -11,12 +11,12 @@ test("shared modal picker is searchable, keyboard-safe and does not shift form l
 });
 test("province resets ward, multi ward selection constrained by selected province",()=>{
   assert.match(src,/codes\[0\] === provinceCode \? wardCode : null/);
-  assert.match(src,/selectableWardsForProvince\(provinceCode\)/);
+  assert.match(src,/selectableWardsForProvince\(provinceCode, wardsForProvince\(provinceCode\)\)/);
   assert.match(src,/accessibilityRole=\{multiple \? "checkbox" : "radio"\}/);
 });
 
 test("new selection filters former Đồng Tháp wards but preserves historical warning",()=>{
-  assert.match(src,/selectableWardsForProvince\(province.code\)/);
+  assert.match(src,/selectableWardsForProvince\(province.code, wardsForProvince\(province.code\)\)/);
   assert.match(src,/isWardAllowedForNewDelivery\(provinceCode, wardCode\)/);
   assert.match(src,/excludedCount > 0/);
 });
