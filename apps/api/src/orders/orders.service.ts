@@ -295,6 +295,35 @@ export class OrdersService {
     });
   }
 
+  // Independent cursor pagination preserves historical orders as a store grows.
+  // The legacy list endpoint stays unchanged for older app versions.
+  async listPage(authorization: string | undefined,
+    cursorId?: string, deliveredOnly = false, requestedLimit = 20) {
+    const customerId = await this.customerId(authorization);
+    const limit = Math.min(50, Math.max(1, requestedLimit));
+    const scope = { customerId, ...(deliveredOnly ? { status: "DELIVERED" as const } : {}) };
+    const cursor = cursorId ? await this.prisma.database.order.findFirst({
+      where: { ...scope, id: cursorId }, select: { id: true, createdAt: true },
+    }) : null;
+    if (cursorId && !cursor) throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
+    const rows = await this.prisma.database.order.findMany({
+      where: { ...scope, ...(cursor ? { OR: [
+        { createdAt: { lt: cursor.createdAt } },
+        { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+      ] } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      select: {
+        id: true, branchId: true, status: true, createdAt: true,
+        subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
+        payment: { select: { method: true, status: true } },
+      },
+    });
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit);
+    return { items, nextCursor: hasMore ? items[items.length - 1]?.id ?? null : null };
+  }
+
   async detail(authorization: string | undefined, orderId: string) {
     const customerId = await this.customerId(authorization);
     const order = await this.prisma.database.order.findFirst({
