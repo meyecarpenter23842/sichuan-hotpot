@@ -13,7 +13,7 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
-import { OrderQueuePanel, type StaffOrder } from "./src/OrderQueuePanel";
+import { OrderQueuePanel, type OrderGroup, type StaffOrder } from "./src/OrderQueuePanel";
 import { watchOrderEvents } from "./src/order-realtime";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import {
@@ -225,6 +225,8 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
+  // Parent-owned: switching between bottom tabs must not reset order sub-filter.
+  const [orderGroup, setOrderGroup] = useState<OrderGroup>("new");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -298,6 +300,7 @@ export default function AdminApp() {
     setBranchId(old => old && available.some(b => b.id === old)
       ? old : (available[0]?.id ?? null));
     if (available[0]?.staffRole === "KITCHEN") setTab("kitchen");
+    else if (available[0]?.staffRole === "DRIVER") setTab("delivery");
   }, []);
 
   useEffect(() => {
@@ -515,9 +518,11 @@ export default function AdminApp() {
   const selectedBranch = branches.find(b => b.id === branchId);
   const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
   const kitchenOnly = branchRole === "KITCHEN";
-  const visibleTabs = tabs.filter(item =>
-    ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id)
-    && (!kitchenOnly || item.id === "kitchen"));
+  const driverOnly = branchRole === "DRIVER";
+  const operator = branchRole === "OWNER" || branchRole === "MANAGER";
+  const visibleTabs = tabs.filter(item => driverOnly ? item.id === "delivery"
+    : kitchenOnly ? item.id === "kitchen"
+    : ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id));
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle={token ? "light-content" : "dark-content"}
@@ -595,11 +600,11 @@ export default function AdminApp() {
                 Quản lý đơn hàng · Vận hành cửa hàng
               </Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
+            {operator && <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
               onPress={() => { setChooseBranch(false); setTab("settings"); }}
               style={styles.heroAction}>
               <Icon name="settings" size={22} color="#F8E8D0" />
-            </Pressable>
+            </Pressable>}
             <Pressable accessibilityRole="button" accessibilityLabel="Mở tài khoản"
               onPress={() => { setChooseBranch(false); setTab("account"); }}
               style={styles.heroAction}>
@@ -638,8 +643,13 @@ export default function AdminApp() {
         </View>
         {!!headerToast && <View pointerEvents="none" style={[styles.headerToastLayer,
           { top: headerHeight + 4 }]}><Notice text={headerToast} error /></View>}
-        {tab === "catalog" && catalog && branches.length > 0 && !loadError ?
+        {tab === "catalog" && catalog && branches.length > 0 && !loadError && operator ?
           <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
+          (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId
+            && branches.length > 0 ?
+            <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
+              role={branchRole} mode={tab} active group={orderGroup}
+              onGroupChange={setOrderGroup} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
@@ -651,10 +661,7 @@ export default function AdminApp() {
                 onCancel={() => setCreateBranch(false)} /> :
                 <Action label="Tạo chi nhánh đầu tiên" onPress={() => setCreateBranch(true)} />}
             </> : <Notice error text="Tài khoản chưa được cấp quyền quản lý chi nhánh nào." />}
-          </View> : (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId ?
-            <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active /> :
-            tab === "account" ? <View style={styles.account}>
+          </View> : tab === "account" ? <View style={styles.account}>
               <Text style={styles.sectionTitle}>Tài khoản quản trị</Text>
               <Text style={styles.rowTitle}>{roleName(branchRole)}</Text>
               <Text style={styles.caption}>Dữ liệu được phân quyền theo chi nhánh tại backend.</Text>
@@ -698,7 +705,9 @@ export default function AdminApp() {
                 accessibilityLabel={"Chọn chi nhánh " + branch.name}
                 style={styles.branchItem} onPress={() => {
                   setBranchId(branch.id); setChooseBranch(false);
-                  setTab(branch.staffRole === "KITCHEN" ? "kitchen" : "overview");
+                  setTab(branch.staffRole === "KITCHEN" ? "kitchen"
+                    : branch.staffRole === "DRIVER" ? "delivery" : "overview");
+                  setOrderGroup("new");
                 }}>
                 <Text style={styles.branchItemText} numberOfLines={2}>{branch.name}</Text>
                 {branch.id === branchId && <Text style={styles.selectedMark}>✓</Text>}
