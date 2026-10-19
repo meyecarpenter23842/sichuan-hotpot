@@ -30,7 +30,7 @@ test("L06 old orders persist when realtime/10s refreshes newest status lane", ()
   assert.match(panel, /setLaneOrders\(rows\)/);
   assert.match(panel, /loadedCount\.current/);
   assert.match(panel, /while \(rows\.length < target && cursor\)/);
-  assert.match(panel, /new Set\(prev\.map\(x => x\.id\)\)/);
+  assert.match(panel, /new Set\(prev\.map\(item => item\.id\)\)/);
   assert.match(panel, /mode !== "orders" && <>/);
   assert.match(panel, /laneTotal !== null/);
 });
