@@ -23,7 +23,7 @@ test("orders never fake sync and use real backend status patch and retry on reco
   assert.match(orders, /AppState\.addEventListener\("change"/);
   assert.match(orders, /setInterval\(\(\) =>/);
   assert.match(orders, /Đã đồng bộ lúc/);
-  assert.match(orders, /Mất đồng bộ/);
+  assert.match(orders, /!!error && <Notice error text=\{error\} \/>/);
   assert.match(orders, /Modal visible=\{!!selected\}/);
   assert.doesNotMatch(orders, /setOrders\(\[\s*\{\s*id:/);
 });

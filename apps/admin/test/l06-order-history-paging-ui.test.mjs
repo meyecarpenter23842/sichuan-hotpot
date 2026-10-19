@@ -27,6 +27,6 @@ test("L06 old orders persist when realtime/10s refreshes newest status lane", ()
   assert.match(panel, /setLaneOrders\(prev => \{/);
   assert.match(panel, /\[\.\.\.page\.items, \.\.\.prev\.filter/);
   assert.match(panel, /new Set\(prev\.map\(x => x\.id\)\)/);
-  assert.match(panel, /Tổng quan gần đây/);
+  assert.match(panel, /mode !== "orders" && <>/);
   assert.match(panel, /laneTotal !== null/);
 });
