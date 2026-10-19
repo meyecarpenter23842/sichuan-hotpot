@@ -239,9 +239,11 @@ export async function refreshSession(): Promise<AuthTokens | null> {
 
 export async function forgetSession(token: string | null): Promise<void> {
   ++sessionRevision; // stop any in-flight rotation from reinstating a logged-out user
+  if (refreshPending) await refreshPending.catch(() => null);
+  // Clear the in-memory successor only AFTER a concurrent rotate has ended.
+  // Its late Keystore write must not resurrect login after explicit sign-out.
   activeNativeRefresh = null;
   pendingNativePersistence = false;
-  if (refreshPending) await refreshPending.catch(() => null);
   if (Platform.OS === "web") {
     await AsyncStorage.removeItem(WEB_SESSION_MARKER);
     await webSession("logout").catch(() => undefined);
