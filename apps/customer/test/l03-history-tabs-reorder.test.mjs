@@ -30,6 +30,8 @@ test("L03 historical combo options are rendered and never grouped by modifier na
   assert.match(purchases, /purchase.item.comboItems.map/);
   assert.match(purchases, /component.variantName/);
   assert.match(purchases, /purchase.item.lineTotalVnd/);
+  assert.match(purchases, /!purchase.item.productId/);
+  assert.match(purchases, /Ngừng bán/);
   assert.match(app, /onOrderEvent=\{notifyPurchaseRevision\}/);
   assert.match(app, /refreshSignal=\{purchaseRevision\}/);
   assert.match(orders, /watchCustomerOrderEvents\(accessToken/);
