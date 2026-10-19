@@ -6,7 +6,7 @@ import { ADMIN_CATALOG_VERSION, wardsForProvince, validateAdministrativeSelectio
   displayAdministrativeSelection } from "../dist/vietnam-admin.js";
 
 const all = wardsForProvince("82");
-const allowed = selectableWardsForProvince("82");
+const allowed = selectableWardsForProvince("82", all);
 const excluded = all.filter(ward => !isWardAllowedForNewDelivery("82", ward.code));
 
 // 13 historical phường in Mỹ Tho, Gò Công and Cai Lậy, not inferred from names.
@@ -40,6 +40,6 @@ test("official master list and existing history display never shrink or disappea
   assert.equal(isWardAllowedForNewDelivery("82", "99999"), false);
   assert.equal(isWardAllowedForNewDelivery("82", "28261"), true);
   assert.equal(isWardAllowedForNewDelivery("82", "29944"), false);
-  assert.equal(selectableWardsForProvince("79").length, wardsForProvince("79").length);
+  assert.equal(selectableWardsForProvince("79", wardsForProvince("79")).length, wardsForProvince("79").length);
   assert.equal(isWardAllowedForNewDelivery("79", "25747"), true);
 });
