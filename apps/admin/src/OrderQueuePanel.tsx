@@ -132,8 +132,6 @@ const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] 
   { id: "delivering", label: "Đang giao", statuses: ["DELIVERING"] },
   { id: "history", label: "Lịch sử", statuses: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] },
 ];
-const kitchenStatuses: OrderStatus[] = ["CONFIRMED", "PREPARING", "READY"];
-const deliveryStatuses: OrderStatus[] = ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"];
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
