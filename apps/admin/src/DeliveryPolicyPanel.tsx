@@ -5,6 +5,7 @@ import { Action, Field, Notice } from "./ui";
 import { StatusSwitch } from "./StatusSwitch";
 import { VietnamAdministrativeAreaPicker, VietnamWardMultiPicker } from "../../../packages/ui/src/VietnamAdministrativeAreaPicker";
 import { ADMIN_CATALOG_VERSION, provinceByCode, wardByCode } from "../../../packages/shared/src/vietnam-admin";
+import { isWardAllowedForNewDelivery } from "../../../packages/shared/src/tien-giang-service-area";
 import { c, font } from "./theme";
 
 interface Zone {
@@ -95,7 +96,8 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
     if (!draft.name.trim() || draft.name.length > 160 ||
       !provinceByCode(draft.provinceCode) ||
       draft.catalogVersion !== ADMIN_CATALOG_VERSION ||
-      wardCodes.some(code => wardByCode(code)?.provinceCode !== draft.provinceCode) ||
+      wardCodes.some(code => wardByCode(code)?.provinceCode !== draft.provinceCode
+        || !isWardAllowedForNewDelivery(draft.provinceCode, code)) ||
       !isVnd(draft.feeVnd) || Number(draft.feeVnd) > 10000000) {
       setError("Tên vùng, tỉnh/phường trong danh mục hoặc mức phí chưa hợp lệ.");
       return;
@@ -118,6 +120,11 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
 
   async function save() {
     if (saving) return;
+    if (zones.some(zone => zone.wardCodes.some(code =>
+      !isWardAllowedForNewDelivery(zone.provinceCode, code)))) {
+      setError("Chính sách cũ còn xã/phường thuộc Đồng Tháp cũ. Hãy chỉnh lại các vùng trước khi lưu.");
+      return;
+    }
     if (!isVnd(minimum) || (freeFrom !== "" && !isVnd(freeFrom)) ||
       !zones.length || !zones.some(zone => zone.isActive)) {
       setError("Cần ít nhất một vùng đang giao, mức đơn tối thiểu và mức miễn phí hợp lệ.");
@@ -157,7 +164,7 @@ export function DeliveryPolicyPanel({ token, branchId, active, mode = "delivery"
           label="Cho phép nhận đơn" hint="Chỉ lưu khi vùng giao đã được thiết lập"
           onValueChange={next => { setAcceptingOrders(next); setSuccess(""); }} />
       </> : <>
-        <Text style={st.note}>Tính phí bằng mã tỉnh/TP và mã phường/xã/đặc khu theo phiên bản danh mục. Danh sách phường trong cùng vùng dùng chung một mức phí. Để trống phường để làm mức dự phòng toàn tỉnh; mức phường cụ thể được ưu tiên.</Text>
+        <Text style={st.note}>Tính phí bằng mã tỉnh/TP và mã phường/xã/đặc khu theo phiên bản danh mục. Danh sách phường trong cùng vùng dùng chung một mức phí. Để trống phường để làm mức dự phòng toàn tỉnh; riêng Đồng Tháp chỉ áp dụng cho 57 xã/phường Tiền Giang cũ. Mức phường cụ thể được ưu tiên.</Text>
         <Field label="Giá trị đơn tối thiểu (VND)" numeric value={minimum}
           onChangeText={setMinimum} placeholder="0" />
         <Field label="Miễn phí giao từ (VND, để trống nếu không áp dụng)" numeric
