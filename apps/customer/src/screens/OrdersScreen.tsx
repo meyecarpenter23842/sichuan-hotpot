@@ -1,4 +1,5 @@
 import { displayAdministrativeSelection } from "../../../../packages/shared/src/vietnam-admin";
+import { canReorderDeliveredOrder } from "../../../../packages/shared/src/orders";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiRequest, type CustomerOrderDetail, type CustomerOrderSummary } from "../api";
@@ -24,9 +25,10 @@ type Props = {
   onLogin: () => void;
   onReorder: (order: CustomerOrderDetail) => string | null;
   focusOrderId?: string | null;
+  onOrderEvent?: () => void;
 };
 
-export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: Props) {
+export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, onOrderEvent }: Props) {
   const [orders, setOrders] = useState<CustomerOrderSummary[]>([]);
   const [detail, setDetail] = useState<CustomerOrderDetail | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,10 +76,12 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
   useEffect(() => {
     if (!accessToken) return;
     return watchCustomerOrderEvents(accessToken, () => {
+      // Keep list and selected detail fresh, including when the purchases tab is visible.
+      void load(true);
       if (selectedOrderId.current) void openOrder(selectedOrderId.current, true);
-      else void load(true);
+      onOrderEvent?.();
     });
-  }, [accessToken, load, openOrder]);
+  }, [accessToken, load, openOrder, onOrderEvent]);
   useEffect(() => {
     if (!accessToken) return;
     const refresh = () => {
@@ -187,10 +191,20 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
                   <Text style={styles.muted}>{new Date(event.createdAt).toLocaleString("vi-VN")}</Text>
                 </View>
               ))}
-              <Pressable style={[styles.button, actionDepth.primary]} accessibilityRole="button"
-                onPress={() => setReorderProblem(onReorder(detail) ?? "")}>
-                <Text style={styles.buttonText}>Đặt lại các món</Text>
-              </Pressable>
+              {canReorderDeliveredOrder(detail.status) ? (
+                <Pressable style={[styles.button, actionDepth.primary]} accessibilityRole="button"
+                  accessibilityLabel="Đặt lại các món trong đơn đã giao"
+                  onPress={() => {
+                    if (!canReorderDeliveredOrder(detail.status)) return;
+                    setReorderProblem(onReorder(detail) ?? "");
+                  }}>
+                  <Text style={styles.buttonText}>Đặt lại các món</Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.reorderHint}>
+                  Chỉ có thể đặt lại khi đơn đã giao thành công. Anh/chị vẫn có thể theo dõi tiến trình ở trên.
+                </Text>
+              )}
               {!!reorderProblem && <Text style={styles.warning} accessibilityRole="alert">{reorderProblem}</Text>}
             </View>
           ) : (
@@ -218,11 +232,12 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId }: 
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 16, paddingTop: 16, gap: 11 },
+  content: { paddingHorizontal: 16, paddingTop: 16, gap: 11, paddingBottom: 12 },
   heading: { fontSize: typeScale.page, fontWeight: "800", color: palette.text },
   headingSmall: { fontSize: typeScale.action, fontWeight: "800", color: palette.text },
   group: { gap: 11 },
-  order: { borderRadius: 10, borderWidth: 1, borderColor: palette.line, padding: 12 },
+  order: { borderBottomWidth: 1, borderBottomColor: palette.line,
+    paddingVertical: 15, paddingHorizontal: 2, minHeight: 74 },
   line: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
   fill: { flex: 1 },
   comboSnapshot: { gap: 2, paddingTop: 3 },
@@ -234,6 +249,8 @@ const styles = StyleSheet.create({
   price: { color: palette.red, fontSize: typeScale.action, fontWeight: "800" },
   muted: { color: palette.muted, fontSize: typeScale.small, lineHeight: 18 },
   warning: { color: palette.red, fontSize: typeScale.body, lineHeight: 19 },
+  reorderHint: { color: palette.muted, fontSize: typeScale.body, lineHeight: 20,
+    paddingVertical: 8, borderTopWidth: 1, borderTopColor: palette.line },
   qrPanel: { borderRadius: 10, backgroundColor: palette.graySurface, padding: 12, gap: 8 },
   qrImage: { width: "100%", height: 305 },
   timeline: { borderLeftWidth: 2, borderLeftColor: palette.line, paddingLeft: 10, gap: 3 },
