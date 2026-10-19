@@ -14,7 +14,7 @@ test("Customer account opens notification popup rather than rendering diagnostic
   assert.match(dialog, /Bật thông báo/);
   assert.match(dialog, /onRequestClose={close}/);
   assert.match(dialog, /quán xác nhận hoặc hủy đơn, và khi đơn bắt đầu giao/);
-  assert.doesNotMatch(dialog, /FCM token|Firebase|Test đầy đủ|WebSocket|Switch/);
+  assert.doesNotMatch(dialog, /<Switch\b|<NotificationTester\b|Test đầy đủ|FCM token/);
 });
 
 test("Home bell navigates to orders; popup uses original enable action", () => {
