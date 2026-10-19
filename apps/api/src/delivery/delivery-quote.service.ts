@@ -2,7 +2,8 @@ import {
   BadRequestException, ForbiddenException, Injectable, NotFoundException,
   ServiceUnavailableException, UnprocessableEntityException,
 } from "@nestjs/common";
-import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection,
+  isWardAllowedForNewDelivery } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { RoadRoutingService } from "./road-routing.service";
@@ -68,6 +69,11 @@ export class DeliveryQuoteService {
     if (!branch) throw new NotFoundException("STORE_UNAVAILABLE");
     if (!branch.isActive) throw new UnprocessableEntityException({ code: "STORE_CLOSED" });
     if (!address) throw new NotFoundException("ADDRESS_UNAVAILABLE");
+    // Apply the regional gate to both ZONE (including province fallback) and
+    // legacy DISTANCE policies; older addresses remain readable but not payable.
+    if (!isWardAllowedForNewDelivery(address.provinceCode, address.wardCode)) {
+      throw new UnprocessableEntityException({ code: "ZONE_NOT_SERVED" });
+    }
     if (!policy) throw new ServiceUnavailableException("DELIVERY_POLICY_NOT_CONFIGURED");
     if (!policy.acceptingOrders) throw new UnprocessableEntityException({ code: "STORE_CLOSED" });
 

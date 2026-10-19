@@ -546,3 +546,27 @@ test("combo checkout reuses shared topping library and preserves immutable toppi
     await db.modifierOption.update({ where: { id: topping.id }, data: { isAvailable: true } });
   }
 });
+
+test("L02 old Đồng Tháp address remains readable but cannot quote or create a new order", async () => {
+  const oldAddress = await db.address.create({ data: {
+    userId, label: "Địa chỉ lịch sử", line1: "Địa chỉ lịch sử ở Đồng Tháp cũ",
+    latitude: "10.8", longitude: "106.7", catalogVersion: "vn-2026-09-08",
+    provinceCode: "82", wardCode: "29944",
+  } });
+  const keyForAttempt = randomUUID();
+  try {
+    const shown = await client.get("/customer/addresses")
+      .set("Authorization", "Bearer " + token).expect(200);
+    assert.ok(shown.body.addresses.some(a => a.id === oldAddress.id &&
+      a.wardCode === "29944"), "historical data must remain readable");
+    const quote = await client.post("/customer/delivery/quote")
+      .set("Authorization", "Bearer " + token)
+      .send({ branchId, addressId: oldAddress.id, items: orderBody().items }).expect(422);
+    assert.equal(quote.body.error?.code, "ZONE_NOT_SERVED");
+    const denied = await request({ ...orderBody(keyForAttempt), addressId: oldAddress.id }).expect(422);
+    assert.equal(denied.body.error?.code, "ZONE_NOT_SERVED");
+    assert.equal(await db.order.count({ where: { idempotencyKey: keyForAttempt } }), 0);
+  } finally {
+    await db.address.delete({ where: { id: oldAddress.id } });
+  }
+});

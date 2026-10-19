@@ -28,7 +28,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const payload: unknown = exception instanceof HttpException ? exception.getResponse() : null;
     const supplied = payload && typeof payload === "object" && "code" in payload
       ? (payload as { code?: unknown }).code : null;
-    const publicCode = status === 422 && typeof supplied === "string"
+    // Explicit business validation error for an excluded delivery ward. Do not
+    // expose arbitrary client/server messages or other unknown exception codes.
+    const allowedAddressCode = status === 400 && supplied === "ADDRESS_WARD_NOT_SERVED";
+    const publicCode = allowedAddressCode ? "ADDRESS_WARD_NOT_SERVED"
+      : status === 422 && typeof supplied === "string"
       && CUSTOMER_QUOTE_CODES.has(supplied) ? supplied : null;
     const code = publicCode ?? HTTP_CODES[status]
       ?? (status >= 500 ? "INTERNAL_ERROR" : "HTTP_ERROR");

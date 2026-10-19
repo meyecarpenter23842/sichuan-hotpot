@@ -178,6 +178,7 @@ const customerBusinessErrors: Readonly<Record<string, string>> = {
   OUT_OF_RANGE: "Địa chỉ ngoài phạm vi giao.",
   ADDRESS_REGION_UNCONFIRMED: "Địa chỉ chưa chọn tỉnh/phường theo danh mục. Vui lòng cập nhật địa chỉ trước khi đặt.",
   ZONE_NOT_SERVED: "Cửa hàng chưa giao đến khu vực hành chính của địa chỉ này.",
+  ADDRESS_WARD_NOT_SERVED: "Xã/phường thuộc Đồng Tháp cũ chưa được phục vụ. Hãy chọn xã/phường Tiền Giang cũ.",
   ZONE_RATE_MISSING: "Khu vực chưa được thiết lập phí giao. Không thể đặt đơn lúc này.",
   INVALID_POLICY: "Cấu hình phí giao chưa hợp lệ. Cửa hàng cần kiểm tra lại.",
   INVALID_SUBTOTAL: "Giá trị giỏ hàng không hợp lệ, vui lòng kiểm tra món.",

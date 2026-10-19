@@ -109,3 +109,32 @@ test("zone minimum, explicit free delivery and store closed are enforced", () =>
   assert.equal(quoteZoneDelivery(100000, zoneAddress, zoneRates,
     {...zonePolicy, freeDeliveryAtSubtotalVnd: null}).feeVnd, 12000);
 });
+
+test("L02: former Đồng Tháp ward is denied even by province-wide fallback and free-shipping", () => {
+  const provinceFallback = [{ id: "dt-fallback", name: "Đồng Tháp",
+    provinceCode: "82", catalogVersion: "vn-2026-09-08",
+    wardCodes: [], feeVnd: 24000, isActive: true }];
+  const approved = { provinceCode: "82", wardCode: "28261",
+    catalogVersion: "vn-2026-09-08" };
+  const excluded = { ...approved, wardCode: "29944" };
+  assert.equal(quoteZoneDelivery(100000, approved, provinceFallback, zonePolicy).feeVnd, 24000);
+  for (const rates of [provinceFallback,
+    [{...provinceFallback[0], id: "all", wardCodes: ["28261", "29944"]}]]
+  ) {
+    assert.throws(() => quoteZoneDelivery(100000, excluded, rates,
+      {...zonePolicy, freeDeliveryAtSubtotalVnd: 0}), {code: "ZONE_NOT_SERVED"});
+  }
+  assert.throws(() => quoteZoneDelivery(100000, {...approved, wardCode: null},
+    provinceFallback, zonePolicy), {code: "ADDRESS_REGION_UNCONFIRMED"});
+});
+
+test("excluded ward is denied even by province-wide fallback pricing", () => {
+  const rates = [{ id: "fallback82", name: "Zone", provinceCode: "82",
+    catalogVersion: "vn-2026-09-08", wardCodes: [], feeVnd: 15000, isActive: true }];
+  const accepted = { provinceCode: "82", wardCode: "28261", catalogVersion: "vn-2026-09-08" };
+  assert.equal(quoteZoneDelivery(100000, accepted, rates, zonePolicy).feeVnd, 15000);
+  for (const wardCode of ["29944", "30001", "29869"]) {
+    assert.throws(() => quoteZoneDelivery(100000, { ...accepted, wardCode }, rates,
+      { ...zonePolicy, freeDeliveryAtSubtotalVnd: 0 }), { code: "ZONE_NOT_SERVED" });
+  }
+});
