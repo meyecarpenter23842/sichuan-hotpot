@@ -91,11 +91,12 @@ export interface HistoricalPurchaseSelection {
 export function historicalPurchaseKey(
   branchId: string, item: HistoricalPurchaseSelection,
 ): string {
-  const modifiers = item.modifiers.map(mod => [mod.name, mod.priceVnd]);
+  // A new menu price must not turn the SAME selection into a different purchase.
+  const modifiers = item.modifiers.map(mod => [mod.name]);
   const combo = item.comboItems.map(child => [
     child.kind, child.groupName, child.productId, child.variantId,
     child.modifierOptionId, child.productName, child.variantName,
-    child.quantity, child.priceDeltaVnd,
+    child.quantity,
   ]);
   const canonical = (values: unknown[][]) =>
     values.map(entry => JSON.stringify(entry)).sort();
