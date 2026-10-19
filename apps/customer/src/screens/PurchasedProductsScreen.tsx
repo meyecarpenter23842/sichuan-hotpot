@@ -98,6 +98,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
             <View key={purchase.key} style={styles.card}>
               <View style={styles.cardCopy}>
                 <Text style={styles.name}>{purchase.item.productName}</Text>
+                <Text style={styles.muted}>Lần mua gần nhất: {purchase.item.quantity} phần</Text>
                 {!purchase.item.productId && <Text style={styles.unavailable}>
                   Món này không còn trong thực đơn hiện tại; chỉ hiển thị lịch sử đã mua.
                 </Text>
@@ -129,7 +130,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
                   setReorderError(onReorder({ ...purchase.order, items: [purchase.item] }) ?? "");
                 }}>
                 <Text style={styles.reorderText}>
-                  {purchase.item.productId ? "＋ Mua lại" : "Ngừng bán"}
+                  {purchase.item.productId ? "＋ Mua lại " + purchase.item.quantity + " phần" : "Ngừng bán"}
                 </Text>
               </Pressable>
             </View>
