@@ -245,8 +245,11 @@ export class AdminOrdersService {
   async listPage(authorization: string | undefined, branchId: string,
     group: "new" | "confirmed" | "preparing" | "ready" | "delivering"
       | "history" | "kitchen" | "delivery",
-    cursorId?: string, limit = 25) {
+    cursorId?: string, limit = 25,
+    historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED") {
     const staff = await this.role(authorization, branchId);
+    if (historyStatus && group !== "history")
+      throw new BadRequestException("INVALID_HISTORY_FILTER");
     const groups: Record<typeof group, OrderStatus[]> = {
       new: ["PENDING"], confirmed: ["CONFIRMED"], preparing: ["PREPARING"],
       ready: ["READY"], delivering: ["DELIVERING"],
@@ -260,7 +263,7 @@ export class AdminOrdersService {
     if (staff.role === "DRIVER" && group !== "delivery")
       throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
     const scope: Prisma.OrderWhereInput = {
-      branchId, status: { in: groups[group] },
+      branchId, status: historyStatus ?? { in: groups[group] },
       ...(staff.role === "DRIVER"
         ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),
     };
@@ -295,9 +298,11 @@ export class AdminOrdersService {
       select: {
         ...(staff.role === "KITCHEN" ? kitchenOrderSelect
           : staff.role === "DRIVER" ? driverOrderSelect : selectOrder),
+        // Internal-only comparison. Never expose customer or actor IDs in the audit payload.
+        customerId: true,
         statusHistory: {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-          select: { fromStatus: true, toStatus: true, reason: true, createdAt: true },
+          select: { fromStatus: true, toStatus: true, reason: true, createdAt: true, actorId: true },
         },
         ...(staff.role === "KITCHEN" ? {} : {
           phoneSnapshot: true, addressLineSnapshot: true, roadDistanceMeters: true,
@@ -319,7 +324,15 @@ export class AdminOrdersService {
       },
     });
     if (!record) throw new NotFoundException("ORDER_NOT_FOUND");
-    return record;
+    const { customerId, statusHistory, ...detail } = record;
+    return {
+      ...detail,
+      statusHistory: statusHistory.map(({ actorId, ...change }) => ({
+        ...change,
+        source: actorId === null ? "UNKNOWN" as const
+          : actorId === customerId ? "CUSTOMER" as const : "SHOP" as const,
+      })),
+    };
   }
 
   async transition(
