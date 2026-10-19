@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection } from "@hotpot/shared";
+import { quoteDelivery, quoteZoneDelivery, DeliveryQuoteError, validateAdministrativeSelection, isWardAllowedForNewDelivery } from "@hotpot/shared";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
@@ -151,6 +151,9 @@ export class OrdersService {
             }),
           ]);
           if (!branch || !address || !policy) throw new ConflictException("QUOTE_STALE_RETRY");
+          if (!isWardAllowedForNewDelivery(address.provinceCode, address.wardCode)) {
+            throw new UnprocessableEntityException({ code: "ZONE_NOT_SERVED" });
+          }
           if (!user?.phoneE164 || !/^\+84[35789]\d{8}$/.test(user.phoneE164)) {
             throw new UnprocessableEntityException("PHONE_REQUIRED");
           }
