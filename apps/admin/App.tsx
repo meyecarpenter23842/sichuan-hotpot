@@ -13,7 +13,7 @@ import { CatalogPanel } from "./src/CatalogPanel";
 import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
-import { OrderQueuePanel, type OrderGroup, type StaffOrder } from "./src/OrderQueuePanel";
+import { OrderQueuePanel, type OrderGroup, type HistoryStatusFilter, type StaffOrder } from "./src/OrderQueuePanel";
 import { watchOrderEvents } from "./src/order-realtime";
 import { loadOrderChime, saveOrderChime } from "./src/order-notifications";
 import {
@@ -266,6 +266,7 @@ export default function AdminApp() {
   const [tab, setTab] = useState<Tab>("overview");
   // Parent-owned: switching between bottom tabs must not reset order sub-filter.
   const [orderGroup, setOrderGroup] = useState<OrderGroup>("new");
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -688,7 +689,8 @@ export default function AdminApp() {
             && branches.length > 0 ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
               role={branchRole} mode={tab} active group={orderGroup}
-              onGroupChange={setOrderGroup} /> :
+              onGroupChange={setOrderGroup} historyStatus={historyStatus}
+              onHistoryStatusChange={setHistoryStatus} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
