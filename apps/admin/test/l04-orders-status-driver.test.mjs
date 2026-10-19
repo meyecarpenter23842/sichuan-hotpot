@@ -17,7 +17,11 @@ test("L04 six real status groups with count and selected accessibility", () => {
   assert.match(panel, /accessibilityRole="tab"/);
   assert.match(panel, /accessibilityState=\{\{ selected: group === item.id \}\}/);
   assert.match(panel, /contentContainerStyle=\{s.groupRow\}/);
-  assert.match(panel, /orderGroups.find\(item => item.id === group\)/);
+  // L06 moved group filtering/counts to the scoped paged API. The tabs
+  // still render the same six groups, but use an authoritative group total.
+  assert.match(panel, /const activeLane = mode === "orders" \? group : mode/);
+  assert.match(panel, /"\/pages\?group=" \+ encodeURIComponent\(activeLane\)/);
+  assert.match(panel, /const count = item.id === group && laneTotal !== null \? laneTotal : null/);
 });
 
 test("L04 order list scrolls separately from fixed tabs and never loses filter on bottom switch", () => {
