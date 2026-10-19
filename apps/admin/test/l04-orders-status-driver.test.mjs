@@ -50,3 +50,11 @@ test("L04 driver route scopes API read and ws to assignment, controls only deliv
   assert.match(panel, /"\/driver"/);
   assert.match(panel, /DRIVER/);
 });
+
+test("L04 overview order accept is not one-tap: separate confirmation modal", () => {
+  assert.match(app, /onPress=\{\(\) => setConfirmTarget\(order\)\}/);
+  assert.match(app, /<Modal visible=\{!!confirmTarget\}/);
+  assert.match(app, /Xác nhận nhận đơn\?/);
+  assert.match(app, /if \(confirmTarget\) void confirm\(confirmTarget\)/);
+  assert.match(app, /expectedStatus: "PENDING", toStatus: "CONFIRMED"/);
+});
