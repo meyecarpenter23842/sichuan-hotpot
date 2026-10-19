@@ -282,6 +282,60 @@ export class OrdersService {
     throw new ConflictException("CHECKOUT_CONFLICT_RETRY");
   }
 
+  /**
+   * A customer may cancel only their own PENDING order. The shop's accepted
+   * order is immutable to customers. Atomic CAS prevents races with staff
+   * confirmation, double taps and duplicated audit/push messages.
+   */
+  async cancel(authorization: string | undefined, orderId: string, reason: string) {
+    const customerId = await this.customerId(authorization);
+    const note = reason.normalize("NFC").trim();
+    if (note.length < 5 || note.length > 500)
+      throw new BadRequestException("CANCEL_REASON_REQUIRED");
+    let branchId: string | null = null;
+    try {
+      const result = await this.prisma.database.$transaction(async tx => {
+        const row = await tx.order.findFirst({
+          where: { id: orderId, customerId },
+          select: { id: true, branchId: true, status: true,
+            payment: { select: { method: true, status: true } } },
+        });
+        if (!row) throw new NotFoundException("ORDER_NOT_FOUND");
+        if (row.status === "CANCELED")
+          return { id: row.id, status: "CANCELED" as const, alreadyCanceled: true,
+            paymentReviewRequired: row.payment?.method === "QR" &&
+              row.payment.status === "CONFIRMED" };
+        if (row.status !== "PENDING")
+          throw new ConflictException("ORDER_ALREADY_ACCEPTED_CONTACT_SHOP");
+        const updated = await tx.order.updateMany({
+          where: { id: orderId, customerId, status: "PENDING" },
+          data: { status: "CANCELED" },
+        });
+        if (updated.count !== 1)
+          throw new ConflictException("ORDER_ALREADY_ACCEPTED_CONTACT_SHOP");
+        await tx.orderStatusHistory.create({
+          data: { orderId, actorId: customerId, fromStatus: "PENDING",
+            toStatus: "CANCELED", reason: note },
+        });
+        branchId = row.branchId;
+        return { id: orderId, status: "CANCELED" as const, alreadyCanceled: false,
+          paymentReviewRequired: row.payment?.method === "QR" &&
+            row.payment.status === "CONFIRMED" };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      if (!result.alreadyCanceled && branchId) {
+        void this.realtime.publish({
+          type: "order.status", branchId, customerId, orderId, status: "CANCELED",
+        }).catch(() => undefined);
+        void this.push.notifyStaffCustomerCanceled(branchId, orderId).catch(() => undefined);
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034")
+        throw new ConflictException("ORDER_CHANGED_REFRESH");
+      throw error;
+    }
+  }
+
   async list(authorization: string | undefined) {
     const customerId = await this.customerId(authorization);
     return this.prisma.database.order.findMany({

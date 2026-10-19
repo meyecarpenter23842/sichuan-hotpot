@@ -233,6 +233,18 @@ export class PushService {
     }, true);
   }
 
+  async notifyStaffCustomerCanceled(branchId: string, orderId: string): Promise<void> {
+    const endpoints = await this.prisma.database.pushEndpoint.findMany({
+      where: { scope: "STAFF", branchId },
+    });
+    await this.deliver(endpoints, {
+      title: "Khách vừa hủy đơn",
+      body: "Đơn đang chờ xác nhận đã được khách hủy. Kiểm tra danh sách đơn.",
+      kind: "ORDER_STATUS", orderId,
+      url: "/?notification=orders&order=" + encodeURIComponent(orderId),
+    }, false);
+  }
+
   async notifyCustomerConfirmed(customerId: string, orderId: string): Promise<void> {
     const endpoints = await this.prisma.database.pushEndpoint.findMany({
       where: { scope: "CUSTOMER", userId: customerId },

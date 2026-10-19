@@ -153,6 +153,28 @@ async function webSession<T>(step: "start" | "refresh" | "logout", body?: object
 }
 let sessionRevision = 0;
 let refreshPending: Promise<AuthTokens | null> | null = null;
+// A successful one-time server refresh revokes the old credential immediately.
+// Keep its successor in volatile memory if Android Keystore briefly fails to
+// persist; never retry the now-revoked token while this app process is alive.
+let activeNativeRefresh: string | null = null;
+let pendingNativePersistence = false;
+
+async function persistNativeRefresh(value: string): Promise<void> {
+  activeNativeRefresh = value;
+  pendingNativePersistence = true;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await SecureStore.setItemAsync(REFRESH_KEY, value);
+      pendingNativePersistence = false;
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 80 * (attempt + 1)));
+    }
+  }
+  throw lastError instanceof Error ? lastError : Error("Android Keystore write failed");
+}
 
 export async function rememberSession(refreshToken: string): Promise<void> {
   const revision = ++sessionRevision;
@@ -161,7 +183,7 @@ export async function rememberSession(refreshToken: string): Promise<void> {
     if (revision !== sessionRevision) return;
     await AsyncStorage.setItem(WEB_SESSION_MARKER, "1");
   } else {
-    await SecureStore.setItemAsync(REFRESH_KEY, refreshToken);
+    await persistNativeRefresh(refreshToken);
   }
 }
 
@@ -176,25 +198,32 @@ async function rotateSession(): Promise<AuthTokens | null> {
   // Android may invalidate the encryption key after backup/restore, keystore
   // rotation, or an emulator snapshot. Retrying this corrupted ciphertext is
   // not useful; discard only this unreadable refresh credential.
-  let old: string | null;
+  let old: string | null = activeNativeRefresh;
   try {
-    old = await SecureStore.getItemAsync(REFRESH_KEY);
+    if (!old) old = await SecureStore.getItemAsync(REFRESH_KEY);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const invalidKey = /Could not decrypt the value|Keystore operation failed|KeyPermanentlyInvalidatedException|AEADBadTagException|BadPaddingException|UnrecoverableKeyException/i.test(message);
     if (!invalidKey) throw error; // unknown/transient storage faults: do not erase credentials
-    if (revision !== sessionRevision) return null;
+    if (activeNativeRefresh) old = activeNativeRefresh;
+    else if (revision !== sessionRevision) return null;
+    else {
     try {
       await SecureStore.deleteItemAsync(REFRESH_KEY);
     } catch {
       throw new Error("Không thể khôi phục khóa Android. Vui lòng kiểm tra bộ nhớ ứng dụng.");
     }
-    return null; // the user must authenticate again; never fake a valid session
+    return null; // Only an irrecoverably unreadable credential needs login.
+    }
   }
   if (!old || revision !== sessionRevision) return null;
+  // The last rotation may have succeeded server-side but Android storage failed.
+  // Save the current token before rotating again; never fall back to old disk data.
+  if (pendingNativePersistence) await persistNativeRefresh(old);
   const next = await request<AuthTokens>("/auth/refresh", undefined, "POST", { refreshToken: old });
   if (revision !== sessionRevision) return null;
-  await SecureStore.setItemAsync(REFRESH_KEY, next.refreshToken);
+  activeNativeRefresh = next.refreshToken; // server already revoked the old credential
+  await persistNativeRefresh(next.refreshToken);
   if (revision !== sessionRevision) return null;
   return next;
 }
@@ -211,6 +240,10 @@ export async function refreshSession(): Promise<AuthTokens | null> {
 export async function forgetSession(token: string | null): Promise<void> {
   ++sessionRevision; // stop any in-flight rotation from reinstating a logged-out user
   if (refreshPending) await refreshPending.catch(() => null);
+  // Clear the in-memory successor only AFTER a concurrent rotate has ended.
+  // Its late Keystore write must not resurrect login after explicit sign-out.
+  activeNativeRefresh = null;
+  pendingNativePersistence = false;
   if (Platform.OS === "web") {
     await AsyncStorage.removeItem(WEB_SESSION_MARKER);
     await webSession("logout").catch(() => undefined);
