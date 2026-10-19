@@ -93,6 +93,27 @@ export class AdminOrdersController {
     return this.orders.list(auth, branchId, status as OrderStatus | undefined);
   }
 
+  @Get(":branchId/pages")
+  @Header("Cache-Control", "no-store")
+  page(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Query("group") group?: string, @Query("cursor") cursor?: string,
+    @Query("limit") rawLimit?: string,
+  ) {
+    const allowed = ["new", "confirmed", "preparing", "ready",
+      "delivering", "history", "kitchen", "delivery"] as const;
+    if (!group || !allowed.includes(group as (typeof allowed)[number]))
+      throw new BadRequestException("INVALID_ORDER_LANE");
+    if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))
+      throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
+    if (rawLimit && !/^[1-9]\\d?$/.test(rawLimit))
+      throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
+    const limit = rawLimit ? Number(rawLimit) : 25;
+    if (limit > 50) throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
+    return this.orders.listPage(auth, branchId, group as (typeof allowed)[number], cursor, limit);
+  }
+
   @Get(":branchId/drivers")
   @Header("Cache-Control", "no-store")
   drivers(
