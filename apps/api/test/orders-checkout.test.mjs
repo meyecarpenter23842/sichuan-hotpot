@@ -562,9 +562,9 @@ test("L02 old Đồng Tháp address remains readable but cannot quote or create 
     const quote = await client.post("/customer/delivery/quote")
       .set("Authorization", "Bearer " + token)
       .send({ branchId, addressId: oldAddress.id, items: orderBody().items }).expect(422);
-    assert.equal(quote.body.code, "ZONE_NOT_SERVED");
+    assert.equal(quote.body.error?.code, "ZONE_NOT_SERVED");
     const denied = await request({ ...orderBody(keyForAttempt), addressId: oldAddress.id }).expect(422);
-    assert.equal(denied.body.code, "ZONE_NOT_SERVED");
+    assert.equal(denied.body.error?.code, "ZONE_NOT_SERVED");
     assert.equal(await db.order.count({ where: { idempotencyKey: keyForAttempt } }), 0);
   } finally {
     await db.address.delete({ where: { id: oldAddress.id } });
