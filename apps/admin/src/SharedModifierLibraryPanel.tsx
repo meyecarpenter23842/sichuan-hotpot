@@ -181,7 +181,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
       {removeImage?.kind==="groups"&&removeImage.id===group.id&&<View style={s.mediaConfirm}>
-       <Text style={s.hint}>Xác nhận gỡ ảnh nhóm "{group.name}"?
+       <Text style={s.hint}>Xác nhận gỡ ảnh nhóm “{group.name}”?
         Nhóm này liên kết {removeImage.usedBy} món; ảnh dùng chung sẽ được giữ trên R2.</Text>
        <View style={s.actions}>
         <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
@@ -231,7 +231,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
       </View>)}
       {removeImage?.kind==="options"&&group.options.some(o=>o.id===removeImage.id)&&
        <View style={s.mediaConfirm}>
-        <Text style={s.hint}>Xác nhận gỡ ảnh topping "{removeImage.label}"?
+        <Text style={s.hint}>Xác nhận gỡ ảnh topping “{removeImage.label}”?
          Có {removeImage.usedBy} món liên kết; ảnh dùng chung được giữ trên R2.</Text>
         <View style={s.actions}>
          <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
