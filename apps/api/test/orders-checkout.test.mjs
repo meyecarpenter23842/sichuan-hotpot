@@ -570,3 +570,61 @@ test("L02 old Đồng Tháp address remains readable but cannot quote or create 
     await db.address.delete({ where: { id: oldAddress.id } });
   }
 });
+
+
+test("L06 paged order/purchase history reaches older delivered orders and isolates customer", async () => {
+  const policy = (await db.deliveryPolicyVersion.findFirstOrThrow({ where: { branchId } })).id;
+  const timestamp = new Date("2024-03-01T00:00:00.000Z");
+  const fixture = Array.from({ length: 62 }, (_, i) => ({
+    id: randomUUID(), branchId, customerId: userId,
+    deliveryPolicyVersionId: policy, idempotencyKey: randomUUID(),
+    status: i % 2 === 0 ? "DELIVERED" : "PENDING",
+    subtotalVnd: 70000, deliveryFeeVnd: 10000, totalVnd: 80000,
+    latitudeSnapshot: "10.7731", longitudeSnapshot: "106.7032",
+    addressLineSnapshot: "Đơn lịch sử nhiều trang", createdAt: timestamp,
+  }));
+  await db.order.createMany({ data: fixture });
+  const headers = { Authorization: "Bearer " + token };
+  const seen = new Set(), delivered = new Set();
+  let cursor = null;
+  for (let n = 0; n < 12; n++) {
+    const query = "/customer/orders/pages?limit=20" + (cursor ? "&cursor=" + cursor : "");
+    const response = await client.get(query).set(headers).expect(200);
+    for (const row of response.body.items) {
+      assert.ok(!seen.has(row.id), "cursor must never repeat any order");
+      seen.add(row.id);
+    }
+    cursor = response.body.nextCursor;
+    if (!cursor) break;
+  }
+  assert.equal(cursor, null);
+  assert.ok(fixture.every(row => seen.has(row.id)), "older orders beyond 50 must be reachable");
+  cursor = null;
+  for (let n = 0; n < 12; n++) {
+    const response = await client.get("/customer/orders/pages?delivered=1&limit=20"
+      + (cursor ? "&cursor=" + cursor : "")).set(headers).expect(200);
+    assert.ok(response.body.items.every(row => row.status === "DELIVERED"));
+    for (const row of response.body.items) {
+      assert.ok(!delivered.has(row.id));
+      delivered.add(row.id);
+    }
+    cursor = response.body.nextCursor;
+    if (!cursor) break;
+  }
+  assert.equal(cursor, null);
+  assert.ok(fixture.filter(row => row.status === "DELIVERED")
+    .every(row => delivered.has(row.id)));
+  const stranger = await db.user.create({ data: { role: "CUSTOMER" },
+    select: { id: true } });
+  const foreign = await db.order.create({ data: {
+    branchId, customerId: stranger.id, deliveryPolicyVersionId: policy,
+    idempotencyKey: randomUUID(), subtotalVnd: 70000, deliveryFeeVnd: 10000,
+    totalVnd: 80000, addressLineSnapshot: "Địa chỉ người khác",
+    latitudeSnapshot: "10.7731", longitudeSnapshot: "106.7032",
+  }, select: { id: true } });
+  await client.get("/customer/orders/pages?cursor=" + foreign.id).set(headers).expect(400);
+  await client.get("/customer/orders/pages?cursor=" + randomUUID()).set(headers).expect(400);
+  await client.get("/customer/orders/pages?delivered=2").set(headers).expect(400);
+  await client.get("/customer/orders/pages?limit=51").set(headers).expect(400);
+  await client.get("/customer/orders/pages").expect(401);
+});
