@@ -54,7 +54,7 @@ test("Admin order sheet exposes guarded edit and complete delivery actions", () 
   assert.match(orders, /Lý do sửa đơn/);
   assert.match(orders, /"\/items",\s*token, "PUT"/);
   assert.match(orders, /expectedUpdatedAt: selected\.updatedAt/);
-  assert.match(orders, /Giá được tính lại từ catalog trên máy chủ/);
+  assert.match(orders, /Tổng tiền sẽ được cập nhật theo thực đơn hiện tại/);
 });
 
 test("staff order detail shows customer note and combo child size snapshot", () => {

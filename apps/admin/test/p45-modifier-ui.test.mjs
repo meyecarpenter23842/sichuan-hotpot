@@ -74,6 +74,6 @@ test("L03 editing groups has required selector, independent photos and mobile-si
 test("group editing verifies assigned product edges on refreshed server catalog",()=>{
   assert.match(library,/const latest=await request<AdminCatalog>\(root,token\)/);
   assert.match(library,/const verified=await request<AdminCatalog>\(root,token\)/);
-  assert.match(library,/Liên kết nhóm chưa được xác nhận trên máy chủ/);
+  assert.match(library,/Chưa lưu được nhóm vào món/);
   assert.match(library,/bật bán để xuất hiện trong app khách/);
 });
