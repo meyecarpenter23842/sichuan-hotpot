@@ -107,7 +107,7 @@ export class AdminOrdersController {
       throw new BadRequestException("INVALID_ORDER_LANE");
     if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))
       throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
-    if (rawLimit && !/^[1-9]\\d?$/.test(rawLimit))
+    if (rawLimit && !/^[1-9][0-9]?$/.test(rawLimit))
       throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
     const limit = rawLimit ? Number(rawLimit) : 25;
     if (limit > 50) throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
