@@ -4,7 +4,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import {
-  Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post,
+  BadRequestException, Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query,
 } from "@nestjs/common";
 import { OrdersService } from "./orders.service";
 
@@ -51,6 +51,24 @@ export class OrdersController {
   @Header("Cache-Control", "no-store")
   list(@Headers("authorization") authorization: string | undefined) {
     return this.orders.list(authorization);
+  }
+
+  @Get("pages")
+  @Header("Cache-Control", "no-store")
+  page(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("cursor") cursor?: string, @Query("limit") rawLimit?: string,
+    @Query("delivered") delivered?: string,
+  ) {
+    if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))
+      throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
+    if (delivered && delivered !== "1")
+      throw new BadRequestException("INVALID_ORDER_PAGE_FILTER");
+    if (rawLimit && !/^[1-9]\d?$/.test(rawLimit))
+      throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
+    const limit = rawLimit ? Number(rawLimit) : 20;
+    if (limit > 50) throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
+    return this.orders.listPage(authorization, cursor, delivered === "1", limit);
   }
 
   @Get("payment-methods")
