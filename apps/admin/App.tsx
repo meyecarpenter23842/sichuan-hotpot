@@ -41,11 +41,22 @@ function roleName(role: string): string {
 }
 const formatMoney = (value: number): string => value.toLocaleString("vi-VN") + "đ";
 
+type DailyOverviewSummary = {
+  date: string;
+  pending: number;
+  preparing: number;
+  ready: number;
+  deliveredCount: number;
+  deliveredValueVnd: number;
+  confirmedPaymentVnd: number;
+};
+
 function Overview({ catalog, token, branchId, onChangeTab }: {
   catalog: AdminCatalog; token: string; branchId: string;
   onChangeTab: (tab: Tab) => void;
 }) {
   const [orders, setOrders] = useState<StaffOrder[]>([]);
+  const [summary, setSummary] = useState<DailyOverviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncError, setSyncError] = useState("");
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -56,20 +67,30 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
   const refresh = useCallback(async () => {
     const id = ++sequence.current;
     try {
-      const rows = await request<StaffOrder[]>("/admin/orders/" + branchId, token);
+      const [figures, firstPage] = await Promise.all([
+        request<DailyOverviewSummary>("/admin/orders/" + branchId + "/summary", token),
+        request<{ items: StaffOrder[] }>(
+          "/admin/orders/" + branchId + "/pages?group=new&limit=3", token),
+      ]);
       if (id !== sequence.current) return;
-      setOrders(rows);
+      setOrders(firstPage.items);
+      setSummary(figures);
       setSyncError("");
       setLastSync(new Date());
     } catch (error) {
-      if (id === sequence.current) setSyncError(error instanceof Error ? error.message : "Không đồng bộ được đơn.");
+      if (id === sequence.current) {
+        setOrders([]);
+        setSummary(null);
+        setLastSync(null);
+        setSyncError(error instanceof Error ? error.message : "Không đồng bộ được đơn.");
+      }
     } finally {
       if (id === sequence.current) setLoading(false);
     }
   }, [branchId, token]);
 
   useEffect(() => {
-    setOrders([]); setLoading(true); setLastSync(null); setSyncError("");
+    setOrders([]); setSummary(null); setLoading(true); setLastSync(null); setSyncError("");
     void refresh();
     const stop = watchOrderEvents({
       branchId, token, onReady: () => { void refresh(); },
@@ -87,15 +108,10 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
   }, [refresh, token, branchId]);
 
   const counts = {
-    pending: orders.filter(order => order.status === "PENDING").length,
-    preparing: orders.filter(order => ["CONFIRMED", "PREPARING"].includes(order.status)).length,
-    ready: orders.filter(order => order.status === "READY").length,
+    pending: summary?.pending ?? 0,
+    preparing: summary?.preparing ?? 0,
+    ready: summary?.ready ?? 0,
   };
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
-  const deliveredVnd = orders
-    .filter(order => order.status === "DELIVERED"
-      && new Date(order.updatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }) === today)
-    .reduce((sum, order) => sum + (order.totalVnd ?? 0), 0);
   const metrics: { label: string; value: string; icon: IconName; tone: string; text: string; target: Tab }[] = [
     { label: "Đơn mới", value: String(counts.pending), icon: "orders",
       tone: "#FFE6E9", text: c.redDeep, target: "orders" },
@@ -103,11 +119,10 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
       tone: "#FFF1D6", text: "#8A510B", target: "kitchen" },
     { label: "Chờ giao", value: String(counts.ready), icon: "delivery",
       tone: "#DDECFC", text: "#1A548B", target: "delivery" },
-    { label: "Đã giao hôm nay", value: formatMoney(deliveredVnd), icon: "dashboard",
+    { label: "Giá trị giao hôm nay", value: formatMoney(summary?.deliveredValueVnd ?? 0), icon: "dashboard",
       tone: "#E3F5E8", text: "#167442", target: "delivery" },
   ];
-  const pending = orders.filter(order => order.status === "PENDING")
-    .sort((a,b) => a.createdAt.localeCompare(b.createdAt)).slice(0, 3);
+  const pending = orders;
   const confirm = async (order: StaffOrder) => {
     if (confirming) return;
     setConfirming(order.id);
@@ -146,7 +161,7 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
         <View style={styles.metricCopy}>
           <Text style={styles.metricLabel} numberOfLines={2}>{metric.label}</Text>
           <Text style={[styles.metricValue, { color: metric.text }]} adjustsFontSizeToFit
-            numberOfLines={1}>{loading ? "—" : metric.value}</Text>
+            numberOfLines={1}>{loading || !summary ? "—" : metric.value}</Text>
         </View>
         <Text style={[styles.metricArrow,{color:metric.text}]}>›</Text>
       </Pressable>)}
@@ -214,8 +229,11 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
         </View>
       </View>
     </Modal>
-    <Text style={styles.dashboardFootnote}>Số liệu đơn hàng của chi nhánh.
-      Giá trị đã giao không đồng nghĩa số tiền đã thu.</Text>
+    <Text style={styles.dashboardFootnote}>Tính theo giờ Việt Nam, dựa trên lúc giao thành công.
+      {summary ? "\nThanh toán đã xác nhận trong đơn giao hôm nay: "
+        + formatMoney(summary.confirmedPaymentVnd) + "." : ""}
+      {"\n"}Giá trị đơn đã giao không đồng nghĩa tiền thực thu; QR đang chờ xác nhận
+      và khoản hoàn tiền không tính là đã thu.</Text>
   </View>;
 }
 

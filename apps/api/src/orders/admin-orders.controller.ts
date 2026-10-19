@@ -93,6 +93,15 @@ export class AdminOrdersController {
     return this.orders.list(auth, branchId, status as OrderStatus | undefined);
   }
 
+  @Get(":branchId/summary")
+  @Header("Cache-Control", "no-store")
+  summary(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+  ) {
+    return this.orders.overviewSummary(auth, branchId);
+  }
+
   @Get(":branchId/pages")
   @Header("Cache-Control", "no-store")
   page(

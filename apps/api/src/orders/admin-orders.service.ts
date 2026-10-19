@@ -125,6 +125,67 @@ export class AdminOrdersService {
     });
   }
 
+  /**
+   * Branch-wide daily figures are computed on the server, not from the most
+   * recent 100 orders delivered by the alert endpoint. Vietnam observes UTC+7
+   * year-round, so the business-day window is unambiguous even on UTC hosts.
+   */
+  async overviewSummary(authorization: string | undefined, branchId: string) {
+    const staff = await this.role(authorization, branchId);
+    if (staff.role !== "OWNER" && staff.role !== "MANAGER") {
+      throw new ForbiddenException("ORDER_SUMMARY_FORBIDDEN");
+    }
+    const vietnamNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const date = vietnamNow.toISOString().slice(0, 10);
+    const start = new Date(Date.UTC(
+      vietnamNow.getUTCFullYear(), vietnamNow.getUTCMonth(),
+      vietnamNow.getUTCDate(),
+    ) - 7 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const [statuses, delivered] = await Promise.all([
+      this.prisma.database.order.groupBy({
+        by: ["status"],
+        where: { branchId, status: { in: [
+          "PENDING", "CONFIRMED", "PREPARING", "READY",
+        ] } },
+        _count: { _all: true },
+      }),
+      this.prisma.database.order.findMany({
+        where: {
+          branchId, status: "DELIVERED",
+          statusHistory: { some: {
+            toStatus: "DELIVERED",
+            createdAt: { gte: start, lt: end },
+          } },
+        },
+        select: {
+          totalVnd: true,
+          payment: { select: { method: true, status: true, amountVnd: true } },
+        },
+      }),
+    ]);
+    const counts = new Map(statuses.map(row => [row.status, row._count._all]));
+    let deliveredValueVnd = 0;
+    let confirmedPaymentVnd = 0;
+    for (const order of delivered) {
+      deliveredValueVnd += order.totalVnd;
+      // QR awaiting review, refunds and failed payments are NOT counted as paid.
+      // COD is confirmed atomically when delivery is completed.
+      if (order.payment?.status === "CONFIRMED") {
+        confirmedPaymentVnd += order.payment.amountVnd;
+      }
+    }
+    return {
+      date,
+      pending: counts.get("PENDING") ?? 0,
+      preparing: (counts.get("CONFIRMED") ?? 0) + (counts.get("PREPARING") ?? 0),
+      ready: counts.get("READY") ?? 0,
+      deliveredCount: delivered.length,
+      deliveredValueVnd,
+      confirmedPaymentVnd,
+    };
+  }
+
   // Old clients still use list() for latest order alerts. This scoped endpoint
   // pages each status lane independently, so >100 new orders cannot hide history.
   async listPage(authorization: string | undefined, branchId: string,
