@@ -47,6 +47,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
  const [selectedProducts,setSelectedProducts]=useState<string[]>([]);
  const [showProducts,setShowProducts]=useState(false);
  const [confirmImpact,setConfirmImpact]=useState(false);
+ const [removeImage,setRemoveImage]=useState<{kind:"groups"|"options";id:string;label:string;usedBy:number}|null>(null);
  const [pendingToggle,setPendingToggle]=useState<{kind:"group"|"option";id:string;enabled:boolean;usedBy:number}|null>(null);
  const products=catalog.categories.flatMap(cat=>cat.products);
  const groups=catalog.modifierLibrary??[];
@@ -69,7 +70,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
      price:String(option?.priceDeltaVnd??0),min:String(group?.minSelect??0),
      max:String(group?.maxSelect??1),order:String(group?.sortOrder??0),usedBy:n});
    setSelectedProducts(group?.usedByProductIds??[]);setShowProducts(false);
-   setError("");setNotice("");setConfirmImpact(false);
+   setError("");setNotice("");setConfirmImpact(false);setRemoveImage(null);
  }
  async function call(path:string,method:"POST"|"PATCH",payload:unknown){
    if(busy)return;
@@ -176,9 +177,19 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
     {open&&<View style={s.expanded}>
       <View style={s.actions}>
        <Action label="Ảnh nhóm" secondary onPress={()=>pickMedia("groups",group.id)}/>
-       {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>onRemoveImage("groups",group.id)}/>}
+       {!!group.imageKey&&<Action label="Gỡ ảnh nhóm" secondary onPress={()=>setRemoveImage({kind:"groups",id:group.id,label:group.name,usedBy:group.usedByProductIds?.length??0})}/>}
        <Action label="＋ Topping" secondary onPress={()=>begin("option",group)}/>
       </View>
+      {removeImage?.kind==="groups"&&removeImage.id===group.id&&<View style={s.mediaConfirm}>
+       <Text style={s.hint}>Xác nhận gỡ ảnh nhóm “{group.name}”?
+        Nhóm này liên kết {removeImage.usedBy} món; ảnh dùng chung sẽ được giữ trên R2.</Text>
+       <View style={s.actions}>
+        <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
+        <Action dangerous label="Xác nhận gỡ" onPress={()=>{
+         setRemoveImage(null);onRemoveImage("groups",group.id);
+        }}/>
+       </View>
+      </View>}
       <View style={s.line}>
        <View style={s.flex}>
          <Text style={s.name}>Hiển thị nhóm trong app khách</Text>
@@ -200,7 +211,7 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
           style={s.iconAction} onPress={()=>pickMedia("options",option.id)}>
           <Text style={s.edit}>▧</Text></Pressable>
         {!!option.imageKey&&<Pressable accessibilityRole="button" accessibilityLabel={"Gỡ ảnh topping "+option.name}
-          style={s.iconAction} onPress={()=>onRemoveImage("options",option.id)}><Text style={s.edit}>×</Text></Pressable>}
+          style={s.iconAction} onPress={()=>setRemoveImage({kind:"options",id:option.id,label:option.name,usedBy:group.usedByProductIds?.length??0})}><Text style={s.edit}>×</Text></Pressable>}
         <View style={{alignItems:"center"}}>
           <StatusSwitch value={option.isAvailable} busy={busy}
             disabled={(!option.isAvailable&&!option.imageKey)
@@ -218,6 +229,18 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
             &&<Text style={s.hint}>Bắt buộc</Text>}
         </View>
       </View>)}
+      {removeImage?.kind==="options"&&group.options.some(o=>o.id===removeImage.id)&&
+       <View style={s.mediaConfirm}>
+        <Text style={s.hint}>Xác nhận gỡ ảnh topping “{removeImage.label}”?
+         Có {removeImage.usedBy} món liên kết; ảnh dùng chung được giữ trên R2.</Text>
+        <View style={s.actions}>
+         <Action secondary label="Giữ ảnh" onPress={()=>setRemoveImage(null)}/>
+         <Action dangerous label="Xác nhận gỡ" onPress={()=>{
+          const target=removeImage;setRemoveImage(null);
+          if(target)onRemoveImage("options",target.id);
+         }}/>
+        </View>
+       </View>}
     </View>}
    </View>;
   })}
@@ -435,6 +458,8 @@ const s=StyleSheet.create({
  color:c.ink,fontWeight:"700"},arrow:{fontSize:20,color:c.red},iconAction:{minWidth:44,
  minHeight:44,justifyContent:"center",alignItems:"center"},edit:{fontSize:14,color:c.red,
  fontWeight:"700"},expanded:{gap:8,paddingBottom:8,paddingLeft:8},
+ mediaConfirm:{padding:10,gap:8,borderRadius:9,backgroundColor:"#FFF3F1",
+  borderWidth:1,borderColor:"#F0D1CE"},
  actions:{flexDirection:"row",gap:8,flexWrap:"wrap",justifyContent:"flex-end"},
  productName:{flex:1,color:c.ink,fontSize:font.body},
  backdrop:{flex:1,backgroundColor:"rgba(9,17,27,0.55)",justifyContent:"center",padding:14},

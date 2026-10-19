@@ -77,6 +77,7 @@ export function ComboEditorModal({
   onRemoveImage?: (productId: string) => void;
   mediaBusy?: boolean;
 }) {
+  const [confirmRemoveImage, setConfirmRemoveImage] = useState(false);
   const [fixed, setFixed] = useState<FixedDraft[]>(() => product?.comboFixedItems.map(item => ({
     key: item.id, productId: item.childProduct.id,
     variantId: item.variantId ?? item.variant?.id ?? null, quantity: item.quantity,
@@ -254,10 +255,19 @@ export function ComboEditorModal({
                   <Action label={product.imageKey ? "Thay ảnh" : "＋ Chọn ảnh"} secondary
                     disabled={locked || !onPickImage} onPress={() => onPickImage?.(product.id)} />
                   {!!product.imageKey && <Action label="Gỡ ảnh" secondary
-                    disabled={locked || !onRemoveImage} onPress={() => onRemoveImage?.(product.id)} />}
+                    disabled={locked || !onRemoveImage} onPress={() => setConfirmRemoveImage(true)} />}
                 </View>
               </View>
             </View>
+            {confirmRemoveImage && <View style={st.mediaConfirm}>
+              <Text style={st.warning}>Gỡ ảnh combo “{product.name}”?
+                Ảnh bị gỡ khỏi món này, nhưng object R2 còn dùng ở nơi khác vẫn được giữ.</Text>
+              <View style={st.imageActions}>
+                <Action label="Giữ ảnh" secondary onPress={() => setConfirmRemoveImage(false)} />
+                <Action label="Xác nhận gỡ" dangerous disabled={locked}
+                  onPress={() => { setConfirmRemoveImage(false); onRemoveImage?.(product.id); }} />
+              </View>
+            </View>}
             <Text style={st.help}>
               Combo dùng món thường và topping từ thư viện chung. Giá combo là giá gốc cộng phụ thu từng lựa chọn; máy chủ kiểm tra lại món, size và topping khi đặt.
             </Text>
@@ -502,6 +512,7 @@ const st = StyleSheet.create({
     backgroundColor: c.pale, alignItems: "center", justifyContent: "center" },
   imageCopy: { flex: 1, minWidth: 0, gap: 5 },
   imageActions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  mediaConfirm: { padding: 10, gap: 9, borderRadius: 10, backgroundColor: "#FFF3F1", borderWidth: 1, borderColor: "#EFCAC8" },
   photoPlaceholderText: { color: c.secondary, fontSize: 11, fontWeight: "700" },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
   sectionCopy: { flex: 1, minWidth: 0 },
