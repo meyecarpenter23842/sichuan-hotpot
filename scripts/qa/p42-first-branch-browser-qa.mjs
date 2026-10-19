@@ -92,7 +92,7 @@ try {
   // Settings is its own screen opened from the header; workflow modals remain separate.
   await page.getByRole("button", { name: "Đóng popup" }).click();
   await page.getByRole("button", { name: "Mở Phí giao" }).click();
-  await page.getByText("Chưa cấu hình phí giao.", { exact: false }).waitFor();
+  await page.getByText("Chưa thiết lập phí giao.", { exact: false }).waitFor();
   // Configure an immutable administrative-zone rate instead of a road-km tier.
   for (const [name, value] of [
     ["Giá trị đơn tối thiểu (VND)", "50000"],
