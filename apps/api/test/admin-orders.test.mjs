@@ -525,3 +525,59 @@ test("daily overview is complete, branch-scoped and uses delivery history rather
     .set(headers(manager.token)).expect(403);
   await client.get("/admin/orders/not-an-id/summary").set(headers(owner.token)).expect(400);
 });
+
+test("OWNER customer directory and history stay branch-scoped, bounded, and privacy-safe", async () => {
+  const base = branchBase() + "/customers";
+  const ownedCustomer = await user("CUSTOMER");
+  const foreignOnly = await user("CUSTOMER");
+  const sameBranch = await order("DELIVERED");
+  await db.order.update({
+    where: { id: sameBranch.id },
+    data: { customerId: ownedCustomer.id, phoneSnapshot: "+84908887766" },
+  });
+  const otherOrder = await order("DELIVERED", randomUUID(), otherBranchId);
+  await db.order.update({
+    where: { id: otherOrder.id },
+    data: { customerId: foreignOnly.id, phoneSnapshot: "+84907776655" },
+  });
+
+  const res = await client.get(base + "?limit=1").set(headers(owner.token)).expect(200);
+  assert.equal(res.body.items.length, 1);
+  assert.ok(res.body.nextCursor);
+  assert.equal(typeof res.body.items[0].orderCount, "number");
+  assert.equal(res.body.items[0].addressLineSnapshot, undefined);
+  assert.equal(res.body.items[0].latitudeSnapshot, undefined);
+  assert.equal(res.body.items[0].authIdentities, undefined);
+
+  const records = [];
+  let cursor = null;
+  for (let page = 0; page < 30; page++) {
+    const result = await client.get(base + "?limit=1" +
+      (cursor ? "&cursor=" + cursor : ""))
+      .set(headers(owner.token)).expect(200);
+    records.push(...result.body.items);
+    cursor = result.body.nextCursor;
+    if (!cursor) break;
+  }
+  assert.ok(records.some(row => row.id === ownedCustomer.id &&
+    row.phone === "+84908887766"));
+  assert.ok(!records.some(row => row.id === foreignOnly.id));
+
+  const history = await client.get(base + "/" + ownedCustomer.id)
+    .set(headers(owner.token)).expect(200);
+  assert.ok(history.body.items.some(row => row.id === sameBranch.id));
+  assert.ok(history.body.items.every(row => !Object.hasOwn(row, "addressLineSnapshot")
+    && !Object.hasOwn(row, "phoneSnapshot") && !Object.hasOwn(row, "latitudeSnapshot")));
+  await client.get(base + "/" + foreignOnly.id).set(headers(owner.token)).expect(404);
+  await client.get(base + "/" + randomUUID()).set(headers(owner.token)).expect(404);
+  await client.get(base + "/not-a-uuid").set(headers(owner.token)).expect(400);
+  await client.get(base + "?cursor=broken").set(headers(owner.token)).expect(400);
+  await client.get(base + "?limit=26").set(headers(owner.token)).expect(400);
+
+  await client.get(base).expect(401);
+  for (const staff of [manager, kitchen, driver, outsider]) {
+    await client.get(base).set(headers(staff.token)).expect(403);
+    await client.get(base + "/" + ownedCustomer.id)
+      .set(headers(staff.token)).expect(403);
+  }
+});

@@ -9,6 +9,7 @@ import { HomeOffersPanel } from "./HomeOffersPanel";
 import { HomeHeroPanel } from "./HomeHeroPanel";
 import { HomePopupPanel } from "./HomePopupPanel";
 import { ChatbotPanel } from "./ChatbotPanel";
+import { CustomerPanel } from "./CustomerPanel";
 import { type AdminCatalog, type Branch } from "./api";
 import { Icon, type IconName } from "./Icon";
 import { StatusSwitch } from "./StatusSwitch";
@@ -17,7 +18,7 @@ import { Action, Notice } from "./ui";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
 
-type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup" | "chatbot";
+type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup" | "chatbot" | "customers";
 const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
   { id: "alerts", label: "Thông báo", icon: "bell", hint: "Báo đơn mới và âm chuông", owner: false },
   { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, ghim bản đồ", owner: true },
@@ -26,6 +27,7 @@ const items: { id: Setting; label: string; icon: IconName; hint: string; owner: 
   { id: "hero", label: "Banner trang chủ", icon: "banner", hint: "Ảnh, hiệu ứng, nút mở món", owner: true },
   { id: "popup", label: "Ảnh nổi trang chủ", icon: "popup", hint: "Nhiều ảnh, thời gian hiện", owner: true },
   { id: "chatbot", label: "Chatbot AI", icon: "chat", hint: "Dialogflow CX + Zalo", owner: true },
+  { id: "customers", label: "Khách hàng", icon: "account", hint: "Khách đã mua và đơn gần đây", owner: true },
   { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Vùng giao, phí và đơn tối thiểu", owner: true },
   { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
   { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
@@ -134,6 +136,8 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
               branchId={branch.id} onDirtyChange={setDirty} />}
             {selected === "chatbot" && <ChatbotPanel key={branch.id} token={token}
               branchId={branch.id} onDirtyChange={setDirty} />}
+            {selected === "customers" && owner && <CustomerPanel key={branch.id}
+              token={token} branchId={branch.id} />}
             {selected === "orders" && <DeliveryPolicyPanel key={branch.id + ":orders"}
               token={token} branchId={branch.id} active={branch.isActive}
               mode="orders" onDirtyChange={setDirty} />}
