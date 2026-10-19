@@ -121,6 +121,7 @@ export class AdminOrdersService {
         },
         ...(staff.role === "KITCHEN" ? {} : {
           phoneSnapshot: true, addressLineSnapshot: true, roadDistanceMeters: true,
+          latitudeSnapshot: true, longitudeSnapshot: true,
           pricingMode: true, zoneNameSnapshot: true,
           provinceCodeSnapshot: true, wardCodeSnapshot: true,
           catalogVersionSnapshot: true,
@@ -212,8 +213,9 @@ export class AdminOrdersService {
       });
       if (changed.status === "CONFIRMED") {
         void this.push.notifyCustomerConfirmed(changed.customerId, orderId).catch(() => undefined);
-      } else {
-        // A customer in background still needs a push, not only a realtime event.
+      } else if (changed.status === "CANCELED" || changed.status === "DELIVERING") {
+        // Customer only needs essential alerts. Every other status still syncs via
+        // realtime/polling and remains in the server-side order history.
         void this.push.notifyCustomerStatus(changed.customerId, orderId, changed.status, reason)
           .catch(() => undefined);
       }
