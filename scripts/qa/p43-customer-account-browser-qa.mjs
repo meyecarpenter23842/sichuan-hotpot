@@ -88,7 +88,7 @@ try {
   await purchasesTab.waitFor();
   await purchasesTab.click();
   await page.getByText("Các món đã nhận", { exact: true }).waitFor();
-  await page.getByRole("tab", { name: "Đơn hàng", exact: true }).last().click();
+  await page.getByRole("tab", { name: "Đơn hàng", exact: true }).first().click();
   await page.getByText("Đơn hàng của tôi").waitFor();
   await page.getByRole("tab", { name: "Tôi" }).click();
   await bought.click();
