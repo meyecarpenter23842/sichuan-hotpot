@@ -3,7 +3,8 @@ import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet,
   Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ADMIN_CATALOG_VERSION, provinceByCode, provinces, searchAdministrativeAreas,
-  wardByCode, wardsForProvince, type AdministrativeArea } from "../../shared/src/vietnam-admin";
+  wardByCode, type AdministrativeArea } from "../../shared/src/vietnam-admin";
+import { selectableWardsForProvince, isWardAllowedForNewDelivery } from "../../shared/src/tien-giang-service-area";
 
 type Choice = { code: string; name: string };
 type SelectModalProps = {
@@ -65,7 +66,7 @@ export function VietnamAdministrativeAreaPicker({ provinceCode, wardCode, onChan
   const [open, setOpen] = useState<"province" | "ward" | null>(null);
   const province = provinceByCode(provinceCode);
   const ward = wardByCode(wardCode);
-  const wards = useMemo(() => province ? wardsForProvince(province.code) : [], [province?.code]);
+  const wards = useMemo(() => province ? selectableWardsForProvince(province.code) : [], [province?.code]);
   const validWard = !!ward && ward.provinceCode === provinceCode;
   return <View style={s.picker}>
     <Text style={s.label}>Tỉnh/Thành phố *</Text>
@@ -83,6 +84,8 @@ export function VietnamAdministrativeAreaPicker({ provinceCode, wardCode, onChan
           {validWard ? ward?.name : "Chọn phường/xã/đặc khu"}</Text><Text style={s.arrow}>⌄</Text>
       </Pressable>
     </>}
+    {provinceCode === "82" && wardCode && !isWardAllowedForNewDelivery(provinceCode, wardCode) &&
+      <Text style={s.warning}>Địa chỉ này thuộc Đồng Tháp cũ, không nằm trong vùng giao mới. Hãy chọn xã/phường khác.</Text>}
     {!!open && <SelectModal key={open + ":" + provinceCode}
       title={open === "province" ? "Tỉnh/Thành phố" : "Phường/Xã/Đặc khu"}
       values={open === "province" ? provinces : wards}
@@ -103,8 +106,9 @@ export function VietnamWardMultiPicker({ provinceCode, selected, onChange, disab
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const values = useMemo(() => provinceCode ? wardsForProvince(provinceCode) : [], [provinceCode]);
+  const values = useMemo(() => provinceCode ? selectableWardsForProvince(provinceCode) : [], [provinceCode]);
   const valid = selected.filter(code => values.some(v => v.code === code));
+  const excludedCount = selected.length - valid.length;
   return <View style={s.picker}>
     <Text style={s.label}>Các phường/xã cùng mức phí</Text>
     <Pressable accessibilityRole="button" accessibilityLabel="Chọn các phường/xã"
@@ -113,6 +117,7 @@ export function VietnamWardMultiPicker({ provinceCode, selected, onChange, disab
       <Text style={s.fieldText}>{valid.length ? valid.length + " phường/xã đã chọn" :
         "Chọn phường (để trống nếu áp dụng toàn tỉnh)"}</Text><Text style={s.arrow}>⌄</Text>
     </Pressable>
+    {excludedCount > 0 && <Text style={s.warning}>{excludedCount} mã thuộc vùng đã ngừng phục vụ vẫn còn trong chính sách cũ. Chọn lại và lưu chính sách mới để loại bỏ.</Text>}
     {open && <SelectModal title="Các phường/xã" values={values} selected={valid}
       multiple onChoose={onChange} onDismiss={() => setOpen(false)} />}
   </View>;
@@ -141,6 +146,7 @@ const s = StyleSheet.create({
   optionText: { flex: 1, fontSize: 13, color: "#252D35" },
   code: { fontSize: 11, color: "#79818B" }, tick: { color: "#B3262D", fontWeight: "800" },
   empty: { padding: 20, fontSize: 13, color: "#66717B" },
+  warning: { fontSize: 12, lineHeight: 18, color: "#A34213" },
   footer: { flexDirection: "row", padding: 12, justifyContent: "space-between", alignItems: "center",
     borderTopWidth: 1, borderTopColor: "#EDEFF3" },
   count: { fontSize: 12, color: "#5B6370" },
