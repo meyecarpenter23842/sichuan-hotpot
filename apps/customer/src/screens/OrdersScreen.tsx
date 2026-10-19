@@ -31,7 +31,7 @@ type Props = {
 export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, onOrderEvent }: Props) {
   const [orders, setOrders] = useState<CustomerOrderSummary[]>([]);
   const [detail, setDetail] = useState<CustomerOrderDetail | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState("");
   const [reorderProblem, setReorderProblem] = useState("");
   const selectedOrderId = useRef<string | null>(null);
@@ -67,6 +67,11 @@ export function OrdersScreen({ accessToken, onLogin, onReorder, focusOrderId, on
   }, [accessToken]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // A bottom-tab reselect clears the pushed/deep-linked order detail.
+  useEffect(() => {
+    if (!focusOrderId) { selectedOrderId.current = null; setDetail(null); }
+  }, [focusOrderId]);
 
   useEffect(() => {
     if (focusOrderId && accessToken) void openOrder(focusOrderId);
