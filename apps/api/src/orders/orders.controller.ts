@@ -64,7 +64,7 @@ export class OrdersController {
       throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
     if (delivered && delivered !== "1")
       throw new BadRequestException("INVALID_ORDER_PAGE_FILTER");
-    if (rawLimit && !/^[1-9]\d?$/.test(rawLimit))
+    if (rawLimit && !/^[1-9][0-9]?$/.test(rawLimit))
       throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
     const limit = rawLimit ? Number(rawLimit) : 20;
     if (limit > 50) throw new BadRequestException("INVALID_ORDER_PAGE_LIMIT");
