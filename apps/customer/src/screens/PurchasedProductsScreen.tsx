@@ -101,7 +101,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
                 <Text style={styles.muted}>Lần mua gần nhất: {purchase.item.quantity} phần</Text>
                 {!purchase.item.productId && <Text style={styles.unavailable}>
                   Món này không còn trong thực đơn hiện tại; chỉ hiển thị lịch sử đã mua.
-                </Text>
+                </Text>}
                 {!!purchase.item.variantName && <Text style={styles.muted}>{purchase.item.variantName}</Text>}
                 {purchase.item.modifiers.length > 0 &&
                   <Text style={styles.muted}>Topping: {purchase.item.modifiers.map(x => x.name).join(" · ")}</Text>}
