@@ -1,74 +1,48 @@
-import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator, AppState, Modal, Pressable, StyleSheet, Switch, Text, View,
-} from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HotpotNavIcon } from "./HotpotNavIcon";
-import { getCustomerPushSettings, setCustomerPushEnabled } from "../push-client";
-import type { CustomerPushSettings } from "../push-preference";
+import { enableCustomerPush } from "../push-client";
 import { palette } from "../theme";
 
 /**
- * Customer-facing notification preferences. The FCM diagnostic tester stays
- * internal and is deliberately not mounted on any customer screen.
+ * Presentation only: reuse the existing notification registration action.
+ * Keep Firebase/FCM diagnostics out of the customer-facing account screen.
  */
 export function CustomerNotificationSettings({ accessToken }: { accessToken: string }) {
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState<CustomerPushSettings | null>(null);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    async function refresh() {
-      try {
-        const latest = await getCustomerPushSettings();
-        if (alive) { setSettings(latest); setError(""); }
-      } catch {
-        if (alive) setError("Chưa đọc được cài đặt thông báo. Hãy thử lại.");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }
-    setLoading(true);
-    void refresh();
-    const listener = AppState.addEventListener("change", state => {
-      if (state === "active") void refresh();
-    });
-    return () => { alive = false; listener.remove(); };
-  }, [accessToken, open]);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState(false);
 
   const close = () => { if (!busy) setOpen(false); };
-  async function changeNotifications(enabled: boolean) {
-    if (busy || !accessToken) return;
+
+  async function requestNotifications() {
+    if (!accessToken || busy) return;
     setBusy(true);
-    setError("");
+    setMessage("");
+    setError(false);
     try {
-      await setCustomerPushEnabled(accessToken, enabled);
-      setSettings(await getCustomerPushSettings());
+      // Same function used by the old home bell; no push lifecycle changes.
+      await enableCustomerPush(accessToken);
+      setMessage("Đã bật thông báo đơn hàng trên thiết bị này.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message :
-        "Không cập nhật được thông báo. Hãy thử lại.");
-      // Read actual device state; never show a success after a partial failure.
-      try { setSettings(await getCustomerPushSettings()); } catch { /* keep last state */ }
+      setError(true);
+      setMessage(cause instanceof Error ? cause.message :
+        "Không bật được thông báo. Anh/chị vui lòng thử lại.");
     } finally {
       setBusy(false);
     }
   }
 
-  const shortStatus = loading ? "Đang kiểm tra..." :
-    settings?.enabled ? "Đang bật" : settings?.available ? "Đang tắt" : "Chưa hỗ trợ";
-
   return <>
-    <Pressable accessibilityRole="button"
-      accessibilityLabel={"Cài đặt thông báo đơn hàng, " + shortStatus}
-      onPress={() => setOpen(true)}
+    <Pressable accessibilityRole="button" accessibilityLabel="Cài đặt thông báo đơn hàng"
+      onPress={() => { setMessage(""); setError(false); setOpen(true); }}
       style={({ pressed }) => [s.entry, pressed && s.pressed]}>
       <View style={s.iconCircle}><HotpotNavIcon name="notifications" size={20} /></View>
       <View style={s.entryCopy}>
         <Text style={s.entryTitle}>Thông báo đơn hàng</Text>
-        <Text style={s.entryStatus}>{shortStatus}</Text>
+        <Text style={s.entryStatus}>Quán xác nhận, hủy đơn và bắt đầu giao</Text>
       </View>
       <Text style={s.chevron}>›</Text>
     </Pressable>
@@ -84,24 +58,18 @@ export function CustomerNotificationSettings({ accessToken }: { accessToken: str
               <Text style={s.closeText}>✕</Text>
             </Pressable>
           </View>
-          <View style={s.settingRow}>
-            <View style={s.settingCopy}>
-              <Text style={s.settingTitle}>Nhận thông báo</Text>
-              <Text style={s.settingStatus}>{settings?.detail ?? "Đang kiểm tra..."}</Text>
-            </View>
-            {loading ? <ActivityIndicator color={palette.red} /> :
-              <Switch accessibilityLabel="Bật hoặc tắt thông báo đơn hàng"
-                accessibilityRole="switch"
-                value={!!settings?.enabled}
-                disabled={busy || !settings?.available}
-                onValueChange={value => void changeNotifications(value)}
-                trackColor={{ false: "#D0D5DD", true: "#E9A1A5" }}
-                thumbColor={settings?.enabled ? palette.red : "#FFFFFF"} />}
-          </View>
           <Text style={s.description}>
-            Chỉ thông báo khi quán xác nhận hoặc hủy đơn, và khi đơn bắt đầu giao.
+            Nhận thông báo khi quán xác nhận hoặc hủy đơn, và khi đơn bắt đầu giao.
           </Text>
-          {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
+          <Pressable accessibilityRole="button" accessibilityLabel="Bật thông báo đơn hàng"
+            accessibilityState={{ disabled: busy }} disabled={busy}
+            onPress={() => void requestNotifications()} style={[s.action, busy && s.disabled]}>
+            {busy ? <ActivityIndicator color={palette.white} /> :
+              <Text style={s.actionText}>Bật thông báo</Text>}
+          </Pressable>
+          {!!message && <Text accessibilityRole="alert"
+            style={[s.feedback, error && s.error]}>{message}</Text>}
+          <Text style={s.note}>Để tắt thông báo, anh/chị có thể đổi quyền trong cài đặt điện thoại.</Text>
         </SafeAreaView>
       </View>
     </Modal>
@@ -127,12 +95,12 @@ const s = StyleSheet.create({
   title: { flex: 1, fontSize: 17, fontWeight: "800", color: palette.text },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   closeText: { color: palette.muted, fontSize: 21, fontWeight: "600" },
-  settingRow: { minHeight: 72, flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between", gap: 12,
-    borderBottomWidth: 1, borderBottomColor: "#EEF0F3" },
-  settingCopy: { flex: 1, minWidth: 0, gap: 5 },
-  settingTitle: { color: palette.text, fontSize: 14, fontWeight: "700" },
-  settingStatus: { color: palette.muted, fontSize: 12, lineHeight: 18 },
   description: { color: palette.muted, fontSize: 13, lineHeight: 20 },
-  error: { color: palette.red, fontSize: 13, lineHeight: 19 },
+  action: { minHeight: 48, borderRadius: 12, backgroundColor: palette.red,
+    alignItems: "center", justifyContent: "center", paddingVertical: 12 },
+  actionText: { color: palette.white, fontSize: 14, fontWeight: "800" },
+  disabled: { opacity: 0.55 },
+  feedback: { color: "#167442", fontSize: 13, lineHeight: 19 },
+  error: { color: palette.red },
+  note: { color: palette.muted, fontSize: 12, lineHeight: 18 },
 });
