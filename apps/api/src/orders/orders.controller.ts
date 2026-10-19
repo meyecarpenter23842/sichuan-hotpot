@@ -8,6 +8,11 @@ import {
 } from "@nestjs/common";
 import { OrdersService } from "./orders.service";
 
+class CustomerCancelInput {
+  @IsString() @MaxLength(500)
+  reason!: string;
+}
+
 class OrderCartItemInput {
   @IsUUID("4") productId!: string;
   @IsOptional() @IsUUID("4") variantId!: string | null;
@@ -51,6 +56,16 @@ export class OrdersController {
   @Header("Cache-Control", "no-store")
   list(@Headers("authorization") authorization: string | undefined) {
     return this.orders.list(authorization);
+  }
+
+  @Post(":orderId/cancel")
+  @Header("Cache-Control", "no-store")
+  cancel(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("orderId", new ParseUUIDPipe({ version: "4" })) orderId: string,
+    @Body() input: CustomerCancelInput,
+  ) {
+    return this.orders.cancel(authorization, orderId, input.reason);
   }
 
   @Get("pages")
