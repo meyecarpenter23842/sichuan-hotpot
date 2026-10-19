@@ -69,6 +69,7 @@ export function canReorderDeliveredOrder(status: string): boolean {
 
 export interface HistoricalPurchaseSelection {
   readonly productId: string | null;
+  readonly productName: string;
   readonly variantName: string | null;
   readonly modifiers: readonly { readonly name: string; readonly priceVnd: number }[];
   readonly comboItems: readonly {
@@ -100,6 +101,8 @@ export function historicalPurchaseKey(
   ]);
   const canonical = (values: unknown[][]) =>
     values.map(entry => JSON.stringify(entry)).sort();
-  return JSON.stringify([branchId, item.productId, item.variantName,
+  return JSON.stringify([branchId,
+    item.productId ? ["id", item.productId] : ["historical-name", item.productName],
+    item.variantName,
     canonical(modifiers), canonical(combo)]);
 }
