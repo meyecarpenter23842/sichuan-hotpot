@@ -107,7 +107,7 @@ export function ChatbotPanel({ token, branchId, onDirtyChange }: {
       const picked = await pickJson();
       if (!picked) return;
       if (picked.text.length > 32768) {
-        setError("Service Account JSON quá lớn. Chỉ chọn file JSON credential gốc của Google.");
+        setError("Tệp JSON quá lớn. Vui lòng chọn đúng tệp kết nối từ Google Cloud.");
         return;
       }
       await run(async () => {
@@ -119,14 +119,14 @@ export function ChatbotPanel({ token, branchId, onDirtyChange }: {
         setEnvironments([]);
         setFileName(picked.name);
         setDirty(false);
-      }, "Đã xác thực JSON và tải danh sách Agent từ Google Cloud.");
+      }, "Đã kết nối Google Cloud và tải danh sách trợ lý.");
     })().catch(err => setError(err instanceof Error ? err.message : "Không đọc được file JSON."));
   };
 
   const loadAgents = () => void run(async () => {
     const result = await request<{ agents: AgentItem[] }>(root + "/agents", token, "POST");
     setAgents(result.agents);
-  }, "Đã tải lại danh sách Agent từ project Google.");
+  }, "Đã cập nhật danh sách trợ lý.");
 
   const chooseAgent = (agent: AgentItem) => void run(async () => {
     setSelectedAgent(agent.name);
@@ -161,12 +161,12 @@ export function ChatbotPanel({ token, branchId, onDirtyChange }: {
 
     <View style={s.section}>
       <Text style={s.title}>Google Dialogflow CX</Text>
-      <Text style={s.hint}>JSON Service Account chỉ gửi tới API qua HTTPS và được mã hóa trước khi lưu. Private key không được trả lại ứng dụng.</Text>
+      <Text style={s.hint}>Tệp kết nối Google được lưu an toàn. Chỉ chọn tệp do chính anh/chị quản lý.</Text>
       <View style={s.credentialCard}>
         <View style={s.copy}>
           <Text style={s.name}>{config?.credentialsConfigured ? "Đã kết nối Google Cloud" : "Chưa kết nối Google Cloud"}</Text>
           <Text style={s.hint} numberOfLines={2}>
-            {config?.projectId ? "Project: " + config.projectId : "Chọn file Service Account JSON của project chứa Dialogflow CX."}
+            {config?.projectId ? "Dự án Google: " + config.projectId : "Chọn tệp JSON của dự án Google đang sử dụng Dialogflow CX."}
           </Text>
           {!!fileName && <Text style={s.fileName} numberOfLines={1}>File vừa tải: {fileName}</Text>}
         </View>
@@ -178,14 +178,14 @@ export function ChatbotPanel({ token, branchId, onDirtyChange }: {
     <View style={s.section}>
       <View style={s.row}>
         <View style={s.copy}>
-          <Text style={s.title}>Agent trong project</Text>
-          <Text style={s.hint}>Không nhập ID thủ công. Bấm tải để đọc Agent thật từ Google.</Text>
+          <Text style={s.title}>Chọn trợ lý Google</Text>
+          <Text style={s.hint}>Chọn một trợ lý trong danh sách sau khi kết nối Google.</Text>
         </View>
         <Action secondary label={busy ? "Đang tải…" : "Tải Agent"} onPress={loadAgents}
           disabled={busy || !config?.credentialsConfigured} />
       </View>
       {agents.length === 0
-        ? <Text style={s.empty}>{config?.credentialsConfigured ? "Chưa tải danh sách hoặc project chưa có Agent." : "Tải JSON trước để lấy Agent."}</Text>
+        ? <Text style={s.empty}>{config?.credentialsConfigured ? "Chưa có trợ lý để chọn. Hãy thử tải danh sách." : "Hãy kết nối Google trước."}</Text>
         : <View style={s.list}>
           {agents.map(agent => <Pressable key={agent.name} accessibilityRole="radio"
             accessibilityState={{ selected: selectedAgent === agent.name }}

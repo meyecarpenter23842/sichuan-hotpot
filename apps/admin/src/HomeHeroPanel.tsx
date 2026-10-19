@@ -156,7 +156,7 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
         void run(async()=>{const prepared=await prepareProductImage(file);
           await upload(id,prepared.blob,prepared.contentType);const next=await refresh(false);
           const current=next.slides.find(x=>x.id===id);if(current)setEditor(editorFrom(current));
-        },"Đã tải ảnh banner lên R2.");};
+        },"Đã tải ảnh banner lên.");};
       input.click();return;
     }
     void (async()=>{
@@ -168,7 +168,7 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
       if(!size||size>2097152){setError("Ảnh phải nhỏ hơn 2 MB.");return;}
       await run(async()=>{await upload(id,{uri:asset.uri,size,mime},mime);const next=await refresh(false);
         const current=next.slides.find(x=>x.id===id);if(current)setEditor(editorFrom(current));
-      },"Đã tải ảnh banner lên R2.");
+      },"Đã tải ảnh banner lên.");
     })().catch(e=>setError(e instanceof Error?e.message:"Không chọn được ảnh."));
   };
   const removeImage=()=>{const id=editor?.id;if(!id)return;void run(async()=>{
@@ -196,13 +196,13 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
     :{opacity:preview,transform:[{scaleX:preview}]};
 
   return <View style={s.page}>
-    <Text style={s.hint}>Ảnh banner được lưu trên R2. Chuyển động chạy trên thiết bị khách, không phát video từ VPS.</Text>
+    <Text style={s.hint}>Chọn ảnh, thời gian đổi và kiểu chuyển động hiển thị trên trang chủ.</Text>
     {!!error&&<Notice text={error} error/>}{!!notice&&<Notice text={notice}/>}
     {loading?<Text style={s.hint}>Đang tải cấu hình banner…</Text>:null}
     {payload&&<View style={s.config}>
       <View style={s.rowBetween}>
         <View style={s.copy}><Text style={s.name}>Tự động chuyển ảnh</Text>
-          <Text style={s.hint}>Swipe tay vẫn dùng được khi bật autoplay.</Text></View>
+          <Text style={s.hint}>Khách vẫn có thể vuốt để xem ảnh khác.</Text></View>
         <StatusSwitch label="Tự động chuyển ảnh" value={autoplay} busy={busy}
           onValueChange={value=>changeConfig(()=>setAutoplay(value))}/>
       </View>
@@ -266,7 +266,7 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
         onChangeText={subtitle=>{setEditor({...editor,subtitle});setSlideDirty(true);}}/>
       <Pressable accessibilityRole="checkbox" accessibilityState={{checked:editor.cta}}
         style={s.check} onPress={()=>{setEditor({...editor,cta:!editor.cta});setSlideDirty(true);}}>
-        <Text style={s.name}>{editor.cta?"☑":"☐"} CTA mở Thực đơn</Text>
+        <Text style={s.name}>{editor.cta?"☑":"☐"} Nút mở Thực đơn</Text>
       </Pressable>
       <Action label={busy?"Đang lưu…":"Lưu slide"} disabled={busy} onPress={saveSlide}/>
       {editor.id&&(()=>{
@@ -274,7 +274,7 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
         return <View style={s.media}>
           <Text style={s.name}>Ảnh banner</Text>
           {imageUrl(current.imageKey)&&<Image resizeMode="cover" source={{uri:imageUrl(current.imageKey)!}} style={s.heroImage}/>}
-          <Action secondary label={busy?"Đang tải…":"Chọn / thay ảnh R2"} disabled={busy||slideDirty} onPress={pickImage}/>
+          <Action secondary label={busy?"Đang tải…":"Chọn hoặc thay ảnh"} disabled={busy||slideDirty} onPress={pickImage}/>
           {current.imageKey&&!current.enabled&&<Action secondary label="Gỡ ảnh" disabled={busy||slideDirty} onPress={removeImage}/>}
           <StatusSwitch label="Hiển thị slide" value={current.enabled} busy={busy}
             disabled={!current.imageKey||slideDirty} hint={slideDirty?"Lưu nội dung trước khi bật":undefined}

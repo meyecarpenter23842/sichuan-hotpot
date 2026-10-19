@@ -220,7 +220,7 @@ export function CatalogPanel({ catalog, token, reload }: {
       if (photoDraft) await attachDraftImage(savedId, photoDraft);
       await reload();
       closeEditor();
-      setNotice(photoDraft ? "Đã lưu món và ảnh R2." : "Đã lưu món.");
+      setNotice(photoDraft ? "Đã lưu món và ảnh." : "Đã lưu món.");
     } catch(e) {
       if (productSaved && savedId) {
         setEditor(prev => prev ? { ...prev, id: savedId } : prev);
@@ -415,7 +415,7 @@ export function CatalogPanel({ catalog, token, reload }: {
           method: "PUT", headers: { "Content-Type": ticket.contentType }, body: prepared.blob,
         });
         if (!sent.ok) {
-          throw Error("R2 từ chối ảnh (" + sent.status + "). Kiểm tra CORS và quyền ghi bucket.");
+          throw Error("Không tải được ảnh (" + sent.status + "). Vui lòng thử lại.");
         }
         await request(root + "/products/" + productId + "/images/attach", token, "POST",
           { key: ticket.key });
@@ -424,11 +424,11 @@ export function CatalogPanel({ catalog, token, reload }: {
           Math.max(1, Math.round(prepared.blob.size / 1024)) + " KB.");
       } catch (e) {
         setError(e instanceof TypeError
-          ? "Không kết nối trực tiếp được R2. Kiểm tra kết nối và quyền CORS từ Admin."
+          ? "Không gửi được ảnh. Kiểm tra mạng rồi thử lại."
           : e instanceof Error && (e.message.includes("R2_UPLOAD_NOT_CONFIGURED")
               || e.message.includes("503"))
-            ? "Máy chủ API chưa sẵn sàng cấp quyền tải ảnh R2 (503). Cần kiểm tra cấu hình R2 trên VPS; CORS bucket không phải nguyên nhân của lỗi cấp vé."
-            : e instanceof Error ? e.message : "Không tải được ảnh lên R2.");
+            ? "Dịch vụ lưu ảnh đang gián đoạn. Vui lòng thử lại sau."
+            : e instanceof Error ? e.message : "Không tải được ảnh.");
       } finally {
         setBusy(false);
         input.value = "";
@@ -477,13 +477,13 @@ export function CatalogPanel({ catalog, token, reload }: {
         endpoint+"/ticket",token,"POST",{contentType,byteSize:blob.size});
       const response=await fetch(ticket.uploadUrl,{
         method:"PUT",headers:{"Content-Type":ticket.contentType},body:blob});
-      if(!response.ok)throw Error("R2 từ chối ảnh. Hãy kiểm tra mạng hoặc CORS bucket media.");
+      if(!response.ok)throw Error("Không tải được ảnh. Vui lòng kiểm tra kết nối rồi thử lại.");
       await request(endpoint+"/attach",token,"POST",{key:ticket.key});
       await reload();
       const message="Đã lưu ảnh "+(kind==="categories"?"danh mục":kind==="groups"?"nhóm":"topping")+".";
       setNotice(message); onResult?.(message,false);
     }catch(e){
-      const message=e instanceof Error?e.message:"Không thể tải ảnh R2.";
+      const message=e instanceof Error?e.message:"Không thể tải ảnh.";
       setError(message); onResult?.(message,true);
     }finally{busyRef.current=false;setBusy(false);}
   }
@@ -518,7 +518,7 @@ export function CatalogPanel({ catalog, token, reload }: {
             httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
             headers:{"Content-Type":ticket.contentType},
           });
-          if(sent.status<200||sent.status>=300)throw Error("R2 từ chối ảnh. Kiểm tra kết nối.");
+          if(sent.status<200||sent.status>=300)throw Error("Không tải được ảnh. Hãy thử lại.");
           await request(endpoint+"/attach",token,"POST",{key:ticket.key});
           await reload();setNotice("Đã lưu ảnh từ thư viện Android.");
           onResult?.("Đã lưu ảnh từ thư viện Android.",false);
@@ -738,7 +738,7 @@ export function CatalogPanel({ catalog, token, reload }: {
               {photoRemoval?.kind === "products" && photoRemoval.id === product.id && <View
                 style={st.removeConfirm}>
                 <Text style={st.previewWarning}>Gỡ ảnh khỏi {product.name}? Ảnh đang được nơi khác
-                  sử dụng sẽ không bị xóa khỏi R2.</Text>
+                  sử dụng vẫn được giữ lại.</Text>
                 <View style={st.pills}>
                   <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
                   <Action label="Xác nhận gỡ" dangerous disabled={busy}
@@ -872,7 +872,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                 </View>
               </View>
               {!!photoDraft && <Text style={st.previewLink}>
-                Ảnh mới · {Math.max(1, Math.round(photoDraft.bytes / 1024))} KB · Chưa tải lên R2
+                Ảnh mới · {Math.max(1, Math.round(photoDraft.bytes / 1024))} KB · Chưa lưu
               </Text>}
               <View style={st.pills}>
                 <Action label={photoDraft ? "Chọn ảnh khác" : "＋ Chọn ảnh"} secondary
@@ -887,7 +887,7 @@ export function CatalogPanel({ catalog, token, reload }: {
               {photoRemoval?.kind === "products" && photoRemoval.id === editor.id &&
                 <View style={st.removeConfirm}>
                   <Text style={st.previewWarning}>Xác nhận gỡ ảnh của {photoRemoval.name}?
-                    Món vẫn được giữ. Ảnh dùng chung sẽ không bị xóa khỏi R2.</Text>
+                    Món vẫn được giữ. Ảnh dùng chung vẫn được giữ lại.</Text>
                   <View style={st.pills}>
                     <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
                     <Action label="Xác nhận gỡ" dangerous disabled={busy}
@@ -932,7 +932,7 @@ export function CatalogPanel({ catalog, token, reload }: {
                 {uri ? <Image source={{ uri }} style={st.catalogPhoto}
                   accessibilityLabel={"Ảnh " + editor.values.name} /> :
                   <View style={st.photoFallback}><Text style={st.sub}>Chưa có ảnh</Text></View>}
-                <Action label={uri ? "Thay ảnh R2" : "＋ Tải ảnh"} secondary disabled={busy}
+                <Action label={uri ? "Thay ảnh" : "＋ Tải ảnh"} secondary disabled={busy}
                   onPress={() => pickCatalogMedia(mediaKind, editor.id!)} />
                 {!!uri && <Action label="Gỡ ảnh" secondary disabled={busy}
                   onPress={() => setPhotoRemoval({ kind: mediaKind, id: editor.id!,
@@ -940,8 +940,8 @@ export function CatalogPanel({ catalog, token, reload }: {
                 {photoRemoval?.kind === mediaKind && photoRemoval.id === editor.id &&
                   <View style={st.removeConfirm}>
                     <Text style={st.previewWarning}>
-                      Gỡ ảnh khỏi {photoRemoval.name}? Nếu đang bán, API có thể yêu cầu
-                      tắt bán trước. Ảnh đang dùng nơi khác vẫn được giữ trên R2.
+                      Gỡ ảnh khỏi {photoRemoval.name}? Nếu mục đang bán, có thể cần tạm ngừng bán
+                      trước khi gỡ. Ảnh dùng ở nơi khác vẫn được giữ lại.
                     </Text>
                     <View style={st.pills}>
                       <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
@@ -953,8 +953,8 @@ export function CatalogPanel({ catalog, token, reload }: {
                         }} />
                     </View>
                   </View>}
-                <Text style={st.sub}>Mục mới cần lưu nháp trước để có mã tải ảnh.
-                  Thay ảnh R2 sẽ được cập nhật độc lập với tên và giá.</Text>
+                <Text style={st.sub}>Hãy lưu mục mới trước khi thêm ảnh.
+                  Có thể thay ảnh mà không cần sửa tên hoặc giá.</Text>
               </View>;
             })()}
             {confirmDelete && <Notice text="Xác nhận xóa? Món đã có lịch sử đơn không thể xóa; hãy chuyển sang tạm hết." error />}

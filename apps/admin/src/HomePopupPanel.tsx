@@ -96,11 +96,11 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
       const sent=await FileSystem.uploadAsync(ticket.uploadUrl,blob.uri,{
         httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
         headers:{"Content-Type":ticket.contentType}});
-      if(sent.status<200||sent.status>=300)throw Error("R2 từ chối một ảnh popup.");
+      if(sent.status<200||sent.status>=300)throw Error("Không tải được một ảnh popup.");
     }else{
       const sent=await fetch(ticket.uploadUrl,{method:"PUT",
         headers:{"Content-Type":ticket.contentType},body:blob});
-      if(!sent.ok)throw Error("R2 từ chối một ảnh popup. Kiểm tra CORS bucket media.");
+      if(!sent.ok)throw Error("Không tải được một ảnh. Vui lòng thử lại.");
     }
     return request<PopupSlide>(endpoint+"/attach",token,"POST",{key:ticket.key});
   }
@@ -127,7 +127,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
             await createAndUpload(prepared.blob,prepared.contentType,filenameAlt(file.name,i));
           }
           await refresh(false);
-        },files.length+" ảnh popup đã được tải lên R2 và bật sẵn.");
+        },files.length+" ảnh popup đã được tải lên và bật hiển thị.");
       };
       input.click();return;
     }
@@ -149,12 +149,12 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
             filenameAlt(asset.fileName??"",i));
         }
         await refresh(false);
-      },result.assets.length+" ảnh popup đã được tải lên R2 và bật sẵn.");
+      },result.assets.length+" ảnh popup đã được tải lên và bật hiển thị.");
     })().catch(e=>setError(e instanceof Error?e.message:"Không chọn được ảnh popup."));
   };
 
   const toggle=(slide:PopupSlide,value:boolean)=>void run(async()=>{
-    if(value&&!slide.imageKey)throw Error("Thêm ảnh R2 trước khi bật slide popup.");
+    if(value&&!slide.imageKey)throw Error("Hãy thêm ảnh trước khi bật hiển thị.");
     await request(root+"/slides/"+slide.id,token,"PATCH",{revision:slide.revision,enabled:value});
     await refresh(false);
   },"Đã cập nhật trạng thái ảnh popup.");
@@ -213,7 +213,7 @@ export function HomePopupPanel({token,branchId,onDirtyChange}:{
       <Action label={busy?"Đang lưu…":"Lưu cấu hình popup"} disabled={busy||!configDirty} onPress={saveConfig}/>
     </View>}
     {payload&&<View style={s.list}>
-      <Action secondary label={busy?"Đang tải ảnh…":"＋ Chọn nhiều ảnh R2"} disabled={busy} onPress={pickMany}/>
+      <Action secondary label={busy?"Đang tải ảnh…":"＋ Chọn nhiều ảnh"} disabled={busy} onPress={pickMany}/>
       <Text style={s.hint}>Có thể chọn nhiều ảnh cùng lúc. Ảnh tải thành công sẽ bật sẵn; có thể tắt riêng ảnh nào chưa muốn hiển thị.</Text>
       {payload.slides.length===0&&<Text style={s.empty}>Chưa có ảnh popup.</Text>}
       {payload.slides.map((slide,index)=><View key={slide.id} style={s.item}>
