@@ -1,7 +1,8 @@
 import { displayAdministrativeSelection } from "../../../packages/shared/src/vietnam-admin";
+import { orderCustomerCallUrl, orderCustomerDirectionsUrl } from "../../../packages/shared/src/order-contact";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Modal, Pressable, ScrollView, StyleSheet,
+  ActivityIndicator, AppState, Linking, Modal, Pressable, ScrollView, StyleSheet,
   Text, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -47,6 +48,7 @@ export interface StaffOrder {
 }
 interface OrderDetail extends StaffOrder {
   phoneSnapshot?: string | null; addressLineSnapshot?: string | null;
+  latitudeSnapshot?: string | null; longitudeSnapshot?: string | null;
   roadDistanceMeters?: number | null;
   zoneNameSnapshot?: string | null; provinceCodeSnapshot?: string | null;
   wardCodeSnapshot?: string | null; catalogVersionSnapshot?: string | null;
@@ -134,6 +136,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [clock, setClock] = useState(Date.now());
   const [selected, setSelected] = useState<OrderDetail | null>(null);
+  const [contactError, setContactError] = useState("");
   const [opening, setOpening] = useState(false);
   const [action, setAction] = useState<ActionStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -225,6 +228,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
     setOpening(true); setNotice(""); setSelected(null); setAction(null); setReason("");
     setEditingOrder(false); setEditCatalog(null); setEditLines([]); setEditReason("");
     setEditError(""); setAddingProduct(false); setProductSearch("");
+    setContactError("");
     try {
       const detail = await request<OrderDetail>("/admin/orders/" + branchId + "/" + id, token);
       setSelected(detail);
@@ -232,6 +236,15 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
       setError(e instanceof Error ? e.message : "Không tải được đơn hàng.");
     } finally { setOpening(false); }
   };
+  const openOrderContact = async (url: string) => {
+    setContactError("");
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setContactError("Không mở được ứng dụng gọi điện hoặc bản đồ trên thiết bị này.");
+    }
+  };
+
   const save = async () => {
     if (!selected || !action || saving) return;
     if ((action === "CANCELED" || action === "DELIVERY_FAILED") && reason.trim().length < 5) {
@@ -834,18 +847,57 @@ export function OrderQueuePanel({ token, branchId, role, mode, active }: {
                   <Text style={s.note}>Thanh toán: {selected.payment?.method ?? "Chưa xác định"}
                     {" · "}{selected.payment?.status ?? "Chưa xác định"}</Text>
                 </View>}
-              {!!selected.addressLineSnapshot && <>
-                <Text style={s.itemName}>Giao tới</Text>
-                <Text style={s.products}>{selected.addressLineSnapshot}{displayAdministrativeSelection({
-                  catalogVersion: selected.catalogVersionSnapshot,
-                  provinceCode: selected.provinceCodeSnapshot,
-                  wardCode: selected.wardCodeSnapshot,
-                }) ? ", " + displayAdministrativeSelection({
-                  catalogVersion: selected.catalogVersionSnapshot,
-                  provinceCode: selected.provinceCodeSnapshot,
-                  wardCode: selected.wardCodeSnapshot,
-                }) : ""}</Text>
-                {!!selected.phoneSnapshot && <Text style={s.note}>{selected.phoneSnapshot}</Text>}
+              {!kitchenOnly && <>
+                <View style={s.deliveryContact}>
+                  <Text style={s.itemName}>Thông tin giao hàng</Text>
+                  {!!selected.addressLineSnapshot && <Text style={s.products}>
+                    {selected.addressLineSnapshot}{displayAdministrativeSelection({
+                      catalogVersion: selected.catalogVersionSnapshot,
+                      provinceCode: selected.provinceCodeSnapshot,
+                      wardCode: selected.wardCodeSnapshot,
+                    }) ? ", " + displayAdministrativeSelection({
+                      catalogVersion: selected.catalogVersionSnapshot,
+                      provinceCode: selected.provinceCodeSnapshot,
+                      wardCode: selected.wardCodeSnapshot,
+                    }) : ""}
+                  </Text>}
+                  {!!selected.phoneSnapshot && <Text style={s.note}>
+                    SĐT khách: {selected.phoneSnapshot}
+                  </Text>}
+                  <View style={s.deliveryContactActions}>
+                    {orderCustomerCallUrl(selected.phoneSnapshot) && <Pressable
+                      accessibilityRole="button" accessibilityLabel="Gọi điện cho khách hàng"
+                      style={({ pressed }) => [s.deliveryContactAction, pressed && s.pressed]}
+                      onPress={() => {
+                        const url = orderCustomerCallUrl(selected.phoneSnapshot);
+                        if (url) void openOrderContact(url);
+                      }}>
+                      <Icon name="phone" size={20} color={c.white} />
+                      <Text style={s.deliveryContactActionText}>Gọi khách</Text>
+                    </Pressable>}
+                    {orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
+                      && <Pressable accessibilityRole="button"
+                        accessibilityLabel="Xem định vị khách hàng và chỉ đường trên bản đồ"
+                        style={({ pressed }) => [s.deliveryContactAction, s.deliveryMapAction,
+                          pressed && s.pressed]}
+                        onPress={() => {
+                          const url = orderCustomerDirectionsUrl(
+                            selected.latitudeSnapshot, selected.longitudeSnapshot);
+                          if (url) void openOrderContact(url);
+                        }}>
+                        <Icon name="pin" size={20} color={c.redDeep} />
+                        <Text style={s.deliveryMapActionText}>Xem vị trí / Chỉ đường</Text>
+                      </Pressable>}
+                  </View>
+                  {!orderCustomerCallUrl(selected.phoneSnapshot) && <Text style={s.note}>
+                    Đơn này chưa có số điện thoại hợp lệ để gọi.
+                  </Text>}
+                  {!orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
+                    && <Text style={s.note}>
+                      Đơn này chưa có ghim GPS hợp lệ. Kiểm tra địa chỉ trước khi giao.
+                    </Text>}
+                  {!!contactError && <Notice error text={contactError} />}
+                </View>
               </>}
               {!!selected.edits?.length && <>
                 <Text style={s.detailSectionTitle}>Lịch sử sửa đơn</Text>
@@ -915,6 +967,16 @@ const s = StyleSheet.create({
   urgent: { color: c.red },
   total: { fontWeight: "900", color: c.red, fontSize: 15 },
   products: { color: c.secondary, fontSize: font.note, lineHeight: 19, flexShrink: 1 },
+  deliveryContact: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.line,
+    paddingVertical: 12, gap: 8 },
+  deliveryContactActions: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  deliveryContactAction: { minHeight: 46, borderRadius: 10, backgroundColor: c.red,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
+    paddingHorizontal: 14, flexGrow: 1, flexBasis: 130 },
+  deliveryMapAction: { backgroundColor: "#FFF1F1", borderWidth: 1,
+    borderColor: "#F5D7D9" },
+  deliveryContactActionText: { color: c.white, fontSize: font.note, fontWeight: "800" },
+  deliveryMapActionText: { color: c.redDeep, fontSize: font.note, fontWeight: "800" },
   empty: { minHeight: 136, justifyContent: "center", alignItems: "center",
     gap: 7, padding: 14 },
   overlay: { flex: 1, backgroundColor: "rgba(12,18,28,0.48)",
