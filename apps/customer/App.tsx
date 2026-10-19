@@ -104,7 +104,7 @@ async function refreshCredentials(): Promise<AuthTokens | null> {
   finally { if (refreshPending === work) refreshPending = null; }
 }
 const brand = palette.red;
-const apiMissingMessage = "Chưa kết nối máy chủ. Vui lòng kiểm tra cấu hình API và thử lại.";
+const apiMissingMessage = "Chưa kết nối được với cửa hàng. Vui lòng thử lại sau.";
 
 function Button({ label, onPress, disabled = false, alternate = false }: {
   label: string;
@@ -1042,7 +1042,7 @@ function CustomerApp() {
     if(error){setNotice(error);return;}
     try {
       setCart(replaceCartLineSelection(cart,line.key,{...line.selection,modifierIds}));
-      setNotice("Đã cập nhật topping trong giỏ. Tiền sẽ được máy chủ kiểm tra lại.");
+      setNotice("Đã cập nhật topping trong giỏ. Tổng tiền sẽ được xác nhận khi đặt hàng.");
     } catch(e) {
       setNotice(e instanceof Error?e.message:"Không cập nhật được topping.");
     }
@@ -1264,7 +1264,7 @@ function CustomerApp() {
       }
     }
     setCart(updated);
-    setNotice("Đã đưa món đang bán vào giỏ. Giá và phí giao sẽ được máy chủ tính lại.");
+    setNotice("Đã thêm món vào giỏ. Giá và phí giao sẽ được xác nhận khi đặt hàng.");
     setScreen("cart");
     return null;
   }
@@ -1343,7 +1343,7 @@ function CustomerApp() {
                 <View style={styles.homeEmpty}>
                   <Text style={styles.emptyTitle}>Thực đơn đang cập nhật</Text>
                   <Text style={styles.muted}>
-                    {catalogError ? "Chưa kết nối API thực đơn. Kiểm tra kết nối rồi thử lại." :
+                    {catalogError ? "Không tải được thực đơn. Kiểm tra mạng rồi thử lại." :
                       catalogLoading ? "Đang tải thực đơn từ cửa hàng..." :
                         "Chưa có món nổi bật đang bán. Xem thực đơn để chọn món khác."}
                   </Text>
@@ -1537,7 +1537,7 @@ function CustomerApp() {
               {item.kind === "COMBO" ? "Lựa chọn combo: " + vnd(costs.comboTotal) + " · " : ""}
               Topping thêm: {vnd(costs.toppingTotal)} · Độ cay/nhóm bắt buộc:
               {" "}{vnd(costs.requiredTotal)} · Tổng {selectedQuantity} phần: {vnd(costs.total)}</Text>
-            <Text style={styles.muted}>Giá tạm tính; máy chủ xác nhận lại trước khi đặt.</Text>
+            <Text style={styles.muted}>Giá sẽ được xác nhận khi đặt hàng.</Text>
             {item.variants.length > 0 && <View style={styles.group}>
               <Text style={styles.sectionTitle}>Khẩu phần / size</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
