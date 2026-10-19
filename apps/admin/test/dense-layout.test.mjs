@@ -23,10 +23,11 @@ test("shared UI density reduces visual height without sacrificing 44dp actions",
   assert.match(catalog, /minHeight: 58/);
 });
 test("status and totals remain server driven, no fake counts", () => {
-  assert.match(app, /request<StaffOrder\[]>\("\/admin\/orders\/"/);
+  assert.match(app, /request<DailyOverviewSummary>\("\/admin\/orders\/"/);
+  assert.match(app, /request<\{ items: StaffOrder\[] \}>/);
   assert.match(app, /selectedBranch\?\.isActive/);
-  assert.match(app, /pending: orders\.filter/);
-  assert.match(app, /formatMoney\(deliveredVnd\)/);
+  assert.match(app, /pending: summary\?\.pending \?\? 0/);
+  assert.match(app, /formatMoney\(summary\?\.deliveredValueVnd \?\? 0\)/);
 });
 
 test("branch chooser overlays without changing page layout, and catalog tabs stay above local scroller", () => {
