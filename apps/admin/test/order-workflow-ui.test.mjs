@@ -12,7 +12,8 @@ test("orders and kitchen are separate real Admin tabs, not dashboard setup cards
   assert.match(app, /id: "kitchen", label: "Bếp", shortLabel: "Bếp", icon: "kitchen"/);
   assert.match(app, /<OrderQueuePanel key=\{branchId/);
   assert.match(app, /"\/admin\/orders\/branches"/);
-  assert.match(app, /!kitchenOnly \|\| item\.id === "kitchen"/);
+  assert.match(app, /driverOnly \? item\.id === "delivery"/);
+  assert.match(app, /kitchenOnly \? item\.id === "kitchen"/);
 });
 
 test("orders never fake sync and use real backend status patch and retry on reconnect", () => {
