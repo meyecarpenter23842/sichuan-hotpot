@@ -115,7 +115,7 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
   const toggle=(slide:HeroSlide,value:boolean)=>{
     if(configDirty||slideDirty){setError("Lưu thay đổi đang sửa trước khi bật/tắt slide.");return;}
     void run(async()=>{
-      if(value&&!slide.imageKey)throw Error("Thêm ảnh R2 trước khi bật slide.");
+      if(value&&!slide.imageKey)throw Error("Hãy thêm ảnh trước khi bật hiển thị.");
       await request(root+"/slides/"+slide.id,token,"PATCH",{revision:slide.revision,enabled:value});
       await refresh(false);
     },"Đã cập nhật trạng thái slide.");
@@ -138,11 +138,11 @@ export function HomeHeroPanel({token,branchId,onDirtyChange}:{
       const sent=await FileSystem.uploadAsync(ticket.uploadUrl,blob.uri,{
         httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
         headers:{"Content-Type":ticket.contentType}});
-      if(sent.status<200||sent.status>=300)throw Error("R2 từ chối ảnh. Kiểm tra kết nối.");
+      if(sent.status<200||sent.status>=300)throw Error("Không tải được ảnh. Hãy kiểm tra kết nối.");
     }else{
       const sent=await fetch(ticket.uploadUrl,{method:"PUT",
         headers:{"Content-Type":ticket.contentType},body:blob});
-      if(!sent.ok)throw Error("R2 từ chối ảnh. Kiểm tra CORS bucket media.");
+      if(!sent.ok)throw Error("Không tải được ảnh. Vui lòng thử lại.");
     }
     await request(endpoint+"/attach",token,"POST",{key:ticket.key});
   }

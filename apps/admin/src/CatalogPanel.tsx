@@ -194,13 +194,13 @@ export function CatalogPanel({ catalog, token, reload }: {
       const sent = await fetch(ticket.uploadUrl, {
         method: "PUT", headers: { "Content-Type": ticket.contentType }, body: photo.blob,
       });
-      if (!sent.ok) throw Error("R2 từ chối ảnh (" + sent.status + ").");
+      if (!sent.ok) throw Error("Không tải được ảnh (" + sent.status + ").");
     } else if (photo.nativeUri) {
       const sent = await FileSystem.uploadAsync(ticket.uploadUrl, photo.nativeUri, {
         httpMethod: "PUT", uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
         headers: { "Content-Type": ticket.contentType },
       });
-      if (sent.status < 200 || sent.status >= 300) throw Error("R2 từ chối ảnh.");
+      if (sent.status < 200 || sent.status >= 300) throw Error("Không tải được ảnh.");
     } else throw Error("Ảnh không còn khả dụng. Hãy chọn lại.");
     await request(url + "/attach", token, "POST", { key: ticket.key });
   }
@@ -214,7 +214,7 @@ export function CatalogPanel({ catalog, token, reload }: {
     try {
       const saved = await request<{id:string}>(root + path, token, method, data);
       savedId = saved.id || savedId;
-      if (!savedId) throw Error("API không trả mã sản phẩm.");
+      if (!savedId) throw Error("Không nhận được thông tin món vừa tạo. Vui lòng thử lại.");
       productSaved = true;
       setEditor(prev => prev ? { ...prev, id: savedId } : prev);
       if (photoDraft) await attachDraftImage(savedId, photoDraft);
@@ -386,7 +386,7 @@ export function CatalogPanel({ catalog, token, reload }: {
             httpMethod:"PUT",uploadType:FileSystem.FileSystemUploadType.BINARY_CONTENT,
             headers:{"Content-Type":ticket.contentType},
           });
-          if (uploaded.status < 200 || uploaded.status >= 300) throw Error("R2 từ chối ảnh.");
+          if (uploaded.status < 200 || uploaded.status >= 300) throw Error("Không tải được ảnh.");
           await request(root + "/products/" + productId + "/images/attach", token, "POST",
             {key:ticket.key});
           await reload();

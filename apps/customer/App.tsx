@@ -657,7 +657,7 @@ function CustomerApp() {
     }
     setLoginReturnTo("home");
     setScreen("login");
-    setNotice(revoked ? "Đã đăng xuất." : "Đã đăng xuất trên thiết bị. Máy chủ chưa xác nhận thu hồi phiên.");
+    setNotice(revoked ? "Đã đăng xuất." : "Đã đăng xuất trên thiết bị này. Kết nối gián đoạn nên chưa xác nhận đăng xuất hoàn toàn.");
   }
 
   useEffect(() => {
