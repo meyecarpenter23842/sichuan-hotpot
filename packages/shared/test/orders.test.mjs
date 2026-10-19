@@ -73,4 +73,8 @@ test("L03 historical purchases distinguish combo options, sizes and repeated mod
     comboItems: [{...product.comboItems[0], modifierOptionId: "topping-1"}]}));
   assert.equal(key, historicalPurchaseKey("branch-1", {...product,
     modifiers: [...product.modifiers].reverse()}));
+  assert.equal(key, historicalPurchaseKey("branch-1", {...product,
+    modifiers: [{name: "Nấm", priceVnd: 15000}],
+    comboItems: [{...product.comboItems[0], priceDeltaVnd: 9000}]}),
+    "new prices for identical choices must not split purchase history");
 });
