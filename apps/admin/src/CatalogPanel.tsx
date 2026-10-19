@@ -25,6 +25,8 @@ type Values = {
   productKind: "STANDARD" | "COMBO";
 };
 type Editor = { kind: Kind; id?: string; parentId?: string; values: Values };
+type PhotoDraft = { uri: string; mime: string; bytes: number; blob?: Blob; nativeUri?: string };
+type PhotoRemoval = { kind: "products" | "categories" | "groups" | "options"; id: string; name: string };
 const empty: Values = {
   name: "", categoryId: "", price: "0", sortOrder: "0",
   minSelect: "0", maxSelect: "1", isAvailable: true,
@@ -58,6 +60,14 @@ export function CatalogPanel({ catalog, token, reload }: {
   const [assignProductId, setAssignProductId] = useState<string | null>(null);
   const [comboProductId, setComboProductId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [photoDraft, setPhotoDraft] = useState<PhotoDraft | null>(null);
+  const previewRef = useRef<string | null>(null);
+  const [photoRemoval, setPhotoRemoval] = useState<PhotoRemoval | null>(null);
+  function clearPhotoDraft() {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null; setPhotoDraft(null);
+  }
+  useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -127,9 +137,101 @@ export function CatalogPanel({ catalog, token, reload }: {
     setError("");
     setNotice("");
     setConfirmDelete(false);
+    setPhotoRemoval(null);
+    clearPhotoDraft();
     setExpandedId(null);
     setAssignProductId(null);
   }
+  function closeEditor() {
+    clearPhotoDraft(); setPhotoRemoval(null); setEditor(null);
+    setConfirmDelete(false); setError("");
+  }
+
+  async function selectProductPhoto() {
+    if (editor?.kind !== "product" || busy) return;
+    setError("");
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = "image/png,image/jpeg,image/webp";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        setBusy(true);
+        void prepareProductImage(file).then(prepared => {
+          const uri = URL.createObjectURL(prepared.blob);
+          clearPhotoDraft(); previewRef.current = uri;
+          setPhotoDraft({ uri, mime: prepared.contentType, bytes: prepared.blob.size,
+            blob: prepared.blob });
+        }).catch(e => setError(e instanceof Error ? e.message : "Không đọc được ảnh."))
+          .finally(() => { input.value = ""; setBusy(false); });
+      };
+      input.click();
+      return;
+    }
+    setBusy(true);
+    try {
+      const selected = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"], allowsEditing: true, quality: 0.6,
+      });
+      if (selected.canceled || !selected.assets[0]) return;
+      const asset = selected.assets[0], mime = (asset.mimeType ?? "image/jpeg").toLowerCase();
+      if (!["image/png", "image/jpeg", "image/webp"].includes(mime))
+        throw Error("Chỉ hỗ trợ JPEG, PNG và WebP.");
+      const info = await FileSystem.getInfoAsync(asset.uri), bytes = info.exists ? info.size : 0;
+      if (!bytes || bytes > 2097152) throw Error("Ảnh phải nhỏ hơn 2MB.");
+      clearPhotoDraft();
+      setPhotoDraft({ uri: asset.uri, nativeUri: asset.uri, mime, bytes });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không chọn được ảnh.");
+    } finally { setBusy(false); }
+  }
+
+  async function attachDraftImage(id: string, photo: PhotoDraft) {
+    const url = root + "/products/" + id + "/images";
+    const ticket = await request<{key:string; uploadUrl:string; contentType:string}>(
+      url + "/ticket", token, "POST", { contentType: photo.mime, byteSize: photo.bytes });
+    if (photo.blob) {
+      const sent = await fetch(ticket.uploadUrl, {
+        method: "PUT", headers: { "Content-Type": ticket.contentType }, body: photo.blob,
+      });
+      if (!sent.ok) throw Error("R2 từ chối ảnh (" + sent.status + ").");
+    } else if (photo.nativeUri) {
+      const sent = await FileSystem.uploadAsync(ticket.uploadUrl, photo.nativeUri, {
+        httpMethod: "PUT", uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: { "Content-Type": ticket.contentType },
+      });
+      if (sent.status < 200 || sent.status >= 300) throw Error("R2 từ chối ảnh.");
+    } else throw Error("Ảnh không còn khả dụng. Hãy chọn lại.");
+    await request(url + "/attach", token, "POST", { key: ticket.key });
+  }
+
+  async function saveProductWithPhoto(path: string, method: "POST"|"PATCH",
+    data: object, currentId?: string) {
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setError(""); setNotice("");
+    let savedId = currentId;
+    let productSaved = false;
+    try {
+      const saved = await request<{id:string}>(root + path, token, method, data);
+      savedId = saved.id || savedId;
+      if (!savedId) throw Error("API không trả mã sản phẩm.");
+      productSaved = true;
+      setEditor(prev => prev ? { ...prev, id: savedId } : prev);
+      if (photoDraft) await attachDraftImage(savedId, photoDraft);
+      await reload();
+      closeEditor();
+      setNotice(photoDraft ? "Đã lưu món và ảnh R2." : "Đã lưu món.");
+    } catch(e) {
+      if (productSaved && savedId) {
+        setEditor(prev => prev ? { ...prev, id: savedId } : prev);
+        try { await reload(); } catch { /* retain retryable editor */ }
+      }
+      setError((productSaved && photoDraft
+        ? "Món đã lưu, nhưng ảnh chưa tải xong. Bấm Lưu thay đổi để thử lại, không tạo trùng. "
+        : "") + (e instanceof Error ? e.message : "Không thể lưu dữ liệu."));
+    } finally { busyRef.current = false; setBusy(false); }
+  }
+
   function change<K extends keyof Values>(key: K, value: Values[K]) {
     setEditor(old => old ? { ...old, values: { ...old.values, [key]: value } } : old);
   }
@@ -193,7 +295,8 @@ export function CatalogPanel({ catalog, token, reload }: {
           path = id ? "/options/" + id : "/groups/" + parentId + "/options";
           break;
       }
-      void mutate(path, id ? "PATCH" : "POST", data);
+      if (kind === "product") void saveProductWithPhoto(path, id ? "PATCH" : "POST", data, id);
+      else void mutate(path, id ? "PATCH" : "POST", data);
     } catch (e) { setError(e instanceof Error ? e.message : "Dữ liệu không hợp lệ."); }
   }
   function remove() {
@@ -619,9 +722,21 @@ export function CatalogPanel({ catalog, token, reload }: {
               {product.modifierGroups.length > 0 && <Action label="Quản lý thư viện nhóm" secondary
                 onPress={() => {setExpandedId(null);setTab("modifiers");setError("");setNotice("");}} />}
               <Action label="Chọn / thay ảnh món" secondary
-                disabled={busy} onPress={() => pickImage(product.id)} />
+                disabled={busy} onPress={() => open("product", product.id, undefined, product)} />
               {!!product.imageKey && <Action label="Gỡ ảnh món" secondary
-                disabled={busy} onPress={() => void removeProductImage(product.id)} />}
+                disabled={busy} onPress={() => setPhotoRemoval({
+                  kind: "products", id: product.id, name: product.name,
+                })} />}
+              {photoRemoval?.kind === "products" && photoRemoval.id === product.id && <View
+                style={st.removeConfirm}>
+                <Text style={st.previewWarning}>Gỡ ảnh khỏi {product.name}? Ảnh đang được nơi khác
+                  sử dụng sẽ không bị xóa khỏi R2.</Text>
+                <View style={st.pills}>
+                  <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
+                  <Action label="Xác nhận gỡ" dangerous disabled={busy}
+                    onPress={() => { setPhotoRemoval(null); void removeProductImage(product.id); }} />
+                </View>
+              </View>}
                     </View>
                   </ScrollView>
                 </View>
@@ -659,13 +774,13 @@ export function CatalogPanel({ catalog, token, reload }: {
       onPickImage={pickImage} onRemoveImage={productId => void removeProductImage(productId)}
       mediaBusy={busy} />
     <Modal visible={editor !== null} animationType="slide" transparent
-      onRequestClose={() => { if (!busy) setEditor(null); }}>
+      onRequestClose={() => { if (!busy) closeEditor(); }}>
       <KeyboardAvoidingView style={st.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={st.modal}>
           <View style={st.modalHeading}>
             <Text style={st.title}>{editor?.id ? "Sửa" : "Thêm"} {editor ? title[editor.kind] : ""}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng chỉnh sửa"
-              disabled={busy} style={st.close} onPress={() => setEditor(null)}>
+              disabled={busy} style={st.close} onPress={closeEditor}>
               <Text style={st.closeText}>×</Text>
             </Pressable>
           </View>
@@ -730,6 +845,51 @@ export function CatalogPanel({ catalog, token, reload }: {
                     <Text style={st.previewWarning} numberOfLines={2}>Dị ứng: {editor.values.allergenNotice.trim()}</Text>}
                 </View>}
             </View>}
+            {editor.kind === "product" && <View style={st.photoEditor}>
+              <Text style={st.contentHeading}>Hình ảnh món / combo</Text>
+              <View style={st.photoCompare}>
+                <View style={st.photoColumn}>
+                  <Text style={st.previewLabel}>Ảnh đang lưu</Text>
+                  {imageUrl(allProducts.find(p => p.id === editor.id)?.imageKey ?? null)
+                    ? <Image style={st.photoPreview} source={{ uri: imageUrl(
+                        allProducts.find(p => p.id === editor.id)?.imageKey ?? null)! }} />
+                    : <View style={st.photoFallback}><Text style={st.sub}>Chưa có ảnh</Text></View>}
+                </View>
+                <View style={st.photoColumn}>
+                  <Text style={st.previewLabel}>Ảnh khi lưu</Text>
+                  {photoDraft || imageUrl(allProducts.find(p => p.id === editor.id)?.imageKey ?? null)
+                    ? <Image style={st.photoPreview} source={{ uri: photoDraft?.uri ??
+                        imageUrl(allProducts.find(p => p.id === editor.id)?.imageKey ?? null)! }} />
+                    : <View style={st.photoFallback}><Text style={st.sub}>Chưa chọn ảnh</Text></View>}
+                </View>
+              </View>
+              {!!photoDraft && <Text style={st.previewLink}>
+                Ảnh mới · {Math.max(1, Math.round(photoDraft.bytes / 1024))} KB · Chưa tải lên R2
+              </Text>}
+              <View style={st.pills}>
+                <Action label={photoDraft ? "Chọn ảnh khác" : "＋ Chọn ảnh"} secondary
+                  disabled={busy} onPress={() => void selectProductPhoto()} />
+                {!!photoDraft && <Action label="Bỏ ảnh vừa chọn" secondary
+                  disabled={busy} onPress={clearPhotoDraft} />}
+                {!!editor.id && !!allProducts.find(p => p.id === editor.id)?.imageKey &&
+                  <Action label="Gỡ ảnh đang lưu" secondary disabled={busy}
+                    onPress={() => setPhotoRemoval({ kind: "products",
+                      id: editor.id!, name: editor.values.name })} />}
+              </View>
+              {photoRemoval?.kind === "products" && photoRemoval.id === editor.id &&
+                <View style={st.removeConfirm}>
+                  <Text style={st.previewWarning}>Xác nhận gỡ ảnh của {photoRemoval.name}?
+                    Món vẫn được giữ. Ảnh dùng chung sẽ không bị xóa khỏi R2.</Text>
+                  <View style={st.pills}>
+                    <Action label="Giữ ảnh" secondary onPress={() => setPhotoRemoval(null)} />
+                    <Action label="Xác nhận gỡ" dangerous disabled={busy}
+                      onPress={() => {
+                        setPhotoRemoval(null);
+                        if (editor.id) void removeProductImage(editor.id);
+                      }} />
+                  </View>
+                </View>}
+            </View>}
             {["product", "variant", "option"].includes(editor.kind) &&
               <Field label={editor.kind === "product" ? "Giá bán (VND)" : "Phụ thu (VND)"}
                 numeric value={editor.values.price} onChangeText={text => change("price", text)} />}
@@ -765,7 +925,7 @@ export function CatalogPanel({ catalog, token, reload }: {
             <View style={st.modalActions}>
               {editor.id && <Action label={confirmDelete ? "Xác nhận xóa" : "Xóa"}
                 dangerous disabled={busy} onPress={() => confirmDelete ? remove() : setConfirmDelete(true)} />}
-              <Action label="Hủy" secondary disabled={busy} onPress={() => setEditor(null)} />
+              <Action label="Hủy" secondary disabled={busy} onPress={closeEditor} />
               <Action label={busy ? "Đang lưu..." : "Lưu thay đổi"}
                 disabled={busy} onPress={save} />
             </View>
@@ -948,5 +1108,14 @@ const st = StyleSheet.create({
   previewText: { color: c.secondary, fontSize: font.note, lineHeight: 18 },
   previewLink: { color: c.red, fontSize: font.note, fontWeight: "800" },
   previewWarning: { color: "#9B2C2C", fontSize: font.note, lineHeight: 18 },
+  photoEditor: { gap: 9, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.line },
+  photoCompare: { flexDirection: "row", gap: 10 },
+  photoColumn: { flex: 1, minWidth: 0, gap: 5 },
+  photoPreview: { width: "100%", aspectRatio: 1.45, borderRadius: 9,
+    backgroundColor: c.pale, resizeMode: "contain" },
+  photoFallback: { width: "100%", aspectRatio: 1.45, borderRadius: 9,
+    borderWidth: 1, borderColor: c.line, justifyContent: "center", alignItems: "center" },
+  removeConfirm: { padding: 10, gap: 8, borderRadius: 10, backgroundColor: "#FFF3F1",
+    borderWidth: 1, borderColor: "#EECBC8" },
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 });
