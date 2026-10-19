@@ -97,3 +97,20 @@ test("OWNER zone policy rejects overlapping ward and accepts immutable group rat
     {...valid,zones:[{...zone,feeVnd:-1}]}),
     e=>e.getStatus?.()===400);
 });
+
+test("L02 OWNER policy accepts eligible wards and blocks excluded ward codes", async () => {
+  const f = setup();
+  const base = { name: "Tien Giang", provinceCode: "82",
+    catalogVersion: "vn-2026-09-08", feeVnd: 12000, isActive: true };
+  const make = wardCodes => ({ pricingMode: "ZONE", acceptingOrders: true,
+    minSubtotalVnd: 80000, freeDeliveryAtSubtotalVnd: null,
+    zones: [{ ...base, wardCodes }] });
+  const saved = await f.service.create("Bearer owner", branchId, make(["28261","28747"]));
+  assert.equal(saved.zones.create[0].wardCodes.length, 2);
+  const fallback = await f.service.create("Bearer owner", branchId, make([]));
+  assert.deepEqual(fallback.zones.create[0].wardCodes, []);
+  for (const code of ["29944","29869","30001"]) {
+    await assert.rejects(f.service.create("Bearer owner", branchId, make([code])),
+      e => e.getStatus?.() === 400);
+  }
+});
