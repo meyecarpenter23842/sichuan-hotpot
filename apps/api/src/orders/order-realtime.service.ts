@@ -138,7 +138,7 @@ export class OrderRealtimeService implements OnModuleDestroy {
       where: { branchId_userId: { branchId, userId: principal.id } },
       select: { role: true },
     });
-    if (!membership || !["OWNER", "MANAGER", "KITCHEN"].includes(membership.role)) {
+    if (!membership || !["OWNER", "MANAGER", "KITCHEN", "DRIVER"].includes(membership.role)) {
       throw new Error("BRANCH_FORBIDDEN");
     }
     return { actorId: principal.id, role: membership.role };
@@ -165,6 +165,7 @@ export class OrderRealtimeService implements OnModuleDestroy {
       } else {
         if (subscription.branchId !== change.branchId) return;
         if (subscription.role === "KITCHEN" && change.status === "PENDING") return;
+        if (subscription.role === "DRIVER" && change.type === "order.overdue") return;
       }
       try {
         // Revoked sessions and changed branch memberships must not retain access.
@@ -174,6 +175,15 @@ export class OrderRealtimeService implements OnModuleDestroy {
           const staff = await this.authorizeStaff(subscription.authorization, change.branchId);
           if (staff.actorId !== subscription.actorId) throw new Error("ROLE_CHANGED");
           if (staff.role === "KITCHEN" && change.status === "PENDING") return;
+          if (staff.role === "DRIVER") {
+            // Assignment may be revoked at any time. Never stream even order IDs
+            // from other customers/branches to unassigned delivery personnel.
+            const assigned = await this.prisma.database.deliveryAssignment.findFirst({
+              where: { orderId: change.orderId, driverId: subscription.actorId },
+              select: { id: true },
+            });
+            if (!assigned) return;
+          }
         }
         if (client.socket.readyState === 1) client.socket.send(message);
       } catch {
