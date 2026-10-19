@@ -33,7 +33,7 @@ function uniquePurchases(orders: CustomerOrderDetail[]): Purchase[] {
 export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
   active = true, refreshSignal = 0 }: Props) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reorderError, setReorderError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -43,6 +43,7 @@ export function PurchasedProductsScreen({ accessToken, onLogin, onReorder,
     if (!accessToken) {
       setPurchases([]);
       setError("");
+      setLoading(false);
       return;
     }
     if (!active) return;
