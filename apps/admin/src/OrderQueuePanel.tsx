@@ -2,14 +2,14 @@ import { displayAdministrativeSelection } from "../../../packages/shared/src/vie
 import { orderCustomerCallUrl, orderCustomerDirectionsUrl } from "../../../packages/shared/src/order-contact";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Linking, Modal, Pressable, ScrollView, StyleSheet,
+  ActivityIndicator, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet,
   Text, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
 import { Icon } from "./Icon";
 import {
-  request, type AdminCatalog, type CatalogComboGroup, type CatalogGroup, type CatalogProduct,
+  imageUrl, request, type AdminCatalog, type CatalogComboGroup, type CatalogGroup, type CatalogProduct,
 } from "./api";
 import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
@@ -860,6 +860,10 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
                   {addableProducts.map(product =>
                     <Pressable key={product.id} accessibilityRole="button"
                       style={s.productPick} onPress={() => addProduct(product)}>
+                      {imageUrl(product.imageKey) ?
+                        <Image source={{ uri: imageUrl(product.imageKey)! }}
+                          style={s.editProductPhoto} accessibilityLabel={"Ảnh " + product.name} /> :
+                        <View style={s.editProductFallback}><Text style={s.note}>Ảnh</Text></View>}
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={s.itemName}>{product.name}</Text>
                         {product.kind === "COMBO" && <Text style={s.note}>Combo</Text>}
@@ -1097,6 +1101,9 @@ const s = StyleSheet.create({
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   sheetContent: { padding: 12, paddingBottom: 20, gap: 9 },
   item: { gap: 3, borderBottomWidth: 1, borderColor: c.line, paddingBottom: 9 },
+  editProductPhoto: { width: 48, height: 48, borderRadius: 9, backgroundColor: c.pale },
+  editProductFallback: { width: 48, height: 48, borderRadius: 9,
+    backgroundColor: c.pale, alignItems: "center", justifyContent: "center" },
   itemName: { fontSize: font.body, fontWeight: "700", color: c.ink, flexShrink: 1 },
   totals: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderColor: c.line },
   actions: { paddingTop: 10, gap: 10 },
