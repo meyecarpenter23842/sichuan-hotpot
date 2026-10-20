@@ -159,7 +159,7 @@ const orderGroups: { id: Exclude<OrderGroup, "history">; label: string; statuses
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange,
   onCloseHistory, historyStatus, onHistoryStatusChange,
   historyRange, onHistoryRangeChange, historyCode, onHistoryCodeChange,
-  reportMetric, onClearReportMetric }: {
+  reportMetric, onClearReportMetric, lookupMode = false }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
   active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
   onCloseHistory: () => void;
@@ -168,6 +168,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   historyRange: HistoryRange; onHistoryRangeChange: (value: HistoryRange) => void;
   historyCode: string; onHistoryCodeChange: (value: string) => void;
   reportMetric: ReportMetric | null; onClearReportMetric: () => void;
+  lookupMode?: boolean;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -181,7 +182,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const badCode = !!historyCode.trim() && !validHistoryCode(historyCode);
   const searchPending = historyCode.trim() !== debouncedCode.trim();
   const activeLane = mode === "orders"
-    ? group === "history" && (hasCode || reportMetric) ? "lookup" : group : mode;
+    ? group === "history" && (lookupMode || hasCode || reportMetric) ? "lookup" : group : mode;
   const [laneOrders, setLaneOrders] = useState<StaffOrder[]>([]);
   // A freshly selected status must never display orders from the previous
   // server query while React waits for the next effect and network response.
@@ -200,7 +201,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const historyQuery = inHistory
     ? (reportMetric ? "&metric=" + encodeURIComponent(reportMetric)
       : hasCode ? "&code=" + encodeURIComponent(debouncedCode.trim().replace(/^#/, ""))
-        : historyStatus !== "ALL" ? "&status=" + encodeURIComponent(historyStatus) : "")
+        : !lookupMode && historyStatus !== "ALL" ? "&status=" + encodeURIComponent(historyStatus) : "")
       + (historyRange.from && historyRange.to
         ? "&from=" + encodeURIComponent(historyRange.from)
           + "&to=" + encodeURIComponent(historyRange.to) : "") : "";
@@ -749,12 +750,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </Pressable>
     </View>}
     {mode === "orders" && group === "history" && <View style={s.historyHeading}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đơn đang xử lý"
+      <Pressable accessibilityRole="button"
+        accessibilityLabel={lookupMode ? "Quay lại Quản lý" : "Quay lại đơn đang xử lý"}
         style={s.historyBack} onPress={onCloseHistory}>
         <View style={s.backChevron}><Icon name="chevron" size={20} color={c.redDeep} /></View>
-        <Text style={s.historyBackText}>Đơn hàng</Text>
+        <Text style={s.historyBackText}>{lookupMode ? "Quản lý" : "Đơn hàng"}</Text>
       </Pressable>
-      <Text style={s.historyHeadingTitle} numberOfLines={1}>Lịch sử đơn</Text>
+      <Text style={s.historyHeadingTitle} numberOfLines={1}>{lookupMode ? "Tra cứu đơn" : "Lịch sử đơn"}</Text>
       <Pressable accessibilityRole="button"
         accessibilityLabel="Đồng bộ lịch sử đơn hàng" accessibilityState={{ disabled: syncing || laneLoading }}
         disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
@@ -792,7 +794,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     {inHistory && badCode && <Text style={s.codeError}>
       Nhập 8 ký tự mã đơn hoặc UUID đầy đủ.
     </Text>}
-    {inHistory && !historyCode.trim() && !reportMetric && <ScrollView horizontal
+    {inHistory && !lookupMode && !historyCode.trim() && !reportMetric && <ScrollView horizontal
       showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always"
       accessibilityLabel="Lọc lịch sử đơn hàng" style={s.historyScroll}
       contentContainerStyle={s.historyFilters}>
