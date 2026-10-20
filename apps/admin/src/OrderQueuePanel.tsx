@@ -748,7 +748,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     </ScrollView>}
     <ScrollView key={laneUrl} style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
-    {loading || (laneLoading && visible.length === 0)
+    {loading || (loadedLaneUrl !== laneUrl && !laneError)
+      || (laneLoading && visible.length === 0)
       ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
       visible.length === 0 ? <View style={s.empty}>
         <View style={s.emptyIcon}>
