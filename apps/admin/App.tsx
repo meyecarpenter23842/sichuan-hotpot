@@ -25,9 +25,10 @@ import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 import { adminDensity } from "./src/density";
 import { AdminPwaReleaseNotice } from "./src/AdminPwaReleaseNotice";
-import { ALL_HISTORY, type HistoryRange } from "./src/history-search";
+import { ALL_HISTORY, historyPeriodRange, type HistoryRange } from "./src/history-search";
+import { BusinessReportPanel, type ReportMetric } from "./src/BusinessReportPanel";
 
-type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account";
+type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account" | "report";
 const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
   { id: "overview", label: "Tổng quan", shortLabel: "Tổng quan", icon: "dashboard" },
   { id: "orders", label: "Đơn hàng", shortLabel: "Đơn", icon: "orders" },
@@ -168,6 +169,12 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
         <Text style={[styles.metricArrow,{color:metric.text}]}>›</Text>
       </Pressable>)}
     </View>
+    <Pressable accessibilityRole="button" accessibilityLabel="Mở báo cáo kinh doanh"
+      onPress={() => onChangeTab("report")} style={styles.reportLink}>
+      <Icon name="dashboard" color={c.redDeep} size={21} />
+      <Text style={styles.reportLinkText}>Báo cáo kinh doanh</Text>
+      <Text style={styles.reportLinkArrow}>›</Text>
+    </Pressable>
     <View style={styles.dashboardSectionHead}>
       <Text style={styles.dashboardSectionTitle}>Đơn mới cần xác nhận</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Xem tất cả đơn mới"
@@ -274,6 +281,9 @@ export default function AdminApp() {
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL");
   const [historyRange, setHistoryRange] = useState<HistoryRange>(ALL_HISTORY);
   const [historyCode, setHistoryCode] = useState("");
+  const [reportRange, setReportRange] = useState<HistoryRange>(
+    () => historyPeriodRange("week"));
+  const [reportMetric, setReportMetric] = useState<ReportMetric | null>(null);
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -701,9 +711,15 @@ export default function AdminApp() {
                 setOrderGroup(next);
               }}
               onCloseHistory={() => setOrderGroup(lastWorkingLane.current)}
-              historyStatus={historyStatus} onHistoryStatusChange={setHistoryStatus}
-              historyRange={historyRange} onHistoryRangeChange={setHistoryRange}
-              historyCode={historyCode} onHistoryCodeChange={setHistoryCode} /> :
+              historyStatus={historyStatus}
+              historyRange={historyRange} onHistoryRangeChange={next => {
+                setReportMetric(null); setHistoryRange(next);
+              }}
+              historyCode={historyCode} onHistoryCodeChange={value => {
+                setReportMetric(null); setHistoryCode(value);
+              }}
+              reportMetric={reportMetric} onClearReportMetric={() => setReportMetric(null)}
+              onHistoryStatusChange={next => { setReportMetric(null); setHistoryStatus(next); }} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
@@ -728,7 +744,19 @@ export default function AdminApp() {
             <Action label="Tải lại" onPress={() => void reload().catch(() => undefined)} />
           </View> : (
             <>
-              {tab === "overview" && <Overview catalog={catalog} token={token} branchId={branchId!} onChangeTab={setTab} />}
+              {tab === "overview" && <Overview catalog={catalog} token={token}
+                branchId={branchId!} onChangeTab={setTab} />}
+              {tab === "report" && operator && branchId && <BusinessReportPanel
+                token={token} branchId={branchId} range={reportRange}
+                onRangeChange={setReportRange} onClose={() => setTab("overview")}
+                onDrillDown={(metric, range) => {
+                  setReportMetric(metric);
+                  setHistoryCode("");
+                  setHistoryStatus("ALL");
+                  setHistoryRange(range);
+                  setOrderGroup("history");
+                  setTab("orders");
+                }} />}
               {tab === "settings" && selectedBranch && <SettingsHub
                 token={token} branch={selectedBranch} catalog={catalog}
                 owner={principal?.role === "OWNER"} reload={reload}
@@ -871,6 +899,10 @@ const styles = StyleSheet.create({
   dashboardDate: { flex: 1, fontSize: 12, color: c.ink, fontWeight: "600" },
   dashboardRefresh: { minHeight: 44, justifyContent: "center", paddingLeft: 6 },
   refreshText: { color: c.secondary, fontSize: 10 },
+  reportLink: { minHeight: 50, flexDirection: "row", alignItems: "center",
+    gap: 10, marginVertical: 4, borderBottomWidth: 1, borderBottomColor: c.line },
+  reportLinkText: { flex: 1, color: c.redDeep, fontSize: 14, fontWeight: "800" },
+  reportLinkArrow: { fontSize: 23, color: c.redDeep },
   dashboardGrid: { flexDirection: "row", flexWrap: "wrap",
     justifyContent: "space-between", rowGap: 6, columnGap: 8 },
   dashboardMetric: { width: "48.5%", minHeight: adminDensity.dashboardMetric, borderRadius: 11,
