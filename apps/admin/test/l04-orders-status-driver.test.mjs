@@ -19,7 +19,7 @@ test("L04 five working tabs and history launched exclusively from the clock shor
   assert.match(panel, /accessibilityState=\{\{ selected: group === item.id \}\}/);
   assert.match(panel, /contentContainerStyle=\{s.groupRow\}/);
   // Live server counts belong to five working tabs; history is a separate screen.
-  assert.match(panel, /const activeLane = mode === "orders" \? group : mode/);
+  assert.match(panel, /group === "history" && hasCode \? "lookup" : group : mode/);
   assert.match(panel, /encodeURIComponent\(activeLane\) \+ historyQuery/);
   assert.match(panel, /accessibilityLabel="Mở lịch sử đơn hàng"/);
   assert.match(panel, /onPress=\{\(\) => onGroupChange\("history"\)\}/);
