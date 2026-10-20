@@ -25,6 +25,7 @@ import { Action, Field, Notice } from "./src/ui";
 import { c, font } from "./src/theme";
 import { adminDensity } from "./src/density";
 import { AdminPwaReleaseNotice } from "./src/AdminPwaReleaseNotice";
+import { ALL_HISTORY, type HistoryRange } from "./src/history-search";
 
 type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account";
 const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
@@ -271,6 +272,8 @@ export default function AdminApp() {
   // working lane so Back always returns to the operator's previous position.
   const lastWorkingLane = useRef<Exclude<OrderGroup, "history">>("new");
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL");
+  const [historyRange, setHistoryRange] = useState<HistoryRange>(ALL_HISTORY);
+  const [historyCode, setHistoryCode] = useState("");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -698,7 +701,9 @@ export default function AdminApp() {
                 setOrderGroup(next);
               }}
               onCloseHistory={() => setOrderGroup(lastWorkingLane.current)}
-              historyStatus={historyStatus} onHistoryStatusChange={setHistoryStatus} /> :
+              historyStatus={historyStatus} onHistoryStatusChange={setHistoryStatus}
+              historyRange={historyRange} onHistoryRangeChange={setHistoryRange}
+              historyCode={historyCode} onHistoryCodeChange={setHistoryCode} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
