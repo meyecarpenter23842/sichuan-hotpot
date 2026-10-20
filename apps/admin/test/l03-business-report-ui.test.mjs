@@ -22,7 +22,7 @@ test("L03 periods include today, yesterday, 7/30 days, this month and Vietnam mi
     { period: "thisMonth", from: "2026-12-01", to: "2026-12-31" });
   assert.match(report, /<HistoryDateFilter report value=\{range\}/);
   assert.match(report, /onRangeChange/);
-  assert.match(report, /Ngày .*\{showDay\(from\)\}/);
+  assert.match(report, /Kỳ \{showDay\(from\)\}/);
 });
 
 test("L03 finance uses real status events and distinct order ids, not payment.updatedAt", () => {
