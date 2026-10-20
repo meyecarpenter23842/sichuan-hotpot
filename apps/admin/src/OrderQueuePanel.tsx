@@ -177,7 +177,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   reportMetric: ReportMetric | null; onClearReportMetric: () => void;
   lookupMode?: boolean;
 }) {
-  const kitchenOnly = role === "KITCHEN";
+  const kitchenOnly = role === "KITCHEN" || mode === "kitchen";
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [debouncedCode, setDebouncedCode] = useState(historyCode);
