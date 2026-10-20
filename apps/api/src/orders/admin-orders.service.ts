@@ -248,7 +248,8 @@ export class AdminOrdersService {
       | "history" | "lookup" | "kitchen" | "delivery",
     cursorId?: string, limit = 25,
     historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED",
-    search: { from?: string; to?: string; code?: string } = {}) {
+    search: { from?: string | undefined; to?: string | undefined;
+      code?: string | undefined } = {}) {
     const staff = await this.role(authorization, branchId);
     if (historyStatus && group !== "history")
       throw new BadRequestException("INVALID_HISTORY_FILTER");
