@@ -18,28 +18,45 @@ import { Action, Notice } from "./ui";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
 
-type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" | "alerts" | "offers" | "hero" | "popup" | "chatbot" | "customers";
-const items: { id: Setting; label: string; icon: IconName; hint: string; owner: boolean }[] = [
-  { id: "alerts", label: "Thông báo", icon: "bell", hint: "Báo đơn mới và âm chuông", owner: false },
-  { id: "branch", label: "Cửa hàng", icon: "store", hint: "Địa chỉ, ghim bản đồ", owner: true },
-  { id: "hours", label: "Giờ bán", icon: "clock", hint: "Lịch 7 ngày", owner: false },
-  { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", hint: "Ảnh, nội dung, lịch hiển thị", owner: true },
-  { id: "hero", label: "Banner trang chủ", icon: "banner", hint: "Ảnh, hiệu ứng, nút mở món", owner: true },
-  { id: "popup", label: "Ảnh nổi trang chủ", icon: "popup", hint: "Nhiều ảnh, thời gian hiện", owner: true },
-  { id: "chatbot", label: "Chatbot AI", icon: "chat", hint: "Dialogflow CX + Zalo", owner: true },
-  { id: "customers", label: "Khách hàng", icon: "account", hint: "Khách đã mua và đơn gần đây", owner: true },
-  { id: "delivery", label: "Phí giao", icon: "delivery", hint: "Vùng giao, phí và đơn tối thiểu", owner: true },
-  { id: "status", label: "Hoạt động", icon: "power", hint: "Kích hoạt chi nhánh", owner: true },
-  { id: "orders", label: "Nhận đơn", icon: "orders", hint: "Mở hoặc dừng nhận đơn", owner: true },
-  { id: "create", label: "Thêm chi nhánh", icon: "plus", hint: "Tạo cửa hàng mới", owner: true },
+type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" |
+  "alerts" | "offers" | "hero" | "popup" | "chatbot" | "customers";
+type BusinessDestination = "report" | "lookup";
+type ManagementItem = {
+  id: Setting | BusinessDestination; label: string; icon: IconName;
+  owner: boolean; destination?: BusinessDestination;
+};
+const sections: { title: string; items: ManagementItem[] }[] = [
+  { title: "Kinh doanh", items: [
+    { id: "report", label: "Báo cáo kinh doanh", icon: "report", owner: false, destination: "report" },
+    { id: "lookup", label: "Tra cứu đơn hàng", icon: "search", owner: false, destination: "lookup" },
+    // Existing customer management stays available; #218 remains a separate scope.
+    { id: "customers", label: "Khách hàng", icon: "users", owner: true },
+  ] },
+  { title: "Cửa hàng", items: [
+    { id: "branch", label: "Cửa hàng", icon: "store", owner: true },
+    { id: "hours", label: "Giờ bán", icon: "clock", owner: false },
+    { id: "delivery", label: "Phí giao", icon: "delivery", owner: true },
+    { id: "status", label: "Hoạt động", icon: "power", owner: true },
+    { id: "orders", label: "Nhận đơn", icon: "orders", owner: true },
+    { id: "create", label: "Thêm chi nhánh", icon: "plus", owner: true },
+  ] },
+  { title: "Ứng dụng & Marketing", items: [
+    { id: "alerts", label: "Thông báo", icon: "bell", owner: false },
+    { id: "offers", label: "Ưu đãi hôm nay", icon: "catalog", owner: true },
+    { id: "hero", label: "Banner trang chủ", icon: "banner", owner: true },
+    { id: "popup", label: "Ảnh nổi trang chủ", icon: "popup", owner: true },
+    { id: "chatbot", label: "Chatbot AI", icon: "chat", owner: true },
+  ] },
 ];
+const settings = sections.flatMap(section => section.items);
 
-export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, chimePending, chimeError, onChimeChange }: {
+export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSaved, chimeEnabled, chimePending, chimeError, onChimeChange, onOpenBusiness }: {
   token: string; branch: Branch; catalog: AdminCatalog; owner: boolean;
   reload: () => Promise<void>;
   onBranchSaved: (id: string, created: boolean) => Promise<void>;
   chimeEnabled: boolean; chimePending: boolean; chimeError: string;
   onChimeChange: (enabled: boolean) => void;
+  onOpenBusiness: (destination: BusinessDestination) => void;
 }) {
   const [selected, setSelected] = useState<Setting | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -54,35 +71,39 @@ export function SettingsHub({ token, branch, catalog, owner, reload, onBranchSav
   };
   const forceClose = () => { setSelected(null); setDirty(false); setConfirmClose(false); };
   const open = (id: Setting) => { setSelected(id); setDirty(false); setConfirmClose(false); setShowDiagnostics(false); };
-  const current = items.find(item => item.id === selected);
+  const current = settings.find(item => item.id === selected);
 
   return <View style={s.page}>
-    <Text style={s.title}>Thiết lập</Text>
-    <Text style={s.note}>Chọn mục cần thay đổi.</Text>
-    <View style={s.grid}>
-      {items.filter(item => owner || !item.owner).map(item =>
-        <Pressable key={item.id} accessibilityRole="button"
-          accessibilityLabel={"Mở " + item.label}
-          onPress={() => open(item.id)}
-          style={({ pressed }) => [s.tile, !mobile && s.tileWide, pressed && s.pressed]}>
-          <View style={s.iconWrap}><Icon name={item.icon} size={22} color={c.red} /></View>
-          <Text style={s.tileLabel}>{item.label}</Text>
-          <Text style={s.tileHint} numberOfLines={2}>{item.hint}</Text>
-        </Pressable>)}
-    </View>
+    <Text style={s.title}>Quản lý</Text>
+    {sections.map(section => {
+      const visible = section.items.filter(item => owner || !item.owner);
+      return visible.length ? <View key={section.title} style={s.section}>
+        <Text style={s.sectionTitle}>{section.title}</Text>
+        <View style={s.grid}>
+          {visible.map(item => <Pressable key={item.id} accessibilityRole="button"
+            accessibilityLabel={"Mở " + item.label}
+            onPress={() => item.destination
+              ? onOpenBusiness(item.destination) : open(item.id as Setting)}
+            style={({ pressed }) => [s.tile, !mobile && s.tileWide, pressed && s.pressed]}>
+            <View style={s.iconWrap}><Icon name={item.icon} size={24} color={c.red} /></View>
+            <Text style={s.tileLabel} numberOfLines={2}>{item.label}</Text>
+          </Pressable>)}
+        </View>
+      </View> : null;
+    })}
     {!owner && <Notice text="Chỉ chủ cửa hàng được thay đổi thông tin chi nhánh, nhận đơn và phí giao." />}
     <Modal visible={selected !== null} animationType="slide" transparent
       onRequestClose={close}>
       <KeyboardAvoidingView style={[s.overlay, !mobile && s.desktopOverlay]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Pressable style={StyleSheet.absoluteFill}
-          accessibilityLabel="Đóng cửa sổ thiết lập"
+          accessibilityLabel="Đóng cửa sổ quản lý"
           onPress={close} />
         <SafeAreaView edges={["bottom"]} style={[s.sheet, !mobile && s.desktopSheet]}>
           <View style={s.sheetHead}>
             <View style={s.sheetHeading}>
               {current && <Icon name={current.icon} size={21} color={c.red} />}
-              <Text style={s.sheetTitle}>{current?.label ?? "Thiết lập"}</Text>
+              <Text style={s.sheetTitle}>{current?.label ?? "Quản lý"}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng popup"
               onPress={close} style={s.close}>
@@ -168,18 +189,19 @@ const s = StyleSheet.create({
   page: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 18, gap: 6 },
   title: { fontSize: font.title, fontWeight: "800", color: c.ink },
   note: { fontSize: font.note, lineHeight: 17, color: c.secondary },
+  section: { marginTop: 12, gap: 4 },
+  sectionTitle: { fontSize: 12, color: c.secondary, fontWeight: "800", paddingVertical: 5 },
   toggleRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   toggleCopy: { flex: 1, gap: 3 },
   toggleTitle: { fontSize: font.action, fontWeight: "700", color: c.ink },
-  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4, marginTop: 5 },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 },
   tile: { width: "33.3333%", minHeight: adminDensity.settingTile,
-    paddingHorizontal: 4, paddingVertical: 5,
-    alignItems: "center", gap: 4, justifyContent: "flex-start" },
+    paddingHorizontal: 4, paddingVertical: 6,
+    alignItems: "center", gap: 7, justifyContent: "flex-start" },
   tileWide: { width: "16.6667%" },
-  iconWrap: { height: adminDensity.settingIcon, width: adminDensity.settingIcon,
+  iconWrap: { height: Math.max(48, adminDensity.settingIcon), width: Math.max(48, adminDensity.settingIcon),
     alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: c.soft },
   tileLabel: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: c.ink, textAlign: "center" },
-  tileHint: { fontSize: font.caption, lineHeight: 13, textAlign: "center", color: c.secondary },
   pressed: { opacity: 0.62 },
   overlay: { flex: 1, justifyContent: "flex-end",
     backgroundColor: "rgba(10, 16, 22, 0.48)" },
