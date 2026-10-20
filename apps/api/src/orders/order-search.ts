@@ -21,6 +21,15 @@ function parseVietnamDay(value: string): number {
   return utc - VIETNAM_OFFSET_MS;
 }
 
+/** Calendar-day bounds in Vietnam: inclusive dates, exclusive UTC end. */
+export function vietnamDateWindow(from: string, to: string) {
+  const start = parseVietnamDay(from);
+  const last = parseVietnamDay(to);
+  const days = Math.round((last - start) / DAY_MS) + 1;
+  if (days < 1 || days > 366) throw new BadRequestException("INVALID_ORDER_DATE_RANGE");
+  return { from, to, start: new Date(start), end: new Date(last + DAY_MS), days };
+}
+
 /** Inclusive business-day endpoints, converted to half-open UTC timestamps. */
 export function orderCreatedBetween(from?: string, to?: string):
   Prisma.DateTimeFilter | undefined {
