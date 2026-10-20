@@ -28,7 +28,7 @@ test("L01 order card shows identity/address only outside kitchen", () => {
   assert.match(panel, /order\.addressLineSnapshot\?\.trim\(\)/);
   assert.match(panel, /style=\{s\.orderIdSmall\}/);
   assert.match(panel, /style=\{s\.compactActions\}/);
-  assert.match(panel, /style=\{s\.detailButton\}/);
+  assert.match(panel, /\[s\.detailButton, pressed && s\.pressed\]/);
   assert.match(service, /const kitchenOrderSelect = \{/);
   const kitchenSelect = service.split("const kitchenOrderSelect = {")[1].split("const driverOrderSelect")[0];
   assert.doesNotMatch(kitchenSelect, /phoneSnapshot|addressLineSnapshot|localCredential/);
