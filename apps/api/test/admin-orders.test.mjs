@@ -482,7 +482,10 @@ test("L06 order lanes show history despite >100 newer orders and paginate same-t
   await client.get(branchBase() + "/pages?group=new").set(headers(driver.token)).expect(403);
   const driverPage = await client.get(branchBase() + "/pages?group=delivery")
     .set(headers(driver.token)).expect(200);
-  assert.ok(driverPage.body.items.every(row => row.phoneSnapshot === undefined));
+  assert.ok(driverPage.body.items.every(row => row.phoneSnapshot === "+84901111222"
+    && row.addressLineSnapshot === "12 Đường bí mật"));
+  assert.ok(!driverPage.body.items.some(row => row.id === historical.id),
+    "DRIVER must never read unassigned historical orders");
   const foreign = await order("PENDING", randomUUID(), otherBranchId);
   await client.get(branchBase() + "/pages?group=new&cursor=" + foreign.id)
     .set(headers(owner.token)).expect(400);
