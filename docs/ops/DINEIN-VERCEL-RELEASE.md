@@ -40,3 +40,12 @@ The workflow also supports protected `workflow_dispatch` with app, exact current
 - Confirm Vercel production env, Android/iPhone Safari, session/cookie behavior, role/branch restrictions, pending QR approval and kitchen separation.
 - Record target, main SHA, GitHub run, deployment ID and verification results. Rollback via explicit owner-requested prior verified Vercel deployment (never Git auto deploy).
 - Do not treat Vercel project/domain creation as a deployed app.
+
+## Bootstrap follow-up — frontend shells
+
+- `apps/retail` and `apps/menu` now contain safe **read-only** Expo Web apps. They DO NOT place orders, authenticate staff or expose guest data. The browser can manually check `/health/ready`; the page clearly states it is inactive.
+- The npm workspaces and lockfile include both apps; PR CI validates lint, typecheck, Node tests and Expo Web export for each app.
+- Backend CORS remains **environment allowlisted** via `CORS_ALLOWED_ORIGINS` in `apps/api/src/bootstrap.ts`. The required exact production origins are `https://retail.bepsi.click` and `https://menu.bepsi.click`. Do not enable wildcard or auto-edit production variables without an authorized VPS release.
+- Vercel `EXPO_PUBLIC_API_BASE_URL` was set in both projects from Admin's existing production value; the deploy workflow will verify production CORS and API health before publishing.
+- CORS readiness must be verified against actual production **before** owner issues the first deploy command. Adding origins to the VPS API environment requires explicit approval for backend configuration/restart (not implied by frontend merge).
+- **No real ordering is enabled** until separate authorized L01–L07 feature work, permission tests, and UX approval.

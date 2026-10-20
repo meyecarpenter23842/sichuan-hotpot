@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Lẩu Tứ Xuyên — Menu QR",
+  "short_name": "Menu QR",
+  "lang": "vi",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#FFFFFF",
+  "theme_color": "#8C2028",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

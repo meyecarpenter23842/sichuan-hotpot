@@ -76,6 +76,19 @@ jobs:
         run: |
           npm run build --workspace @hotpot/admin
           test -s apps/admin/dist/index.html
+      - name: Check Dine-in Retail and Menu Expo source
+        run: |
+          for app in retail menu; do
+            npm run lint --workspace "@hotpot/$app"
+            npm run typecheck --workspace "@hotpot/$app"
+            npm run test --workspace "@hotpot/$app"
+          done
+      - name: Build Dine-in Retail and Menu Expo Web
+        run: |
+          for app in retail menu; do
+            npm run build --workspace "@hotpot/$app"
+            test -s "apps/$app/dist/index.html"
+          done
       - name: P2.1 browser auth QA against disposable NestJS/Postgres
         shell: bash
         timeout-minutes: 7
