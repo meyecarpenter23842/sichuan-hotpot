@@ -17,8 +17,8 @@ const presets: { key: Exclude<HistoryPeriod, "custom">; name: string }[] = [
 ];
 const weekdays = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
-export function HistoryDateFilter({ value, onChange }: {
-  value: HistoryRange; onChange: (next: HistoryRange) => void;
+export function HistoryDateFilter({ value, onChange, report = false }: {
+  value: HistoryRange; onChange: (next: HistoryRange) => void; report?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => vietnamDay().slice(0, 7));
@@ -62,8 +62,15 @@ export function HistoryDateFilter({ value, onChange }: {
   return <View style={styles.wrapper}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="always" contentContainerStyle={styles.chips}
-      accessibilityLabel="Lọc theo ngày tạo đơn">
-      {presets.map(item => <Pressable key={item.key} accessibilityRole="button"
+      accessibilityLabel={report ? "Lọc kỳ báo cáo" : "Lọc theo ngày tạo đơn"}>
+      {(report ? [
+        { key: "today", name: "Hôm nay" },
+        { key: "yesterday", name: "Hôm qua" },
+        { key: "week", name: "7 ngày" },
+        { key: "month", name: "30 ngày" },
+        { key: "thisMonth", name: "Tháng này" },
+      ] as { key: Exclude<HistoryPeriod, "custom">; name: string }[] : presets)
+      .map(item => <Pressable key={item.key} accessibilityRole="button"
         accessibilityLabel={"Ngày tạo: " + item.name}
         accessibilityState={{ selected: value.period === item.key }}
         onPress={() => onChange(historyPeriodRange(item.key))}
@@ -88,7 +95,7 @@ export function HistoryDateFilter({ value, onChange }: {
           style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} />
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
-            <Text style={styles.title}>Ngày tạo đơn</Text>
+            <Text style={styles.title}>{report ? "Kỳ báo cáo" : "Ngày tạo đơn"}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng lịch"
               style={styles.closeButton} onPress={() => setOpen(false)}>
               <Text style={styles.closeText}>✕</Text>
