@@ -14,7 +14,7 @@ test("admin notification diagnostics are optional while existing sound switch st
   assert.doesNotMatch(hub, /Km, phụ phí|WebSocket vẫn đồng bộ danh sách đơn/);
 });
 test("delivery labels reflect zone pricing but preserved payload and safety rules", () => {
-  assert.match(hub, /Vùng giao, phí và đơn tối thiểu/);
+  assert.match(hub, /label: "Phí giao"/);
   assert.match(delivery, /pricingMode: "ZONE"/);
   assert.match(delivery, /!zones\.length \|\| !zones\.some\(zone => zone\.isActive\)/);
   assert.match(delivery, /Đã thiết lập {current\.zones\.length} vùng giao/);
