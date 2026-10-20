@@ -2,8 +2,8 @@ import { displayAdministrativeSelection } from "../../../packages/shared/src/vie
 import { orderCustomerCallUrl, orderCustomerDirectionsUrl } from "../../../packages/shared/src/order-contact";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, View,
+  ActivityIndicator, AppState, Image, KeyboardAvoidingView, Linking, Modal,
+  Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
@@ -932,6 +932,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     <Modal visible={!!selected} transparent animationType="slide"
       onRequestClose={() => { if (!saving) { setSelected(null); setAction(null); } }}>
       <SafeAreaView edges={["bottom"]} style={s.overlay}>
+        <KeyboardAvoidingView style={s.detailKeyboard}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={s.sheet}>
           <View style={s.sheetHead}>
             <Text style={s.title}>Đơn #{selected?.id.slice(0, 8).toUpperCase()}</Text>
@@ -952,6 +954,19 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
                 </View>
                 <Text style={s.note}>Đặt lúc {when(selected.createdAt)}</Text>
               </View>
+              {!kitchenOnly && <View style={s.detailCustomerSummary}>
+                <View style={s.detailCustomerCopy}>
+                  <Text style={s.detailCustomerName} numberOfLines={1}>
+                    {selected.customer?.localCredential?.normalizedUsername?.trim()
+                      || selected.phoneSnapshot?.trim() || "Khách hàng"}
+                  </Text>
+                  {!!selected.customer?.localCredential?.normalizedUsername?.trim()
+                    && !!selected.phoneSnapshot &&
+                    <Text style={s.note}>{selected.phoneSnapshot}</Text>}
+                </View>
+                {selected.totalVnd !== undefined &&
+                  <Text style={s.detailSummaryMoney}>{money(selected.totalVnd)}</Text>}
+              </View>}
               {selected.status === "CANCELED" && <View style={s.cancelInfo}>
                 <Text style={s.cancelTitle}>Đơn đã hủy</Text>
                 <Text style={s.cancelText}>{canceledChange
@@ -962,6 +977,83 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
                   Lý do: {canceledChange.reason}
                 </Text>}
               </View>}
+              {!kitchenOnly && <>
+                <View style={s.deliveryContact}>
+                  <Text style={s.itemName}>Thông tin giao hàng</Text>
+                  {!!selected.addressLineSnapshot && <Text style={s.products}>
+                    {selected.addressLineSnapshot}{displayAdministrativeSelection({
+                      catalogVersion: selected.catalogVersionSnapshot,
+                      provinceCode: selected.provinceCodeSnapshot,
+                      wardCode: selected.wardCodeSnapshot,
+                    }) ? ", " + displayAdministrativeSelection({
+                      catalogVersion: selected.catalogVersionSnapshot,
+                      provinceCode: selected.provinceCodeSnapshot,
+                      wardCode: selected.wardCodeSnapshot,
+                    }) : ""}
+                  </Text>}
+                  {!!selected.phoneSnapshot && <Text style={s.note}>
+                    SĐT khách: {selected.phoneSnapshot}
+                  </Text>}
+                  <View style={s.deliveryContactActions}>
+                    {orderCustomerCallUrl(selected.phoneSnapshot) && <Pressable
+                      accessibilityRole="button" accessibilityLabel="Gọi điện cho khách hàng"
+                      style={({ pressed }) => [s.deliveryContactAction, pressed && s.pressed]}
+                      onPress={() => {
+                        const url = orderCustomerCallUrl(selected.phoneSnapshot);
+                        if (url) void openOrderContact(url);
+                      }}>
+                      <Icon name="phone" size={20} color={c.white} />
+                      <Text style={s.deliveryContactActionText}>Gọi khách</Text>
+                    </Pressable>}
+                    {orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
+                      && <Pressable accessibilityRole="button"
+                        accessibilityLabel="Xem định vị khách hàng và chỉ đường trên bản đồ"
+                        style={({ pressed }) => [s.deliveryContactAction, s.deliveryMapAction,
+                          pressed && s.pressed]}
+                        onPress={() => {
+                          const url = orderCustomerDirectionsUrl(
+                            selected.latitudeSnapshot, selected.longitudeSnapshot);
+                          if (url) void openOrderContact(url);
+                        }}>
+                        <Icon name="pin" size={20} color={c.redDeep} />
+                        <Text style={s.deliveryMapActionText}>Xem vị trí / Chỉ đường</Text>
+                      </Pressable>}
+                  </View>
+                  {!orderCustomerCallUrl(selected.phoneSnapshot) && <Text style={s.note}>
+                    Đơn này chưa có số điện thoại hợp lệ để gọi.
+                  </Text>}
+                  {!orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
+                    && <Text style={s.note}>
+                      Đơn này chưa có ghim GPS hợp lệ. Kiểm tra địa chỉ trước khi giao.
+                    </Text>}
+                  {!!contactError && <Notice error text={contactError} />}
+                </View>
+                {manager && ["READY", "DELIVERY_FAILED"].includes(selected.status)
+                  && (drivers.length > 0 || !!selected.deliveryAssignment?.driverId || !!assignError) && (
+                  <View style={s.driverAssign}>
+                    <Text style={s.itemName}>Phân công nhân viên giao</Text>
+                    <Text style={s.note}>
+                      {selected.deliveryAssignment?.driverId
+                        ? "Đã phân công · có thể chọn lại trước khi giao."
+                        : "Chưa phân công. Chủ/quản lý vẫn có thể tự giao."}
+                    </Text>
+                    {drivers.map(driver => <Pressable key={driver.userId}
+                      accessibilityRole="button"
+                      accessibilityLabel={"Giao cho tài xế " + (driver.user.phoneE164 ?? driver.userId.slice(0, 8))}
+                      disabled={assignBusy}
+                      onPress={() => void assignDriver(driver.userId)}
+                      style={[s.driverOption,
+                        selected.deliveryAssignment?.driverId === driver.userId && s.driverOptionActive]}>
+                      <Icon name="delivery" size={19} color={c.redDeep} />
+                      <Text style={s.driverOptionText}>
+                        {driver.user.phoneE164 ?? ("Tài xế #" + driver.userId.slice(0, 8))}
+                        {selected.deliveryAssignment?.driverId === driver.userId ? " ✓" : ""}
+                      </Text>
+                    </Pressable>)}
+                    {!!assignError && <Notice text={assignError} error />}
+                  </View>
+                )}
+              </>}
               <View style={s.timeline}>
                 {(["PENDING", "CONFIRMED", "PREPARING", "READY"] as const).map((status, index) => {
                   const history = selected.statusHistory.find(row => row.toStatus === status);
@@ -1186,85 +1278,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
                   <Text style={s.note}>Thanh toán: {selected.payment?.method ?? "Chưa xác định"}
                     {" · "}{selected.payment?.status ?? "Chưa xác định"}</Text>
                 </View>}
-              {!kitchenOnly && <>
-                <View style={s.deliveryContact}>
-                  <Text style={s.itemName}>Thông tin giao hàng</Text>
-                  {!!selected.addressLineSnapshot && <Text style={s.products}>
-                    {selected.addressLineSnapshot}{displayAdministrativeSelection({
-                      catalogVersion: selected.catalogVersionSnapshot,
-                      provinceCode: selected.provinceCodeSnapshot,
-                      wardCode: selected.wardCodeSnapshot,
-                    }) ? ", " + displayAdministrativeSelection({
-                      catalogVersion: selected.catalogVersionSnapshot,
-                      provinceCode: selected.provinceCodeSnapshot,
-                      wardCode: selected.wardCodeSnapshot,
-                    }) : ""}
-                  </Text>}
-                  {!!selected.phoneSnapshot && <Text style={s.note}>
-                    SĐT khách: {selected.phoneSnapshot}
-                  </Text>}
-                  <View style={s.deliveryContactActions}>
-                    {orderCustomerCallUrl(selected.phoneSnapshot) && <Pressable
-                      accessibilityRole="button" accessibilityLabel="Gọi điện cho khách hàng"
-                      style={({ pressed }) => [s.deliveryContactAction, pressed && s.pressed]}
-                      onPress={() => {
-                        const url = orderCustomerCallUrl(selected.phoneSnapshot);
-                        if (url) void openOrderContact(url);
-                      }}>
-                      <Icon name="phone" size={20} color={c.white} />
-                      <Text style={s.deliveryContactActionText}>Gọi khách</Text>
-                    </Pressable>}
-                    {orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
-                      && <Pressable accessibilityRole="button"
-                        accessibilityLabel="Xem định vị khách hàng và chỉ đường trên bản đồ"
-                        style={({ pressed }) => [s.deliveryContactAction, s.deliveryMapAction,
-                          pressed && s.pressed]}
-                        onPress={() => {
-                          const url = orderCustomerDirectionsUrl(
-                            selected.latitudeSnapshot, selected.longitudeSnapshot);
-                          if (url) void openOrderContact(url);
-                        }}>
-                        <Icon name="pin" size={20} color={c.redDeep} />
-                        <Text style={s.deliveryMapActionText}>Xem vị trí / Chỉ đường</Text>
-                      </Pressable>}
-                  </View>
-                  {!orderCustomerCallUrl(selected.phoneSnapshot) && <Text style={s.note}>
-                    Đơn này chưa có số điện thoại hợp lệ để gọi.
-                  </Text>}
-                  {!orderCustomerDirectionsUrl(selected.latitudeSnapshot, selected.longitudeSnapshot)
-                    && <Text style={s.note}>
-                      Đơn này chưa có ghim GPS hợp lệ. Kiểm tra địa chỉ trước khi giao.
-                    </Text>}
-                  {!!contactError && <Notice error text={contactError} />}
-                </View>
-                {manager && ["READY", "DELIVERY_FAILED"].includes(selected.status) && (
-                  <View style={s.driverAssign}>
-                    <Text style={s.itemName}>Phân công nhân viên giao</Text>
-                    <Text style={s.note}>
-                      {selected.deliveryAssignment?.driverId
-                        ? "Đã phân công · có thể chọn lại trước khi giao."
-                        : "Chưa phân công. Chủ/quản lý vẫn có thể tự giao."}
-                    </Text>
-                    {drivers.map(driver => <Pressable key={driver.userId}
-                      accessibilityRole="button"
-                      accessibilityLabel={"Giao cho tài xế " + (driver.user.phoneE164 ?? driver.userId.slice(0, 8))}
-                      disabled={assignBusy}
-                      onPress={() => void assignDriver(driver.userId)}
-                      style={[s.driverOption,
-                        selected.deliveryAssignment?.driverId === driver.userId && s.driverOptionActive]}>
-                      <Icon name="delivery" size={19} color={c.redDeep} />
-                      <Text style={s.driverOptionText}>
-                        {driver.user.phoneE164 ?? ("Tài xế #" + driver.userId.slice(0, 8))}
-                        {selected.deliveryAssignment?.driverId === driver.userId ? " ✓" : ""}
-                      </Text>
-                    </Pressable>)}
-                    {drivers.length === 0 && <Text style={s.note}>
-                      Chưa có nhân viên DRIVER trong chi nhánh này.
-                    </Text>}
-                    {!!assignError && <Notice text={assignError} error />}
-                  </View>
-                )}
-              </>}
               {!!selected.edits?.length && <>
                 <Text style={s.detailSectionTitle}>Lịch sử sửa đơn</Text>
                 {selected.edits.map((edit, i) =>
@@ -1279,30 +1292,44 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
                   {h.toStatus === "CANCELED" ? " · " + cancellationSourceLabel[h.source] : ""}
                   {h.reason ? " · " + h.reason : ""}
                 </Text>)}
-              {availableActions(selected.status, role).length > 0 && <View style={s.actions}>
-                {!action ? availableActions(selected.status, role).map(a =>
-                  <Action key={a.value} label={a.label}
-                    secondary={a.value === "CANCELED"} onPress={() => setAction(a.value)} />) : <>
-                  <Text style={s.itemName}>Xác nhận: {statusName[action]}?</Text>
-                  {["CANCELED", "DELIVERY_FAILED"].includes(action) && <Field
-                    label={action === "DELIVERY_FAILED" ? "Lý do giao thất bại" : "Lý do bắt buộc"}
-                    value={reason} onChangeText={setReason}
-                    placeholder={action === "DELIVERY_FAILED"
-                      ? "Ví dụ: khách không nghe máy" : "Nêu rõ lý do cho khách"} multiline />}
-                  {action === "DELIVERED" && selected.payment?.method === "COD"
-                    && selected.payment.status === "PENDING" &&
-                    <Text style={s.editHint}>Xác nhận đã giao sẽ đồng thời ghi nhận COD đã thu.</Text>}
-                  <Action label={saving ? "Đang cập nhật..." : "Xác nhận cập nhật"}
-                    disabled={saving || (["CANCELED", "DELIVERY_FAILED"].includes(action)
-                      && reason.trim().length < 5)}
-                    onPress={() => void save()} />
-                  <Action label="Quay lại" secondary disabled={saving}
-                    onPress={() => setAction(null)} />
-                </>}
-              </View>}
             </>}
           </ScrollView>
+          {!!selected && !editingOrder && availableActions(selected.status, role).length > 0 &&
+            <View style={s.detailFooter}>
+              {!action ? <View style={s.detailFooterButtons}>
+                {availableActions(selected.status, role).map(a =>
+                  <View key={a.value} style={s.detailFooterButton}>
+                    <Action label={a.label}
+                      secondary={a.value === "CANCELED" || a.value === "DELIVERY_FAILED"}
+                      disabled={saving || editBusy}
+                      onPress={() => { setAction(a.value); setReason(""); }} />
+                  </View>)}
+              </View> : <>
+                <Text style={s.detailFooterTitle}>Xác nhận: {statusName[action]}?</Text>
+                {["CANCELED", "DELIVERY_FAILED"].includes(action) && <Field
+                  label={action === "DELIVERY_FAILED" ? "Lý do giao thất bại" : "Lý do bắt buộc"}
+                  value={reason} onChangeText={setReason}
+                  placeholder={action === "DELIVERY_FAILED"
+                    ? "Ví dụ: khách không nghe máy" : "Nêu rõ lý do cho khách"} multiline />}
+                {action === "DELIVERED" && selected.payment?.method === "COD"
+                  && selected.payment.status === "PENDING" &&
+                  <Text style={s.detailFooterHint}>Xác nhận đã giao sẽ ghi nhận COD đã thu.</Text>}
+                <View style={s.detailFooterButtons}>
+                  <View style={s.detailFooterButton}>
+                    <Action label="Quay lại" secondary disabled={saving}
+                      onPress={() => { setAction(null); setReason(""); }} />
+                  </View>
+                  <View style={s.detailFooterButton}>
+                    <Action label={saving ? "Đang cập nhật..." : "Xác nhận cập nhật"}
+                      disabled={saving || (["CANCELED", "DELIVERY_FAILED"].includes(action)
+                        && reason.trim().length < 5)}
+                      onPress={() => void save()} />
+                  </View>
+                </View>
+              </>}
+            </View>}
         </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   </View>;
@@ -1426,12 +1453,25 @@ const s = StyleSheet.create({
     gap: 7, padding: 14 },
   overlay: { flex: 1, backgroundColor: "rgba(12,18,28,0.48)",
     justifyContent: "flex-end" },
+  detailKeyboard: { flex: 1, justifyContent: "flex-end" },
   sheet: { maxHeight: "92%", backgroundColor: c.white,
     borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: "hidden" },
   sheetHead: { minHeight: 56, flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", paddingHorizontal: 16, borderBottomWidth: 1, borderColor: c.line },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   sheetContent: { padding: 12, paddingBottom: 20, gap: 9 },
+  detailCustomerSummary: { flexDirection: "row", alignItems: "center",
+    gap: 10, paddingVertical: 5 },
+  detailCustomerCopy: { flex: 1, minWidth: 0, gap: 3 },
+  detailCustomerName: { fontSize: 15, fontWeight: "800", color: c.ink },
+  detailSummaryMoney: { fontSize: 16, fontWeight: "800", color: c.redDeep },
+  detailFooter: { borderTopWidth: 1, borderTopColor: c.line,
+    backgroundColor: c.white, paddingHorizontal: 12, paddingTop: 10,
+    paddingBottom: 10, gap: 8 },
+  detailFooterTitle: { fontSize: font.section, fontWeight: "800", color: c.ink },
+  detailFooterHint: { fontSize: font.note, color: c.secondary, lineHeight: 18 },
+  detailFooterButtons: { flexDirection: "row", gap: 8 },
+  detailFooterButton: { flex: 1, minWidth: 0 },
   item: { gap: 3, borderBottomWidth: 1, borderColor: c.line, paddingBottom: 9 },
   editProductPhoto: { width: 48, height: 48, borderRadius: 9, backgroundColor: c.pale },
   editProductFallback: { width: 48, height: 48, borderRadius: 9,
