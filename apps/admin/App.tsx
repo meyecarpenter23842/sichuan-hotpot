@@ -28,14 +28,14 @@ import { AdminPwaReleaseNotice } from "./src/AdminPwaReleaseNotice";
 import { ALL_HISTORY, historyPeriodRange, type HistoryRange } from "./src/history-search";
 import { BusinessReportPanel, type ReportMetric } from "./src/BusinessReportPanel";
 
-type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account" | "report";
+type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account" | "report" | "lookup";
 const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
   { id: "overview", label: "Tổng quan", shortLabel: "Tổng quan", icon: "dashboard" },
   { id: "orders", label: "Đơn hàng", shortLabel: "Đơn", icon: "orders" },
   { id: "kitchen", label: "Bếp", shortLabel: "Bếp", icon: "kitchen" },
   { id: "catalog", label: "Thực đơn", shortLabel: "Món", icon: "catalog" },
   { id: "delivery", label: "Giao hàng", shortLabel: "Giao", icon: "delivery" },
-  { id: "settings", label: "Thiết lập", shortLabel: "Thiết lập", icon: "settings" },
+  { id: "settings", label: "Quản lý", shortLabel: "Quản lý", icon: "manage" },
   { id: "account", label: "Tài khoản", shortLabel: "Tài khoản", icon: "account" },
 ];
 function roleName(role: string): string {
@@ -50,13 +50,16 @@ type DailyOverviewSummary = {
   preparing: number;
   ready: number;
   deliveredCount: number;
+  canceledCount: number;
   deliveredValueVnd: number;
   confirmedPaymentVnd: number;
 };
 
-function Overview({ catalog, token, branchId, onChangeTab }: {
+function Overview({ catalog, token, branchId, onChangeTab, onOpenKpi, onOpenReport }: {
   catalog: AdminCatalog; token: string; branchId: string;
   onChangeTab: (tab: Tab) => void;
+  onOpenKpi: (kind: "NEW" | "CANCELED" | "DELIVERED" | "REVENUE") => void;
+  onOpenReport: () => void;
 }) {
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [summary, setSummary] = useState<DailyOverviewSummary | null>(null);
@@ -115,15 +118,16 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
     preparing: summary?.preparing ?? 0,
     ready: summary?.ready ?? 0,
   };
-  const metrics: { label: string; value: string; icon: IconName; tone: string; text: string; target: Tab }[] = [
+  const metrics: { label: string; value: string; icon: IconName; tone: string;
+    text: string; kind: "NEW" | "CANCELED" | "DELIVERED" | "REVENUE" }[] = [
     { label: "Đơn mới", value: String(counts.pending), icon: "orders",
-      tone: "#FFE6E9", text: c.redDeep, target: "orders" },
-    { label: "Đang chuẩn bị", value: String(counts.preparing), icon: "kitchen",
-      tone: "#FFF1D6", text: "#8A510B", target: "kitchen" },
-    { label: "Chờ giao", value: String(counts.ready), icon: "delivery",
-      tone: "#DDECFC", text: "#1A548B", target: "delivery" },
-    { label: "Giá trị giao hôm nay", value: formatMoney(summary?.deliveredValueVnd ?? 0), icon: "dashboard",
-      tone: "#E3F5E8", text: "#167442", target: "delivery" },
+      tone: "#FFE6E9", text: c.redDeep, kind: "NEW" },
+    { label: "Đã hủy hôm nay", value: String(summary?.canceledCount ?? 0), icon: "close",
+      tone: "#FBE7E6", text: "#A33137", kind: "CANCELED" },
+    { label: "Đã giao hôm nay", value: String(summary?.deliveredCount ?? 0), icon: "delivery",
+      tone: "#DDECFC", text: "#1A548B", kind: "DELIVERED" },
+    { label: "Giá trị giao hôm nay", value: formatMoney(summary?.deliveredValueVnd ?? 0), icon: "report",
+      tone: "#E3F5E8", text: "#167442", kind: "REVENUE" },
   ];
   const pending = orders;
   const confirm = async (order: StaffOrder) => {
@@ -158,7 +162,7 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
     <View style={styles.dashboardGrid}>
       {metrics.map(metric => <Pressable key={metric.label}
         accessibilityRole="button" accessibilityLabel={metric.label + ": " + metric.value}
-        onPress={() => onChangeTab(metric.target)}
+        onPress={() => onOpenKpi(metric.kind)}
         style={[styles.dashboardMetric, { backgroundColor: metric.tone }]}>
         <View style={styles.metricIcon}><Icon name={metric.icon} size={21} color={metric.text} /></View>
         <View style={styles.metricCopy}>
@@ -170,7 +174,7 @@ function Overview({ catalog, token, branchId, onChangeTab }: {
       </Pressable>)}
     </View>
     <Pressable accessibilityRole="button" accessibilityLabel="Mở báo cáo kinh doanh"
-      onPress={() => onChangeTab("report")} style={styles.reportLink}>
+      onPress={onOpenReport} style={styles.reportLink}>
       <Icon name="dashboard" color={c.redDeep} size={21} />
       <Text style={styles.reportLinkText}>Báo cáo kinh doanh</Text>
       <Text style={styles.reportLinkArrow}>›</Text>
@@ -284,6 +288,9 @@ export default function AdminApp() {
   const [reportRange, setReportRange] = useState<HistoryRange>(
     () => historyPeriodRange("week"));
   const [reportMetric, setReportMetric] = useState<ReportMetric | null>(null);
+  const [reportBack, setReportBack] = useState<"overview" | "settings">("overview");
+  const [lookupRange, setLookupRange] = useState<HistoryRange>(() => historyPeriodRange("week"));
+  const [lookupCode, setLookupCode] = useState("");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
   const [headerBusy, setHeaderBusy] = useState(false);
@@ -541,7 +548,7 @@ export default function AdminApp() {
     setChooseBranch(false);
     if (created) {
       setTab("settings");
-      setNotice("Đã tạo chi nhánh. Mở Thiết lập để lưu giờ bán, phí giao và kích hoạt.");
+      setNotice("Đã tạo chi nhánh. Mở Quản lý để lưu giờ bán, phí giao và kích hoạt.");
     } else {
       setTab("settings");
       setNotice("Đã cập nhật chi nhánh.");
@@ -657,10 +664,10 @@ export default function AdminApp() {
                 Quản lý đơn hàng · Vận hành cửa hàng
               </Text>
             </View>
-            {operator && <Pressable accessibilityRole="button" accessibilityLabel="Mở thiết lập"
+            {operator && <Pressable accessibilityRole="button" accessibilityLabel="Mở Quản lý"
               onPress={() => { setChooseBranch(false); setTab("settings"); }}
               style={styles.heroAction}>
-              <Icon name="settings" size={22} color="#F8E8D0" />
+              <Icon name="manage" size={22} color="#F8E8D0" />
             </Pressable>}
             <Pressable accessibilityRole="button" accessibilityLabel="Mở tài khoản"
               onPress={() => { setChooseBranch(false); setTab("account"); }}
@@ -702,24 +709,34 @@ export default function AdminApp() {
           { top: headerHeight + 4 }]}><Notice text={headerToast} error /></View>}
         {tab === "catalog" && catalog && branches.length > 0 && !loadError && operator ?
           <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
-          (tab === "orders" || tab === "kitchen" || tab === "delivery") && branchId
+          (tab === "orders" || tab === "kitchen" || tab === "delivery" || tab === "lookup") && branchId
             && branches.length > 0 ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
-              role={branchRole} mode={tab} active group={orderGroup}
+              role={branchRole} mode={tab === "lookup" ? "orders" : tab} active
+              group={tab === "lookup" ? "history" : orderGroup}
+              lookupMode={tab === "lookup"}
               onGroupChange={next => {
                 if (next !== "history") lastWorkingLane.current = next;
                 setOrderGroup(next);
               }}
-              onCloseHistory={() => setOrderGroup(lastWorkingLane.current)}
-              historyStatus={historyStatus}
-              historyRange={historyRange} onHistoryRangeChange={next => {
-                setReportMetric(null); setHistoryRange(next);
+              onCloseHistory={() => tab === "lookup"
+                ? setTab("settings") : setOrderGroup(lastWorkingLane.current)}
+              historyStatus={tab === "lookup" ? "ALL" : historyStatus}
+              historyRange={tab === "lookup" ? lookupRange : historyRange}
+              onHistoryRangeChange={next => {
+                if (tab === "lookup") setLookupRange(next);
+                else { setReportMetric(null); setHistoryRange(next); }
               }}
-              historyCode={historyCode} onHistoryCodeChange={value => {
-                setReportMetric(null); setHistoryCode(value);
+              historyCode={tab === "lookup" ? lookupCode : historyCode}
+              onHistoryCodeChange={value => {
+                if (tab === "lookup") setLookupCode(value);
+                else { setReportMetric(null); setHistoryCode(value); }
               }}
-              reportMetric={reportMetric} onClearReportMetric={() => setReportMetric(null)}
-              onHistoryStatusChange={next => { setReportMetric(null); setHistoryStatus(next); }} /> :
+              reportMetric={tab === "lookup" ? null : reportMetric}
+              onClearReportMetric={() => setReportMetric(null)}
+              onHistoryStatusChange={next => {
+                setReportMetric(null); setHistoryStatus(next);
+              }} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
@@ -745,10 +762,27 @@ export default function AdminApp() {
           </View> : (
             <>
               {tab === "overview" && <Overview catalog={catalog} token={token}
-                branchId={branchId!} onChangeTab={setTab} />}
+                branchId={branchId!} onChangeTab={next => {
+                  if (next === "orders") { setReportMetric(null); lastWorkingLane.current = "new"; setOrderGroup("new"); }
+                  setTab(next);
+                }}
+                onOpenReport={() => { setReportBack("overview"); setTab("report"); }}
+                onOpenKpi={kind => {
+                  const today = historyPeriodRange("today");
+                  if (kind === "NEW") {
+                    setReportMetric(null); lastWorkingLane.current = "new";
+                    setOrderGroup("new"); setTab("orders");
+                  } else if (kind === "REVENUE") {
+                    setReportRange(today); setReportBack("overview"); setTab("report");
+                  } else {
+                    setHistoryCode(""); setHistoryStatus("ALL"); setHistoryRange(today);
+                    setReportMetric(kind === "CANCELED" ? "CANCELED" : "DELIVERED");
+                    setOrderGroup("history"); setTab("orders");
+                  }
+                }} />
               {tab === "report" && operator && branchId && <BusinessReportPanel
                 token={token} branchId={branchId} range={reportRange}
-                onRangeChange={setReportRange} onClose={() => setTab("overview")}
+                onRangeChange={setReportRange} onClose={() => setTab(reportBack)}
                 onDrillDown={(metric, range) => {
                   setReportMetric(metric);
                   setHistoryCode("");
@@ -762,7 +796,15 @@ export default function AdminApp() {
                 owner={principal?.role === "OWNER"} reload={reload}
                 onBranchSaved={branchSaved} chimeEnabled={chimeEnabled}
                 chimePending={chimePending} chimeError={chimeError}
-                onChimeChange={changeChime} />}
+                onChimeChange={changeChime}
+                onOpenBusiness={destination => {
+                  if (destination === "report") {
+                    setReportBack("settings"); setTab("report");
+                  } else {
+                    setLookupRange(historyPeriodRange("week")); setLookupCode("");
+                    setTab("lookup");
+                  }
+                }} />
             </>
           )}
           </ScrollView>}
