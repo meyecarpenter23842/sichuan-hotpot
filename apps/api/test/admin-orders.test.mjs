@@ -626,3 +626,87 @@ test("P0 server filters canceled/delivered independently and identifies cancella
   await client.get("/admin/orders/" + otherBranchId + "/pages?group=history&status=CANCELED")
     .set(headers(manager.token)).expect(403);
 });
+
+test("L02 Vietnam created-day range is server-filtered, paged and branch-scoped", async () => {
+  const dates = [
+    "2026-06-03T16:59:59.000Z", // June 3 at 23:59 Vietnam
+    "2026-06-03T17:00:00.000Z", // June 4 at 00:00 Vietnam
+    "2026-06-04T16:59:59.999Z", // June 4 at 23:59 Vietnam
+    "2026-06-04T17:00:00.000Z", // June 5 at 00:00 Vietnam
+  ];
+  const ids = [];
+  for (const createdAt of dates) {
+    const o = await order("CANCELED");
+    await db.order.update({ where: { id: o.id }, data: { createdAt: new Date(createdAt) } });
+    ids.push(o.id);
+  }
+  const outsiderOrder = await order("CANCELED", randomUUID(), otherBranchId);
+  await db.order.update({ where: { id: outsiderOrder.id },
+    data: { createdAt: new Date(dates[1]) } });
+  const url = branchBase() + "/pages?group=history&status=CANCELED" +
+    "&from=2026-06-04&to=2026-06-04";
+  const page1 = await client.get(url + "&limit=1").set(headers(owner.token)).expect(200);
+  assert.equal(page1.body.total, 2);
+  assert.equal(page1.body.items.length, 1);
+  assert.equal(page1.body.items[0].id, ids[2]);
+  assert.equal(page1.body.nextCursor, ids[2]);
+  const page2 = await client.get(url + "&limit=1&cursor=" + page1.body.nextCursor)
+    .set(headers(manager.token)).expect(200);
+  assert.deepEqual(page2.body.items.map(x => x.id), [ids[1]]);
+  assert.equal(page2.body.total, 2);
+  assert.equal(page2.body.nextCursor, null);
+  const later = await client.get(branchBase() +
+    "/pages?group=history&status=CANCELED&from=2026-06-05&to=2026-06-05")
+    .set(headers(owner.token)).expect(200);
+  assert.ok(later.body.items.some(x => x.id === ids[3]));
+  assert.ok(!later.body.items.some(x => x.id === ids[2]));
+  await client.get(url + "&cursor=" + ids[3]).set(headers(owner.token)).expect(400);
+  await client.get(url).set(headers(kitchen.token)).expect(403);
+  await client.get(url).set(headers(driver.token)).expect(403);
+});
+
+test("L02 indexed UUID code supports eight-digit receipt codes and full ids across all statuses", async () => {
+  const pending = await order("PENDING");
+  const short = pending.id.slice(0, 8).toUpperCase();
+  const prefixUrl = branchBase() + "/pages?group=lookup&code=" + short;
+  const found = await client.get(prefixUrl).set(headers(owner.token)).expect(200);
+  assert.equal(found.body.total, 1);
+  assert.equal(found.body.items[0].id, pending.id);
+  assert.equal(found.body.items[0].status, "PENDING");
+  const full = await client.get(branchBase() + "/pages?group=lookup&code=" + pending.id)
+    .set(headers(manager.token)).expect(200);
+  assert.deepEqual(full.body.items.map(x => x.id), [pending.id]);
+  const hidden = await client.get("/admin/orders/" + otherBranchId +
+    "/pages?group=lookup&code=" + short)
+    .set(headers(owner.token)).expect(200);
+  assert.equal(hidden.body.total, 0);
+  await client.get(prefixUrl).set(headers(kitchen.token)).expect(403);
+  await client.get(prefixUrl).set(headers(driver.token)).expect(403);
+  await client.get(prefixUrl).set(headers(outsider.token)).expect(403);
+  await client.get(branchBase() + "/pages?group=history&code=" + short)
+    .set(headers(owner.token)).expect(200).then(r => assert.equal(r.body.total, 0));
+});
+
+test("L02 rejects invalid or expensive query parameters instead of scanning orders", async () => {
+  const invalid = [
+    "&from=2026-02-30&to=2026-03-01",
+    "&from=2026-03-01",
+    "&to=2026-03-02",
+    "&from=2026-04-04&to=2026-04-03",
+    "&from=2025-01-01&to=2026-12-31",
+    "&from=2026-6-01&to=2026-06-02",
+    "&code=abc",
+    "&code=%25",
+    "&code=123456789",
+  ];
+  for (const params of invalid) {
+    await client.get(branchBase() + "/pages?group=lookup" + params)
+      .set(headers(manager.token)).expect(400);
+  }
+  await client.get(branchBase() + "/pages?group=new&from=2026-06-04&to=2026-06-04")
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=lookup&status=CANCELED")
+    .set(headers(owner.token)).expect(400);
+  await client.get(branchBase() + "/pages?group=history&code=12345678&status=DELIVERED")
+    .set(headers(owner.token)).expect(200);
+});
