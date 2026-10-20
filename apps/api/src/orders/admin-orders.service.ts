@@ -397,7 +397,10 @@ export class AdminOrdersService {
     cursorId?: string, limit = 25,
     historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED",
     search: { from?: string | undefined; to?: string | undefined;
-      code?: string | undefined } = {}) {
+      code?: string | undefined;
+      metric?: "CREATED" | "COHORT_CANCELED" | "DELIVERED" | "CANCELED"
+        | "FAILED" | "CONFIRMED" | "COD_CONFIRMED" | "QR_CONFIRMED"
+        | "PENDING" | "REFUNDED" | undefined } = {}) {
     const staff = await this.role(authorization, branchId);
     if (historyStatus && group !== "history")
       throw new BadRequestException("INVALID_HISTORY_FILTER");
@@ -407,6 +410,8 @@ export class AdminOrdersService {
     }
     if (group === "lookup" && historyStatus)
       throw new BadRequestException("INVALID_HISTORY_FILTER");
+    if (search.metric && (group !== "lookup" || !search.from || !search.to || search.code))
+      throw new BadRequestException("INVALID_REPORT_DRILLDOWN");
     const groups: Record<typeof group, OrderStatus[]> = {
       new: ["PENDING"], confirmed: ["CONFIRMED"], preparing: ["PREPARING"],
       ready: ["READY"], delivering: ["DELIVERING"],
@@ -425,9 +430,32 @@ export class AdminOrdersService {
       throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
     const createdAt = orderCreatedBetween(search.from, search.to);
     const matchedId = orderIdMatch(search.code);
+    const metric = search.metric;
+    const byCreatedDay = !metric || metric === "CREATED" || metric === "COHORT_CANCELED";
+    const eventType = metric === "CANCELED" ? "CANCELED"
+      : metric === "FAILED" ? "DELIVERY_FAILED" : "DELIVERED";
+    const metricStatus: Prisma.OrderWhereInput["status"] =
+      metric === "COHORT_CANCELED" || metric === "CANCELED" ? "CANCELED"
+      : metric && metric !== "CREATED" && metric !== "FAILED" ? "DELIVERED"
+      : { in: groups[group] };
+    const paymentMatch: Prisma.OrderWhereInput["payment"] =
+      metric === "CONFIRMED" ? { is: { status: "CONFIRMED" } }
+      : metric === "COD_CONFIRMED"
+        ? { is: { status: "CONFIRMED", method: "COD" } }
+      : metric === "QR_CONFIRMED"
+        ? { is: { status: "CONFIRMED", method: "QR" } }
+      : metric === "PENDING" ? { is: { status: "PENDING" } }
+      : metric === "REFUNDED" ? { is: { status: "REFUNDED" } }
+      : undefined;
     const scope: Prisma.OrderWhereInput = {
-      branchId, status: historyStatus ?? { in: groups[group] },
-      ...(createdAt ? { createdAt } : {}),
+      branchId, status: historyStatus ?? metricStatus,
+      ...(byCreatedDay && createdAt ? { createdAt } : {}),
+      ...(metric && !byCreatedDay && createdAt ? {
+        statusHistory: { some: {
+          toStatus: eventType, createdAt,
+        } },
+      } : {}),
+      ...(paymentMatch ? { payment: paymentMatch } : {}),
       ...(matchedId ? { id: matchedId } : {}),
       ...(staff.role === "DRIVER"
         ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),
