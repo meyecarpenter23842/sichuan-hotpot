@@ -11,8 +11,7 @@
       "bundler": "metro",
       "output": "single",
       "themeColor": "#8C2028",
-      "backgroundColor": "#FFFFFF",
-      "favicon": "./public/icon.svg"
+      "backgroundColor": "#FFFFFF"
     },
     "experiments": {
       "tsconfigPaths": true
