@@ -53,7 +53,7 @@ test("P0 history filter is server-owned, cancel color and actor audit are consis
 });
 
 test("History has its own header and never briefly displays a previous filter's orders", () => {
-  assert.match(panel, /const visible = loadedLaneUrl === laneUrl \? laneOrders : \[\]/);
+  assert.match(panel, /const visible = !badCode && !searchPending && loadedLaneUrl === laneUrl/);
   assert.match(panel, /setLoadedLaneUrl\(laneUrl\)/);
   assert.match(panel, /setLoadedLaneUrl\(null\)/);
   assert.match(panel, /key=\{laneUrl\} style=\{s\.orderListScroll\}/);
