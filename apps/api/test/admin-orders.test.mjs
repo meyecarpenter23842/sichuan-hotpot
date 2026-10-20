@@ -503,6 +503,13 @@ test("daily overview is complete, branch-scoped and uses delivery history rather
   await order("CONFIRMED");
   await order("PREPARING");
   await order("READY");
+  const canceledToday = await order("CANCELED");
+  const canceledYesterday = await order("CANCELED");
+  await db.orderStatusHistory.updateMany({
+    where: { orderId: canceledYesterday.id, toStatus: "CANCELED" },
+    data: { createdAt: new Date(start.getTime() - 1000) },
+  });
+  await order("CANCELED", randomUUID(), otherBranchId);
   const current = (await client.get(url).set(headers(manager.token)).expect(200)).body;
 
   assert.equal(current.deliveredCount, old.deliveredCount + 5);
@@ -511,6 +518,9 @@ test("daily overview is complete, branch-scoped and uses delivery history rather
   assert.equal(current.pending, old.pending + 1);
   assert.equal(current.preparing, old.preparing + 2);
   assert.equal(current.ready, old.ready + 1);
+  assert.equal(current.canceledCount, old.canceledCount + 1);
+  assert.equal(typeof current.canceledCount, "number");
+  void canceledToday;
 
   // An operator sees full counts even if the alert endpoint is capped at 100.
   const latest = (await client.get(branchBase()).set(headers(owner.token)).expect(200)).body;
