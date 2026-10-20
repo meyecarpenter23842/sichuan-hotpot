@@ -267,6 +267,9 @@ export default function AdminApp() {
   const [tab, setTab] = useState<Tab>("overview");
   // Parent-owned: switching between bottom tabs must not reset order sub-filter.
   const [orderGroup, setOrderGroup] = useState<OrderGroup>("new");
+  // History is a separate screen, not a sixth operating tab. Keep the last
+  // working lane so Back always returns to the operator's previous position.
+  const lastWorkingLane = useRef<Exclude<OrderGroup, "history">>("new");
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
@@ -690,8 +693,12 @@ export default function AdminApp() {
             && branches.length > 0 ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
               role={branchRole} mode={tab} active group={orderGroup}
-              onGroupChange={setOrderGroup} historyStatus={historyStatus}
-              onHistoryStatusChange={setHistoryStatus} /> :
+              onGroupChange={next => {
+                if (next !== "history") lastWorkingLane.current = next;
+                setOrderGroup(next);
+              }}
+              onCloseHistory={() => setOrderGroup(lastWorkingLane.current)}
+              historyStatus={historyStatus} onHistoryStatusChange={setHistoryStatus} /> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
@@ -749,6 +756,7 @@ export default function AdminApp() {
                   setBranchId(branch.id); setChooseBranch(false);
                   setTab(branch.staffRole === "KITCHEN" ? "kitchen"
                     : branch.staffRole === "DRIVER" ? "delivery" : "overview");
+                  lastWorkingLane.current = "new";
                   setOrderGroup("new");
                 }}>
                 <Text style={styles.branchItemText} numberOfLines={2}>{branch.name}</Text>
