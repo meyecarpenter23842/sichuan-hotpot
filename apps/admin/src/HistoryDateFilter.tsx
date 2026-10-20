@@ -71,7 +71,7 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
         { key: "thisMonth", name: "Tháng này" },
       ] as { key: Exclude<HistoryPeriod, "custom">; name: string }[] : presets)
       .map(item => <Pressable key={item.key} accessibilityRole="button"
-        accessibilityLabel={"Ngày tạo: " + item.name}
+        accessibilityLabel={(report ? "Kỳ báo cáo: " : "Ngày tạo: ") + item.name}
         accessibilityState={{ selected: value.period === item.key }}
         onPress={() => onChange(historyPeriodRange(item.key))}
         style={[styles.chip, value.period === item.key && styles.selected]}>
