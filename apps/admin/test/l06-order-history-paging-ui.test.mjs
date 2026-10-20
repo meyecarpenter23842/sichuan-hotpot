@@ -58,6 +58,7 @@ test("History has its own header and never briefly displays a previous filter's 
   assert.match(panel, /setLoadedLaneUrl\(null\)/);
   assert.match(panel, /key=\{laneUrl\} style=\{s\.orderListScroll\}/);
   assert.match(panel, /laneLoading && visible\.length === 0/);
+  assert.match(panel, /loadedLaneUrl !== laneUrl && !laneError/);
   assert.match(panel, /group !== "history" && <View style=\{s\.tabsToolbar\}>/);
   assert.match(panel, /group === "history" && <View style=\{s\.historyHeading\}>/);
   assert.match(panel, /historyFilters\.map/);
