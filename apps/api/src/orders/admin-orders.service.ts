@@ -9,6 +9,7 @@ import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import { OrderRealtimeService } from "./order-realtime.service";
 import { PushService } from "../push/push.service";
+import { orderCreatedBetween, orderIdMatch } from "./order-search";
 
 const operatingRoles = ["OWNER", "MANAGER", "KITCHEN", "DRIVER"] as const;
 type OperationalRole = (typeof operatingRoles)[number];
@@ -244,26 +245,41 @@ export class AdminOrdersService {
   // pages each status lane independently, so >100 new orders cannot hide history.
   async listPage(authorization: string | undefined, branchId: string,
     group: "new" | "confirmed" | "preparing" | "ready" | "delivering"
-      | "history" | "kitchen" | "delivery",
+      | "history" | "lookup" | "kitchen" | "delivery",
     cursorId?: string, limit = 25,
-    historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED") {
+    historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED",
+    search: { from?: string; to?: string; code?: string } = {}) {
     const staff = await this.role(authorization, branchId);
     if (historyStatus && group !== "history")
+      throw new BadRequestException("INVALID_HISTORY_FILTER");
+    if ((search.from !== undefined || search.to !== undefined || search.code !== undefined)
+      && group !== "history" && group !== "lookup") {
+      throw new BadRequestException("INVALID_ORDER_LOOKUP_SCOPE");
+    }
+    if (group === "lookup" && historyStatus)
       throw new BadRequestException("INVALID_HISTORY_FILTER");
     const groups: Record<typeof group, OrderStatus[]> = {
       new: ["PENDING"], confirmed: ["CONFIRMED"], preparing: ["PREPARING"],
       ready: ["READY"], delivering: ["DELIVERING"],
       history: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"],
+      lookup: ["PENDING", "CONFIRMED", "PREPARING", "READY",
+        "DELIVERING", "DELIVERED", "CANCELED", "DELIVERY_FAILED"],
       kitchen: ["CONFIRMED", "PREPARING", "READY"],
       delivery: ["READY", "DELIVERING", "DELIVERED", "DELIVERY_FAILED"],
     };
     // Only the kitchen or assigned drivers may use their specialized lanes.
+    if (group === "lookup" && staff.role !== "OWNER" && staff.role !== "MANAGER")
+      throw new ForbiddenException("ORDER_LOOKUP_FORBIDDEN");
     if (staff.role === "KITCHEN" && group !== "kitchen")
       throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
     if (staff.role === "DRIVER" && group !== "delivery")
       throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
+    const createdAt = orderCreatedBetween(search.from, search.to);
+    const matchedId = orderIdMatch(search.code);
     const scope: Prisma.OrderWhereInput = {
       branchId, status: historyStatus ?? { in: groups[group] },
+      ...(createdAt ? { createdAt } : {}),
+      ...(matchedId ? { id: matchedId } : {}),
       ...(staff.role === "DRIVER"
         ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),
     };
