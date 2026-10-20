@@ -1,4 +1,4 @@
-export type HistoryPeriod = "all" | "today" | "week" | "month" | "custom";
+export type HistoryPeriod = "all" | "today" | "yesterday" | "week" | "month" | "thisMonth" | "custom";
 export type HistoryRange = { period: HistoryPeriod; from: string | null; to: string | null };
 export const ALL_HISTORY: HistoryRange = { period: "all", from: null, to: null };
 const DAY_MS = 86400000;
@@ -15,6 +15,11 @@ export function historyPeriodRange(period: Exclude<HistoryPeriod, "custom">,
   now: Date = new Date()): HistoryRange {
   if (period === "all") return ALL_HISTORY;
   const to = vietnamDay(now);
+  if (period === "yesterday") {
+    const day = shiftDay(to, -1);
+    return { period, from: day, to: day };
+  }
+  if (period === "thisMonth") return { period, from: to.slice(0, 7) + "-01", to };
   const span = period === "today" ? 0 : period === "week" ? 6 : 29;
   return { period, from: shiftDay(to, -span), to };
 }
