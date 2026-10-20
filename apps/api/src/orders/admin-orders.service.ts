@@ -284,7 +284,8 @@ export class AdminOrdersService {
         ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),
     };
     const cursor = cursorId ? await this.prisma.database.order.findFirst({
-      where: { ...scope, id: cursorId }, select: { createdAt: true, id: true },
+      where: { ...scope, AND: [{ id: cursorId }] },
+      select: { createdAt: true, id: true },
     }) : null;
     if (cursorId && !cursor) throw new BadRequestException("INVALID_ORDER_PAGE_CURSOR");
     const [rows, total] = await Promise.all([
