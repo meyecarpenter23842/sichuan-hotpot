@@ -289,6 +289,7 @@ export default function AdminApp() {
     () => historyPeriodRange("week"));
   const [reportMetric, setReportMetric] = useState<ReportMetric | null>(null);
   const [reportBack, setReportBack] = useState<"overview" | "settings">("overview");
+  const [historyBack, setHistoryBack] = useState<"orders" | "overview" | "report">("orders");
   const [lookupRange, setLookupRange] = useState<HistoryRange>(() => historyPeriodRange("week"));
   const [lookupCode, setLookupCode] = useState("");
   const [authError, setAuthError] = useState("");
@@ -716,11 +717,17 @@ export default function AdminApp() {
               group={tab === "lookup" ? "history" : orderGroup}
               lookupMode={tab === "lookup"}
               onGroupChange={next => {
-                if (next !== "history") lastWorkingLane.current = next;
+                if (next === "history") setHistoryBack("orders");
+                else lastWorkingLane.current = next;
                 setOrderGroup(next);
               }}
-              onCloseHistory={() => tab === "lookup"
-                ? setTab("settings") : setOrderGroup(lastWorkingLane.current)}
+              onCloseHistory={() => {
+                if (tab === "lookup") setTab("settings");
+                else if (historyBack === "report" || historyBack === "overview") {
+                  setReportMetric(null); setOrderGroup(lastWorkingLane.current);
+                  setTab(historyBack);
+                } else { setReportMetric(null); setOrderGroup(lastWorkingLane.current); }
+              }}
               historyStatus={tab === "lookup" ? "ALL" : historyStatus}
               historyRange={tab === "lookup" ? lookupRange : historyRange}
               onHistoryRangeChange={next => {
@@ -777,7 +784,7 @@ export default function AdminApp() {
                   } else {
                     setHistoryCode(""); setHistoryStatus("ALL"); setHistoryRange(today);
                     setReportMetric(kind === "CANCELED" ? "CANCELED" : "DELIVERED");
-                    setOrderGroup("history"); setTab("orders");
+                    setOrderGroup("history"); setHistoryBack("overview"); setTab("orders");
                   }
                 }} />
               {tab === "report" && operator && branchId && <BusinessReportPanel
@@ -789,6 +796,7 @@ export default function AdminApp() {
                   setHistoryStatus("ALL");
                   setHistoryRange(range);
                   setOrderGroup("history");
+                  setHistoryBack("report");
                   setTab("orders");
                 }} />}
               {tab === "settings" && selectedBranch && <SettingsHub
@@ -813,7 +821,13 @@ export default function AdminApp() {
             accessibilityRole="tab" accessibilityLabel={item.label}
             accessibilityState={{ selected: tab === item.id }}
             style={[styles.tab, tab === item.id && styles.tabSelected]}
-            onPress={() => { setChooseBranch(false); setTab(item.id); }}>
+            onPress={() => {
+              setChooseBranch(false);
+              if (item.id === "orders" && reportMetric) {
+                setReportMetric(null); setOrderGroup(lastWorkingLane.current);
+              }
+              setTab(item.id);
+            }}>
             <Icon name={item.icon} size={22} color={tab === item.id ? "#FFD58A" : "#FAF1E6"} />
             <Text style={[styles.tabLabel, tab === item.id && styles.tabActive]}>{item.shortLabel}</Text>
           </Pressable>)}
