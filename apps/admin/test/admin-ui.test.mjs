@@ -120,12 +120,12 @@ test("freshly opened weekdays do not retain invalid midnight-only ranges", () =>
   assert.match(hours, /"PUT", \{ days \}/);
 });
 
-test("Settings is reached through the hero icon and remains a dedicated screen, not Overview", () => {
+test("Management is reached through the hero grid icon and remains a dedicated screen, not Overview", () => {
   const hub = readFileSync(new URL("../src/SettingsHub.tsx", import.meta.url), "utf8");
   const icons = readFileSync(new URL("../src/Icon.tsx", import.meta.url), "utf8");
-  assert.match(app, /id: "settings", label: "Thiết lập", shortLabel: "Thiết lập", icon: "settings"/);
+  assert.match(app, /id: "settings", label: "Quản lý", shortLabel: "Quản lý", icon: "manage"/);
   assert.match(app, /tab === "settings" && selectedBranch && <SettingsHub/);
-  assert.match(app, /accessibilityLabel="Mở thiết lập"/);
+  assert.match(app, /accessibilityLabel="Mở Quản lý"/);
   assert.doesNotMatch(app, /onChangeTab\("settings"\)/);
   assert.match(hub, /style=\{s\.grid\}/);
   assert.match(hub, /<Modal visible=\{selected !== null\}/);
