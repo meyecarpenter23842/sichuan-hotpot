@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Hotpot Menu QR",
+    "slug": "sichuan-hotpot-menu",
+    "version": "0.1.0",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFFFFF",
+    "web": {
+      "name": "Lẩu Tứ Xuyên — Menu tại bàn",
+      "shortName": "Menu tại bàn",
+      "bundler": "metro",
+      "output": "single",
+      "themeColor": "#8C2028",
+      "backgroundColor": "#FFFFFF"
+    },
+    "experiments": {
+      "tsconfigPaths": true
+    }
+  }
+}
