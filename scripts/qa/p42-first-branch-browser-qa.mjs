@@ -46,11 +46,11 @@ try {
   await page.getByRole("button", { name: "Chọn Phường/Xã/Đặc khu" }).click();
   await page.getByRole("radio", { name: /Thủ Dầu Một/ }).click();
   await page.getByRole("button", { name: "Tạo chi nhánh", exact: true }).click();
-  await page.getByText("Đã tạo chi nhánh. Mở Thiết lập", { exact: false }).waitFor();
+  await page.getByText("Đã tạo chi nhánh. Mở Quản lý", { exact: false }).waitFor();
   const branch = await db.branch.findUniqueOrThrow({ where: { code } });
   assert.equal(branch.address, "12 Nguyễn Huệ, Quận 1, TP HCM");
   assert.equal(branch.isActive, false);
-  await page.getByRole("button", { name: "Mở thiết lập" }).waitFor();
+  await page.getByRole("button", { name: "Mở Quản lý" }).waitFor();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("switch", { name: "Mở cửa Thứ hai" }).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
@@ -89,7 +89,7 @@ try {
   assert.equal(savedHours[2].opensAt, "08:00");
   assert.equal(savedHours[2].closesAt, "21:00");
 
-  // Settings is its own screen opened from the header; workflow modals remain separate.
+  // Management is its own screen opened from the header; workflow modals remain separate.
   await page.getByRole("button", { name: "Đóng popup" }).click();
   await page.getByRole("button", { name: "Mở Phí giao" }).click();
   await page.getByText("Chưa thiết lập phí giao.", { exact: false }).waitFor();
