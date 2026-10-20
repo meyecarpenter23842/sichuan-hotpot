@@ -120,7 +120,7 @@ export function HistoryDateFilter({ value, onChange }: {
                 accessibilityState={{ selected: day === start || day === end }}
                 onPress={() => selectDay(day)}
                 style={[styles.dayButton,
-                  start && day >= start && end && day <= end && styles.inRange,
+                  start !== null && end !== null && day >= start && day <= end && styles.inRange,
                   (day === start || day === end) && styles.daySelected]}>
                 <Text style={[styles.dayText,
                   (day === start || day === end) && styles.daySelectedText]}>
