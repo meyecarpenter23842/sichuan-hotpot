@@ -102,6 +102,17 @@ export class AdminOrdersController {
     return this.orders.overviewSummary(auth, branchId);
   }
 
+  @Get(":branchId/business-report")
+  @Header("Cache-Control", "no-store")
+  businessReport(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Query("from") from?: string, @Query("to") to?: string,
+  ) {
+    if (!from || !to) throw new BadRequestException("INCOMPLETE_ORDER_DATE");
+    return this.orders.businessReport(auth, branchId, from, to);
+  }
+
   @Get(":branchId/pages")
   @Header("Cache-Control", "no-store")
   page(
