@@ -36,6 +36,9 @@ export interface StaffOrder {
   // List-only delivery snapshot; absent from KITCHEN results by backend design.
   phoneSnapshot?: string | null;
   addressLineSnapshot?: string | null;
+  catalogVersionSnapshot?: string | null;
+  provinceCodeSnapshot?: string | null;
+  wardCodeSnapshot?: string | null;
   customer?: { localCredential?: { normalizedUsername: string } | null } | null;
   subtotalVnd?: number; deliveryFeeVnd?: number; totalVnd?: number;
   payment?: { method: "COD" | "QR"; status: string; amountVnd?: number } | null;
@@ -852,12 +855,17 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
             </View>
           </View>
           {!kitchenOnly && <Text numberOfLines={2} style={s.orderAddress}>
-            {order.addressLineSnapshot?.trim() || "Chưa có địa chỉ giao hàng"}
+            {[order.addressLineSnapshot?.trim(), displayAdministrativeSelection({
+              catalogVersion: order.catalogVersionSnapshot,
+              provinceCode: order.provinceCodeSnapshot,
+              wardCode: order.wardCodeSnapshot,
+            })].filter(Boolean).join(", ") || "Chưa có địa chỉ giao hàng"}
           </Text>}
           <View style={s.compactMeta}>
             <Icon name="clock" size={13} color={c.secondary} />
             <Text style={s.date}>{when(order.createdAt)}</Text>
             {!kitchenOnly && !!order.phoneSnapshot &&
+              !!order.customer?.localCredential?.normalizedUsername?.trim() &&
               <Text numberOfLines={1} style={s.customerPhone}>{order.phoneSnapshot}</Text>}
           </View>
           <View style={s.cardContent}>
