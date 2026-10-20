@@ -18,8 +18,10 @@ test("orders screen uses its compact status tabs as the sole permanent navigatio
 });
 
 test("orders still refresh, warn and allow all original state transitions", () => {
-  assert.match(panel, /lastSync\.toLocaleTimeString\("vi-VN"\)/);
+  assert.match(panel, /accessibilityLabel="Đồng bộ lịch sử đơn hàng"/);
   assert.match(panel, /disabled=\{syncing \|\| laneLoading\} onPress=\{\(\) => void sync\(\)\}/);
+  assert.match(panel, /watchOrderEvents/);
+  assert.match(panel, /setInterval\(\(\) => \{/);
   assert.match(panel, /overdueCount > 0 && !kitchenOnly/);
   assert.match(panel, /\{!!laneError && <Notice error text=\{laneError\} \/>\}/);
   assert.match(panel, /\{visible\.map\(order => <View key=\{order\.id\}/);
