@@ -109,9 +109,11 @@ export class AdminOrdersController {
     @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
     @Query("group") group?: string, @Query("cursor") cursor?: string,
     @Query("limit") rawLimit?: string, @Query("status") status?: string,
+    @Query("from") from?: string, @Query("to") to?: string,
+    @Query("code") code?: string,
   ) {
     const allowed = ["new", "confirmed", "preparing", "ready",
-      "delivering", "history", "kitchen", "delivery"] as const;
+      "delivering", "history", "lookup", "kitchen", "delivery"] as const;
     if (!group || !allowed.includes(group as (typeof allowed)[number]))
       throw new BadRequestException("INVALID_ORDER_LANE");
     if (cursor && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cursor))
@@ -125,8 +127,16 @@ export class AdminOrdersController {
       status as (typeof historyStatuses)[number]))) {
       throw new BadRequestException("INVALID_HISTORY_FILTER");
     }
+    if ((from !== undefined || to !== undefined || code !== undefined)
+      && group !== "history" && group !== "lookup") {
+      throw new BadRequestException("INVALID_ORDER_LOOKUP_SCOPE");
+    }
+    if (group === "lookup" && status) {
+      throw new BadRequestException("INVALID_HISTORY_FILTER");
+    }
     return this.orders.listPage(auth, branchId, group as (typeof allowed)[number],
-      cursor, limit, status as (typeof historyStatuses)[number] | undefined);
+      cursor, limit, status as (typeof historyStatuses)[number] | undefined,
+      { from, to, code });
   }
 
   @Get(":branchId/customers")
