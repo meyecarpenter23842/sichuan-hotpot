@@ -786,7 +786,7 @@ export default function AdminApp() {
                     setReportMetric(kind === "CANCELED" ? "CANCELED" : "DELIVERED");
                     setOrderGroup("history"); setHistoryBack("overview"); setTab("orders");
                   }
-                }} />
+                }} />}
               {tab === "report" && operator && branchId && <BusinessReportPanel
                 token={token} branchId={branchId} range={reportRange}
                 onRangeChange={setReportRange} onClose={() => setTab(reportBack)}
@@ -812,7 +812,7 @@ export default function AdminApp() {
                     setLookupRange(historyPeriodRange("week")); setLookupCode("");
                     setTab("lookup");
                   }
-                }} />
+                }} />}
             </>
           )}
           </ScrollView>}
