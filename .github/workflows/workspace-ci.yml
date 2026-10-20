@@ -7,7 +7,9 @@ permissions:
   contents: read
 jobs:
   workspace-quality:
-    runs-on: ubuntu-latest
+    # The encrypted backup drill needs native PostgreSQL 16 client tools.
+    # Do not silently track ubuntu-latest (26.04 omits postgresql-client-16).
+    runs-on: ubuntu-24.04
     timeout-minutes: 18
     services:
       postgres:
@@ -163,5 +165,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends age postgresql-client-16
+          psql --version | grep -Eq '^psql \(PostgreSQL\) 16\.'
+          pg_dump --version | grep -Eq '^pg_dump \(PostgreSQL\) 16\.'
+          pg_restore --version | grep -Eq '^pg_restore \(PostgreSQL\) 16\.'
           export CI_NODE_BIN="$(command -v node)" CI_NPM_BIN="$(command -v npm)"
           sudo --preserve-env=DATABASE_URL,GITHUB_ACTIONS,CI_NODE_BIN,CI_NPM_BIN python3 infra/vps/tests/ci_db_drill.py
