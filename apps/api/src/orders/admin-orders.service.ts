@@ -24,6 +24,7 @@ const selectOrder = {
   customerNote: true, subtotalVnd: true, deliveryFeeVnd: true, totalVnd: true,
   // Order snapshots are immutable; never resolve a new address from the customer's profile.
   phoneSnapshot: true, addressLineSnapshot: true,
+  catalogVersionSnapshot: true, provinceCodeSnapshot: true, wardCodeSnapshot: true,
   customer: { select: { localCredential: { select: { normalizedUsername: true } } } },
   payment: { select: { method: true, status: true, amountVnd: true } },
   items: { select: {
@@ -53,6 +54,7 @@ const driverOrderSelect = {
   id: true, branchId: true, status: true, createdAt: true, updatedAt: true,
   // Only orders assigned to this DRIVER reach this selection (see listPage/detail scope).
   phoneSnapshot: true, addressLineSnapshot: true,
+  catalogVersionSnapshot: true, provinceCodeSnapshot: true, wardCodeSnapshot: true,
   customer: { select: { localCredential: { select: { normalizedUsername: true } } } },
   totalVnd: true,
   payment: { select: { method: true, status: true, amountVnd: true } },
