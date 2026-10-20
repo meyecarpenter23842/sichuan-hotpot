@@ -245,7 +245,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   }, [active, token, laneUrl]);
 
   const loadMoreLane = async () => {
-    if (!laneCursor || pagingBusy.current || laneLoading) return;
+    if (loadedLaneUrl !== laneUrl || !laneCursor || pagingBusy.current || laneLoading) return;
     pagingBusy.current = true; setLaneLoadingMore(true); setLaneError("");
     const current = laneRequest.current;
     try {
@@ -814,7 +814,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           </Pressable>
         </View>)}
       </View>}
-      {!!laneCursor && <Pressable accessibilityRole="button"
+      {!!laneCursor && loadedLaneUrl === laneUrl && <Pressable accessibilityRole="button"
         accessibilityLabel="Xem thêm đơn hàng cũ trong nhóm"
         disabled={laneLoading || laneLoadingMore} accessibilityState={{ disabled: laneLoading || laneLoadingMore }}
         style={s.moreButton} onPress={() => void loadMoreLane()}>
