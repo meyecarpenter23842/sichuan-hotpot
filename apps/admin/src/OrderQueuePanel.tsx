@@ -3,7 +3,7 @@ import { orderCustomerCallUrl, orderCustomerDirectionsUrl } from "../../../packa
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, AppState, Image, Linking, Modal, Pressable, ScrollView, StyleSheet,
-  Text, View,
+  Text, TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Field, Notice, Action, Pill } from "./ui";
@@ -14,6 +14,8 @@ import {
 import { watchOrderEvents } from "./order-realtime";
 import { c, font } from "./theme";
 import { adminDensity } from "./density";
+import { HistoryDateFilter } from "./HistoryDateFilter";
+import { validHistoryCode, type HistoryRange } from "./history-search";
 
 export type OrderStatus =
   "PENDING" | "CONFIRMED" | "PREPARING" | "READY" |
@@ -154,16 +156,29 @@ const orderGroups: { id: Exclude<OrderGroup, "history">; label: string; statuses
 ];
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange,
-  onCloseHistory, historyStatus, onHistoryStatusChange }: {
+  onCloseHistory, historyStatus, onHistoryStatusChange,
+  historyRange, onHistoryRangeChange, historyCode, onHistoryCodeChange }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
   active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
   onCloseHistory: () => void;
   historyStatus: HistoryStatusFilter;
   onHistoryStatusChange: (value: HistoryStatusFilter) => void;
+  historyRange: HistoryRange; onHistoryRangeChange: (value: HistoryRange) => void;
+  historyCode: string; onHistoryCodeChange: (value: string) => void;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
-  const activeLane = mode === "orders" ? group : mode;
+  const [debouncedCode, setDebouncedCode] = useState(historyCode);
+  useEffect(() => {
+    if (!historyCode.trim()) { setDebouncedCode(""); return; }
+    const timer = setTimeout(() => setDebouncedCode(historyCode.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [historyCode]);
+  const hasCode = debouncedCode.length > 0 && validHistoryCode(debouncedCode);
+  const badCode = !!historyCode.trim() && !validHistoryCode(historyCode);
+  const searchPending = historyCode.trim() !== debouncedCode.trim();
+  const activeLane = mode === "orders"
+    ? group === "history" && hasCode ? "lookup" : group : mode;
   const [laneOrders, setLaneOrders] = useState<StaffOrder[]>([]);
   // A freshly selected status must never display orders from the previous
   // server query while React waits for the next effect and network response.
@@ -178,8 +193,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   // Number of visible rows to re-query from the server after a realtime/poll update.
   // Never merge stale client rows from a previous status or filter into refreshed pages.
   const loadedCount = useRef(25);
-  const historyQuery = mode === "orders" && group === "history" && historyStatus !== "ALL"
-    ? "&status=" + encodeURIComponent(historyStatus) : "";
+  const inHistory = mode === "orders" && group === "history";
+  const historyQuery = inHistory
+    ? (hasCode ? "&code=" + encodeURIComponent(debouncedCode.trim().replace(/^#/, ""))
+        : historyStatus !== "ALL" ? "&status=" + encodeURIComponent(historyStatus) : "")
+      + (historyRange.from && historyRange.to
+        ? "&from=" + encodeURIComponent(historyRange.from)
+          + "&to=" + encodeURIComponent(historyRange.to) : "") : "";
   const laneUrl = "/admin/orders/" + branchId + "/pages?group="
     + encodeURIComponent(activeLane) + historyQuery;
   const [loading, setLoading] = useState(true);
@@ -209,7 +229,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const pendingAlerts = useRef<Set<string>>(new Set());
 
   const refreshLane = useCallback(async () => {
-    if (!active) return;
+    if (!active || (inHistory && (badCode || searchPending))) return;
     const current = ++laneRequest.current;
     setLaneLoading(true);
     try {
@@ -241,7 +261,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       if (current === laneRequest.current)
         setLaneError(e instanceof Error ? e.message : "Không tải được nhóm đơn này.");
     } finally { if (current === laneRequest.current) setLaneLoading(false); }
-  }, [active, token, laneUrl]);
+  }, [active, token, laneUrl, inHistory, badCode, searchPending]);
 
   const loadMoreLane = async () => {
     if (loadedLaneUrl !== laneUrl || !laneCursor || pagingBusy.current || laneLoading) return;
@@ -655,7 +675,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
 
   // Paging is performed server-side by lane. The list is only valid for the
   // exact server query that produced it (branch/status/history sub-filter).
-  const visible = loadedLaneUrl === laneUrl ? laneOrders : [];
+  const visible = !badCode && !searchPending && loadedLaneUrl === laneUrl
+    ? laneOrders : [];
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
     && clock - Date.parse(x.createdAt) >= 300000).length;
@@ -691,7 +712,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </View>
     </>}
     {!!error && <Notice error text={error} />}
-    {!!laneError && <Notice error text={laneError} />}
+    {!!laneError && <View style={s.retryRow}>
+      <Notice error text={laneError} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Thử tải lại đơn hàng"
+        onPress={() => void refreshLane()} style={s.retryButton}>
+        <Text style={s.retryText}>Thử lại</Text>
+      </Pressable>
+    </View>}
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
@@ -730,7 +757,25 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Icon name="clock" color={syncing ? c.secondary : c.red} size={20} />
       </Pressable>
     </View>}
-    {mode === "orders" && group === "history" && <ScrollView horizontal
+    {inHistory && <View style={s.historyLookup}>
+      <TextInput accessibilityLabel="Tìm theo mã đơn" autoCapitalize="characters"
+        autoCorrect={false} returnKeyType="search"
+        style={s.codeInput} placeholder="Mã đơn · VD: 793C85B1"
+        placeholderTextColor="#9197A0" value={historyCode}
+        maxLength={37} onChangeText={onHistoryCodeChange} />
+      {!!historyCode && <Pressable accessibilityRole="button" accessibilityLabel="Xóa mã đơn"
+        onPress={() => onHistoryCodeChange("")} style={s.clearCode}>
+        <Icon name="close" color={c.secondary} size={16} />
+      </Pressable>}
+    </View>}
+    {inHistory && <HistoryDateFilter value={historyRange} onChange={onHistoryRangeChange} />}
+    {inHistory && hasCode && <Text style={s.lookupHint}>
+      Tra cứu mã đơn ở mọi trạng thái · Theo ngày tạo
+    </Text>}
+    {inHistory && badCode && <Text style={s.codeError}>
+      Nhập 8 ký tự mã đơn hoặc UUID đầy đủ.
+    </Text>}
+    {inHistory && !historyCode.trim() && <ScrollView horizontal
       showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always"
       accessibilityLabel="Lọc lịch sử đơn hàng" style={s.historyScroll}
       contentContainerStyle={s.historyFilters}>
@@ -747,8 +792,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     </ScrollView>}
     <ScrollView key={laneUrl} style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
-    {loading || (loadedLaneUrl !== laneUrl && !laneError)
-      || (laneLoading && visible.length === 0)
+    {badCode ? null : (loading || searchPending || (loadedLaneUrl !== laneUrl && !laneError)
+      || (laneLoading && visible.length === 0))
       ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
       visible.length === 0 ? <View style={s.empty}>
         <View style={s.emptyIcon}>
@@ -813,7 +858,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
           </Pressable>
         </View>)}
       </View>}
-      {!!laneCursor && loadedLaneUrl === laneUrl && <Pressable accessibilityRole="button"
+      {!!laneCursor && !badCode && !searchPending && loadedLaneUrl === laneUrl && <Pressable accessibilityRole="button"
         accessibilityLabel="Xem thêm đơn hàng cũ trong nhóm"
         disabled={laneLoading || laneLoadingMore} accessibilityState={{ disabled: laneLoading || laneLoadingMore }}
         style={s.moreButton} onPress={() => void loadMoreLane()}>
@@ -1235,6 +1280,17 @@ const s = StyleSheet.create({
   historyBackText: { color: c.redDeep, fontSize: font.note, fontWeight: "700" },
   historyHeadingTitle: { flex: 1, color: c.ink, fontSize: font.note,
     fontWeight: "800", textAlign: "center" },
+  historyLookup: { flexDirection: "row", alignItems: "center", minHeight: 44,
+    borderWidth: 1, borderColor: c.line, borderRadius: 10, backgroundColor: c.white },
+  codeInput: { flex: 1, minWidth: 0, color: c.ink, paddingHorizontal: 12,
+    paddingVertical: 8, fontSize: 15, minHeight: 44 },
+  clearCode: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  lookupHint: { color: c.secondary, fontSize: 11, paddingHorizontal: 2 },
+  codeError: { color: c.redDeep, fontSize: 12, paddingHorizontal: 2 },
+  retryRow: { gap: 6 },
+  retryButton: { alignSelf: "flex-start", paddingHorizontal: 16, minHeight: 42,
+    borderRadius: 9, justifyContent: "center", backgroundColor: c.soft },
+  retryText: { color: c.redDeep, fontWeight: "800" },
   historyScroll: { flexGrow: 0, maxHeight: 48 },
   historyFilters: { gap: 6, alignItems: "center", paddingVertical: 2, paddingHorizontal: 2 },
   historyFilter: { borderRadius: 9, backgroundColor: "#F6F1EC", paddingHorizontal: 11,

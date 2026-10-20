@@ -15,7 +15,7 @@ test("L06 admin history has independent backend-paged status lanes, never 100-or
   assert.match(service, /order\.count\(\{ where: scope \}\)/);
   assert.match(service, /createdAt: \{ lt: cursor\.createdAt \}/);
   assert.match(service, /id: \{ lt: cursor\.id \}/);
-  assert.match(panel, /const activeLane = mode === "orders" \? group : mode/);
+  assert.match(panel, /group === "history" && hasCode \? "lookup" : group : mode/);
   assert.match(panel, /"\/pages\?group="/);
   assert.match(panel, /setLaneTotal\(page\.total\)/);
   assert.match(panel, /Xem thêm đơn cũ/);
@@ -53,7 +53,7 @@ test("P0 history filter is server-owned, cancel color and actor audit are consis
 });
 
 test("History has its own header and never briefly displays a previous filter's orders", () => {
-  assert.match(panel, /const visible = loadedLaneUrl === laneUrl \? laneOrders : \[\]/);
+  assert.match(panel, /const visible = !badCode && !searchPending && loadedLaneUrl === laneUrl/);
   assert.match(panel, /setLoadedLaneUrl\(laneUrl\)/);
   assert.match(panel, /setLoadedLaneUrl\(null\)/);
   assert.match(panel, /key=\{laneUrl\} style=\{s\.orderListScroll\}/);
