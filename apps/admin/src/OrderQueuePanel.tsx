@@ -762,7 +762,13 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </Pressable>
     </View>}
     {inHistory && reportMetric && <View style={s.reportDrilldown}>
-      <Text style={s.reportDrilldownText}>Đang xem đơn từ Báo cáo · {reportMetric}</Text>
+      <Text style={s.reportDrilldownText}>Từ báo cáo · {({
+        CREATED: "Đơn tạo", COHORT_CANCELED: "Tỷ lệ hủy",
+        DELIVERED: "Đã giao", CANCELED: "Đã hủy", FAILED: "Giao thất bại",
+        CONFIRMED: "Đã xác nhận thu", COD_CONFIRMED: "COD xác nhận",
+        QR_CONFIRMED: "QR xác nhận", PENDING: "Chưa xác nhận",
+        REFUNDED: "Hoàn tiền",
+      } as Record<ReportMetric, string>)[reportMetric]}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Thoát bộ lọc báo cáo"
         onPress={onClearReportMetric} style={s.exitDrilldown}>
         <Text style={s.exitDrilldownText}>Đóng ×</Text>
