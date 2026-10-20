@@ -45,6 +45,8 @@ test("L04 business pages are full screens; existing configuration remains a dirt
   assert.match(app, /lookupMode=\{tab === "lookup"\}/);
   assert.match(app, /if \(destination === "report"\)/);
   assert.match(app, /setTab\("lookup"\)/);
+  assert.match(app, /const \[lookupRange, setLookupRange\] = useState<HistoryRange>\(ALL_HISTORY\)/);
+  assert.doesNotMatch(app, /setLookupRange\(historyPeriodRange\("week"\)\)/);
   assert.match(app, /setReportBack\("settings"\)/);
   assert.match(app, /onClose=\{\(\) => setTab\(reportBack\)\}/);
   assert.match(panel, /lookupMode \|\| hasCode \|\| reportMetric/);
