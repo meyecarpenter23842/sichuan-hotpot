@@ -5,7 +5,7 @@ import { c } from "./theme";
 /** Consistent line icons drawn with React Native primitives (web and Android, no font glyphs). */
 export type IconName = "dashboard" | "catalog" | "settings" | "account" | "store" |
   "clock" | "delivery" | "power" | "bell" | "users" | "plus" | "chevron" |
-  "edit" | "pin" | "phone" | "check" | "close" | "orders" | "kitchen" | "banner" | "popup" | "chat";
+  "edit" | "pin" | "phone" | "check" | "close" | "orders" | "kitchen" | "banner" | "popup" | "chat" | "manage" | "report" | "search";
 
 export function Icon({ name, size = 24, color = c.ink }: {
   name: IconName; size?: number; color?: string;
@@ -25,6 +25,15 @@ export function Icon({ name, size = 24, color = c.ink }: {
     part(x, y, d, d, { backgroundColor: color, borderRadius: 100 });
   let shape: React.ReactNode;
   switch (name) {
+    case "manage": shape = <>{outline(2, 2, 8, 8, 2)}{outline(14, 2, 8, 8, 2)}
+      {outline(2, 14, 8, 8, 2)}{outline(14, 14, 8, 8, 2)}</>; break;
+    case "report": shape = <>{line(2, 21, 20)}
+      {part(4, 12, 4, 9, { backgroundColor: color, borderRadius: 2 * scale })}
+      {part(10, 7, 4, 14, { backgroundColor: color, borderRadius: 2 * scale })}
+      {part(16, 3, 4, 18, { backgroundColor: color, borderRadius: 2 * scale })}</>; break;
+    case "search": shape = <>{outline(2, 2, 15, 15, 8)}
+      {part(15, 15, 9, 2, { backgroundColor: color, borderRadius: stroke,
+        transform: [{ rotate: "45deg" }] })}</>; break;
     case "dashboard": shape = <>{outline(2, 2, 8, 8, 2)}{outline(14, 2, 8, 8, 2)}
       {outline(2, 14, 8, 8, 2)}{outline(14, 14, 8, 8, 2)}</>; break;
     case "catalog": shape = <>{outline(4, 2, 16, 20, 2)}
