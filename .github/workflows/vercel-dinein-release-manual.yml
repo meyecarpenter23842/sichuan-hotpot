@@ -1,0 +1,185 @@
+name: Vercel Dine-in PWA release (owner one-command)
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Dine-in PWA target
+        required: true
+        type: choice
+        options: [retail, menu]
+      sha:
+        description: Exact current main commit SHA
+        required: true
+        type: string
+      confirm:
+        description: Type DEPLOY_PWA
+        required: true
+        type: string
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: hotpot-dinein-${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/deploy-hotpot-retail' && 'retail' || 'menu') || inputs.app }}-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'meyecarpenter23842') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 3 &&
+       github.event.issue.pull_request == null &&
+       github.actor == 'meyecarpenter23842' &&
+       (github.event.comment.body == '/deploy-hotpot-retail' ||
+        github.event.comment.body == '/deploy-hotpot-menu'))
+    environment:
+      name: ${{ (github.event_name == 'issue_comment' && github.event.comment.body == '/deploy-hotpot-retail' || github.event_name == 'workflow_dispatch' && inputs.app == 'retail') && 'production-retail-pwa' || 'production-menu-pwa' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      ENABLE_RELEASES: ${{ vars.HOTPOT_RELEASES_ENABLED }}
+      TARGET_APP: ${{ github.event_name == 'issue_comment' && (github.event.comment.body == '/deploy-hotpot-retail' && 'retail' || 'menu') || inputs.app }}
+      REQUESTED_SHA: ${{ inputs.sha }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact owner request, immutable main and zero Git auto deploy
+        shell: bash
+        env:
+          OWNER_COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == issue_comment ]]; then
+            case "$OWNER_COMMAND:$TARGET_APP" in
+              /deploy-hotpot-retail:retail|/deploy-hotpot-menu:menu) ;;
+              *) echo "::error::Invalid deploy command or target"; exit 1 ;;
+            esac
+            REQUESTED_SHA="$(git rev-parse HEAD)"
+          else
+            test "$CONFIRM" = "DEPLOY_PWA"
+            test "$ENABLE_RELEASES" = "true" || { echo "::error::Manual release disabled"; exit 1; }
+          fi
+          [[ "$TARGET_APP" == retail || "$TARGET_APP" == menu ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch -q origin main
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          test "$(git rev-parse origin/main)" = "$REQUESTED_SHA"
+          echo "REQUESTED_SHA=$REQUESTED_SHA" >> "$GITHUB_ENV"
+          test -f "apps/$TARGET_APP/package.json" || { echo "::error::App not bootstrapped; do not deploy placeholder"; exit 1; }
+          test -f package-lock.json
+          node - "$TARGET_APP" <<'NODE'
+          const fs = require('node:fs');
+          const app = process.argv[2];
+          for (const file of ['vercel.json', 'apps/' + app + '/vercel.json']) {
+            if (JSON.parse(fs.readFileSync(file, 'utf8')).git?.deploymentEnabled !== false) {
+              throw Error('Automatic Vercel Git deploy must remain disabled: ' + file);
+            }
+          }
+          NODE
+          test -n "$VERCEL_ORG_ID" && test -n "$VERCEL_PROJECT_ID" && test -n "$VERCEL_TOKEN" || {
+            echo "::error::Configure Environment VERCEL_ORG_ID, VERCEL_PROJECT_ID and VERCEL_TOKEN first."
+            exit 1
+          }
+      - name: Verify correct isolated Vercel project (no Git integration)
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/dinein-vercel-target.json"
+          curl -fsS --retry 1 -H "Authorization: Bearer $VERCEL_TOKEN"             "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" > "$response"
+          node - "$response" "$TARGET_APP" "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" <<'NODE'
+          const fs=require('node:fs');
+          const [path,app,id,org]=process.argv.slice(2);
+          const project=JSON.parse(fs.readFileSync(path, 'utf8'));
+          const expectedId={
+            retail:'prj_Jpf6VJh61oUVQK9Gy1iJUKEqEFdi',
+            menu:'prj_c5iMwXob29KVWiJev6MVQ9YIhVra'
+          }[app];
+          if(project.id!==id || project.id!==expectedId || project.accountId!==org ||
+             project.name!==('sichuan-hotpot-'+app) || project.rootDirectory!==('apps/'+app) ||
+             project.link) throw Error('Vercel ID/account/root/Git integration mismatch');
+          console.log('Vercel target identity and no Git integration: PASS');
+          NODE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install and test target app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund 'vercel@50'
+          npm run lint --workspace "apps/$TARGET_APP"
+          npm run typecheck --workspace "apps/$TARGET_APP"
+          npm run test --workspace "apps/$TARGET_APP"
+      - name: Pull production API base URL before build (never print secret values)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "apps/$TARGET_APP/.vercel"
+          node -e 'const fs=require("node:fs");fs.writeFileSync(process.argv[1],JSON.stringify({orgId:process.env.VERCEL_ORG_ID,projectId:process.env.VERCEL_PROJECT_ID}))' "apps/$TARGET_APP/.vercel/project.json"
+          ( cd "apps/$TARGET_APP" && ../../node_modules/.bin/vercel env pull .env.production.local --environment=production --yes --token "$VERCEL_TOKEN" >/dev/null )
+          python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          import os
+          lines=Path("apps/"+os.environ["TARGET_APP"]+"/.env.production.local").read_text().splitlines()
+          origins=[line.split("=",1)[1].strip().strip("'\"") for line in lines if line.startswith("EXPO_PUBLIC_API_BASE_URL=")]
+          if len(origins)!=1: raise SystemExit("Missing production EXPO_PUBLIC_API_BASE_URL")
+          origin=origins[0].rstrip("/")
+          parsed=urlsplit(origin)
+          if parsed.scheme!="https" or not parsed.hostname or parsed.path not in ("","/") or parsed.query or parsed.fragment or parsed.username or parsed.password:
+              raise SystemExit("Unsafe PWA API origin")
+          with open(os.environ["GITHUB_ENV"],"a") as out: out.write("PWA_API_ORIGIN="+origin+"\n")
+          print("Production HTTPS API origin validated")
+          PY
+          curl --fail --silent --show-error --connect-timeout 8 --max-time 15 -o /dev/null "$PWA_API_ORIGIN/health/ready"
+          canonical="https://$TARGET_APP.bepsi.click"
+          curl --fail --silent --show-error --connect-timeout 8 --max-time 15             -X OPTIONS -D "$RUNNER_TEMP/dinein-cors.txt" -o /dev/null             -H "Origin: $canonical" -H 'Access-Control-Request-Method: GET'             "$PWA_API_ORIGIN/health/ready"
+          tr -d '\r' < "$RUNNER_TEMP/dinein-cors.txt" | grep -Fiq "access-control-allow-origin: $canonical" || {
+            echo "::error::Backend CORS must allow $canonical before first release"
+            exit 1
+          }
+      - name: Build & package exact tested Expo Web output (no remote rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --workspace "apps/$TARGET_APP"
+          test -s "apps/$TARGET_APP/dist/index.html"
+          grep -FRq "$PWA_API_ORIGIN" "apps/$TARGET_APP/dist/_expo/static/js/web" || {
+            echo "::error::Compiled client does not contain production HTTPS API base"
+            exit 1
+          }
+          mkdir -p "apps/$TARGET_APP/.vercel/output/static"
+          cp -a "apps/$TARGET_APP/dist/." "apps/$TARGET_APP/.vercel/output/static/"
+          node --test scripts/qa/create-dinein-output-config.test.mjs
+          node scripts/qa/create-dinein-output-config.mjs "$TARGET_APP"
+          test -s "apps/$TARGET_APP/.vercel/output/config.json"
+      - name: Explicit owner release (only selected app)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          cp "apps/$TARGET_APP/.vercel/project.json" .vercel/project.json
+          cp -a "apps/$TARGET_APP/.vercel/output" .vercel/output
+          ./node_modules/.bin/vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+          echo "Manual release complete: $TARGET_APP from main $REQUESTED_SHA"
+      - name: Verify custom-domain PWA responds
+        shell: bash
+        run: |
+          set -euo pipefail
+          canonical="https://$TARGET_APP.bepsi.click"
+          status="$(curl -sS -L --connect-timeout 8 --max-time 20 -o /dev/null -w '%{http_code}' "$canonical/" || true)"
+          test "$status" = 200 || { echo "::error::Canonical $TARGET_APP returned HTTP $status"; exit 1; }
+          echo "Canonical $TARGET_APP smoke check: PASS"
+      - name: Remove downloaded production environment values
+        if: always()
+        run: rm -f "apps/${TARGET_APP:-retail}/.env.production.local"

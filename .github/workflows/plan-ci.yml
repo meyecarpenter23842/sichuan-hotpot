@@ -30,7 +30,7 @@ jobs:
           for path in required:
               p = Path(path)
               assert p.is_file() and p.stat().st_size > 200, path
-          for name in ("customer", "admin"):
+          for name in ("customer", "admin", "retail", "menu"):
               p = Path(f"apps/{name}/vercel.json")
               config = json.loads(p.read_text(encoding="utf-8"))
               assert config.get("git", {}).get("deploymentEnabled") is False, str(p)
@@ -113,5 +113,29 @@ jobs:
           assert "github.actor == 'meyecarpenter23842'" in db
           assert "StrictHostKeyChecking=yes" in db
           assert not re.search(r"(?m)^  (push|pull_request|schedule):",db)
+          # Dine-in Retail/Menu owner-only Vercel release uses independent Environments.
+          dinein=(root/"vercel-dinein-release-manual.yml").read_text(encoding="utf-8")
+          dinein_doc=yaml.load(dinein, Loader=yaml.BaseLoader)
+          assert list(dinein_doc.get("on",{})) == ["workflow_dispatch","issue_comment"]
+          assert dinein_doc.get("permissions",{}).get("contents") == "read"
+          assert len(dinein_doc.get("jobs",{})) == 1
+          dinein_job=dinein_doc["jobs"]["release"]
+          assert "github.actor == 'meyecarpenter23842'" in dinein_job.get("if","")
+          assert "github.event.issue.number == 3" in dinein_job.get("if","")
+          assert "github.event.issue.pull_request == null" in dinein_job.get("if","")
+          for cmd in ("/deploy-hotpot-retail","/deploy-hotpot-menu"):
+              assert "github.event.comment.body == '"+cmd+"'" in dinein
+          for environment in ("production-retail-pwa","production-menu-pwa"):
+              assert environment in dinein
+          assert "ref: main" in dinein
+          assert "HOTPOT_RELEASES_ENABLED" in dinein
+          assert "VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}" in dinein
+          assert "deploymentEnabled" in dinein
+          assert dinein_doc["concurrency"]["cancel-in-progress"] is False or dinein_doc["concurrency"]["cancel-in-progress"] == "false"
+          assert not re.search(r"(?m)^  (push|pull_request|schedule):",dinein)
+          print("PASS vercel-dinein-release-manual.yml owner command, isolated targets, zero auto deploy")
           assert Path("docs/ops/MANUAL-OPERATIONS.md").is_file()
           PY
+
+      - name: Verify Dine-in prebuilt routing cannot leak preview host or enable auto deployments
+        run: node --test scripts/qa/create-dinein-output-config.test.mjs
