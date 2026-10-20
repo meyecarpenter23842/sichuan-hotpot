@@ -290,7 +290,7 @@ export default function AdminApp() {
   const [reportMetric, setReportMetric] = useState<ReportMetric | null>(null);
   const [reportBack, setReportBack] = useState<"overview" | "settings">("overview");
   const [historyBack, setHistoryBack] = useState<"orders" | "overview" | "report">("orders");
-  const [lookupRange, setLookupRange] = useState<HistoryRange>(() => historyPeriodRange("week"));
+  const [lookupRange, setLookupRange] = useState<HistoryRange>(ALL_HISTORY);
   const [lookupCode, setLookupCode] = useState("");
   const [authError, setAuthError] = useState("");
   const [notice, setNotice] = useState("");
@@ -809,7 +809,7 @@ export default function AdminApp() {
                   if (destination === "report") {
                     setReportBack("settings"); setTab("report");
                   } else {
-                    setLookupRange(historyPeriodRange("week")); setLookupCode("");
+                    // Restore previous search filters; lookup without dates searches all old orders.
                     setTab("lookup");
                   }
                 }} />}
