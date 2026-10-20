@@ -23,7 +23,8 @@ test("orders still refresh, warn and allow all original state transitions", () =
   assert.match(panel, /watchOrderEvents/);
   assert.match(panel, /setInterval\(\(\) => \{/);
   assert.match(panel, /overdueCount > 0 && !kitchenOnly/);
-  assert.match(panel, /\{!!laneError && <Notice error text=\{laneError\} \/>\}/);
+  assert.match(panel, /\{!!laneError && <View style=\{s.retryRow\}>/);
+  assert.match(panel, /accessibilityLabel="Thử tải lại đơn hàng"/);
   assert.match(panel, /\{visible\.map\(order => <View key=\{order\.id\}/);
   assert.match(panel, /\/admin\/orders\//);
   assert.match(panel, /label: "Đã giao thành công"/);
