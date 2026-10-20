@@ -9,7 +9,7 @@ import type { DeliveryCartItem } from "../delivery/delivery-quote.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import { OrderRealtimeService } from "./order-realtime.service";
 import { PushService } from "../push/push.service";
-import { orderCreatedBetween, orderIdMatch } from "./order-search";
+import { orderCreatedBetween, orderIdMatch, vietnamDateWindow } from "./order-search";
 
 const operatingRoles = ["OWNER", "MANAGER", "KITCHEN", "DRIVER"] as const;
 type OperationalRole = (typeof operatingRoles)[number];
@@ -181,6 +181,154 @@ export class AdminOrdersService {
   }
 
   /**
+   * Reporting has three independent clocks: order.createdAt for the order
+   * cohort, statusHistory.createdAt for delivered/canceled/failed events,
+   * and *no* trusted payment-confirmation timestamp in today's schema.
+   * Consequently confirmed payment is a CURRENT balance grouped by delivery
+   * day, never falsely advertised as cash received on that calendar day.
+   *
+   * All aggregation happens in PostgreSQL; nothing is capped at 100 rows.
+   */
+  async businessReport(authorization: string | undefined, branchId: string,
+    from: string, to: string) {
+    const actor = await this.role(authorization, branchId);
+    if (actor.role !== "OWNER" && actor.role !== "MANAGER") {
+      throw new ForbiddenException("BUSINESS_REPORT_FORBIDDEN");
+    }
+    const window = vietnamDateWindow(from, to);
+    type ReportRow = {
+      day: Date;
+      createdCount: bigint; cohortCanceledCount: bigint;
+      deliveredCount: bigint; canceledCount: bigint; failedCount: bigint;
+      deliveredValueVnd: bigint; confirmedPaymentVnd: bigint;
+      codConfirmedVnd: bigint; qrConfirmedVnd: bigint;
+      pendingPaymentVnd: bigint; refundedPaymentVnd: bigint;
+    };
+    const rows = await this.prisma.database.$queryRaw<ReportRow[]>(Prisma.sql`
+      WITH days AS (
+        SELECT generate_series(${from}::date, ${to}::date,
+          INTERVAL '1 day')::date AS day
+      ),
+      created AS (
+        SELECT (o."createdAt" AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+          count(*)::bigint AS count,
+          count(*) FILTER (WHERE o."status" = 'CANCELED')::bigint AS canceled_cohort
+        FROM "Order" o WHERE o."branchId" = ${branchId}::uuid
+          AND o."createdAt" >= ${window.start}
+          AND o."createdAt" < ${window.end}
+        GROUP BY 1
+      ),
+      delivered_events AS (
+        SELECT DISTINCT ON (h."orderId") h."orderId", h."createdAt"
+        FROM "OrderStatusHistory" h
+        JOIN "Order" o ON o."id" = h."orderId"
+        WHERE o."branchId" = ${branchId}::uuid AND o."status" = 'DELIVERED'
+          AND h."toStatus" = 'DELIVERED'
+          AND h."createdAt" >= ${window.start} AND h."createdAt" < ${window.end}
+        ORDER BY h."orderId", h."createdAt" ASC
+      ),
+      delivered AS (
+        SELECT (e."createdAt" AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+          count(*)::bigint AS count,
+          coalesce(sum(o."totalVnd"), 0)::bigint AS value_vnd,
+          coalesce(sum(p."amountVnd") FILTER (WHERE p."status" = 'CONFIRMED'), 0)::bigint AS confirmed_vnd,
+          coalesce(sum(p."amountVnd") FILTER (WHERE p."status" = 'CONFIRMED' AND p."method" = 'COD'), 0)::bigint AS cod_vnd,
+          coalesce(sum(p."amountVnd") FILTER (WHERE p."status" = 'CONFIRMED' AND p."method" = 'QR'), 0)::bigint AS qr_vnd,
+          coalesce(sum(p."amountVnd") FILTER (WHERE p."status" = 'PENDING'), 0)::bigint AS pending_vnd,
+          coalesce(sum(p."amountVnd") FILTER (WHERE p."status" = 'REFUNDED'), 0)::bigint AS refunded_vnd
+        FROM delivered_events e
+        JOIN "Order" o ON o."id" = e."orderId"
+        LEFT JOIN "Payment" p ON p."orderId" = o."id"
+        GROUP BY 1
+      ),
+      canceled_events AS (
+        SELECT DISTINCT ON (h."orderId") h."orderId", h."createdAt"
+        FROM "OrderStatusHistory" h
+        JOIN "Order" o ON o."id" = h."orderId"
+        WHERE o."branchId" = ${branchId}::uuid AND o."status" = 'CANCELED'
+          AND h."toStatus" = 'CANCELED'
+          AND h."createdAt" >= ${window.start} AND h."createdAt" < ${window.end}
+        ORDER BY h."orderId", h."createdAt" ASC
+      ),
+      failed_events AS (
+        SELECT DISTINCT ON (h."orderId") h."orderId", h."createdAt"
+        FROM "OrderStatusHistory" h
+        JOIN "Order" o ON o."id" = h."orderId"
+        WHERE o."branchId" = ${branchId}::uuid
+          AND h."toStatus" = 'DELIVERY_FAILED'
+          AND h."createdAt" >= ${window.start} AND h."createdAt" < ${window.end}
+        ORDER BY h."orderId", h."createdAt" ASC
+      ),
+      cancellations AS (
+        SELECT (e."createdAt" AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+          count(*)::bigint AS count FROM canceled_events e GROUP BY 1
+      ),
+      failures AS (
+        SELECT (e."createdAt" AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+          count(*)::bigint AS count FROM failed_events e GROUP BY 1
+      )
+      SELECT d.day,
+        coalesce(c.count, 0)::bigint AS "createdCount",
+        coalesce(c.canceled_cohort, 0)::bigint AS "cohortCanceledCount",
+        coalesce(v.count, 0)::bigint AS "deliveredCount",
+        coalesce(x.count, 0)::bigint AS "canceledCount",
+        coalesce(f.count, 0)::bigint AS "failedCount",
+        coalesce(v.value_vnd, 0)::bigint AS "deliveredValueVnd",
+        coalesce(v.confirmed_vnd, 0)::bigint AS "confirmedPaymentVnd",
+        coalesce(v.cod_vnd, 0)::bigint AS "codConfirmedVnd",
+        coalesce(v.qr_vnd, 0)::bigint AS "qrConfirmedVnd",
+        coalesce(v.pending_vnd, 0)::bigint AS "pendingPaymentVnd",
+        coalesce(v.refunded_vnd, 0)::bigint AS "refundedPaymentVnd"
+      FROM days d
+      LEFT JOIN created c ON c.day = d.day
+      LEFT JOIN delivered v ON v.day = d.day
+      LEFT JOIN cancellations x ON x.day = d.day
+      LEFT JOIN failures f ON f.day = d.day
+      ORDER BY d.day ASC
+    `);
+    const money = (n: bigint) => {
+      const value = Number(n);
+      if (!Number.isSafeInteger(value)) {
+        throw new ConflictException("REPORT_VALUE_OVERFLOW");
+      }
+      return value;
+    };
+    const days = rows.map(row => ({
+      day: new Date(row.day).toISOString().slice(0, 10),
+      createdCount: money(row.createdCount),
+      cohortCanceledCount: money(row.cohortCanceledCount),
+      deliveredCount: money(row.deliveredCount),
+      canceledCount: money(row.canceledCount),
+      failedCount: money(row.failedCount),
+      deliveredValueVnd: money(row.deliveredValueVnd),
+      confirmedPaymentVnd: money(row.confirmedPaymentVnd),
+      codConfirmedVnd: money(row.codConfirmedVnd),
+      qrConfirmedVnd: money(row.qrConfirmedVnd),
+      pendingPaymentVnd: money(row.pendingPaymentVnd),
+      refundedPaymentVnd: money(row.refundedPaymentVnd),
+    }));
+    const totals = days.reduce((acc, day) => {
+      for (const key of Object.keys(acc) as (keyof typeof acc)[]) {
+        acc[key] += day[key];
+      }
+      return acc;
+    }, {
+      createdCount: 0, cohortCanceledCount: 0, deliveredCount: 0,
+      canceledCount: 0, failedCount: 0, deliveredValueVnd: 0,
+      confirmedPaymentVnd: 0, codConfirmedVnd: 0, qrConfirmedVnd: 0,
+      pendingPaymentVnd: 0, refundedPaymentVnd: 0,
+    });
+    return {
+      from, to, timezone: "Asia/Ho_Chi_Minh", days, totals,
+      cancellationRatePercent: totals.createdCount
+        ? Math.round(totals.cohortCanceledCount * 10000 / totals.createdCount) / 100 : 0,
+      cancellationRateBasis: "CREATED_COHORT_CURRENT_STATUS",
+      paymentBasis: "CURRENT_CONFIRMED_STATUS_BY_DELIVERY_DATE",
+      paymentCollectedAtAvailable: false,
+    };
+  }
+
+  /**
    * Branch-wide daily figures are computed on the server, not from the most
    * recent 100 orders delivered by the alert endpoint. Vietnam observes UTC+7
    * year-round, so the business-day window is unambiguous even on UTC hosts.
@@ -249,7 +397,10 @@ export class AdminOrdersService {
     cursorId?: string, limit = 25,
     historyStatus?: "DELIVERED" | "CANCELED" | "DELIVERY_FAILED",
     search: { from?: string | undefined; to?: string | undefined;
-      code?: string | undefined } = {}) {
+      code?: string | undefined;
+      metric?: "CREATED" | "COHORT_CANCELED" | "DELIVERED" | "CANCELED"
+        | "FAILED" | "CONFIRMED" | "COD_CONFIRMED" | "QR_CONFIRMED"
+        | "PENDING" | "REFUNDED" | undefined } = {}) {
     const staff = await this.role(authorization, branchId);
     if (historyStatus && group !== "history")
       throw new BadRequestException("INVALID_HISTORY_FILTER");
@@ -259,6 +410,8 @@ export class AdminOrdersService {
     }
     if (group === "lookup" && historyStatus)
       throw new BadRequestException("INVALID_HISTORY_FILTER");
+    if (search.metric && (group !== "lookup" || !search.from || !search.to || search.code))
+      throw new BadRequestException("INVALID_REPORT_DRILLDOWN");
     const groups: Record<typeof group, OrderStatus[]> = {
       new: ["PENDING"], confirmed: ["CONFIRMED"], preparing: ["PREPARING"],
       ready: ["READY"], delivering: ["DELIVERING"],
@@ -277,9 +430,32 @@ export class AdminOrdersService {
       throw new ForbiddenException("ORDER_LANE_FORBIDDEN");
     const createdAt = orderCreatedBetween(search.from, search.to);
     const matchedId = orderIdMatch(search.code);
+    const metric = search.metric;
+    const byCreatedDay = !metric || metric === "CREATED" || metric === "COHORT_CANCELED";
+    const eventType = metric === "CANCELED" ? "CANCELED"
+      : metric === "FAILED" ? "DELIVERY_FAILED" : "DELIVERED";
+    const metricStatus: Prisma.OrderWhereInput["status"] =
+      metric === "COHORT_CANCELED" || metric === "CANCELED" ? "CANCELED"
+      : metric && metric !== "CREATED" && metric !== "FAILED" ? "DELIVERED"
+      : { in: groups[group] };
+    const paymentMatch: Prisma.OrderWhereInput["payment"] =
+      metric === "CONFIRMED" ? { is: { status: "CONFIRMED" } }
+      : metric === "COD_CONFIRMED"
+        ? { is: { status: "CONFIRMED", method: "COD" } }
+      : metric === "QR_CONFIRMED"
+        ? { is: { status: "CONFIRMED", method: "QR" } }
+      : metric === "PENDING" ? { is: { status: "PENDING" } }
+      : metric === "REFUNDED" ? { is: { status: "REFUNDED" } }
+      : undefined;
     const scope: Prisma.OrderWhereInput = {
-      branchId, status: historyStatus ?? { in: groups[group] },
-      ...(createdAt ? { createdAt } : {}),
+      branchId, status: historyStatus ?? metricStatus,
+      ...(byCreatedDay && createdAt ? { createdAt } : {}),
+      ...(metric && !byCreatedDay && createdAt ? {
+        statusHistory: { some: {
+          toStatus: eventType, createdAt,
+        } },
+      } : {}),
+      ...(paymentMatch ? { payment: paymentMatch } : {}),
       ...(matchedId ? { id: matchedId } : {}),
       ...(staff.role === "DRIVER"
         ? { deliveryAssignment: { is: { driverId: staff.actorId } } } : {}),

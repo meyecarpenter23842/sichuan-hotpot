@@ -102,6 +102,17 @@ export class AdminOrdersController {
     return this.orders.overviewSummary(auth, branchId);
   }
 
+  @Get(":branchId/business-report")
+  @Header("Cache-Control", "no-store")
+  businessReport(
+    @Headers("authorization") auth: string | undefined,
+    @Param("branchId", new ParseUUIDPipe({ version: "4" })) branchId: string,
+    @Query("from") from?: string, @Query("to") to?: string,
+  ) {
+    if (!from || !to) throw new BadRequestException("INCOMPLETE_ORDER_DATE");
+    return this.orders.businessReport(auth, branchId, from, to);
+  }
+
   @Get(":branchId/pages")
   @Header("Cache-Control", "no-store")
   page(
@@ -110,7 +121,7 @@ export class AdminOrdersController {
     @Query("group") group?: string, @Query("cursor") cursor?: string,
     @Query("limit") rawLimit?: string, @Query("status") status?: string,
     @Query("from") from?: string, @Query("to") to?: string,
-    @Query("code") code?: string,
+    @Query("code") code?: string, @Query("metric") metric?: string,
   ) {
     const allowed = ["new", "confirmed", "preparing", "ready",
       "delivering", "history", "lookup", "kitchen", "delivery"] as const;
@@ -131,12 +142,22 @@ export class AdminOrdersController {
       && group !== "history" && group !== "lookup") {
       throw new BadRequestException("INVALID_ORDER_LOOKUP_SCOPE");
     }
+    const reportMetrics = ["CREATED", "COHORT_CANCELED", "DELIVERED",
+      "CANCELED", "FAILED", "CONFIRMED", "COD_CONFIRMED",
+      "QR_CONFIRMED", "PENDING", "REFUNDED"] as const;
+    if (metric && (group !== "lookup" || !from || !to || code
+      || !reportMetrics.includes(metric as (typeof reportMetrics)[number]))) {
+      throw new BadRequestException("INVALID_REPORT_DRILLDOWN");
+    }
     if (group === "lookup" && status) {
       throw new BadRequestException("INVALID_HISTORY_FILTER");
     }
     return this.orders.listPage(auth, branchId, group as (typeof allowed)[number],
       cursor, limit, status as (typeof historyStatuses)[number] | undefined,
-      { from, to, code });
+      { from, to, code, metric: metric as
+        "CREATED" | "COHORT_CANCELED" | "DELIVERED" | "CANCELED"
+          | "FAILED" | "CONFIRMED" | "COD_CONFIRMED" | "QR_CONFIRMED"
+          | "PENDING" | "REFUNDED" | undefined });
   }
 
   @Get(":branchId/customers")

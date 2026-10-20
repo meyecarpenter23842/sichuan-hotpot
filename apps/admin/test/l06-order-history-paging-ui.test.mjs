@@ -15,13 +15,13 @@ test("L06 admin history has independent backend-paged status lanes, never 100-or
   assert.match(service, /order\.count\(\{ where: scope \}\)/);
   assert.match(service, /createdAt: \{ lt: cursor\.createdAt \}/);
   assert.match(service, /id: \{ lt: cursor\.id \}/);
-  assert.match(panel, /group === "history" && hasCode \? "lookup" : group : mode/);
+  assert.match(panel, /group === "history" && \(hasCode \|\| reportMetric\) \? "lookup" : group : mode/);
   assert.match(panel, /"\/pages\?group="/);
   assert.match(panel, /setLaneTotal\(page\.total\)/);
   assert.match(panel, /Xem thêm đơn cũ/);
   assert.match(panel, /loadedCount = useRef\(25\)/);
   assert.match(panel, /historyQuery/);
-  assert.match(service, /historyStatus \?\? \{ in: groups\[group\] \}/);
+  assert.match(service, /historyStatus \?\? metricStatus/);
 });
 
 test("L06 old orders persist when realtime/10s refreshes newest status lane", () => {
@@ -39,7 +39,7 @@ test("P0 history filter is server-owned, cancel color and actor audit are consis
   assert.match(controller, /INVALID_HISTORY_FILTER/);
   assert.match(controller, /historyStatuses = \["DELIVERED", "CANCELED", "DELIVERY_FAILED"\]/);
   assert.match(service, /historyStatus && group !== "history"/);
-  assert.match(service, /status: historyStatus \?\? \{ in: groups\[group\] \}/);
+  assert.match(service, /status: historyStatus \?\? metricStatus/);
   assert.match(service, /source: actorId === null \? "UNKNOWN"/);
   assert.match(service, /actorId === customerId \? "CUSTOMER"/);
   assert.match(panel, /CANCELED: \{ background: "#FDE4E8", text: "#B31E30" \}/);

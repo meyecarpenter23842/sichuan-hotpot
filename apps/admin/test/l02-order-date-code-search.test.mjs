@@ -65,7 +65,7 @@ test("L02 history filters are server-driven, debounced and persistent across bot
   assert.match(app, /const \[historyCode, setHistoryCode\] = useState\("".*\)/);
   assert.match(panel, /const timer = setTimeout\(\(\) => setDebouncedCode/);
   assert.match(panel, /const activeLane = mode === "orders"/);
-  assert.match(panel, /group === "history" && hasCode \? "lookup" : group/);
+  assert.match(panel, /group === "history" && \(hasCode \|\| reportMetric\) \? "lookup" : group/);
   assert.match(panel, /encodeURIComponent\(historyRange\.from\)/);
   assert.match(panel, /encodeURIComponent\(historyRange\.to\)/);
   assert.match(panel, /encodeURIComponent\(debouncedCode/);

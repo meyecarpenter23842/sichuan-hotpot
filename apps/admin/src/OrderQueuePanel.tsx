@@ -16,6 +16,7 @@ import { c, font } from "./theme";
 import { adminDensity } from "./density";
 import { HistoryDateFilter } from "./HistoryDateFilter";
 import { validHistoryCode, type HistoryRange } from "./history-search";
+import type { ReportMetric } from "./BusinessReportPanel";
 
 export type OrderStatus =
   "PENDING" | "CONFIRMED" | "PREPARING" | "READY" |
@@ -157,7 +158,8 @@ const orderGroups: { id: Exclude<OrderGroup, "history">; label: string; statuses
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange,
   onCloseHistory, historyStatus, onHistoryStatusChange,
-  historyRange, onHistoryRangeChange, historyCode, onHistoryCodeChange }: {
+  historyRange, onHistoryRangeChange, historyCode, onHistoryCodeChange,
+  reportMetric, onClearReportMetric }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
   active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
   onCloseHistory: () => void;
@@ -165,6 +167,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   onHistoryStatusChange: (value: HistoryStatusFilter) => void;
   historyRange: HistoryRange; onHistoryRangeChange: (value: HistoryRange) => void;
   historyCode: string; onHistoryCodeChange: (value: string) => void;
+  reportMetric: ReportMetric | null; onClearReportMetric: () => void;
 }) {
   const kitchenOnly = role === "KITCHEN";
   const [orders, setOrders] = useState<StaffOrder[]>([]);
@@ -178,7 +181,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const badCode = !!historyCode.trim() && !validHistoryCode(historyCode);
   const searchPending = historyCode.trim() !== debouncedCode.trim();
   const activeLane = mode === "orders"
-    ? group === "history" && hasCode ? "lookup" : group : mode;
+    ? group === "history" && (hasCode || reportMetric) ? "lookup" : group : mode;
   const [laneOrders, setLaneOrders] = useState<StaffOrder[]>([]);
   // A freshly selected status must never display orders from the previous
   // server query while React waits for the next effect and network response.
@@ -195,7 +198,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const loadedCount = useRef(25);
   const inHistory = mode === "orders" && group === "history";
   const historyQuery = inHistory
-    ? (hasCode ? "&code=" + encodeURIComponent(debouncedCode.trim().replace(/^#/, ""))
+    ? (reportMetric ? "&metric=" + encodeURIComponent(reportMetric)
+      : hasCode ? "&code=" + encodeURIComponent(debouncedCode.trim().replace(/^#/, ""))
         : historyStatus !== "ALL" ? "&status=" + encodeURIComponent(historyStatus) : "")
       + (historyRange.from && historyRange.to
         ? "&from=" + encodeURIComponent(historyRange.from)
@@ -757,7 +761,20 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Icon name="clock" color={syncing ? c.secondary : c.red} size={20} />
       </Pressable>
     </View>}
-    {inHistory && <View style={s.historyLookup}>
+    {inHistory && reportMetric && <View style={s.reportDrilldown}>
+      <Text style={s.reportDrilldownText}>Từ báo cáo · {({
+        CREATED: "Đơn tạo", COHORT_CANCELED: "Tỷ lệ hủy",
+        DELIVERED: "Đã giao", CANCELED: "Đã hủy", FAILED: "Giao thất bại",
+        CONFIRMED: "Đã xác nhận thu", COD_CONFIRMED: "COD xác nhận",
+        QR_CONFIRMED: "QR xác nhận", PENDING: "Chưa xác nhận",
+        REFUNDED: "Hoàn tiền",
+      } as Record<ReportMetric, string>)[reportMetric]}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Thoát bộ lọc báo cáo"
+        onPress={onClearReportMetric} style={s.exitDrilldown}>
+        <Text style={s.exitDrilldownText}>Đóng ×</Text>
+      </Pressable>
+    </View>}
+    {inHistory && !reportMetric && <View style={s.historyLookup}>
       <TextInput accessibilityLabel="Tìm theo mã đơn" autoCapitalize="characters"
         autoCorrect={false} returnKeyType="search"
         style={s.codeInput} placeholder="Mã đơn · VD: 793C85B1"
@@ -775,7 +792,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     {inHistory && badCode && <Text style={s.codeError}>
       Nhập 8 ký tự mã đơn hoặc UUID đầy đủ.
     </Text>}
-    {inHistory && !historyCode.trim() && <ScrollView horizontal
+    {inHistory && !historyCode.trim() && !reportMetric && <ScrollView horizontal
       showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always"
       accessibilityLabel="Lọc lịch sử đơn hàng" style={s.historyScroll}
       contentContainerStyle={s.historyFilters}>
@@ -1280,6 +1297,11 @@ const s = StyleSheet.create({
   historyBackText: { color: c.redDeep, fontSize: font.note, fontWeight: "700" },
   historyHeadingTitle: { flex: 1, color: c.ink, fontSize: font.note,
     fontWeight: "800", textAlign: "center" },
+  reportDrilldown: { minHeight: 44, flexDirection: "row", alignItems: "center",
+    gap: 8, borderBottomWidth: 1, borderBottomColor: c.line },
+  reportDrilldownText: { flex: 1, color: c.ink, fontSize: 12, fontWeight: "700" },
+  exitDrilldown: { minHeight: 44, justifyContent: "center", paddingHorizontal: 6 },
+  exitDrilldownText: { color: c.redDeep, fontSize: 12, fontWeight: "800" },
   historyLookup: { flexDirection: "row", alignItems: "center", minHeight: 44,
     borderWidth: 1, borderColor: c.line, borderRadius: 10, backgroundColor: c.white },
   codeInput: { flex: 1, minWidth: 0, color: c.ink, paddingHorizontal: 12,

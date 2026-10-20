@@ -710,3 +710,125 @@ test("L02 rejects invalid or expensive query parameters instead of scanning orde
   await client.get(branchBase() + "/pages?group=history&code=12345678&status=DELIVERED")
     .set(headers(owner.token)).expect(200);
 });
+
+test("L03 business report separates created cohort, event-day deliveries, cancel and confirmed funds", async () => {
+  const day = "2026-08-12";
+  const base = branchBase() + "/business-report?from=" + day + "&to=" + day;
+  const at = iso => new Date(iso);
+  const createTimed = async (status, created, changed, paymentMethod, paymentStatus) => {
+    const rec = await order(status);
+    await db.order.update({ where: { id: rec.id }, data: { createdAt: at(created) } });
+    await db.orderStatusHistory.updateMany({ where: { orderId: rec.id },
+      data: { createdAt: at(changed) } });
+    if (paymentMethod) await db.payment.create({ data: {
+      orderId: rec.id, method: paymentMethod, status: paymentStatus, amountVnd: 140000,
+    } });
+    return rec;
+  };
+  // One delivered order created the previous day, counted only on delivery day.
+  const cod = await createTimed("DELIVERED", "2026-08-11T16:59:59.000Z",
+    "2026-08-11T17:00:00.000Z", "COD", "CONFIRMED");
+  const confirmedQr = await createTimed("DELIVERED", "2026-08-12T12:00:00.000Z",
+    "2026-08-12T16:59:59.000Z", "QR", "CONFIRMED");
+  // Repeated delivery events must not double count the same order.
+  await db.orderStatusHistory.create({ data: {
+    orderId: confirmedQr.id, toStatus: "DELIVERED",
+    actorId: owner.id, createdAt: at("2026-08-12T16:59:58.000Z"),
+  } });
+  await createTimed("DELIVERED", "2026-08-12T12:30:00.000Z",
+    "2026-08-12T15:00:00.000Z", "QR", "PENDING");
+  await createTimed("DELIVERED", "2026-08-12T13:30:00.000Z",
+    "2026-08-12T14:00:00.000Z", "QR", "REFUNDED");
+  const canceled = await createTimed("CANCELED", "2026-08-11T23:00:00.000Z",
+    "2026-08-12T08:00:00.000Z", "COD", "CONFIRMED");
+  const failed = await createTimed("DELIVERY_FAILED", "2026-08-12T09:00:00.000Z",
+    "2026-08-12T10:00:00.000Z", null, null);
+  // Failed attempt followed by later successful delivery still registers as one failure.
+  await db.orderStatusHistory.create({ data: {
+    orderId: cod.id, toStatus: "DELIVERY_FAILED",
+    actorId: owner.id, createdAt: at("2026-08-12T05:00:00.000Z"),
+  } });
+  const outside = await createTimed("DELIVERED", "2026-08-12T15:00:00.000Z",
+    "2026-08-12T17:00:00.000Z", "COD", "CONFIRMED");
+  const report = (await client.get(base).set(headers(owner.token)).expect(200)).body;
+  assert.equal(report.timezone, "Asia/Ho_Chi_Minh");
+  assert.equal(report.paymentBasis, "CURRENT_CONFIRMED_STATUS_BY_DELIVERY_DATE");
+  assert.equal(report.paymentCollectedAtAvailable, false);
+  assert.equal(report.days.length, 1);
+  assert.equal(report.totals.createdCount, 6);
+  assert.equal(report.totals.cohortCanceledCount, 1);
+  assert.equal(report.totals.deliveredCount, 4);
+  assert.equal(report.totals.canceledCount, 1);
+  assert.equal(report.totals.failedCount, 2);
+  assert.equal(report.totals.deliveredValueVnd, 560000);
+  assert.equal(report.totals.confirmedPaymentVnd, 280000);
+  assert.equal(report.totals.codConfirmedVnd, 140000);
+  assert.equal(report.totals.qrConfirmedVnd, 140000);
+  assert.equal(report.totals.pendingPaymentVnd, 140000);
+  assert.equal(report.totals.refundedPaymentVnd, 140000);
+  assert.equal(report.cancellationRatePercent, 16.67);
+  assert.ok(report.days.every(row => !("phoneSnapshot" in row) && !("addressLineSnapshot" in row)));
+  const nextDay = (await client.get(branchBase() +
+    "/business-report?from=2026-08-13&to=2026-08-13")
+    .set(headers(manager.token)).expect(200)).body;
+  assert.equal(nextDay.totals.deliveredCount, 1);
+  assert.equal(nextDay.totals.deliveredValueVnd, 140000);
+  assert.ok(!report.days.some(row => row.day === "2026-08-13"));
+
+  // KPI drilldowns use the same event-day scope, not the order-created day.
+  const deliveryPage = (await client.get(branchBase() +
+    "/pages?group=lookup&metric=DELIVERED&from=2026-08-12&to=2026-08-12&limit=2")
+    .set(headers(owner.token)).expect(200)).body;
+  assert.equal(deliveryPage.total, 4);
+  const paidPage = (await client.get(branchBase() +
+    "/pages?group=lookup&metric=CONFIRMED&from=2026-08-12&to=2026-08-12")
+    .set(headers(manager.token)).expect(200)).body;
+  assert.equal(paidPage.total, 2);
+  assert.ok(paidPage.items.some(row => row.id === cod.id));
+  const canceledPage = (await client.get(branchBase() +
+    "/pages?group=lookup&metric=CANCELED&from=2026-08-12&to=2026-08-12")
+    .set(headers(manager.token)).expect(200)).body;
+  assert.deepEqual(canceledPage.items.map(row => row.id), [canceled.id]);
+  const failedPage = (await client.get(branchBase() +
+    "/pages?group=lookup&metric=FAILED&from=2026-08-12&to=2026-08-12")
+    .set(headers(owner.token)).expect(200)).body;
+  assert.equal(failedPage.total, 2);
+  assert.ok(failedPage.items.some(row => row.id === failed.id));
+  const foreignOrder = await order("DELIVERED", randomUUID(), otherBranchId);
+  await db.orderStatusHistory.updateMany({ where: { orderId: foreignOrder.id },
+    data: { createdAt: at("2026-08-12T12:00:00Z") } });
+  const afterForeign = (await client.get(base).set(headers(manager.token)).expect(200)).body;
+  assert.equal(afterForeign.totals.deliveredCount, 4);
+  await client.get(base).set(headers(kitchen.token)).expect(403);
+  await client.get(base).set(headers(driver.token)).expect(403);
+  await client.get(base).set(headers(outsider.token)).expect(403);
+  await client.get(base).expect(401);
+  await client.get("/admin/orders/" + otherBranchId +
+    "/business-report?from=2026-08-12&to=2026-08-12")
+    .set(headers(manager.token)).expect(403);
+  void outside;
+});
+
+test("L03 business report validates bounded Vietnam day windows and drilldown metrics", async () => {
+  const invalid = [
+    "?from=2026-02-30&to=2026-03-01",
+    "?from=2026-05-02&to=2026-05-01",
+    "?from=2025-01-01&to=2026-12-31",
+    "?from=2026-04-01",
+    "?to=2026-04-01",
+    "?from=2026-04-1&to=2026-04-02",
+  ];
+  for (const suffix of invalid) {
+    await client.get(branchBase() + "/business-report" + suffix)
+      .set(headers(owner.token)).expect(400);
+  }
+  const invalidDrilldowns = [
+    "/pages?group=lookup&metric=WRONG&from=2026-08-12&to=2026-08-12",
+    "/pages?group=lookup&metric=DELIVERED&from=2026-08-12",
+    "/pages?group=lookup&metric=DELIVERED&code=12345678&from=2026-08-12&to=2026-08-12",
+    "/pages?group=history&metric=DELIVERED&from=2026-08-12&to=2026-08-12",
+  ];
+  for (const uri of invalidDrilldowns) {
+    await client.get(branchBase() + uri).set(headers(owner.token)).expect(400);
+  }
+});
