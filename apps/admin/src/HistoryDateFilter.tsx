@@ -17,10 +17,12 @@ const presets: { key: Exclude<HistoryPeriod, "custom">; name: string }[] = [
 ];
 const weekdays = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
-export function HistoryDateFilter({ value, onChange, report = false }: {
-  value: HistoryRange; onChange: (next: HistoryRange) => void; report?: boolean;
+export function HistoryDateFilter({ value, onChange, report = false, compact = false }: {
+  value: HistoryRange; onChange: (next: HistoryRange) => void;
+  report?: boolean; compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [calendarMode, setCalendarMode] = useState(false);
   const [month, setMonth] = useState(() => vietnamDay().slice(0, 7));
   const [start, setStart] = useState<string | null>(null);
   const [end, setEnd] = useState<string | null>(null);
@@ -29,6 +31,7 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
   const monthIndex = Number(month.slice(5, 7)) - 1;
 
   const openPicker = () => {
+    setCalendarMode(true);
     const selected = value.from ?? vietnamDay();
     setMonth(selected.slice(0, 7));
     setStart(value.period === "custom" ? value.from : null);
@@ -59,8 +62,17 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
     setOpen(false);
   };
 
-  return <View style={styles.wrapper}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
+  const currentLabel = value.period === "custom" && value.from && value.to
+    ? showDay(value.from).slice(0, 5) + "–" + showDay(value.to).slice(0, 5)
+    : presets.find(item => item.key === value.period)?.name ?? "Ngày";
+  return <View style={[styles.wrapper, compact && styles.compactWrapper]}>
+    {compact ? <Pressable accessibilityRole="button"
+      accessibilityLabel={"Lọc theo ngày: " + currentLabel}
+      accessibilityState={{ expanded: open }}
+      style={styles.compactTrigger} onPress={() => { setCalendarMode(false); setOpen(true); }}>
+      <Text numberOfLines={1} style={styles.compactText}>{currentLabel}</Text>
+      <Text style={styles.compactChevron}>⌄</Text>
+    </Pressable> : <ScrollView horizontal showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="always" contentContainerStyle={styles.chips}
       accessibilityLabel={report ? "Lọc kỳ báo cáo" : "Lọc theo ngày tạo đơn"}>
       {(report ? [
@@ -88,12 +100,37 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
             : "Tùy chọn"}
         </Text>
       </Pressable>
-    </ScrollView>
+    </ScrollView>}
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
       <SafeAreaView edges={["top", "bottom"]} style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn khoảng ngày"
           style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} />
         <View style={styles.sheet}>
+          {compact && !calendarMode ? <>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.title}>Khoảng ngày</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng lọc ngày"
+                style={styles.closeButton} onPress={() => setOpen(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </Pressable>
+            </View>
+            {presets.map(item => <Pressable key={item.key} accessibilityRole="button"
+              accessibilityLabel={"Chọn " + item.name}
+              accessibilityState={{ selected: value.period === item.key }}
+              style={styles.menuOption} onPress={() => {
+                onChange(historyPeriodRange(item.key)); setOpen(false);
+              }}>
+              <Text style={[styles.menuOptionText, value.period === item.key && styles.selectedText]}>
+                {item.name}
+              </Text>
+              {value.period === item.key && <Text style={styles.selectedText}>✓</Text>}
+            </Pressable>)}
+            <Pressable accessibilityRole="button" accessibilityLabel="Chọn khoảng ngày tùy chọn"
+              style={styles.menuOption} onPress={openPicker}>
+              <Text style={styles.menuOptionText}>Tùy chọn ngày…</Text>
+              <Text style={styles.compactChevron}>›</Text>
+            </Pressable>
+          </> : <>
           <View style={styles.sheetHeader}>
             <Text style={styles.title}>{report ? "Kỳ báo cáo" : "Ngày tạo đơn"}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Đóng lịch"
@@ -149,6 +186,7 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
               <Text style={styles.applyText}>Áp dụng</Text>
             </Pressable>
           </View>
+          </>}
         </View>
       </SafeAreaView>
     </Modal>
@@ -157,6 +195,17 @@ export function HistoryDateFilter({ value, onChange, report = false }: {
 
 const styles = StyleSheet.create({
   wrapper: { flexGrow: 0 },
+  compactWrapper: { flex: 1, minWidth: 0 },
+  compactTrigger: { height: 44, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", gap: 3, borderWidth: 1,
+    borderColor: c.line, borderRadius: 9, paddingHorizontal: 7,
+    backgroundColor: c.white },
+  compactText: { fontSize: 11, color: c.ink, fontWeight: "700", flexShrink: 1 },
+  compactChevron: { color: c.redDeep, fontWeight: "800", fontSize: 15 },
+  menuOption: { minHeight: 46, borderBottomWidth: 1, borderBottomColor: c.line,
+    paddingHorizontal: 8, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between" },
+  menuOptionText: { fontSize: 14, fontWeight: "700", color: c.ink },
   chips: { gap: 6, alignItems: "center", paddingVertical: 2, paddingHorizontal: 2 },
   chip: { minHeight: 42, borderRadius: 9, paddingHorizontal: 12,
     backgroundColor: "#F6F1EC", justifyContent: "center" },

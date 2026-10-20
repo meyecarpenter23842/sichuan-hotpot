@@ -69,7 +69,7 @@ test("L02 history filters are server-driven, debounced and persistent across bot
   assert.match(panel, /encodeURIComponent\(historyRange\.from\)/);
   assert.match(panel, /encodeURIComponent\(historyRange\.to\)/);
   assert.match(panel, /encodeURIComponent\(debouncedCode/);
-  assert.match(panel, /<HistoryDateFilter value=\{historyRange\} onChange=\{onHistoryRangeChange\} \/>/);
+  assert.match(panel, /<HistoryDateFilter compact value=\{historyRange\} onChange=\{onHistoryRangeChange\} \/>/);
   assert.match(panel, /autoCapitalize="characters"/);
   assert.match(panel, /accessibilityLabel="Tìm theo mã đơn"/);
   assert.match(panel, /onHistoryCodeChange\("".*\)/);

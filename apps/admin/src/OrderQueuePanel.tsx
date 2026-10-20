@@ -33,6 +33,13 @@ type EditLine = {
 export interface StaffOrder {
   id: string; branchId: string; status: OrderStatus; createdAt: string; updatedAt: string;
   customerNote?: string | null;
+  // List-only delivery snapshot; absent from KITCHEN results by backend design.
+  phoneSnapshot?: string | null;
+  addressLineSnapshot?: string | null;
+  catalogVersionSnapshot?: string | null;
+  provinceCodeSnapshot?: string | null;
+  wardCodeSnapshot?: string | null;
+  customer?: { localCredential?: { normalizedUsername: string } | null } | null;
   subtotalVnd?: number; deliveryFeeVnd?: number; totalVnd?: number;
   payment?: { method: "COD" | "QR"; status: string; amountVnd?: number } | null;
   items: {
@@ -170,7 +177,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   reportMetric: ReportMetric | null; onClearReportMetric: () => void;
   lookupMode?: boolean;
 }) {
-  const kitchenOnly = role === "KITCHEN";
+  const kitchenOnly = role === "KITCHEN" || mode === "kitchen";
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const [debouncedCode, setDebouncedCode] = useState(historyCode);
   useEffect(() => {
@@ -776,39 +784,40 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         <Text style={s.exitDrilldownText}>Đóng ×</Text>
       </Pressable>
     </View>}
-    {inHistory && !reportMetric && <View style={s.historyLookup}>
-      <TextInput accessibilityLabel="Tìm theo mã đơn" autoCapitalize="characters"
-        autoCorrect={false} returnKeyType="search"
-        style={s.codeInput} placeholder="Mã đơn · VD: 793C85B1"
-        placeholderTextColor="#9197A0" value={historyCode}
-        maxLength={37} onChangeText={onHistoryCodeChange} />
-      {!!historyCode && <Pressable accessibilityRole="button" accessibilityLabel="Xóa mã đơn"
-        onPress={() => onHistoryCodeChange("")} style={s.clearCode}>
-        <Icon name="close" color={c.secondary} size={16} />
-      </Pressable>}
+    {inHistory && !reportMetric && <View style={s.historyToolbar}>
+      <View style={s.historyLookup}>
+        <TextInput accessibilityLabel="Tìm theo mã đơn" autoCapitalize="characters"
+          autoCorrect={false} returnKeyType="search"
+          style={s.codeInput} placeholder="Mã đơn"
+          placeholderTextColor="#9197A0" value={historyCode}
+          maxLength={37} onChangeText={onHistoryCodeChange} />
+        {!!historyCode && <Pressable accessibilityRole="button" accessibilityLabel="Xóa mã đơn"
+          onPress={() => onHistoryCodeChange("")} style={s.clearCode}>
+          <Icon name="close" color={c.secondary} size={16} />
+        </Pressable>}
+      </View>
+      <HistoryDateFilter compact value={historyRange} onChange={onHistoryRangeChange} />
+      <Pressable accessibilityRole="button" accessibilityLabel={
+        "Lọc trạng thái: " + (historyFilters.find(item => item.value === historyStatus)?.label ?? "Tất cả")}
+        accessibilityState={{ expanded: statusMenuOpen, disabled: lookupMode || !!historyCode.trim() }}
+        disabled={lookupMode || !!historyCode.trim()}
+        onPress={() => setStatusMenuOpen(true)}
+        style={[s.statusDropdown, (lookupMode || !!historyCode.trim()) && s.dropdownDisabled]}>
+        <Text numberOfLines={1} style={s.statusDropdownText}>
+          {lookupMode || !!historyCode.trim() ? "Tất cả" :
+            historyFilters.find(item => item.value === historyStatus)?.label ?? "Tất cả"}
+        </Text>
+        <Text style={s.dropdownChevron}>⌄</Text>
+      </Pressable>
     </View>}
-    {inHistory && <HistoryDateFilter value={historyRange} onChange={onHistoryRangeChange} />}
+    {inHistory && reportMetric && <HistoryDateFilter compact value={historyRange}
+      onChange={onHistoryRangeChange} />}
     {inHistory && hasCode && <Text style={s.lookupHint}>
-      Tra cứu mã đơn ở mọi trạng thái · Theo ngày tạo
+      Tìm mã đơn ở mọi trạng thái · Theo ngày tạo
     </Text>}
     {inHistory && badCode && <Text style={s.codeError}>
       Nhập 8 ký tự mã đơn hoặc UUID đầy đủ.
     </Text>}
-    {inHistory && !lookupMode && !historyCode.trim() && !reportMetric && <ScrollView horizontal
-      showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always"
-      accessibilityLabel="Lọc lịch sử đơn hàng" style={s.historyScroll}
-      contentContainerStyle={s.historyFilters}>
-      {historyFilters.map(item => <Pressable key={item.value} accessibilityRole="button"
-        accessibilityLabel={"Lọc lịch sử " + item.label}
-        accessibilityState={{ selected: historyStatus === item.value }}
-        style={[s.historyFilter, historyStatus === item.value && s.historyFilterActive]}
-        onPress={() => onHistoryStatusChange(item.value)}>
-        <Text style={[s.historyFilterLabel,
-          historyStatus === item.value && s.historyFilterLabelActive]}>
-          {item.label}
-        </Text>
-      </Pressable>)}
-    </ScrollView>}
     <ScrollView key={laneUrl} style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
     {badCode ? null : (loading || searchPending || (loadedLaneUrl !== laneUrl && !laneError)
@@ -827,54 +836,70 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </View> : <View style={s.rows}>
         {visible.map(order => <View key={order.id} style={s.orderCard}>
           <View style={s.orderHeader}>
-            <Text style={s.orderId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
+            {!kitchenOnly && <View style={s.customerHeader}>
+              <Text numberOfLines={1} style={s.customerName}>
+                {order.customer?.localCredential?.normalizedUsername?.trim()
+                  || order.phoneSnapshot?.trim() || "Khách hàng"}
+              </Text>
+              <Text numberOfLines={1} style={s.orderIdSmall}>
+                #{order.id.slice(0, 8).toUpperCase()}
+              </Text>
+            </View>}
+            {kitchenOnly && <Text style={s.orderIdSmall}>
+              #{order.id.slice(0, 8).toUpperCase()}
+            </Text>}
             <View style={[s.statusPill, { backgroundColor: statusTone[order.status].background }]}>
               <Text style={[s.status, { color: statusTone[order.status].text }]}>
                 {statusName[order.status]}
               </Text>
             </View>
-            <View style={{ flex: 1 }} />
-            <Icon name="clock" size={16} color={c.secondary} />
+          </View>
+          {!kitchenOnly && <Text numberOfLines={2} style={s.orderAddress}>
+            {[order.addressLineSnapshot?.trim(), displayAdministrativeSelection({
+              catalogVersion: order.catalogVersionSnapshot,
+              provinceCode: order.provinceCodeSnapshot,
+              wardCode: order.wardCodeSnapshot,
+            })].filter(Boolean).join(", ") || "Chưa có địa chỉ giao hàng"}
+          </Text>}
+          <View style={s.compactMeta}>
+            <Icon name="clock" size={13} color={c.secondary} />
             <Text style={s.date}>{when(order.createdAt)}</Text>
+            {!kitchenOnly && !!order.phoneSnapshot &&
+              !!order.customer?.localCredential?.normalizedUsername?.trim() &&
+              <Text numberOfLines={1} style={s.customerPhone}>{order.phoneSnapshot}</Text>}
           </View>
           <View style={s.cardContent}>
-            <View style={s.cardDishIcon}>
-              <Icon name="kitchen" size={25} color={c.redDeep} />
-            </View>
             <View style={s.cardProducts}>
-              {order.items.slice(0, 3).map((item, idx) =>
+              {order.items.slice(0, 2).map((item, idx) =>
                 <Text key={idx} numberOfLines={1} style={s.productLine}>
                   {item.quantity} × {item.productName}
                 </Text>)}
-              {order.items.length > 3 && <Text style={s.note}>
-                + {order.items.length - 3} món khác
+              {order.items.length > 2 && <Text style={s.note}>
+                + {order.items.length - 2} món khác
               </Text>}
             </View>
             {!kitchenOnly && order.totalVnd !== undefined && <View style={s.cardTotal}>
-              <Text style={s.note}>Tổng tiền</Text>
               <Text style={s.total}>{money(order.totalVnd)}</Text>
               {!!order.payment?.method &&
                 <Text style={s.paymentChip}>{order.payment.method}</Text>}
             </View>}
           </View>
-          {availableActions(order.status, role).filter(a => a.value !== "CANCELED"
-            && a.value !== "DELIVERY_FAILED").slice(0, 1).map(a =>
-            <Pressable key={a.value} accessibilityRole="button"
-              accessibilityLabel={a.label + " đơn " + order.id.slice(0, 8)}
-              style={s.quickButton} onPress={() => void openDetail(order.id, a.value)}>
-              <Text style={s.quickButtonText}>{a.label} →</Text>
-            </Pressable>)}
-          <Pressable accessibilityRole="button"
-            accessibilityLabel={"Xem đơn " + order.id.slice(0, 8)}
-            style={({ pressed }) => [s.detailButton, pressed && s.pressed]}
-            onPress={() => void openDetail(order.id)}>
-            <Icon name="orders" size={19} color={c.redDeep} />
-            <Text style={s.detailButtonLabel}>
-              {mode === "kitchen" ? "Xem phiếu & xử lý bếp"
-                : mode === "delivery" ? "Xem trạng thái giao hàng" : "Xem chi tiết & xử lý"}
-            </Text>
-            <Text style={s.detailButtonArrow}>›</Text>
-          </Pressable>
+          <View style={s.compactActions}>
+            {availableActions(order.status, role).filter(a => a.value !== "CANCELED"
+              && a.value !== "DELIVERY_FAILED").slice(0, 1).map(a =>
+              <Pressable key={a.value} accessibilityRole="button"
+                accessibilityLabel={a.label + " đơn " + order.id.slice(0, 8)}
+                style={s.quickButton} onPress={() => void openDetail(order.id, a.value)}>
+                <Text style={s.quickButtonText}>{a.label}</Text>
+              </Pressable>)}
+            <Pressable accessibilityRole="button"
+              accessibilityLabel={"Xem đơn " + order.id.slice(0, 8)}
+              style={({ pressed }) => [s.detailButton, pressed && s.pressed]}
+              onPress={() => void openDetail(order.id)}>
+              <Text style={s.detailButtonLabel}>Xem chi tiết</Text>
+              <Text style={s.detailButtonArrow}>›</Text>
+            </Pressable>
+          </View>
         </View>)}
       </View>}
       {!!laneCursor && !badCode && !searchPending && loadedLaneUrl === laneUrl && <Pressable accessibilityRole="button"
@@ -885,6 +910,25 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       </Pressable>}
     </ScrollView>
     {opening && <ActivityIndicator color={c.red} />}
+    <Modal visible={statusMenuOpen} transparent animationType="fade"
+      onRequestClose={() => setStatusMenuOpen(false)}>
+      <SafeAreaView edges={["top", "bottom"]} style={s.filterOverlay}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng lọc trạng thái"
+          style={StyleSheet.absoluteFillObject} onPress={() => setStatusMenuOpen(false)} />
+        <View style={s.filterSheet}>
+          <Text style={s.filterTitle}>Trạng thái đơn</Text>
+          {historyFilters.map(item => <Pressable key={item.value} accessibilityRole="button"
+            accessibilityLabel={"Lọc lịch sử " + item.label}
+            accessibilityState={{ selected: historyStatus === item.value }}
+            style={s.filterOption} onPress={() => {
+              onHistoryStatusChange(item.value); setStatusMenuOpen(false);
+            }}>
+            <Text style={s.filterOptionText}>{item.label}</Text>
+            {historyStatus === item.value && <Text style={s.filterSelected}>✓</Text>}
+          </Pressable>)}
+        </View>
+      </SafeAreaView>
+    </Modal>
     <Modal visible={!!selected} transparent animationType="slide"
       onRequestClose={() => { if (!saving) { setSelected(null); setAction(null); } }}>
       <SafeAreaView edges={["bottom"]} style={s.overlay}>
@@ -1304,10 +1348,31 @@ const s = StyleSheet.create({
   reportDrilldownText: { flex: 1, color: c.ink, fontSize: 12, fontWeight: "700" },
   exitDrilldown: { minHeight: 44, justifyContent: "center", paddingHorizontal: 6 },
   exitDrilldownText: { color: c.redDeep, fontSize: 12, fontWeight: "800" },
-  historyLookup: { flexDirection: "row", alignItems: "center", minHeight: 44,
-    borderWidth: 1, borderColor: c.line, borderRadius: 10, backgroundColor: c.white },
-  codeInput: { flex: 1, minWidth: 0, color: c.ink, paddingHorizontal: 12,
-    paddingVertical: 8, fontSize: 15, minHeight: 44 },
+  historyToolbar: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
+  historyLookup: { flex: 1.15, minWidth: 0, flexDirection: "row", alignItems: "center",
+    height: 44, borderWidth: 1, borderColor: c.line, borderRadius: 9,
+    backgroundColor: c.white },
+  statusDropdown: { flex: 1, minWidth: 0, height: 44, flexDirection: "row",
+    alignItems: "center", justifyContent: "space-between", gap: 2,
+    borderWidth: 1, borderColor: c.line, borderRadius: 9,
+    backgroundColor: c.white, paddingHorizontal: 7 },
+  statusDropdownText: { flex: 1, minWidth: 0, fontSize: 11,
+    fontWeight: "700", color: c.ink },
+  dropdownChevron: { fontSize: 15, fontWeight: "800", color: c.redDeep },
+  dropdownDisabled: { opacity: 0.55 },
+  filterOverlay: { flex: 1, justifyContent: "center", padding: 12,
+    backgroundColor: "rgba(12,18,28,0.5)" },
+  filterSheet: { backgroundColor: c.white, borderRadius: 15, padding: 16,
+    alignSelf: "center", width: "100%", maxWidth: 410 },
+  filterTitle: { fontSize: 16, fontWeight: "800", color: c.ink,
+    paddingBottom: 12 },
+  filterOption: { flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", minHeight: 48, paddingHorizontal: 8,
+    borderBottomWidth: 1, borderBottomColor: c.line },
+  filterOptionText: { fontSize: 14, fontWeight: "700", color: c.ink },
+  filterSelected: { fontSize: 16, fontWeight: "800", color: c.redDeep },
+  codeInput: { flex: 1, minWidth: 0, color: c.ink, paddingHorizontal: 8,
+    paddingVertical: 6, fontSize: 12, minHeight: 44 },
   clearCode: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   lookupHint: { color: c.secondary, fontSize: 11, paddingHorizontal: 2 },
   codeError: { color: c.redDeep, fontSize: 12, paddingHorizontal: 2 },
@@ -1375,14 +1440,21 @@ const s = StyleSheet.create({
   totals: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderColor: c.line },
   actions: { paddingTop: 10, gap: 10 },
   summaryMetricHot: { backgroundColor: "#FFE9EB", borderRadius: 12 },
-  orderCard: { backgroundColor: c.white, borderRadius: 12, borderColor: "#EFE3D9",
-    borderWidth: 1, padding: 10, gap: 8, marginBottom: 5,
-    shadowColor: "#45231B", shadowOpacity: 0.07, shadowRadius: 6, elevation: 2 },
-  orderHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  orderCard: { backgroundColor: c.white, borderRadius: 11, borderColor: c.line,
+    borderWidth: 1, padding: 10, gap: 5, marginBottom: 4 },
+  orderHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  customerHeader: { flex: 1, minWidth: 0, gap: 1 },
+  customerName: { fontSize: 14, fontWeight: "800", color: c.ink },
+  orderIdSmall: { fontSize: 10, color: c.secondary, fontWeight: "600" },
+  orderAddress: { fontSize: 12, color: c.ink, lineHeight: 17 },
+  compactMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
+  customerPhone: { fontSize: 11, color: c.secondary, marginLeft: "auto", flexShrink: 1 },
+  compactActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusPill: { backgroundColor: "#F5EFE6", borderRadius: 13,
     paddingVertical: 5, paddingHorizontal: 10 },
   statusPillUrgent: { backgroundColor: "#FFE5E9" },
-  cardContent: { flexDirection: "row", alignItems: "center", gap: 7 },
+  cardContent: { flexDirection: "row", alignItems: "center", gap: 7,
+    paddingVertical: 2 },
   cardDishIcon: { width: adminDensity.orderThumb, height: adminDensity.orderThumb,
     borderRadius: 9, backgroundColor: "#FFF1DF",
     alignItems: "center", justifyContent: "center" },
@@ -1391,11 +1463,11 @@ const s = StyleSheet.create({
   cardTotal: { alignItems: "flex-end", gap: 3 },
   paymentChip: { color: "#8E581B", backgroundColor: "#FFF2D8",
     fontSize: 10, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
-  detailButton: { backgroundColor: "#FCE6E7", borderRadius: 9,
+  detailButton: { flex: 1, backgroundColor: c.soft, borderRadius: 8,
     minHeight: 44, flexDirection: "row", alignItems: "center",
-    justifyContent: "center", gap: 10, paddingHorizontal: 12 },
+    justifyContent: "center", gap: 6, paddingHorizontal: 10 },
   detailButtonLabel: { fontSize: 12, fontWeight: "800", color: c.redDeep },
-  detailButtonArrow: { color: c.redDeep, fontSize: 21, marginLeft: "auto" },
+  detailButtonArrow: { color: c.redDeep, fontSize: 17 },
   emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#FCE6E7",
     alignItems: "center", justifyContent: "center" },
   emptyHeading: { fontSize: 14, fontWeight: "800", color: c.ink },

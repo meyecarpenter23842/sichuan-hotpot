@@ -85,6 +85,34 @@ before(async () => {
 });
 after(async () => { if (app) await app.close(); if (db) await db.$disconnect(); });
 
+test("L01 compact order lanes show scoped identity/address, while kitchen has no customer data", async () => {
+  await db.localCredential.create({ data: {
+    userId: outsider.id, normalizedUsername: "khach_uat", passwordHash: "ci-test-only",
+  } });
+  const ownerPage = await client.get(branchBase() + "/pages?group=new")
+    .set(headers(owner.token)).expect(200);
+  const row = ownerPage.body.items.find(o => o.id === pendingId);
+  assert.ok(row);
+  assert.equal(row.phoneSnapshot, "+84901111222");
+  assert.equal(row.addressLineSnapshot, "12 Đường bí mật");
+  assert.equal(row.customer.localCredential.normalizedUsername, "khach_uat");
+  const managerPage = await client.get(branchBase() + "/pages?group=new")
+    .set(headers(manager.token)).expect(200);
+  assert.equal(managerPage.body.items.find(o => o.id === pendingId).addressLineSnapshot,
+    "12 Đường bí mật");
+  const kitchenPage = await client.get(branchBase() + "/pages?group=kitchen")
+    .set(headers(kitchen.token)).expect(200);
+  const kitchenRow = kitchenPage.body.items.find(o => o.id === kitchenId);
+  assert.ok(kitchenRow);
+  assert.equal(kitchenRow.customer, undefined);
+  assert.equal(kitchenRow.phoneSnapshot, undefined);
+  assert.equal(kitchenRow.addressLineSnapshot, undefined);
+  await client.get(branchBase() + "/pages?group=new")
+    .set(headers(kitchen.token)).expect(403);
+  await client.get(branchBase() + "/pages?group=new")
+    .set(headers(driver.token)).expect(403);
+});
+
 test("branch queue is staff scoped and never accessible to unrelated CUSTOMER", async () => {
   const listed = await client.get("/admin/orders/branches")
     .set(headers(kitchen.token)).expect(200);
@@ -351,7 +379,14 @@ test("L04 driver sees ONLY assigned orders and their delivery/COD data, never an
   assert.ok(!list.body.some(o => o.id === unassigned.id));
   assert.equal(list.body.find(o => o.id === assigned.id).payment.method, "COD");
   assert.equal(list.body.find(o => o.id === assigned.id).subtotalVnd, undefined);
-  assert.equal(list.body.find(o => o.id === assigned.id).phoneSnapshot, undefined);
+  assert.equal(list.body.find(o => o.id === assigned.id).phoneSnapshot, "+84901111222");
+  assert.equal(list.body.find(o => o.id === assigned.id).addressLineSnapshot, "12 Đường bí mật");
+  const driverPage = await client.get(branchBase() + "/pages?group=delivery")
+    .set(headers(driver.token)).expect(200);
+  assert.ok(driverPage.body.items.some(o => o.id === assigned.id));
+  assert.ok(!driverPage.body.items.some(o => o.id === unassigned.id));
+  assert.equal(driverPage.body.items.find(o => o.id === assigned.id).phoneSnapshot,
+    "+84901111222");
   const detail = await client.get(url).set(headers(driver.token)).expect(200);
   assert.equal(detail.body.phoneSnapshot, "+84901111222");
   assert.equal(detail.body.addressLineSnapshot, "12 Đường bí mật");
@@ -447,7 +482,10 @@ test("L06 order lanes show history despite >100 newer orders and paginate same-t
   await client.get(branchBase() + "/pages?group=new").set(headers(driver.token)).expect(403);
   const driverPage = await client.get(branchBase() + "/pages?group=delivery")
     .set(headers(driver.token)).expect(200);
-  assert.ok(driverPage.body.items.every(row => row.phoneSnapshot === undefined));
+  assert.ok(driverPage.body.items.every(row => row.phoneSnapshot === "+84901111222"
+    && row.addressLineSnapshot === "12 Đường bí mật"));
+  assert.ok(!driverPage.body.items.some(row => row.id === historical.id),
+    "DRIVER must never read unassigned historical orders");
   const foreign = await order("PENDING", randomUUID(), otherBranchId);
   await client.get(branchBase() + "/pages?group=new&cursor=" + foreign.id)
     .set(headers(owner.token)).expect(400);

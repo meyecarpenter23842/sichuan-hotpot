@@ -51,7 +51,9 @@ test("L04 business pages are full screens; existing configuration remains a dirt
   assert.match(app, /onClose=\{\(\) => setTab\(reportBack\)\}/);
   assert.match(panel, /lookupMode \|\| hasCode \|\| reportMetric/);
   assert.match(panel, /!lookupMode && historyStatus !== "ALL"/);
-  assert.match(panel, /inHistory && !lookupMode && !historyCode\.trim\(\)/);
+  assert.match(panel, /inHistory && !reportMetric && <View style=\{s\.historyToolbar\}>/);
+  assert.match(panel, /disabled=\{lookupMode \|\| !!historyCode\.trim\(\)\}/);
+  assert.match(panel, /historyFilters\.map\(item => <Pressable/);
   assert.match(panel, /lookupMode \? "Tra cứu đơn" : "Lịch sử đơn"/);
   assert.match(panel, /lookupMode \? "Quản lý" : "Đơn hàng"/);
   assert.match(panel, /lookupMode \? "Quay lại Quản lý"/);
