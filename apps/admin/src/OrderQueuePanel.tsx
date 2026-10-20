@@ -145,19 +145,19 @@ const historyFilters: { value: HistoryStatusFilter; label: string }[] = [
   { value: "CANCELED", label: "Đã hủy" },
   { value: "DELIVERY_FAILED", label: "Giao thất bại" },
 ];
-const orderGroups: { id: OrderGroup; label: string; statuses: OrderStatus[] }[] = [
+const orderGroups: { id: Exclude<OrderGroup, "history">; label: string; statuses: OrderStatus[] }[] = [
   { id: "new", label: "Mới", statuses: ["PENDING"] },
   { id: "confirmed", label: "Đã nhận", statuses: ["CONFIRMED"] },
   { id: "preparing", label: "Đang nấu", statuses: ["PREPARING"] },
   { id: "ready", label: "Chờ giao", statuses: ["READY"] },
   { id: "delivering", label: "Đang giao", statuses: ["DELIVERING"] },
-  { id: "history", label: "Lịch sử", statuses: ["DELIVERED", "CANCELED", "DELIVERY_FAILED"] },
 ];
 
 export function OrderQueuePanel({ token, branchId, role, mode, active, group, onGroupChange,
-  historyStatus, onHistoryStatusChange }: {
+  onCloseHistory, historyStatus, onHistoryStatusChange }: {
   token: string; branchId: string; role: string; mode: "orders" | "kitchen" | "delivery";
   active: boolean; group: OrderGroup; onGroupChange: (value: OrderGroup) => void;
+  onCloseHistory: () => void;
   historyStatus: HistoryStatusFilter;
   onHistoryStatusChange: (value: HistoryStatusFilter) => void;
 }) {
@@ -165,6 +165,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const [orders, setOrders] = useState<StaffOrder[]>([]);
   const activeLane = mode === "orders" ? group : mode;
   const [laneOrders, setLaneOrders] = useState<StaffOrder[]>([]);
+  // A freshly selected status must never display orders from the previous
+  // server query while React waits for the next effect and network response.
+  const [loadedLaneUrl, setLoadedLaneUrl] = useState<string | null>(null);
   const [laneCursor, setLaneCursor] = useState<string | null>(null);
   const [laneTotal, setLaneTotal] = useState<number | null>(null);
   const [laneLoading, setLaneLoading] = useState(true);
@@ -230,6 +233,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
       } while (rows.length < target && cursor);
       if (current !== laneRequest.current) return;
       setLaneOrders(rows);
+      setLoadedLaneUrl(laneUrl);
       loadedCount.current = rows.length;
       setLaneCursor(cursor);
       setLaneTotal(total);
@@ -268,7 +272,8 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   useEffect(() => {
     laneRequest.current++;
     loadedCount.current = 25;
-    setLaneOrders([]); setLaneCursor(null); setLaneTotal(null); setLaneError("");
+    setLaneOrders([]); setLoadedLaneUrl(null);
+    setLaneCursor(null); setLaneTotal(null); setLaneError("");
     setLaneLoading(true);
     if (active) void refreshLane();
     return () => { laneRequest.current++; };
@@ -649,9 +654,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     } finally { setEditBusy(false); }
   };
 
-  // Paging is performed server-side by lane. A backlog of new orders cannot
-  // crowd older DELIVERED/CANCELED orders out of the history tab.
-  const visible = laneOrders;
+  // Paging is performed server-side by lane. The list is only valid for the
+  // exact server query that produced it (branch/status/history sub-filter).
+  const visible = loadedLaneUrl === laneUrl ? laneOrders : [];
   const pendingCount = orders.filter(x => x.status === "PENDING").length;
   const overdueCount = orders.filter(x => x.status === "PENDING"
     && clock - Date.parse(x.createdAt) >= 300000).length;
@@ -691,38 +696,39 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     {!!notice && <Notice text={notice} />}
     {overdueCount > 0 && !kitchenOnly && <Notice error
       text={overdueCount + " đơn đang chờ xác nhận quá 5 phút. Cần xử lý ngay."} />}
-    {mode === "orders" && <View style={s.tabsToolbar}>
+    {mode === "orders" && group !== "history" && <View style={s.tabsToolbar}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="always" style={s.groupScroll}
         contentContainerStyle={s.groupRow} accessibilityLabel="Bộ lọc trạng thái đơn">
-      {orderGroups.filter(item => item.id !== "history").map(item => {
-        const count = item.id === group && laneTotal !== null ? laneTotal : null;
-        return <Pressable key={item.id} accessibilityRole="tab"
-          accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
-          style={[s.groupTab, group === item.id && s.groupTabActive]}
-          onPress={() => onGroupChange(item.id)}>
-          <Text style={[s.groupLabel, group === item.id && s.groupLabelActive]}>
-            {item.label}{count !== null && <Text style={s.groupCount}> {count}</Text>}
-          </Text>
-        </Pressable>;
-      })}
+        {orderGroups.map(item => {
+          const count = item.id === group && loadedLaneUrl === laneUrl && laneTotal !== null
+            ? laneTotal : null;
+          return <Pressable key={item.id} accessibilityRole="tab"
+            accessibilityLabel={item.label} accessibilityState={{ selected: group === item.id }}
+            style={[s.groupTab, group === item.id && s.groupTabActive]}
+            onPress={() => onGroupChange(item.id)}>
+            <Text style={[s.groupLabel, group === item.id && s.groupLabelActive]}>
+              {item.label}{count !== null && <Text style={s.groupCount}> {count}</Text>}
+            </Text>
+          </Pressable>;
+        })}
       </ScrollView>
-      <Pressable accessibilityRole="tab" accessibilityLabel="Lịch sử đơn hàng"
-        accessibilityState={{ selected: group === "history" }}
-        style={[s.groupTab, s.historyTab, group === "history" && s.groupTabActive]}
-        onPress={() => onGroupChange("history")}>
-        <Text style={[s.groupLabel, group === "history" && s.groupLabelActive]}>
-          Lịch sử{group === "history" && laneTotal !== null
-            && <Text style={s.groupCount}> {laneTotal}</Text>}
-        </Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Mở lịch sử đơn hàng"
+        style={s.historyShortcut} onPress={() => onGroupChange("history")}>
+        <Icon name="clock" color={c.red} size={22} />
       </Pressable>
+    </View>}
+    {mode === "orders" && group === "history" && <View style={s.historyHeading}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đơn đang xử lý"
+        style={s.historyBack} onPress={onCloseHistory}>
+        <View style={s.backChevron}><Icon name="chevron" size={20} color={c.redDeep} /></View>
+        <Text style={s.historyBackText}>Đơn hàng</Text>
+      </Pressable>
+      <Text style={s.historyHeadingTitle} numberOfLines={1}>Lịch sử đơn</Text>
       <Pressable accessibilityRole="button"
-        accessibilityLabel={syncing ? "Đang tải đơn hàng" :
-          lastSync ? "Đồng bộ đơn hàng. Đã đồng bộ lúc " +
-            lastSync.toLocaleTimeString("vi-VN") : "Đồng bộ đơn hàng"}
-        accessibilityState={{ disabled: syncing || laneLoading }}
+        accessibilityLabel="Đồng bộ lịch sử đơn hàng" accessibilityState={{ disabled: syncing || laneLoading }}
         disabled={syncing || laneLoading} onPress={() => void sync()} style={s.refresh}>
-        <Icon name="clock" color={syncing ? c.secondary : c.red} size={21} />
+        <Icon name="clock" color={syncing ? c.secondary : c.red} size={20} />
       </Pressable>
     </View>}
     {mode === "orders" && group === "history" && <ScrollView horizontal
@@ -740,9 +746,9 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         </Text>
       </Pressable>)}
     </ScrollView>}
-    <ScrollView style={s.orderListScroll} contentContainerStyle={s.orderListContent}
+    <ScrollView key={laneUrl} style={s.orderListScroll} contentContainerStyle={s.orderListContent}
       keyboardShouldPersistTaps="handled">
-    {loading || (laneLoading && laneOrders.length === 0)
+    {loading || (laneLoading && visible.length === 0)
       ? <ActivityIndicator color={c.red} style={{ marginVertical: 30 }} /> :
       visible.length === 0 ? <View style={s.empty}>
         <View style={s.emptyIcon}>
@@ -1219,7 +1225,16 @@ const s = StyleSheet.create({
   groupLabel: { fontSize: font.note, color: c.secondary, fontWeight: "700" },
   groupLabelActive: { color: c.redDeep, fontWeight: "900" },
   groupCount: { fontSize: 11, fontWeight: "600" },
-  historyTab: { paddingHorizontal: 8, flexShrink: 0 },
+  historyShortcut: { width: 48, minHeight: 48, alignItems: "center",
+    justifyContent: "center", borderLeftWidth: 1, borderLeftColor: c.line },
+  historyHeading: { flexDirection: "row", alignItems: "center", minHeight: 49,
+    paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: c.line, gap: 4 },
+  historyBack: { minHeight: 44, flexDirection: "row", alignItems: "center",
+    gap: 1, paddingRight: 6 },
+  backChevron: { transform: [{ rotate: "180deg" }] },
+  historyBackText: { color: c.redDeep, fontSize: font.note, fontWeight: "700" },
+  historyHeadingTitle: { flex: 1, color: c.ink, fontSize: font.note,
+    fontWeight: "800", textAlign: "center" },
   historyScroll: { flexGrow: 0, maxHeight: 48 },
   historyFilters: { gap: 6, alignItems: "center", paddingVertical: 2, paddingHorizontal: 2 },
   historyFilter: { borderRadius: 9, backgroundColor: "#F6F1EC", paddingHorizontal: 11,
