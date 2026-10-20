@@ -10,6 +10,9 @@ const SHORT_CODE = /^[0-9a-f]{8}$/i;
 function parseVietnamDay(value: string): number {
   if (!DAY.test(value)) throw new BadRequestException("INVALID_ORDER_DATE");
   const [year, month, day] = value.split("-").map(Number);
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new BadRequestException("INVALID_ORDER_DATE");
+  }
   const utc = Date.UTC(year, month - 1, day);
   if (year < 2000 || year > 2100 ||
     new Date(utc).toISOString().slice(0, 10) !== value) {
