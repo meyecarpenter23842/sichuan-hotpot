@@ -7,28 +7,33 @@ const app = read("../App.tsx");
 const service = read("../../api/src/orders/admin-orders.service.ts");
 const realtime = read("../../api/src/orders/order-realtime.service.ts");
 
-test("L04 six real status groups with count and selected accessibility", () => {
-  for (const id of ["new", "confirmed", "preparing", "ready", "delivering", "history"]) {
+test("L04 five working tabs and history launched exclusively from the clock shortcut", () => {
+  for (const id of ["new", "confirmed", "preparing", "ready", "delivering"]) {
     assert.match(panel, new RegExp('id: "' + id + '"'));
   }
-  for (const label of ["Mới", "Đã nhận", "Đang nấu", "Chờ giao", "Đang giao", "Lịch sử"]) {
+  assert.doesNotMatch(panel, /id: "history", label: "Lịch sử"/);
+  for (const label of ["Mới", "Đã nhận", "Đang nấu", "Chờ giao", "Đang giao"]) {
     assert.ok(panel.includes('label: "' + label + '"'));
   }
   assert.match(panel, /accessibilityRole="tab"/);
   assert.match(panel, /accessibilityState=\{\{ selected: group === item.id \}\}/);
   assert.match(panel, /contentContainerStyle=\{s.groupRow\}/);
-  // L06 moved group filtering/counts to the scoped paged API. The tabs
-  // still render the same six groups, but use an authoritative group total.
+  // Live server counts belong to five working tabs; history is a separate screen.
   assert.match(panel, /const activeLane = mode === "orders" \? group : mode/);
   assert.match(panel, /encodeURIComponent\(activeLane\) \+ historyQuery/);
-  assert.match(panel, /onGroupChange\("history"\)/);
-  assert.match(panel, /const count = item.id === group && laneTotal !== null \? laneTotal : null/);
+  assert.match(panel, /accessibilityLabel="Mở lịch sử đơn hàng"/);
+  assert.match(panel, /onPress=\{\(\) => onGroupChange\("history"\)\}/);
+  assert.match(panel, /accessibilityLabel="Quay lại đơn đang xử lý"/);
+  assert.match(panel, /onPress=\{onCloseHistory\}/);
+  assert.match(panel, /const count = item.id === group && loadedLaneUrl === laneUrl && laneTotal !== null/);
 });
 
 test("L04 order list scrolls separately from fixed tabs and never loses filter on bottom switch", () => {
   assert.match(app, /const \[orderGroup, setOrderGroup\] = useState<OrderGroup>\("new"\)/);
   assert.match(app, /group=\{orderGroup\}/);
-  assert.match(app, /onGroupChange=\{setOrderGroup\}/);
+  assert.match(app, /onGroupChange=\{next => \{/);
+  assert.match(app, /lastWorkingLane\.current = next/);
+  assert.match(app, /onCloseHistory=\{\(\) => setOrderGroup\(lastWorkingLane\.current\)\}/);
   assert.match(panel, /style=\{s.orderListScroll\}/);
   assert.ok(panel.indexOf('accessibilityLabel="Bộ lọc trạng thái đơn"') <
     panel.indexOf('style={s.orderListScroll}'));

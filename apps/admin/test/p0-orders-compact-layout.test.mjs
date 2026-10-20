@@ -5,7 +5,11 @@ const panel = readFileSync(new URL("../src/OrderQueuePanel.tsx", import.meta.url
 
 test("orders screen uses its compact status tabs as the sole permanent navigation", () => {
   assert.match(panel, /\{mode !== "orders" && <>/);
-  assert.match(panel, /\{mode === "orders" && <View style=\{s\.tabsToolbar\}>/);
+  assert.match(panel, /\{mode === "orders" && group !== "history" && <View style=\{s\.tabsToolbar\}>/);
+  assert.match(panel, /\{mode === "orders" && group === "history" && <View style=\{s\.historyHeading\}>/);
+  assert.match(panel, /accessibilityLabel="Mở lịch sử đơn hàng"/);
+  assert.match(panel, /accessibilityLabel="Quay lại đơn đang xử lý"/);
+  assert.doesNotMatch(panel, /<Text[^>]*>\s*Lịch sử\{group ===/);
   assert.match(panel, /accessibilityLabel="Bộ lọc trạng thái đơn"/);
   assert.match(panel, /onPress=\{\(\) => onGroupChange\(item\.id\)\}/);
   assert.match(panel, /tabsToolbar: \{ flexDirection: "row", alignItems: "center"/);
@@ -14,8 +18,10 @@ test("orders screen uses its compact status tabs as the sole permanent navigatio
 });
 
 test("orders still refresh, warn and allow all original state transitions", () => {
-  assert.match(panel, /lastSync\.toLocaleTimeString\("vi-VN"\)/);
+  assert.match(panel, /accessibilityLabel="Đồng bộ lịch sử đơn hàng"/);
   assert.match(panel, /disabled=\{syncing \|\| laneLoading\} onPress=\{\(\) => void sync\(\)\}/);
+  assert.match(panel, /watchOrderEvents/);
+  assert.match(panel, /setInterval\(\(\) => \{/);
   assert.match(panel, /overdueCount > 0 && !kitchenOnly/);
   assert.match(panel, /\{!!laneError && <Notice error text=\{laneError\} \/>\}/);
   assert.match(panel, /\{visible\.map\(order => <View key=\{order\.id\}/);

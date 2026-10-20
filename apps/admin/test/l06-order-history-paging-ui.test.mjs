@@ -51,3 +51,18 @@ test("P0 history filter is server-owned, cancel color and actor audit are consis
   assert.doesNotMatch(panel, /loadedHistory\.current/);
   assert.doesNotMatch(panel, /\.\.\.prev\.filter\(item => !seen\.has\(item\.id\)\)/);
 });
+
+test("History has its own header and never briefly displays a previous filter's orders", () => {
+  assert.match(panel, /const visible = loadedLaneUrl === laneUrl \? laneOrders : \[\]/);
+  assert.match(panel, /setLoadedLaneUrl\(laneUrl\)/);
+  assert.match(panel, /setLoadedLaneUrl\(null\)/);
+  assert.match(panel, /key=\{laneUrl\} style=\{s\.orderListScroll\}/);
+  assert.match(panel, /laneLoading && visible\.length === 0/);
+  assert.match(panel, /loadedLaneUrl !== laneUrl && !laneError/);
+  assert.match(panel, /group !== "history" && <View style=\{s\.tabsToolbar\}>/);
+  assert.match(panel, /group === "history" && <View style=\{s\.historyHeading\}>/);
+  assert.match(panel, /historyFilters\.map/);
+  assert.match(panel, /onHistoryStatusChange\(item\.value\)/);
+  assert.match(panel, /onPress=\{onCloseHistory\}/);
+  assert.doesNotMatch(panel, /historyTab:/);
+});
