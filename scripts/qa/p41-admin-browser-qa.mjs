@@ -236,7 +236,7 @@ try {
       ?.getAttribute("aria-checked") === "true");
   console.log("PASS L03: shared group, draft images, product attachment and option switch");
 
-  await page.getByRole("button", { name: "Mở thiết lập" }).click();
+  await page.getByRole("button", { name: "Mở Quản lý" }).click();
   await page.getByRole("button", { name: "Mở Giờ bán" }).click();
   await page.getByRole("switch", { name: "Mở cửa Thứ hai" }).click();
   // Opening a previously closed day must seed valid times, not 00:00–00:00.
@@ -278,12 +278,12 @@ try {
 
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const tab of ["Tổng quan", "Thực đơn", "Thiết lập"]) {
-      if (tab === "Thiết lập") await page.getByRole("button", { name: "Mở thiết lập" }).click();
+    for (const tab of ["Tổng quan", "Thực đơn", "Quản lý"]) {
+      if (tab === "Quản lý") await page.getByRole("button", { name: "Mở Quản lý" }).click();
       else await page.getByRole("tab", { name: tab }).click();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         true, "Admin horizontal overflow in " + tab + " at " + width);
-      if (tab === "Thiết lập") {
+      if (tab === "Quản lý") {
         await page.getByRole("button", { name: "Mở Giờ bán" }).waitFor();
       } else {
         await page.getByText(tab === "Tổng quan" ? "Đơn mới cần xác nhận" : "Tìm món").first().waitFor();
@@ -311,10 +311,10 @@ try {
         await backdrop.click({ position: { x: width - 18, y: 260 } });
         await page.getByRole("button", { name: /^Chọn chi nhánh / }).first().waitFor({ state: "hidden" });
       }
-      if (tab === "Thiết lập") {
+      if (tab === "Quản lý") {
         const tile = await page.getByRole("button", { name: "Mở Thông báo" }).boundingBox();
         assert.ok(tile && tile.height <= 116 && tile.height >= 44,
-          "Settings shortcut tile is too tall at " + width);
+          "Management shortcut tile is too tall at " + width);
       }
       if (tab === "Thực đơn") {
         const tabs = page.getByRole("tablist");

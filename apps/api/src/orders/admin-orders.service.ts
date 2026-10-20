@@ -345,7 +345,7 @@ export class AdminOrdersService {
       vietnamNow.getUTCDate(),
     ) - 7 * 60 * 60 * 1000);
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    const [statuses, delivered] = await Promise.all([
+    const [statuses, delivered, canceledToday] = await Promise.all([
       this.prisma.database.order.groupBy({
         by: ["status"],
         where: { branchId, status: { in: [
@@ -366,6 +366,11 @@ export class AdminOrdersService {
           payment: { select: { method: true, status: true, amountVnd: true } },
         },
       }),
+      this.prisma.database.order.count({
+        where: { branchId, status: "CANCELED", statusHistory: { some: {
+          toStatus: "CANCELED", createdAt: { gte: start, lt: end },
+        } } },
+      }),
     ]);
     const counts = new Map(statuses.map(row => [row.status, row._count._all]));
     let deliveredValueVnd = 0;
@@ -384,6 +389,7 @@ export class AdminOrdersService {
       preparing: (counts.get("CONFIRMED") ?? 0) + (counts.get("PREPARING") ?? 0),
       ready: counts.get("READY") ?? 0,
       deliveredCount: delivered.length,
+      canceledCount: canceledToday,
       deliveredValueVnd,
       confirmedPaymentVnd,
     };

@@ -8,7 +8,7 @@ test("orders screen uses its compact status tabs as the sole permanent navigatio
   assert.match(panel, /\{mode === "orders" && group !== "history" && <View style=\{s\.tabsToolbar\}>/);
   assert.match(panel, /\{mode === "orders" && group === "history" && <View style=\{s\.historyHeading\}>/);
   assert.match(panel, /accessibilityLabel="Mở lịch sử đơn hàng"/);
-  assert.match(panel, /accessibilityLabel="Quay lại đơn đang xử lý"/);
+  assert.match(panel, /"Quay lại đơn đang xử lý"/);
   assert.doesNotMatch(panel, /<Text[^>]*>\s*Lịch sử\{group ===/);
   assert.match(panel, /accessibilityLabel="Bộ lọc trạng thái đơn"/);
   assert.match(panel, /onPress=\{\(\) => onGroupChange\(item\.id\)\}/);

@@ -41,7 +41,7 @@ test("L03 finance uses real status events and distinct order ids, not payment.up
 
 test("L03 report is a dedicated screen entered from overview, with no new bottom tab", () => {
   assert.match(app, /accessibilityLabel="Mở báo cáo kinh doanh"/);
-  assert.match(app, /onChangeTab\("report"\)/);
+  assert.match(app, /onOpenReport/);
   assert.match(app, /tab === "report" && operator && branchId/);
   assert.match(app, /onDrillDown=\{\(metric, range\) => \{/);
   assert.match(app, /setReportMetric\(metric\)/);

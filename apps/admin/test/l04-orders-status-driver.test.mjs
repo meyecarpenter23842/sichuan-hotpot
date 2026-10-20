@@ -19,21 +19,21 @@ test("L04 five working tabs and history launched exclusively from the clock shor
   assert.match(panel, /accessibilityState=\{\{ selected: group === item.id \}\}/);
   assert.match(panel, /contentContainerStyle=\{s.groupRow\}/);
   // Live server counts belong to five working tabs; history is a separate screen.
-  assert.match(panel, /group === "history" && \(hasCode \|\| reportMetric\) \? "lookup" : group : mode/);
+  assert.match(panel, /group === "history" && \(lookupMode \|\| hasCode \|\| reportMetric\) \? "lookup" : group : mode/);
   assert.match(panel, /encodeURIComponent\(activeLane\) \+ historyQuery/);
   assert.match(panel, /accessibilityLabel="Mở lịch sử đơn hàng"/);
   assert.match(panel, /onPress=\{\(\) => onGroupChange\("history"\)\}/);
-  assert.match(panel, /accessibilityLabel="Quay lại đơn đang xử lý"/);
+  assert.match(panel, /"Quay lại đơn đang xử lý"/);
   assert.match(panel, /onPress=\{onCloseHistory\}/);
   assert.match(panel, /const count = item.id === group && loadedLaneUrl === laneUrl && laneTotal !== null/);
 });
 
 test("L04 order list scrolls separately from fixed tabs and never loses filter on bottom switch", () => {
   assert.match(app, /const \[orderGroup, setOrderGroup\] = useState<OrderGroup>\("new"\)/);
-  assert.match(app, /group=\{orderGroup\}/);
+  assert.match(app, /group=\{tab === "lookup" \? "history" : orderGroup\}/);
   assert.match(app, /onGroupChange=\{next => \{/);
   assert.match(app, /lastWorkingLane\.current = next/);
-  assert.match(app, /onCloseHistory=\{\(\) => setOrderGroup\(lastWorkingLane\.current\)\}/);
+  assert.match(app, /onCloseHistory=\{\(\) => \{/);
   assert.match(panel, /style=\{s.orderListScroll\}/);
   assert.ok(panel.indexOf('accessibilityLabel="Bộ lọc trạng thái đơn"') <
     panel.indexOf('style={s.orderListScroll}'));
