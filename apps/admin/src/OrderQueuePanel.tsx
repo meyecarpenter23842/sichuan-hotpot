@@ -185,7 +185,6 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
-  const [lastSync, setLastSync] = useState<Date | null>(null);
   const [clock, setClock] = useState(Date.now());
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [contactError, setContactError] = useState("");
@@ -300,7 +299,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
         }
       }
       lastIds.current = new Set(pending.map(x => x.id));
-      setOrders(fresh); setError(""); setLastSync(new Date());
+      setOrders(fresh); setError("");
       // A socket/poll update refreshes the currently selected lane as well.
       // The callback ref avoids clearing alert state whenever a tab changes.
       void refreshLaneRef.current();
@@ -317,7 +316,7 @@ export function OrderQueuePanel({ token, branchId, role, mode, active, group, on
     requestId.current++;
     lastIds.current = null;
     pendingAlerts.current.clear();
-    setOrders([]); setLastSync(null); setLoading(true); setNotice(""); setError("");
+    setOrders([]); setLoading(true); setNotice(""); setError("");
     if (active) void sync();
     return () => { requestId.current++; };
   }, [active, branchId, sync]);
