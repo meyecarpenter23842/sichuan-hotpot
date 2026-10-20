@@ -102,7 +102,7 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
     <View style={s.head}>
       <Pressable accessibilityRole="button" accessibilityLabel="Quay lại Tổng quan"
         onPress={onClose} style={s.back}>
-        <Icon name="chevron" size={19} color={c.redDeep} />
+        <View style={s.chevronBack}><Icon name="chevron" size={19} color={c.redDeep} /></View>
         <Text style={s.backText}>Tổng quan</Text>
       </Pressable>
       <Text style={s.title}>Báo cáo kinh doanh</Text>
@@ -195,6 +195,7 @@ const s = StyleSheet.create({
   head: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 8 },
   back: { flexDirection: "row", minHeight: 44, alignItems: "center", gap: 4 },
   backText: { color: c.redDeep, fontSize: 12, fontWeight: "800" },
+  chevronBack: { transform: [{ rotate: "180deg" }] },
   title: { flex: 1, color: c.ink, fontSize: font.title, fontWeight: "800", textAlign: "center" },
   refresh: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
   caption: { fontSize: 12, color: c.secondary },
