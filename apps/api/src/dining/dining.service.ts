@@ -474,14 +474,14 @@ export class DiningService {
   async locator(qrHandle: string) {
     if (!/^[a-zA-Z0-9_-]{16,64}$/.test(qrHandle)) throw new NotFoundException("DINING_QR_NOT_FOUND");
     const table = await this.prisma.database.diningTable.findUnique({
-      where: { qrHandle }, select: { name: true, code: true, isActive: true,
+      where: { qrHandle }, select: { name: true, code: true, branchId: true, isActive: true,
         area: { select: { name: true, isActive: true } },
         branch: { select: { name: true, isActive: true } } },
     });
     if (!table || !table.isActive || !table.branch.isActive || !table.area.isActive)
       throw new NotFoundException("DINING_QR_NOT_FOUND");
     return { table: table.name, code: table.code, area: table.area.name,
-      branch: table.branch.name };
+      branch: table.branch.name, branchId: table.branchId };
   }
 
   async issueGrant(qrHandle: string) {
@@ -517,6 +517,20 @@ export class DiningService {
       // never in QR URL, analytics, query params, audit event, or database as plaintext.
       return { credential, expiresAt, sessionId: session.id };
     });
+  }
+
+  /** Sliding renewal preserves the same scoped grant ID and its ticket history across reloads.
+   * Caller must already possess an unexpired grant; never revives revoked/closed sessions. */
+  async renewGuestGrant(authorization: string | undefined) {
+    const grant = await this.guest(authorization);
+    const expiresAt = new Date(Date.now() + 15 * 60_000);
+    const changed = await this.prisma.database.diningGuestGrant.updateMany({
+      where: { id: grant.id, revokedAt: null, expiresAt: { gt: new Date() },
+        session: { status: "OPEN", closedAt: null } },
+      data: { expiresAt },
+    });
+    if (changed.count !== 1) throw new UnauthorizedException("DINING_GUEST_EXPIRED");
+    return { expiresAt };
   }
 
   private async guest(authorization: string | undefined) {
@@ -653,7 +667,17 @@ export class DiningService {
 
   async guestBill(authorization: string | undefined) {
     const grant = await this.guest(authorization);
-    return this.bill(grant.sessionId, grant.branchId, false);
+    const bill = await this.bill(grant.sessionId, grant.branchId, false);
+    // Customer-facing projection: do not reveal payments, amount collected,
+    // server session identifiers or unrelated staff/branch billing details.
+    return { status: bill.status, subtotalVnd: bill.subtotalVnd,
+      tickets: bill.tickets.map(ticket => ({
+        id: ticket.id, status: ticket.status, createdAt: ticket.createdAt,
+        items: ticket.items.map(item => ({
+          productName: item.productName, variantName: item.variantName,
+          quantity: item.quantity, lineTotalVnd: item.lineTotalVnd,
+        })),
+      })) };
   }
 
   async approvals(auth: string | undefined, branchId: string) {
