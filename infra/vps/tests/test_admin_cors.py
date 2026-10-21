@@ -38,13 +38,13 @@ class NarrowCORSChangeTests(unittest.TestCase):
 
     def test_existing_custom_origins_remain_unique_when_adding_dinein(self):
         raw = (b"CORS_ALLOWED_ORIGINS=https://sichuan-hotpot-customer.vercel.app,"
-               b"https://admin.bepsi.click,https://retail.bepsi.click\\n"
-               b"OTHER_SECRET=never_log\\n")
+               b"https://admin.bepsi.click,https://retail.bepsi.click\n"
+               b"OTHER_SECRET=never_log\n")
         updated, changed = module.rewrite_content(raw)
         self.assertTrue(changed)
         self.assertEqual(updated.count(module.RETAIL_CUSTOM.encode()), 1)
         self.assertEqual(updated.count(module.MENU_CUSTOM.encode()), 1)
-        self.assertIn(b"OTHER_SECRET=never_log\\n", updated)
+        self.assertIn(b"OTHER_SECRET=never_log\n", updated)
         self.assertEqual(module.rewrite_content(updated), (updated, False))
 
     def test_fail_closed_missing_duplicate_or_invalid_origins(self):
