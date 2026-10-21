@@ -100,14 +100,14 @@ export default function App() {
     .filter(p => (!category || p.categoryId === category) &&
       (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
         .includes(search.trim().toLocaleLowerCase("vi")))), [catalog, category, search]);
-  const updateGrant = (value: SavedGrant | null) => {
+  const updateGrant = useCallback((value: SavedGrant | null) => {
     guestRef.current = value;
     setGrant(value);
     if (handle) {
       if (value) saveStored(cacheKey(handle), value);
       else removeStored(cacheKey(handle));
     }
-  };
+  }, [handle]);
   const revoke = useCallback((why: string) => {
     guestRef.current = null; setGrant(null); setPhase("expired");
     setTickets([]); setBill(null); setError(why);
@@ -203,12 +203,12 @@ export default function App() {
         setPhase("error"); setError(err instanceof Error ? err.message : "Không tải được thực đơn.");
       }
     }
-  }, [handle, sync]);
+  }, [handle, sync, updateGrant]);
 
   useEffect(() => {
     alive.current = true;
     void connect();
-    return () => { alive.current = false; ++requestId.current; };
+    return () => { alive.current = false; };
   }, [connect]);
   useEffect(() => {
     if (phase !== "ready") return;
@@ -272,7 +272,6 @@ export default function App() {
     setMessage("Đã thêm món vào giỏ. Chưa gửi yêu cầu cho quán.");
   };
   const canOrder = phase === "ready" && !!grant && online && !sending;
-  const showBrowse = phase === "ready" || phase === "waiting";
   return <SafeAreaProvider><SafeAreaView style={s.safe} edges={["top", "bottom"]}>
     <View style={s.header}>
       <View style={s.brand}><Text style={s.brandSmall}>LẨU TỨ XUYÊN</Text>
