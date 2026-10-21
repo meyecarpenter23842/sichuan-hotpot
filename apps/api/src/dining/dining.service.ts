@@ -129,7 +129,7 @@ export class DiningService {
         });
         if (existing) throw new ConflictException("DINING_TABLE_OCCUPIED");
         const session = await tx.diningSession.create({
-          data: { branchId, tableId, openedById: actor.id, guestCount },
+          data: { branchId, tableId, openedById: actor.id, ...(guestCount != null ? { guestCount } : {}) },
           select: { id: true, branchId: true, tableId: true, status: true, openedAt: true },
         });
         await tx.diningAuditEvent.create({ data: {
@@ -276,7 +276,7 @@ export class DiningService {
       if (changed.count !== 1) throw new ConflictException("DINING_SESSION_NOT_OPEN");
       if (source === "QR") {
         const valid = await tx.diningGuestGrant.findFirst({ where: {
-          id: guestGrantId ?? undefined, sessionId, branchId,
+          id: guestGrantId!, sessionId, branchId,
           revokedAt: null, expiresAt: { gt: new Date() },
         }, select: { id: true } });
         if (!valid) throw new UnauthorizedException("DINING_GUEST_EXPIRED");
@@ -309,7 +309,7 @@ export class DiningService {
             lineTotalVnd: line.lineTotalVnd,
             selectionSnapshot: JSON.parse(JSON.stringify({
               pricingMode: line.pricingMode, modifiers: line.modifiers,
-              comboItems: line.comboItems, note: cleanNote(input.items[index].note),
+              comboItems: line.comboItems, note: cleanNote(input.items[index]?.note),
             })) as Prisma.InputJsonValue,
           })) },
         },
