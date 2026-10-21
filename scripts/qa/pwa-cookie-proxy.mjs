@@ -6,7 +6,7 @@ import { join, extname, normalize, resolve, sep } from "node:path";
 // Admin, Customer and Retail use isolated disposable browser origins.
 const app = process.env.HOTPOT_QA_PWA_APP || "customer";
 const port = Number(process.env.HOTPOT_QA_WEB_PORT || "3000");
-if (!["customer", "admin", "retail"].includes(app) || ![3000, 3002, 3004].includes(port)) {
+if (!["customer", "admin", "retail", "menu"].includes(app) || ![3000, 3002, 3004, 3005].includes(port)) {
   throw new Error("Invalid isolated QA PWA target");
 }
 const root = resolve("apps", app, "dist");
