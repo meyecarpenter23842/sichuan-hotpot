@@ -111,8 +111,8 @@ try {
   const guestAuth = "Dining " + granted.credential;
   const extended = await service.renewGuestGrant(guestAuth);
   assert.ok(new Date(extended.expiresAt).getTime() >= new Date(granted.expiresAt).getTime() - 2000);
-  const secondGrant = await service.issueGrant(nonce);
-  assert.deepEqual(await service.guestTickets("Dining " + secondGrant.credential), [],
+  const isolatedGrant = await service.issueGrant(nonce);
+  assert.deepEqual(await service.guestTickets("Dining " + isolatedGrant.credential), [],
     "a separate guest cannot read the first guest's tickets");
   const qrInput = input("guest-" + nonce, [line(beef.id, 2)]);
   const qrTicket = await service.guestTicket(guestAuth, qrInput);
