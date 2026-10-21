@@ -1,23 +1,57 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const config = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"));
-const shell = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-const source = readFileSync(new URL("../src/api-origin.ts", import.meta.url), "utf8");
-const release = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
-
-test("Expo Web workspace has strict typed production build and locked Git deploy", () => {
+import test from "node:test";
+const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
+const pkg = JSON.parse(read("../package.json"));
+const config = JSON.parse(read("../app.json"));
+const release = JSON.parse(read("../vercel.json"));
+const app = read("../App.tsx");
+const service = read("../src/pos-api.ts");
+const model = read("../src/pos-cart.ts");
+const sheet = read("../src/ProductSheet.tsx");
+test("Retail is isolated Expo Web PWA with strict typed checks, no automatic production deployment", () => {
   assert.equal(pkg.name, "@hotpot/retail");
   assert.match(pkg.scripts.build, /expo export --platform web/);
   assert.equal(config.expo.web.output, "single");
   assert.equal(release.git.deploymentEnabled, false);
+  assert.match(read("../src/api-origin.ts"), /EXPO_PUBLIC_API_BASE_URL/);
+  assert.doesNotMatch(service, /localStorage|AsyncStorage|sessionStorage/);
 });
-test("Bootstrap is deliberately read-only before authenticated dining API is released", () => {
-  assert.match(shell, /Chưa nhận (đơn|yêu cầu)/);
-  assert.match(shell, /Kiểm tra kết nối/);
-  assert.doesNotMatch(shell, /\/dining\//);
-  assert.match(source, /process\.env\.EXPO_PUBLIC_API_BASE_URL/);
-  assert.doesNotMatch(source, /process\.env\.(?:DATABASE_URL|AUTH_JWT_SECRET)/);
+test("real branch-scoped staff and menu flow, no demo checkout", () => {
+  for (const snippet of ["/auth/login", "/auth/me", "/admin/branches",
+    "/catalog/branches/", 'root + "/tables"', 'root + "/approvals"',
+    '/sessions/" + sessionId', '"/sessions/" + frozen.sessionId + "/tickets"',
+    '"/tickets/" + ticketId + "/" + decision']) assert.ok(app.includes(snippet), snippet);
+  assert.match(app, /const permitted = \["OWNER", "MANAGER", "WAITER", "CASHIER"\]/);
+  assert.match(app, /!canOrder\(role\)/);
+  assert.match(app, /setInterval\(\(\) => \{ if \(AppState\.currentState === "active"\)/);
+  assert.match(app, /clientKey\(\)/);
+  assert.match(app, /setPendingSubmit\(frozen\)/);
+  assert.match(app, /setPendingSubmit\(null\); setCart\(\[\]\)/);
+  assert.match(app, /Duyệt đưa Bếp/);
+  assert.match(app, /Đợi nhân viên xác nhận/);
+  assert.match(app, /Thanh toán\/đóng bàn triển khai ở L07/);
+  assert.doesNotMatch(app, /\/customer\/checkout|payment\/confirm|\/delivery\//);
+});
+test("real image paths and sizes, modifiers, combo requirements respect backend limits", () => {
+  assert.match(service, /products-image\|catalog-media/);
+  assert.match(service, /pub-63ed7b1c33514906ab6e2d82f41bffce\.r2\.dev/);
+  assert.match(model, /isSelectionValid/);
+  assert.match(model, /group\.minSelect/);
+  assert.match(model, /group\.maxSelect/);
+  assert.match(model, /comboOptionIds/);
+  assert.match(sheet, /Ghi chú chế biến/);
+  assert.match(sheet, /Chọn size/);
+  assert.match(sheet, /Có sẵn trong combo/);
+  assert.match(sheet, /maxLength=\{500\}/);
+});
+test("tablet/desktop split and distinct mobile routes enforce tap accessibility", () => {
+  assert.match(app, /const desktop = width >= 768/);
+  assert.match(app, /width: "40%"/);
+  assert.match(app, /page === "tables"/);
+  assert.match(app, /page === "menu"/);
+  assert.match(app, /accessibilityRole="tab"/);
+  assert.match(app, /minHeight: 44/);
+  assert.match(app, /SafeAreaProvider/);
+  assert.match(app, /keyboardShouldPersistTaps="handled"/);
 });
