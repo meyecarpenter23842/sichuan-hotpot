@@ -43,7 +43,7 @@ test("Admin QR is rendered offline and printed only for active tables", () => {
 test("dining board uses branch scoped real endpoints, no demo orders or fake payments", () => {
   assert.match(board, /"\/tables", token/);
   assert.match(board, /"\/approvals", token/);
-  assert.match(board, /"\/sessions\/", token/);
+  assert.match(board, /base \+ "\/sessions\/" \+ table\.sessions\[0\]\.id, token/);
   assert.match(board, /"\/approve", token, "POST"/);
   assert.match(board, /"\/reject", token, "POST"/);
   assert.match(board, /"\/tables\/" \+ table\.id \+ "\/sessions"/);
