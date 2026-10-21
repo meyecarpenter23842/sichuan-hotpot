@@ -114,8 +114,8 @@ export class DiningService {
   }
 
   private cleanLabel(name: string): string {
-    const cleaned = name.normalize("NFC").trim().replace(/\\s+/g, " ");
-    if (!cleaned || /[\\u0000-\\u001F\\u007F]/u.test(cleaned)) {
+    const cleaned = name.normalize("NFC").trim().replace(/\s+/g, " ");
+    if (!cleaned || /[\u0000-\u001F\u007F]/u.test(cleaned)) {
       throw new BadRequestException("DINING_INVALID_NAME");
     }
     return cleaned;
