@@ -187,7 +187,7 @@ export class DiningService {
     });
   }
 
-  async transfer(auth: string | undefined, branchId: string, sessionId: string, targetTableId: string) {
+  async transfer(auth: string | undefined, branchId: string, sessionId: string, expectedTableId: string, targetTableId: string) {
     const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER"]);
     return serializable(this.prisma.database, async tx => {
       const session = await tx.diningSession.findFirst({
@@ -195,6 +195,7 @@ export class DiningService {
       });
       if (!session || session.status !== "OPEN" || session.closedAt)
         throw new ConflictException("DINING_SESSION_NOT_OPEN");
+      if (session.tableId !== expectedTableId) throw new ConflictException("DINING_TABLE_MOVED");
       if (session.tableId === targetTableId)
         return { sessionId, tableId: targetTableId, replayed: true };
       const destination = await tx.diningTable.findFirst({ where: {
