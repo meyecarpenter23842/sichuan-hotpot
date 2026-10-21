@@ -19,10 +19,11 @@ const tone = {
 };
 type Phase = "loading" | "ready" | "waiting" | "invalid" | "expired" | "error";
 type Screen = "menu" | "cart" | "status";
-type SavedGrant = { handle: string; credential: string; expiresAt: string; sessionId: string };
-type FrozenDraft = { sessionId: string; payload: Submission; cart: CartLine[]; note: string };
+type SavedGrant = { handle: string; credential: string; expiresAt: string; sessionId: string; instanceId: string };
+type FrozenDraft = { sessionId: string; instanceId: string; payload: Submission; cart: CartLine[]; note: string };
 function cacheKey(handle: string) { return "sichuan-menu-guest-v1-" + handle; }
 function submissionKey(handle: string) { return "sichuan-menu-request-v1-" + handle; }
+function cartKey(handle: string) { return "sichuan-menu-cart-v1-" + handle; }
 function getStored<T>(key: string): T | null {
   try { const raw = typeof window === "undefined" ? null : window.sessionStorage.getItem(key);
     return raw ? JSON.parse(raw) as T : null; } catch { return null; }
@@ -154,7 +155,7 @@ export default function App() {
       if (seq !== requestId.current) return;
       setLocator(info); setCatalog(menu);
       let saved = getStored<SavedGrant>(cacheKey(handle));
-      if (saved && (saved.handle !== handle || Date.parse(saved.expiresAt) <= Date.now())) {
+      if (saved && (saved.handle !== handle || !saved.instanceId || Date.parse(saved.expiresAt) <= Date.now())) {
         saved = null; removeStored(cacheKey(handle));
       }
       let current = saved;
@@ -168,18 +169,26 @@ export default function App() {
       }
       if (!current) {
         const fresh = await getApi<GuestGrant>("/dining/qr/" + handle + "/grants", undefined, "POST");
-        current = { handle, ...fresh };
+        current = { handle, ...fresh, instanceId: clientKey() };
       }
       if (seq !== requestId.current) return;
       updateGrant(current); setPhase("ready"); setOnline(true);
       const draft = getStored<FrozenDraft>(submissionKey(handle));
-      if (draft?.sessionId === current.sessionId) {
+      if (draft?.sessionId === current.sessionId && draft.instanceId === current.instanceId) {
         setFrozen(draft); setCart(draft.cart); setNote(draft.note);
         setMessage("Có phiếu chưa xác nhận kết quả. Hãy kiểm tra lịch sử hoặc gửi lại đúng phiếu cũ.");
         setScreen("cart");
       } else if (draft) {
         setFrozen(null); removeStored(submissionKey(handle));
         setError("Có yêu cầu từ phiên bàn cũ. Vui lòng nhờ nhân viên kiểm tra trước khi gọi tiếp.");
+      }
+      if (!draft) {
+        const unsent = getStored<{ sessionId: string; cart: CartLine[]; note: string }>(cartKey(handle));
+        if (unsent?.sessionId === current.sessionId && Array.isArray(unsent.cart)) {
+          setCart(unsent.cart); setNote(unsent.note ?? "");
+        } else if (unsent) {
+          removeStored(cartKey(handle));
+        }
       }
       void sync(current, true);
     } catch (err) {
@@ -212,12 +221,23 @@ export default function App() {
     return () => { clearInterval(timer); sub.remove(); };
   }, [phase, sync]);
 
+  // Per-tab unsent cart survives Safari/Chrome reload, but never crosses a dining session.
+  useEffect(() => {
+    if (!grant || !handle || frozen) return;
+    if (cart.length || note.trim()) {
+      saveStored(cartKey(handle), { sessionId: grant.sessionId, cart, note });
+    } else {
+      removeStored(cartKey(handle));
+    }
+  }, [cart, note, grant, frozen, handle]);
+
   const send = async () => {
     const current = guestRef.current;
     if (sendingLock.current || !current || !cart.length || !online) return;
     sendingLock.current = true; setSending(true); setError(""); setMessage("");
     const queued: FrozenDraft = frozen ?? {
-      sessionId: current.sessionId, cart: cart.map(item => ({ ...item, item: { ...item.item } })), note,
+      sessionId: current.sessionId, instanceId: current.instanceId,
+      cart: cart.map(item => ({ ...item, item: { ...item.item } })), note,
       payload: {
         idempotencyKey: clientKey(),
         customerNote: note.trim(),
