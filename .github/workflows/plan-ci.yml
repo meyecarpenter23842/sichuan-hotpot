@@ -131,6 +131,12 @@ jobs:
           assert "HOTPOT_RELEASES_ENABLED" in dinein
           assert "VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}" in dinein
           assert "deploymentEnabled" in dinein
+          api_pull=next(s["run"] for s in dinein_job["steps"]
+                        if s.get("name","").startswith("Pull production API base URL"))
+          assert 'Path(os.environ["RUNNER_TEMP"], "dinein-api-origin").write_text(origin)' in api_pull
+          assert 'PWA_API_ORIGIN="$(cat "$RUNNER_TEMP/dinein-api-origin")"' in api_pull
+          assert "export PWA_API_ORIGIN" in api_pull
+          assert api_pull.index("export PWA_API_ORIGIN") < api_pull.index("curl --fail")
           assert dinein_doc["concurrency"]["cancel-in-progress"] is False or dinein_doc["concurrency"]["cancel-in-progress"] == "false"
           assert not re.search(r"(?m)^  (push|pull_request|schedule):",dinein)
           print("PASS vercel-dinein-release-manual.yml owner command, isolated targets, zero auto deploy")
