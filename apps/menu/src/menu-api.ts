@@ -46,16 +46,23 @@ const knownErrors: Record<string, string> = {
 export async function getApi<T>(path: string, credential?: string, method: "GET" | "POST" = "GET",
   body?: unknown, signal?: AbortSignal): Promise<T> {
   if (!isValidApiOrigin(API_ORIGIN)) throw new MenuApiError("Chưa thiết lập máy chủ an toàn.", 0);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 12_000);
+  const onAbort = () => abort.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
   let response: Response;
   try {
     response = await fetch(API_ORIGIN + path, {
-      method, cache: "no-store", signal,
+      method, cache: "no-store", signal: abort.signal,
       headers: { "Accept": "application/json", ...(credential ? { "Authorization": "Dining " + credential } : {}),
         ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
-    throw new MenuApiError("Mất kết nối. Nếu đã bấm gửi món, hãy kiểm tra lại trước khi thử tiếp.", 0);
+    throw new MenuApiError("Kết nối gián đoạn hoặc hết thời gian chờ. Nếu đã gửi món, hãy kiểm tra trạng thái trước khi thử tiếp.", 0);
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
