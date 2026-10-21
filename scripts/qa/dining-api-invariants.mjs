@@ -116,6 +116,13 @@ try {
   assert.equal((await service.approvals("waiter", branch.id)).length, 1);
   assert.equal((await service.kitchen("kitchen", branch.id)).length, 1,
     "pending QR must not create kitchen work item");
+  const kitchenBefore = await service.kitchen("kitchen", branch.id);
+  assert.equal(Object.hasOwn(kitchenBefore[0].items[0], "unitPriceVnd"), false,
+    "kitchen must not receive unit price");
+  assert.equal(JSON.stringify(kitchenBefore).includes("priceVnd"), false,
+    "kitchen must not receive modifier price details");
+  await rejectsCode(service.staffBill("kitchen", branch.id, session.id),
+    "DINING_BRANCH_FORBIDDEN");
   assert.equal((await service.guestBill(guestAuth)).subtotalVnd, 585_000,
     "pending QR cannot enter bill");
   const approvals = await Promise.all([
