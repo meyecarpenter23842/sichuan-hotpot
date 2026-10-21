@@ -139,8 +139,14 @@ jobs:
           if parsed.scheme!="https" or not parsed.hostname or parsed.path not in ("","/") or parsed.query or parsed.fragment or parsed.username or parsed.password:
               raise SystemExit("Unsafe PWA API origin")
           with open(os.environ["GITHUB_ENV"],"a") as out: out.write("PWA_API_ORIGIN="+origin+"\n")
+          # GITHUB_ENV is visible to subsequent steps only, never the current
+          # shell. Keep the validated origin in a private same-step file too.
+          Path(os.environ["RUNNER_TEMP"], "dinein-api-origin").write_text(origin)
           print("Production HTTPS API origin validated")
           PY
+          PWA_API_ORIGIN="$(cat "$RUNNER_TEMP/dinein-api-origin")"
+          test -n "$PWA_API_ORIGIN"
+          export PWA_API_ORIGIN
           curl --fail --silent --show-error --connect-timeout 8 --max-time 15 -o /dev/null "$PWA_API_ORIGIN/health/ready"
           canonical="https://$TARGET_APP.bepsi.click"
           curl --fail --silent --show-error --connect-timeout 8 --max-time 15             -X OPTIONS -D "$RUNNER_TEMP/dinein-cors.txt" -o /dev/null             -H "Origin: $canonical" -H 'Access-Control-Request-Method: GET'             "$PWA_API_ORIGIN/health/ready"
