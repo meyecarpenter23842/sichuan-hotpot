@@ -33,7 +33,11 @@ function errorCorrection(data) {
   return result;
 }
 export function tableQrMatrix(url) {
-  const bytes = new TextEncoder().encode(url);
+  // Hermes/Android does not guarantee the web TextEncoder global.
+  const bytes = [];
+  for (const segment of encodeURIComponent(url).match(/%[A-F0-9]{2}|[^%]/g) ?? []) {
+    bytes.push(segment[0] === "%" ? parseInt(segment.slice(1), 16) : segment.charCodeAt(0));
+  }
   if (!bytes.length || bytes.length > 106) throw new Error("QR_URL_TOO_LONG");
   const bits = [];
   function append(value, count) {
