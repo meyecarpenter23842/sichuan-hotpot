@@ -1,23 +1,68 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const config = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"));
-const shell = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-const source = readFileSync(new URL("../src/api-origin.ts", import.meta.url), "utf8");
-const release = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
-
-test("Expo Web workspace has strict typed production build and locked Git deploy", () => {
+const read = name => readFileSync(new URL(name, import.meta.url), "utf8");
+const pkg = JSON.parse(read("../package.json"));
+const config = JSON.parse(read("../app.json"));
+const release = JSON.parse(read("../vercel.json"));
+const app = read("../App.tsx");
+const api = read("../src/menu-api.ts");
+const cart = read("../src/menu-cart.ts");
+const sheet = read("../src/ProductSheet.tsx");
+const backend = read("../../api/src/dining/dining.service.ts");
+const controller = read("../../api/src/dining/dining.controller.ts");
+test("independent Expo Web Menu PWA does not deploy automatically", () => {
   assert.equal(pkg.name, "@hotpot/menu");
   assert.match(pkg.scripts.build, /expo export --platform web/);
   assert.equal(config.expo.web.output, "single");
   assert.equal(release.git.deploymentEnabled, false);
+  assert.match(read("../src/api-origin.ts"), /EXPO_PUBLIC_API_BASE_URL/);
 });
-test("Bootstrap is deliberately read-only before authenticated dining API is released", () => {
-  assert.match(shell, /Chưa nhận (đơn|yêu cầu)/);
-  assert.match(shell, /Kiểm tra kết nối/);
-  assert.doesNotMatch(shell, /\/dining\//);
-  assert.match(source, /process\.env\.EXPO_PUBLIC_API_BASE_URL/);
-  assert.doesNotMatch(source, /process\.env\.(?:DATABASE_URL|AUTH_JWT_SECRET)/);
+test("QR locator only: no login, address, GPS, secret token in URL or query", () => {
+  assert.match(api, /params\.getAll\("table"\)/);
+  assert.match(api, /\^\[a-zA-Z0-9_-\]\{16,64\}\$/);
+  assert.match(app, /"\/dining\/qr\/" \+ handle/);
+  assert.match(app, /"\/catalog\/branches\/" \+ info\.branchId/);
+  assert.doesNotMatch(app, /Google|Clerk|đăng nhập|deliveryQuote|geolocation|phoneNumber/);
+  assert.match(api, /"Authorization": "Dining " \+ credential/);
+  assert.doesNotMatch(app, /\?credential=|\?token=|location\.hash/);
+  assert.match(backend, /branchId: table\.branchId/);
+});
+test("guest grant, private status, renew, QR approve gated on server", () => {
+  assert.match(controller, /@Post\("guest\/renew"\)/);
+  assert.match(backend, /async renewGuestGrant/);
+  assert.match(backend, /async guestTickets/);
+  assert.match(backend, /guestGrantId: grant\.id/);
+  assert.match(backend, /status: source === "QR" \? "PENDING_APPROVAL"/);
+  assert.match(app, /"\/dining\/guest\/tickets"/);
+  assert.match(app, /"\/dining\/guest\/bill"/);
+  assert.match(app, /Đang chờ nhân viên xác nhận/);
+  assert.match(app, /Đã gửi Bếp/);
+  assert.match(app, /"REJECTED"/);
+  assert.match(backend, /return \{ status: bill\.status, subtotalVnd: bill\.subtotalVnd/);
+  assert.doesNotMatch(backend.slice(backend.indexOf("async guestBill("), backend.indexOf("async approvals(")), /paidVnd: bill\.|dueVnd: bill\./);
+});
+test("no fake success; persist frozen request safely for network uncertainty and reload", () => {
+  assert.match(app, /saveStored\(submissionKey\(handle\), queued\)/);
+  assert.match(app, /setFrozen\(draft\); setCart\(draft\.cart\); setNote\(draft\.note\)/);
+  assert.match(app, /frozen \? "Thử gửi lại phiếu cũ"/);
+  assert.match(app, /disabled=\{!canOrder \|\| !cart\.length\}/);
+  assert.match(app, /result\.ticketId/);
+  assert.match(app, /"guest\/renew"/);
+  assert.doesNotMatch(app, /localStorage/);
+  assert.match(cart, /isSelectionValid/);
+  assert.match(cart, /comboOptionIds/);
+  assert.match(sheet, /Chọn size/);
+  assert.match(sheet, /Có sẵn trong combo/);
+  assert.match(sheet, /minHeight: 44/);
+});
+test("mobile first: safe area, tabs, loading/offline/empty and large hit targets", () => {
+  assert.match(app, /SafeAreaProvider/);
+  assert.match(app, /keyboardShouldPersistTaps="handled"/);
+  assert.match(app, /phase === "waiting"/);
+  assert.match(app, /phase === "expired"/);
+  assert.match(app, /accessibilityRole="tab"/);
+  assert.match(app, /minHeight: 44/);
+  assert.match(app, /width >= 768/);
+  assert.match(api, /pub-63ed7b1c33514906ab6e2d82f41bffce\.r2\.dev/);
 });
