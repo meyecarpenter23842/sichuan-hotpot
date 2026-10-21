@@ -21,7 +21,7 @@ const canOrder = (role: string) => ["OWNER", "MANAGER", "WAITER"].includes(role)
 const hhmm = (text: string) => new Date(text).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
 export default function App() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const desktop = width >= 768;
   const [credential, setCredential] = useState({ username: "", password: "" });
   const [token, setToken] = useState<string | null>(null);
@@ -41,7 +41,6 @@ export default function App() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [message, setMessage] = useState("");
@@ -403,7 +402,6 @@ export default function App() {
         <Pressable accessibilityRole="button" onPress={() => setError("")}><Text style={st.caption}>Đóng ×</Text></Pressable></View>}
       {!!message && <View style={st.success}><Text style={st.successText}>{message}</Text>
         <Pressable accessibilityRole="button" onPress={() => setMessage("")}><Text style={st.caption}>×</Text></Pressable></View>}
-      {loading && <ActivityIndicator color={C.red}/>}
       {desktop ? <>
         {tableStrip}
         <View style={st.desktop}>
@@ -504,7 +502,7 @@ const st = StyleSheet.create({
     borderWidth: 1, borderColor: C.border },
   panelContent: { padding: 16, paddingBottom: 32 },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  sectionTitle: { fontSize: 16, color: C.dark, fontWeight: "850" },
+  sectionTitle: { fontSize: 16, color: C.dark, fontWeight: "800" },
   caption: { fontSize: 12, lineHeight: 18, color: C.muted },
   tableSection: { paddingHorizontal: 15, paddingTop: 12, paddingBottom: 10, gap: 9,
     backgroundColor: C.paper, borderBottomWidth: 1, borderColor: C.border },
