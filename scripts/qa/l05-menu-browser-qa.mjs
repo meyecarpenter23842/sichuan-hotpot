@@ -139,6 +139,7 @@ try {
     method: "POST", headers: { Authorization: "Bearer " + ownerTokens.accessToken },
   });
   assert.equal(rotated.status, 201);
+  await page.getByRole("tab", { name: /Yêu cầu/ }).click();
   await page.getByRole("button", { name: "Cập nhật trạng thái" }).click();
   await page.getByText("Phiên bàn đã kết thúc").waitFor();
   await other.reload({ waitUntil: "domcontentloaded" });
