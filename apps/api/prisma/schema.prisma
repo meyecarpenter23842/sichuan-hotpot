@@ -16,6 +16,8 @@ enum Role {
   KITCHEN
   DRIVER
   CUSTOMER
+  WAITER
+  CASHIER
 }
 
 enum OrderStatus {
@@ -71,6 +73,36 @@ enum PushTransport {
   FCM
 }
 
+// Dining data is separate from delivery orders; no fake customer/address.
+enum DiningSessionStatus {
+  OPEN
+  CHECKOUT
+  CLOSED
+}
+enum DiningTicketSource {
+  STAFF
+  QR
+}
+enum DiningTicketStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PREPARING
+  READY
+  SERVED
+  CANCELED
+}
+enum DiningPaymentMethod {
+  CASH
+  QR
+}
+enum DiningPaymentStatus {
+  PENDING
+  CONFIRMED
+  VOIDED
+  REFUNDED
+}
+
 model User {
   id                 String               @id @default(uuid()) @db.Uuid
   clerkSubject       String?              @unique @db.VarChar(255) // Legacy DEV-only; do not populate new accounts
@@ -88,6 +120,13 @@ model User {
   localCredential    LocalCredential?
   authSessions       AuthSession[]
   pushEndpoints      PushEndpoint[]
+  diningSessionsOpened DiningSession[]   @relation("DiningSessionOpenedBy")
+  diningSessionsClosed DiningSession[]   @relation("DiningSessionClosedBy")
+  diningTicketsCreated DiningTicket[]    @relation("DiningTicketCreatedBy")
+  diningTicketsReviewed DiningTicket[]   @relation("DiningTicketReviewedBy")
+  diningPaymentsRecorded DiningPayment[] @relation("DiningPaymentRecordedBy")
+  diningPaymentsConfirmed DiningPayment[] @relation("DiningPaymentConfirmedBy")
+  diningAuditEvents  DiningAuditEvent[] @relation("DiningAuditActor")
 }
 
 model Branch {
@@ -117,6 +156,9 @@ model Branch {
   openingHours      BranchOpeningHour[]
   orders            Order[]
   pushEndpoints      PushEndpoint[]
+  diningAreas        DiningArea[]
+  diningTables       DiningTable[]
+  diningSessions     DiningSession[]
 }
 
 model BranchMember {
@@ -233,6 +275,7 @@ model Product {
   comboGroups ProductComboGroup[]
   usedAsComboOption ProductComboOption[]
   orderComboSnapshots OrderItemComboSnapshot[]
+  diningTicketItems DiningTicketItem[]
 
   @@index([categoryId, isAvailable])
   @@index([categoryId, sortOrder])
@@ -315,6 +358,7 @@ model ProductVariant {
   comboFixedItems ProductComboFixedItem[] @relation("ComboFixedVariant")
   comboOptions ProductComboOption[] @relation("ComboOptionVariant")
   orderComboSnapshots OrderItemComboSnapshot[] @relation("OrderComboVariant")
+  diningTicketItems DiningTicketItem[]
 
   @@unique([productId, name])
 }
@@ -724,4 +768,174 @@ model ChatbotConfig {
   revision                 Int      @default(0)
   updatedAt                DateTime @updatedAt @db.Timestamptz(6)
   branch                   Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+
+// L01 #243. Additive storage only: no public dining API is enabled by this
+// migration. API-level authorization, verification and pricing come in L02.
+// All timestamps are UTC; amounts are integer VND.
+model DiningArea {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  name      String   @db.VarChar(120)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  tables    DiningTable[]
+
+  @@unique([id, branchId])
+  @@unique([branchId, name])
+  @@index([branchId, sortOrder])
+}
+
+model DiningTable {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  areaId    String   @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  qrHandle  String   @unique @db.VarChar(64)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  area      DiningArea @relation(fields: [areaId, branchId], references: [id, branchId], onDelete: Restrict)
+  sessions  DiningSession[]
+
+  @@unique([id, branchId])
+  @@unique([branchId, code])
+  @@index([branchId, areaId, sortOrder])
+}
+
+model DiningSession {
+  id         String @id @default(uuid()) @db.Uuid
+  branchId   String @db.Uuid
+  tableId    String @db.Uuid
+  status     DiningSessionStatus @default(OPEN)
+  guestCount Int?
+  openedById String @db.Uuid
+  closedById String? @db.Uuid
+  openedAt   DateTime @default(now()) @db.Timestamptz(6)
+  closedAt   DateTime? @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  table      DiningTable @relation(fields: [tableId, branchId], references: [id, branchId], onDelete: Restrict)
+  openedBy   User @relation("DiningSessionOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy   User? @relation("DiningSessionClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+  guestGrants DiningGuestGrant[]
+  tickets     DiningTicket[]
+  payments    DiningPayment[]
+  auditEvents DiningAuditEvent[]
+
+  // Partial unique index on tableId WHERE closedAt IS NULL lives in migration.
+  // Prisma 6 cannot express a filtered index. Never drop this database guard.
+  @@unique([id, branchId])
+  @@index([branchId, status, openedAt])
+  @@index([tableId, closedAt])
+}
+
+model DiningGuestGrant {
+  id          String @id @default(uuid()) @db.Uuid
+  branchId    String @db.Uuid
+  sessionId   String @db.Uuid
+  tokenHash   String @unique @db.VarChar(64)
+  expiresAt   DateTime @db.Timestamptz(6)
+  revokedAt   DateTime? @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  session     DiningSession @relation(fields: [sessionId, branchId], references: [id, branchId], onDelete: Restrict)
+  tickets     DiningTicket[]
+
+  // The QR handle printed on the table never grants staff access.
+  // Store only a SHA-256 hash of the scoped, expiring guest credential.
+  @@unique([id, sessionId, branchId])
+  @@index([sessionId, expiresAt])
+}
+
+model DiningTicket {
+  id            String @id @default(uuid()) @db.Uuid
+  branchId      String @db.Uuid
+  sessionId     String @db.Uuid
+  guestGrantId  String? @db.Uuid
+  createdById   String? @db.Uuid
+  reviewedById  String? @db.Uuid
+  source        DiningTicketSource
+  status        DiningTicketStatus @default(PENDING_APPROVAL)
+  idempotencyKey String @db.VarChar(128)
+  requestHash   String @db.VarChar(64)
+  customerNote  String? @db.VarChar(500)
+  rejectionReason String? @db.VarChar(500)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  reviewedAt    DateTime? @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  session       DiningSession @relation(fields: [sessionId, branchId], references: [id, branchId], onDelete: Restrict)
+  guestGrant    DiningGuestGrant? @relation(fields: [guestGrantId, sessionId, branchId], references: [id, sessionId, branchId], onDelete: Restrict)
+  createdBy     User? @relation("DiningTicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy    User? @relation("DiningTicketReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  items         DiningTicketItem[]
+
+  @@unique([sessionId, source, idempotencyKey])
+  @@index([branchId, status, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([guestGrantId])
+}
+
+model DiningTicketItem {
+  id          String @id @default(uuid()) @db.Uuid
+  ticketId    String @db.Uuid
+  productId   String? @db.Uuid
+  variantId   String? @db.Uuid
+  productName String @db.VarChar(200)
+  variantName String? @db.VarChar(160)
+  selectionSnapshot Json @db.JsonB
+  quantity     Int
+  unitPriceVnd Int
+  lineTotalVnd Int
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  ticket       DiningTicket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model DiningPayment {
+  id            String @id @default(uuid()) @db.Uuid
+  branchId      String @db.Uuid
+  sessionId     String @db.Uuid
+  method        DiningPaymentMethod
+  status        DiningPaymentStatus @default(PENDING)
+  amountVnd     Int
+  idempotencyKey String @db.VarChar(128)
+  recordedById  String @db.Uuid
+  confirmedById String? @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  confirmedAt   DateTime? @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  session       DiningSession @relation(fields: [sessionId, branchId], references: [id, branchId], onDelete: Restrict)
+  recordedBy    User @relation("DiningPaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  confirmedBy   User? @relation("DiningPaymentConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, idempotencyKey])
+  @@index([branchId, status, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model DiningAuditEvent {
+  id         String @id @default(uuid()) @db.Uuid
+  branchId   String @db.Uuid
+  sessionId  String @db.Uuid
+  actorId    String? @db.Uuid
+  action     String @db.VarChar(64)
+  details    Json @db.JsonB
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  session    DiningSession @relation(fields: [sessionId, branchId], references: [id, branchId], onDelete: Restrict)
+  actor      User? @relation("DiningAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([branchId, createdAt])
+  @@index([sessionId, createdAt])
 }
