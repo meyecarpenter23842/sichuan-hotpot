@@ -47,7 +47,7 @@ try {
   const openCatalog = async () => {
     await page.getByRole("button", { name: "Mở Quản lý" }).click();
     await page.getByRole("button", { name: "Mở Món & danh mục" }).click();
-    await page.getByRole("button", { name: /Quản lý \\/ Cửa hàng \\/ Món & danh mục/ }).waitFor();
+    await page.getByRole("button", { name: /Quản lý.*Món & danh mục/ }).waitFor();
   };
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
