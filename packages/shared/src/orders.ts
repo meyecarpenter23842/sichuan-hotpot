@@ -1,5 +1,5 @@
 /** Order transitions are validated by the backend, not the client. */
-export type Role = "OWNER" | "MANAGER" | "KITCHEN" | "DRIVER" | "CUSTOMER";
+export type Role = "OWNER" | "MANAGER" | "KITCHEN" | "DRIVER" | "CUSTOMER" | "WAITER" | "CASHIER";
 export type OrderStatus =
   | "PENDING" | "CONFIRMED" | "PREPARING" | "READY"
   | "DELIVERING" | "DELIVERED" | "CANCELED" | "DELIVERY_FAILED";

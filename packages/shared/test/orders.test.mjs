@@ -6,6 +6,20 @@ import { canTransitionOrder, assertOrderTransition,
 const allowed = (from, to, role, isAssignedDriver = false) =>
   canTransitionOrder({ from, to, role, isAssignedDriver });
 
+test("L01 new WAITER/CASHIER do not inherit delivery order transitions", () => {
+  const fromTo = [
+    ["PENDING", "CONFIRMED"], ["PENDING", "CANCELED"],
+    ["CONFIRMED", "PREPARING"], ["PREPARING", "READY"],
+    ["READY", "DELIVERING"], ["DELIVERING", "DELIVERED"],
+  ];
+  for (const role of ["WAITER", "CASHIER"]) {
+    for (const [from, to] of fromTo) {
+      assert.equal(allowed(from, to, role, true), false,
+        role + " must not gain delivery order permissions");
+    }
+  }
+});
+
 test("shop manager may confirm and kitchen may prepare", () => {
   assert.equal(allowed("PENDING", "CONFIRMED", "MANAGER"), true);
   assert.equal(allowed("CONFIRMED", "PREPARING", "KITCHEN"), true);
