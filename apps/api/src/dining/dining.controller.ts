@@ -195,6 +195,11 @@ export class DiningGuestController {
   grant(@Param("qrHandle") handle: string) {
     return this.dining.issueGrant(handle);
   }
+  @Post("guest/renew")
+  @Header("Cache-Control", "no-store")
+  renew(@Headers("authorization") credential: string | undefined) {
+    return this.dining.renewGuestGrant(credential);
+  }
   @Post("guest/tickets")
   @Header("Cache-Control", "no-store")
   ticket(@Headers("authorization") credential: string | undefined, @Body() input: DiningTicketInput) {
