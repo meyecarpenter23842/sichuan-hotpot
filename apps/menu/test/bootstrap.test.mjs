@@ -47,7 +47,7 @@ test("no fake success; persist frozen request safely for network uncertainty and
   assert.match(app, /setFrozen\(draft\); setCart\(draft\.cart\); setNote\(draft\.note\)/);
   assert.match(app, /instanceId === current\.instanceId/);
   assert.match(app, /cartKey\(handle\)/);
-  assert.match(app, /unsent\.sessionId === current\.sessionId/);
+  assert.ok(app.includes("unsent?.sessionId === current.sessionId"));
   assert.match(app, /frozen \? "Thử gửi lại phiếu cũ"/);
   assert.match(app, /disabled=\{!canOrder \|\| !cart\.length\}/);
   assert.match(app, /result\.ticketId/);
