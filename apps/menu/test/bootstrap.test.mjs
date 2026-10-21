@@ -48,7 +48,7 @@ test("no fake success; persist frozen request safely for network uncertainty and
   assert.match(app, /frozen \? "Thử gửi lại phiếu cũ"/);
   assert.match(app, /disabled=\{!canOrder \|\| !cart\.length\}/);
   assert.match(app, /result\.ticketId/);
-  assert.match(app, /"guest\/renew"/);
+  assert.match(app, /"\/dining\/guest\/renew"/);
   assert.doesNotMatch(app, /localStorage/);
   assert.match(cart, /isSelectionValid/);
   assert.match(cart, /comboOptionIds/);
