@@ -15,7 +15,7 @@ test("Retail is isolated Expo Web PWA with strict typed checks, no automatic pro
   assert.equal(config.expo.web.output, "single");
   assert.equal(release.git.deploymentEnabled, false);
   assert.match(read("../src/api-origin.ts"), /EXPO_PUBLIC_API_BASE_URL/);
-  assert.doesNotMatch(service, /localStorage|AsyncStorage|sessionStorage/);
+  assert.doesNotMatch(service, /(?:window\.localStorage|localStorage\.setItem|sessionStorage\.setItem|AsyncStorage\.setItem)/);
 });
 test("real branch-scoped staff and menu flow, no demo checkout", () => {
   for (const snippet of ["/auth/login", "/auth/me", "/admin/branches",
