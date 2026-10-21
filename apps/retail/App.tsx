@@ -139,8 +139,8 @@ export default function App() {
     setCart([]); setPendingSubmit(null); setBill(null); setMessage(""); setError(""); setPage("tables");
   };
   const branchChange = (value: string) => {
-    if (pendingSubmit) {
-      setError("Có phiếu chưa rõ kết quả. Gửi lại bằng cùng mã trước khi đổi chi nhánh.");
+    if (pendingSubmit || cart.length > 0) {
+      setError("Bàn đang có giỏ chưa gửi. Hãy hoàn tất hoặc xóa các món trước khi đổi chi nhánh.");
       return;
     }
     if (value === branchId) { setShowBranchMenu(false); return; }
@@ -156,6 +156,10 @@ export default function App() {
     finally { lock.current = false; setBusy(false); }
   };
   const selectTable = (t: Table) => {
+    if (t.id !== selectedTableId && cart.length > 0) {
+      setError("Giỏ đang thuộc bàn trước. Hoàn tất hoặc bỏ món trước khi chọn bàn khác.");
+      return;
+    }
     if (pendingSubmit && pendingSubmit.sessionId !== t.sessions[0]?.id) {
       setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return;
     }
