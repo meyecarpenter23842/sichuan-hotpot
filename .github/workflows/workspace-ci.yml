@@ -158,6 +158,16 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:3001/health/ready >/dev/null
           node scripts/qa/p41-admin-browser-qa.mjs
           node scripts/qa/p44-image-optimizer-browser-qa.mjs
+          # The real login throttle (8/min) must not leak from Admin QA into Retail QA.
+          # Restart only the disposable CI API process; preserve PostgreSQL fixtures.
+          kill "$api_pid"
+          wait "$api_pid" 2>/dev/null || true
+          PORT=3001 HOST=127.0.0.1 node apps/api/dist/main.js > /tmp/hotpot-ci-l04-api.log 2>&1 &
+          api_pid=$!
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3001/health/live >/dev/null; then break; fi
+            sleep 1
+          done
           ( cd apps/retail && EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npx expo export --platform web --output-dir dist --clear )
           HOTPOT_QA_PWA_APP=retail HOTPOT_QA_WEB_PORT=3004 \
             node scripts/qa/pwa-cookie-proxy.mjs > /tmp/hotpot-ci-l04-retail.log 2>&1 &
