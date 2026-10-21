@@ -117,9 +117,26 @@ try {
       true, "Menu QR horizontal overflow at " + size);
     await page.screenshot({ path: "apps/menu/qa-artifacts/menu-" + size + ".png" });
   }
-  // Closing/revoking an in-use QR immediately disables old grants and locator.
-  const rotated = await fetch(api + "/dining/branches/" + branch.id + "/tables/" + table.id + "/rotate-qr", {
+  // WAITER must NOT rotate QR (only OWNER/MANAGER). Verify deny before owner rotates.
+  const rotatePath = api + "/dining/branches/" + branch.id + "/tables/" + table.id + "/rotate-qr";
+  const denied = await fetch(rotatePath, {
     method: "POST", headers: { Authorization: "Bearer " + tokens.accessToken },
+  });
+  assert.equal(denied.status, 403, "waiter cannot revoke table QR");
+  const owner = await db.user.create({ data: { role: "OWNER" } });
+  const ownerName = "ownerqa" + unique.slice(0, 12);
+  await db.localCredential.create({ data: { userId: owner.id,
+    normalizedUsername: ownerName, verifiedEmail: ownerName + "@example.test",
+    passwordHash: await hash(password) } });
+  const ownerLogin = await fetch(api + "/auth/login", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: ownerName, password }),
+  });
+  assert.equal(ownerLogin.status, 201);
+  const ownerTokens = await ownerLogin.json();
+  // Closing/revoking an in-use QR immediately disables old grants and locator.
+  const rotated = await fetch(rotatePath, {
+    method: "POST", headers: { Authorization: "Bearer " + ownerTokens.accessToken },
   });
   assert.equal(rotated.status, 201);
   await page.getByRole("button", { name: "Cập nhật trạng thái" }).click();
