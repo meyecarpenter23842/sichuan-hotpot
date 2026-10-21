@@ -116,7 +116,7 @@ export default function App() {
       setSession(tokens);
       const [person, scoped] = await Promise.all([
         api<Principal>("/auth/me"),
-        api<Branch[]>("/admin/branches"),
+        api<Branch[]>("/admin/orders/branches"),
       ]);
       const allowed = scoped.filter(b => b.isActive && permitted.includes(b.staffRole ?? "")
         && (person.role === "OWNER" || b.staffRole !== "OWNER"));
