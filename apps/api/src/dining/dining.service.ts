@@ -363,7 +363,7 @@ export class DiningService {
   }
 
   async staffBill(auth: string | undefined, branchId: string, sessionId: string) {
-    await this.staff(auth, branchId, SERVER_ROLES);
+    await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER", "CASHIER"]);
     return this.bill(sessionId, branchId, true);
   }
 
@@ -422,9 +422,9 @@ export class DiningService {
 
   async kitchen(auth: string | undefined, branchId: string) {
     await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER", "KITCHEN"]);
-    // Querying confirmed tickets is the idempotent kitchen projection; QR pending
-    // rows cannot leak here. No fake delivery Order or duplicate dispatch.
-    return this.prisma.database.diningTicket.findMany({
+    // Ticket.id is the only kitchen work-item identifier. Never expose
+    // bill prices, payment information, actor identity, or QR grants to KITCHEN.
+    const tickets = await this.prisma.database.diningTicket.findMany({
       where: { branchId, status: { in: [...ACTIVE_KITCHEN] } },
       take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { id: true, status: true, createdAt: true, customerNote: true,
@@ -432,5 +432,23 @@ export class DiningService {
         items: { select: { productName: true, variantName: true, quantity: true,
           selectionSnapshot: true } } },
     });
+    return tickets.map(ticket => ({
+      ...ticket, items: ticket.items.map(item => {
+        const snap = item.selectionSnapshot as {
+          modifiers?: { name?: string }[];
+          comboItems?: { productName?: string; variantName?: string | null; quantity?: number }[];
+          note?: string | null;
+        } | null;
+        return {
+          productName: item.productName, variantName: item.variantName,
+          quantity: item.quantity, note: snap?.note ?? null,
+          modifiers: (snap?.modifiers ?? []).map(option => ({ name: option.name ?? "" })),
+          comboItems: (snap?.comboItems ?? []).map(option => ({
+            productName: option.productName ?? "", variantName: option.variantName ?? null,
+            quantity: option.quantity ?? 1,
+          })),
+        };
+      }),
+    }));
   }
 }
