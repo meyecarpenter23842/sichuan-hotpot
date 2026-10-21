@@ -141,7 +141,9 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
     active: tables.filter(t => t.sessions.length).length,
   };
   const columns = width >= 990 ? 4 : width >= 650 ? 3 : 2;
-  const tileWidth = display === "list" ? "100%" : ((100 / columns) - (columns - 1) * 1.1) + "%";
+  // Subtract the 9px inter-card gaps BEFORE dividing; % widths overflow at 320px.
+  const cardSpace = Math.min(width, 1080) - 24;
+  const tileWidth = display === "list" ? "100%" : (cardSpace - (columns - 1) * 9) / columns;
   const activeSelected = selected && tables.find(t => t.id === selected.id) || selected;
   const pendingForSelected = activeSelected ? approvals.filter(t => t.sessionId === activeSelected.sessions[0]?.id) : [];
   return <View style={s.screen}>
@@ -200,7 +202,7 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
         return <Pressable key={table.id} accessibilityRole="button"
           accessibilityLabel={table.name + ", " + status}
           onPress={() => { void inspect(table); }}
-          style={[s.table, tone, { width: tileWidth as `${number}%` }]}>
+          style={[s.table, tone, { width: tileWidth }]}>
           <View style={s.tableTop}>
             <Text style={s.tableCode}>{table.code}</Text>
             {pending > 0 && <View style={s.badge}><Text style={s.badgeText}>{pending}</Text></View>}
