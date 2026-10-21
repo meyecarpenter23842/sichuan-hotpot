@@ -45,6 +45,9 @@ test("guest grant, private status, renew, QR approve gated on server", () => {
 test("no fake success; persist frozen request safely for network uncertainty and reload", () => {
   assert.match(app, /saveStored\(submissionKey\(handle\), queued\)/);
   assert.match(app, /setFrozen\(draft\); setCart\(draft\.cart\); setNote\(draft\.note\)/);
+  assert.match(app, /instanceId === current\.instanceId/);
+  assert.match(app, /cartKey\(handle\)/);
+  assert.match(app, /unsent\.sessionId === current\.sessionId/);
   assert.match(app, /frozen \? "Thử gửi lại phiếu cũ"/);
   assert.match(app, /disabled=\{!canOrder \|\| !cart\.length\}/);
   assert.match(app, /result\.ticketId/);
