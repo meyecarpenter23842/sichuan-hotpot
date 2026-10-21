@@ -58,6 +58,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Assert L02 Dining API invariants on disposable CI Postgres
+        run: node scripts/qa/dining-api-invariants.mjs
       - name: Build shared package
         run: npm run build
       - name: Check customer Expo source (P2)
