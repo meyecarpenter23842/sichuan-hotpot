@@ -195,7 +195,12 @@ export default function App() {
       setPendingSubmit(null); setCart([]); setNote(""); setPage("bill");
       setMessage(result.replayed ? "Phiếu đã được ghi nhận trước đó, không tạo lại." : "Đã gửi món xuống Bếp.");
       await refresh(true);
-      setBill(await api<Bill>(branchPath(branchId) + "/sessions/" + frozen.sessionId));
+      try {
+        setBill(await api<Bill>(branchPath(branchId) + "/sessions/" + frozen.sessionId));
+      } catch {
+        // Ticket is already committed. A failed read MUST NOT turn success into a retry prompt.
+        setMessage("Đã ghi nhận phiếu. Hóa đơn tạm chưa đồng bộ; bấm làm mới khi có mạng.");
+      }
     });
   };
   const review = (ticketId: string, decision: "approve" | "reject") => {
@@ -209,7 +214,10 @@ export default function App() {
       setRejecting(null); setRejectReason("");
       setMessage(decision === "approve" ? "Đã duyệt; phiếu sẽ hiện ở Bếp đúng một lần." : "Đã từ chối yêu cầu QR.");
       await refresh(true);
-      if (sessionId) setBill(await api<Bill>(branchPath(branchId) + "/sessions/" + sessionId));
+      if (sessionId) {
+        try { setBill(await api<Bill>(branchPath(branchId) + "/sessions/" + sessionId)); }
+        catch { setMessage("Đã xử lý phiếu QR. Hóa đơn sẽ cập nhật ở lần đồng bộ sau."); }
+      }
     });
   };
   const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
