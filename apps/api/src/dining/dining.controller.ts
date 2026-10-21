@@ -31,6 +31,7 @@ export class DiningTicketEditInput {
   items!: DiningLineInput[];
 }
 class TransferSessionInput {
+  @IsUUID("4") expectedTableId!: string;
   @IsUUID("4") targetTableId!: string;
 }
 class RejectTicketInput {
@@ -70,7 +71,7 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("sessionId", ParseUUIDPipe) sessionId: string,
     @Body() input: TransferSessionInput) {
-    return this.dining.transfer(auth, branchId, sessionId, input.targetTableId);
+    return this.dining.transfer(auth, branchId, sessionId, input.expectedTableId, input.targetTableId);
   }
   @Get("sessions/:sessionId")
   @Header("Cache-Control", "no-store")
