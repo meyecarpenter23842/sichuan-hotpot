@@ -108,7 +108,7 @@ jobs:
           }
           npm exec -- prisma migrate reset --force --skip-seed --schema apps/api/prisma/schema.prisma
           export AUTH_JWT_SECRET="$(openssl rand -hex 40)"
-          export CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://127.0.0.1:3002,http://127.0.0.1:3004"
+          export CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://127.0.0.1:3002,http://127.0.0.1:3004,http://127.0.0.1:3005"
           # Disposable local Resend-compatible mail endpoint, never production.
           node scripts/qa/email-sandbox.mjs > /tmp/hotpot-ci-email-sandbox.log 2>&1 &
           mail_pid=$!
@@ -116,7 +116,7 @@ jobs:
           export RESEND_TEST_API_URL=http://127.0.0.1:3333/emails
           PORT=3001 HOST=127.0.0.1 node apps/api/dist/main.js > /tmp/hotpot-ci-p21-api.log 2>&1 &
           api_pid=$!
-          trap 'kill "$api_pid" "${web_pid:-0}" "${mail_pid:-0}" "${admin_pid:-0}" "${retail_pid:-0}" 2>/dev/null || true' EXIT
+          trap 'kill "$api_pid" "${web_pid:-0}" "${mail_pid:-0}" "${admin_pid:-0}" "${retail_pid:-0}" "${menu_pid:-0}" 2>/dev/null || true' EXIT
           # The standard quality step already exported without API config.
           # Clear Metro's transform cache so EXPO_PUBLIC_API_BASE_URL is embedded.
           ( cd apps/customer && EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npx expo export --platform web --output-dir dist --clear && node scripts/lock-pwa-viewport.mjs )
@@ -178,6 +178,16 @@ jobs:
           done
           node --check scripts/qa/l04-retail-browser-qa.mjs
           node scripts/qa/l04-retail-browser-qa.mjs
+          ( cd apps/menu && EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3001" npx expo export --platform web --output-dir dist --clear )
+          HOTPOT_QA_PWA_APP=menu HOTPOT_QA_WEB_PORT=3005 \
+            node scripts/qa/pwa-cookie-proxy.mjs > /tmp/hotpot-ci-l05-menu.log 2>&1 &
+          menu_pid=$!
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3005/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node --check scripts/qa/l05-menu-browser-qa.mjs
+          node scripts/qa/l05-menu-browser-qa.mjs
       - name: Archive P2.1 browser screenshots
         if: always()
         uses: actions/upload-artifact@v4
