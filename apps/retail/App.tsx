@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, AppState, Image, Pressable, ScrollView, StyleSheet,
+  AppState, Image, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -90,7 +90,7 @@ export default function App() {
     const sub = AppState.addEventListener("change", s => {
       if (s === "active") void refresh(true);
     });
-    return () => { ++requestVersion.current; clearInterval(timer); sub.remove(); };
+    return () => { clearInterval(timer); sub.remove(); };
   }, [token, branchId, refresh]);
 
   useEffect(() => {
