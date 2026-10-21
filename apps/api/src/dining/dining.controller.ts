@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Put, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Type } from "class-transformer";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { DiningService } from "./dining.service";
 
 class DiningLineInput {
@@ -22,6 +22,16 @@ export class DiningTicketInput {
 }
 class OpenSessionInput {
   @IsOptional() @IsInt() @Min(1) @Max(100) guestCount?: number;
+}
+export class DiningTicketEditInput {
+  @IsISO8601() expectedUpdatedAt!: string;
+  @IsOptional() @IsString() @MaxLength(500) customerNote?: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100)
+  @ValidateNested({ each: true }) @Type(() => DiningLineInput)
+  items!: DiningLineInput[];
+}
+class TransferSessionInput {
+  @IsUUID("4") targetTableId!: string;
 }
 class RejectTicketInput {
   @IsString() @Length(3, 500) reason!: string;
@@ -54,6 +64,14 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string, @Param("sessionId", ParseUUIDPipe) sessionId: string) {
     return this.dining.close(auth, branchId, sessionId);
   }
+  @Post("sessions/:sessionId/transfer")
+  @Header("Cache-Control", "no-store")
+  transfer(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("sessionId", ParseUUIDPipe) sessionId: string,
+    @Body() input: TransferSessionInput) {
+    return this.dining.transfer(auth, branchId, sessionId, input.targetTableId);
+  }
   @Get("sessions/:sessionId")
   @Header("Cache-Control", "no-store")
   session(@Headers("authorization") auth: string | undefined,
@@ -66,6 +84,14 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string, @Param("sessionId", ParseUUIDPipe) sessionId: string,
     @Body() input: DiningTicketInput) {
     return this.dining.staffTicket(auth, branchId, sessionId, input);
+  }
+  @Put("tickets/:ticketId/items")
+  @Header("Cache-Control", "no-store")
+  editPending(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("ticketId", ParseUUIDPipe) ticketId: string,
+    @Body() input: DiningTicketEditInput) {
+    return this.dining.editPending(auth, branchId, ticketId, input);
   }
   @Get("approvals")
   @Header("Cache-Control", "no-store")
