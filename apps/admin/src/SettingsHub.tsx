@@ -20,7 +20,7 @@ import { adminDensity } from "./density";
 
 type Setting = "branch" | "hours" | "delivery" | "status" | "orders" | "create" |
   "alerts" | "offers" | "hero" | "popup" | "chatbot" | "customers";
-type BusinessDestination = "report" | "lookup";
+export type BusinessDestination = "report" | "lookup" | "catalog" | "dining-config";
 type ManagementItem = {
   id: Setting | BusinessDestination; label: string; icon: IconName;
   owner: boolean; destination?: BusinessDestination;
@@ -34,6 +34,8 @@ const sections: { title: string; items: ManagementItem[] }[] = [
   ] },
   { title: "Cửa hàng", items: [
     { id: "branch", label: "Cửa hàng", icon: "store", owner: true },
+    { id: "catalog", label: "Món & danh mục", icon: "catalog", owner: false, destination: "catalog" },
+    { id: "dining-config", label: "Bàn & QR", icon: "manage", owner: false, destination: "dining-config" },
     { id: "hours", label: "Giờ bán", icon: "clock", owner: false },
     { id: "delivery", label: "Phí giao", icon: "delivery", owner: true },
     { id: "status", label: "Hoạt động", icon: "power", owner: true },

@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Type } from "class-transformer";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { DiningService } from "./dining.service";
 
 class DiningLineInput {
@@ -19,6 +19,28 @@ export class DiningTicketInput {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100)
   @ValidateNested({ each: true }) @Type(() => DiningLineInput)
   items!: DiningLineInput[];
+}
+export class DiningAreaCreateInput {
+  @IsString() @Length(1, 120) name!: string;
+  @IsInt() @Min(0) @Max(9999) sortOrder!: number;
+}
+export class DiningAreaUpdateInput {
+  @IsOptional() @IsString() @Length(1, 120) name?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) sortOrder?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+export class DiningTableCreateInput {
+  @IsUUID("4") areaId!: string;
+  @IsString() @Length(1, 40) code!: string;
+  @IsString() @Length(1, 120) name!: string;
+  @IsInt() @Min(0) @Max(9999) sortOrder!: number;
+}
+export class DiningTableUpdateInput {
+  @IsOptional() @IsUUID("4") areaId?: string;
+  @IsOptional() @IsString() @Length(1, 40) code?: string;
+  @IsOptional() @IsString() @Length(1, 120) name?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) sortOrder?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 class OpenSessionInput {
   @IsOptional() @IsInt() @Min(1) @Max(100) guestCount?: number;
@@ -51,6 +73,45 @@ export class DiningStaffController {
   @Header("Cache-Control", "no-store")
   tables(@Headers("authorization") auth: string | undefined, @Param("branchId", ParseUUIDPipe) branchId: string) {
     return this.dining.tables(auth, branchId);
+  }
+  @Get("configuration")
+  @Header("Cache-Control", "no-store")
+  configuration(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string) {
+    return this.dining.configuration(auth, branchId);
+  }
+  @Post("areas")
+  @Header("Cache-Control", "no-store")
+  createArea(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string, @Body() input: DiningAreaCreateInput) {
+    return this.dining.createArea(auth, branchId, input);
+  }
+  @Patch("areas/:areaId")
+  @Header("Cache-Control", "no-store")
+  editArea(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("areaId", ParseUUIDPipe) areaId: string, @Body() input: DiningAreaUpdateInput) {
+    return this.dining.editArea(auth, branchId, areaId, input);
+  }
+  @Post("tables")
+  @Header("Cache-Control", "no-store")
+  createTable(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string, @Body() input: DiningTableCreateInput) {
+    return this.dining.createTable(auth, branchId, input);
+  }
+  @Patch("tables/:tableId")
+  @Header("Cache-Control", "no-store")
+  editTable(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("tableId", ParseUUIDPipe) tableId: string, @Body() input: DiningTableUpdateInput) {
+    return this.dining.editTable(auth, branchId, tableId, input);
+  }
+  @Post("tables/:tableId/rotate-qr")
+  @Header("Cache-Control", "no-store")
+  rotateTableQr(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("tableId", ParseUUIDPipe) tableId: string) {
+    return this.dining.rotateQr(auth, branchId, tableId);
   }
   @Post("tables/:tableId/sessions")
   @Header("Cache-Control", "no-store")

@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
-export type StaffRole = "OWNER" | "MANAGER" | "KITCHEN" | "DRIVER" | "CUSTOMER";
+export type StaffRole = "OWNER" | "MANAGER" | "KITCHEN" | "DRIVER" | "CUSTOMER" | "WAITER" | "CASHIER";
 export interface Principal { id: string; role: StaffRole }
 export interface AuthTokens {
   accessToken: string; refreshToken: string; accessTokenExpiresInSeconds: number;

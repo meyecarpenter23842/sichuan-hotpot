@@ -78,12 +78,12 @@ test("L04 summary metrics drill into correct event-day cohorts and restore origi
   assert.doesNotMatch(app, /metric\.target/);
 });
 
-test("L04 no owner-only setting is unlocked for MANAGER, no extra bottom tab", () => {
+test("L04 owner-only settings remain protected; L03 replaces Món with Bàn in exactly five operational tabs", () => {
   assert.match(app, /const operator = branchRole === "OWNER" \|\| branchRole === "MANAGER"/);
   assert.match(app, /owner=\{principal\?\.role === "OWNER"\}/);
   assert.match(app, /driverOnly \? item\.id === "delivery"/);
   assert.match(app, /kitchenOnly \? item\.id === "kitchen"/);
-  assert.match(app, /\["overview", "orders", "kitchen", "catalog", "delivery"\]/);
+  assert.match(app, /\["overview", "orders", "kitchen", "dining", "delivery"\]/);
   assert.match(service, /ORDER_SUMMARY_FORBIDDEN/);
   assert.match(service, /ORDER_LOOKUP_FORBIDDEN/);
 });

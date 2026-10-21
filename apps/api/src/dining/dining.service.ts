@@ -7,7 +7,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { priceCart, productSelect } from "../delivery/pricing";
-import type { DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
+import type { DiningAreaCreateInput, DiningAreaUpdateInput, DiningTableCreateInput,
+  DiningTableUpdateInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
 
 type Role = "OWNER" | "MANAGER" | "WAITER" | "CASHIER" | "KITCHEN";
 type Actor = { id: string; role: Role };
@@ -109,6 +110,188 @@ export class DiningService {
           select: { id: true, status: true, guestCount: true, openedAt: true,
             _count: { select: { tickets: { where: { status: "PENDING_APPROVAL" } } } } } },
       },
+    });
+  }
+
+  private cleanLabel(name: string): string {
+    const cleaned = name.normalize("NFC").trim().replace(/\s+/g, " ");
+    if (!cleaned || /[\u0000-\u001F\u007F]/u.test(cleaned)) {
+      throw new BadRequestException("DINING_INVALID_NAME");
+    }
+    return cleaned;
+  }
+
+  async configuration(auth: string | undefined, branchId: string) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    const [areas, tables] = await Promise.all([
+      this.prisma.database.diningArea.findMany({
+        where: { branchId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: { id: true, name: true, sortOrder: true, isActive: true },
+      }),
+      this.prisma.database.diningTable.findMany({
+        where: { branchId }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+        select: { id: true, areaId: true, code: true, name: true, sortOrder: true,
+          qrHandle: true, isActive: true, sessions: {
+            where: { closedAt: null }, select: { id: true }, take: 1 },
+        },
+      }),
+    ]);
+    return { areas, tables };
+  }
+
+  async createArea(auth: string | undefined, branchId: string, input: DiningAreaCreateInput) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    const name = this.cleanLabel(input.name);
+    return this.prisma.database.diningArea.create({
+      data: { branchId, name, sortOrder: input.sortOrder },
+      select: { id: true, name: true, sortOrder: true, isActive: true },
+    }).catch(error => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        throw new ConflictException("DINING_AREA_EXISTS");
+      throw error;
+    });
+  }
+
+  async editArea(auth: string | undefined, branchId: string, areaId: string, input: DiningAreaUpdateInput) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    if (!Object.keys(input).length) throw new BadRequestException("DINING_NO_CHANGES");
+    const name = input.name === undefined ? undefined : this.cleanLabel(input.name);
+    try {
+      return await serializable(this.prisma.database, async tx => {
+        const area = await tx.diningArea.findFirst({
+          where: { id: areaId, branchId }, select: { id: true, isActive: true },
+        });
+        if (!area) throw new NotFoundException("DINING_AREA_NOT_FOUND");
+        if (input.isActive === false && area.isActive) {
+          const active = await tx.diningSession.count({
+            where: { branchId, table: { areaId }, closedAt: null },
+          });
+          if (active) throw new ConflictException("DINING_AREA_HAS_OPEN_TABLES");
+        }
+        await tx.diningArea.updateMany({
+          where: { id: areaId, branchId },
+          data: { ...(name !== undefined ? { name } : {}),
+            ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+            ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) },
+        });
+        return tx.diningArea.findUniqueOrThrow({
+          where: { id: areaId }, select: { id: true, name: true, sortOrder: true, isActive: true },
+        });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        throw new ConflictException("DINING_AREA_EXISTS");
+      throw error;
+    }
+  }
+
+  async createTable(auth: string | undefined, branchId: string, input: DiningTableCreateInput) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    const name = this.cleanLabel(input.name);
+    const code = this.cleanLabel(input.code).toUpperCase();
+    const area = await this.prisma.database.diningArea.findFirst({
+      where: { id: input.areaId, branchId, isActive: true }, select: { id: true },
+    });
+    if (!area) throw new NotFoundException("DINING_AREA_UNAVAILABLE");
+    try {
+      return await this.prisma.database.diningTable.create({
+        data: { areaId: area.id, branchId, code, name, sortOrder: input.sortOrder,
+          qrHandle: randomBytes(24).toString("base64url") },
+        select: { id: true, areaId: true, code: true, name: true, sortOrder: true,
+          qrHandle: true, isActive: true },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        throw new ConflictException("DINING_TABLE_CODE_EXISTS");
+      throw error;
+    }
+  }
+
+  async editTable(auth: string | undefined, branchId: string, tableId: string, input: DiningTableUpdateInput) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    if (!Object.keys(input).length) throw new BadRequestException("DINING_NO_CHANGES");
+    const name = input.name === undefined ? undefined : this.cleanLabel(input.name);
+    const code = input.code === undefined ? undefined : this.cleanLabel(input.code).toUpperCase();
+    try {
+      return await serializable(this.prisma.database, async tx => {
+        const table = await tx.diningTable.findFirst({
+          where: { id: tableId, branchId }, select: { id: true, areaId: true, code: true, isActive: true },
+        });
+        if (!table) throw new NotFoundException("DINING_TABLE_NOT_FOUND");
+        if (input.areaId !== undefined && input.areaId !== table.areaId) {
+          const area = await tx.diningArea.findFirst({
+            where: { id: input.areaId, branchId, isActive: true }, select: { id: true },
+          });
+          if (!area) throw new NotFoundException("DINING_AREA_UNAVAILABLE");
+        }
+        // Do not change the physical table identity/area or deactivate a live session.
+        if ((input.areaId !== undefined && input.areaId !== table.areaId)
+          || input.isActive === false || (code !== undefined && code !== table.code)) {
+          const active = await tx.diningSession.count({
+            where: { tableId, branchId, closedAt: null },
+          });
+          if (active) throw new ConflictException("DINING_TABLE_HAS_OPEN_SESSION");
+        }
+        await tx.diningTable.updateMany({
+          where: { id: tableId, branchId },
+          data: { ...(name !== undefined ? { name } : {}),
+            ...(code !== undefined ? { code } : {}),
+            ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+            ...(input.areaId !== undefined ? { areaId: input.areaId } : {}),
+            ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) },
+        });
+        return tx.diningTable.findUniqueOrThrow({
+          where: { id: tableId },
+          select: { id: true, areaId: true, name: true, code: true,
+            sortOrder: true, isActive: true, qrHandle: true },
+        });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        throw new ConflictException("DINING_TABLE_CODE_EXISTS");
+      throw error;
+    }
+  }
+
+  async rotateQr(auth: string | undefined, branchId: string, tableId: string) {
+    const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    return serializable(this.prisma.database, async tx => {
+      const table = await tx.diningTable.findFirst({
+        where: { id: tableId, branchId }, select: { id: true, qrHandle: true },
+      });
+      if (!table) throw new NotFoundException("DINING_TABLE_NOT_FOUND");
+      const active = await tx.diningSession.findFirst({
+        where: { tableId, branchId, closedAt: null }, select: { id: true },
+      });
+      // Updating the session row serializes this operation with guest ticket creation.
+      if (active) {
+        const changed = await tx.diningSession.updateMany({
+          where: { id: active.id, branchId, closedAt: null },
+          data: { updatedAt: new Date() },
+        });
+        if (changed.count !== 1) throw new ConflictException("DINING_SESSION_CLOSED");
+      }
+      const handle = randomBytes(24).toString("base64url");
+      await tx.diningTable.update({
+        where: { id: tableId }, data: { qrHandle: handle },
+      });
+      if (active) {
+        await tx.diningGuestGrant.updateMany({
+          where: { sessionId: active.id, branchId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        await tx.diningTicket.updateMany({
+          where: { sessionId: active.id, branchId,
+            source: "QR", status: "PENDING_APPROVAL" },
+          data: { status: "REJECTED", reviewedById: actor.id, reviewedAt: new Date(),
+            rejectionReason: "QR_ROTATED" },
+        });
+        await tx.diningAuditEvent.create({ data: {
+          branchId, sessionId: active.id, actorId: actor.id,
+          action: "QR_ROTATED", details: { tableId },
+        } });
+      }
+      return { tableId, qrHandle: handle, oldHandleRevoked: true };
     });
   }
 

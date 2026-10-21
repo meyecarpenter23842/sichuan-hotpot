@@ -114,7 +114,7 @@ export class AdminOrdersService {
       return rows.map(row => ({ ...row, staffRole: "OWNER" as const }));
     }
     const memberships = await this.prisma.database.branchMember.findMany({
-      where: { userId: principal.id, role: { in: [...operatingRoles] } },
+      where: { userId: principal.id, role: { in: [...operatingRoles, "WAITER", "CASHIER"] } },
       select: { role: true, branch: { select: { id: true, code: true, name: true,
         address: true, catalogVersion: true, provinceCode: true, wardCode: true,
         latitude: true, longitude: true, isActive: true } } },
