@@ -225,10 +225,11 @@ try {
   await rejectsCode(service.createTable("owner", branch.id, {
     areaId: area.id, code: "C1", name: "Trùng mã", sortOrder: 0,
   }), "DINING_TABLE_CODE_EXISTS");
-  await rejectsCode(service.createTable("owner", branch.id, {
+  await rejectsCode(service.createTable("waiter", foreign.id, {
     areaId: area.id, code: "C2", name: "Sai khu vực", sortOrder: 0,
-  }).then(() => service.editTable("owner", foreign.id, table2.id, { name: "Hack" })),
-    "DINING_BRANCH_FORBIDDEN");
+  }), "DINING_BRANCH_FORBIDDEN");
+  await rejectsCode(service.editTable("owner", foreign.id, table2.id, { name: "Hack" }),
+    "DINING_TABLE_NOT_FOUND");
   // Opening a table pins its physical identity until cashier closes it.
   const dine = await service.open("waiter", branch.id, table2.id);
   await rejectsCode(service.editTable("owner", branch.id, table2.id, { isActive: false }),
