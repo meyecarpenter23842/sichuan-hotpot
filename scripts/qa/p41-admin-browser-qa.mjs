@@ -44,6 +44,11 @@ try {
 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
+  const openCatalog = async () => {
+    await page.getByRole("button", { name: "Mở Quản lý" }).click();
+    await page.getByRole("button", { name: "Mở Món & danh mục" }).click();
+    await page.getByRole("button", { name: /Quản lý \\/ Cửa hàng \\/ Món & danh mục/ }).waitFor();
+  };
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   // Verify PWA width lock without interfering with single-touch scrolling.
@@ -80,7 +85,7 @@ try {
   assert.equal(await db.orderStatusHistory.count({ where: { orderId: operationalOrder.id } }), 3);
   console.log("PASS P4: Admin accepts an order, kitchen prepares, then marks ready in real DB");
 
-  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await openCatalog();
   await page.getByRole("button", { name: "＋ Danh mục" }).click();
   await page.getByRole("textbox", { name: "Tên", exact: true }).fill("Lẩu & món chính");
   await page.getByRole("button", { name: "Lưu thay đổi" }).click();
@@ -204,7 +209,7 @@ try {
     isAvailable: true,
   } });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await openCatalog();
   await page.getByRole("tab", { name: "Nhóm tùy chọn" }).click();
   await page.getByRole("button", { name: "Mở nhóm Độ cay" }).click();
   const optionSwitch = page.getByRole("switch", { name: "Bán topping Cay vừa" });
@@ -265,8 +270,69 @@ try {
   assert.equal(savedHours[2].opensAt, "08:00");
   assert.equal(savedHours[2].closesAt, "21:00");
  
+  // L03: create real areas/tables and preview the local, unguessable, fixed QR.
+  await page.getByRole("button", { name: "Mở Bàn & QR" }).click();
+  await page.getByRole("button", { name: "+ Khu vực" }).click();
+  await page.getByRole("textbox", { name: "Tên khu vực" }).fill("Tầng 1");
+  await page.getByRole("textbox", { name: "Thứ tự hiển thị" }).fill("1");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByText("Đã lưu khu vực.").waitFor();
+  const diningArea = await db.diningArea.findFirstOrThrow({
+    where: { branchId: branch.id, name: "Tầng 1" },
+  });
+  await page.getByRole("button", { name: "+ Thêm bàn" }).click();
+  await page.getByRole("textbox", { name: "Mã bàn" }).fill("A1");
+  await page.getByRole("textbox", { name: "Tên bàn" }).fill("Bàn A1");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await page.getByText("Đã lưu bàn.", { exact: false }).waitFor();
+  const diningTable = await db.diningTable.findFirstOrThrow({
+    where: { branchId: branch.id, areaId: diningArea.id, code: "A1" },
+  });
+  assert.ok(diningTable.qrHandle.length >= 16);
+  await page.getByRole("button", { name: "Xem QR" }).click();
+  await page.getByText("https://menu.bepsi.click/?table=" + diningTable.qrHandle).waitFor();
+  const [qrDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Lưu SVG" }).click(),
+  ]);
+  assert.equal(qrDownload.suggestedFilename(), "QR-A1.svg");
+  await page.getByRole("button", { name: "Quay lại" }).click();
+  await page.getByRole("tab", { name: "Bàn" }).click();
+  await page.getByRole("button", { name: "Bàn A1, Trống" }).click();
+  await page.getByRole("button", { name: "Mở phiên bàn" }).click();
+  const dineSession = await db.diningSession.findFirstOrThrow({
+    where: { tableId: diningTable.id, closedAt: null },
+  });
+  assert.equal(dineSession.status, "OPEN");
+  const grantResponse = await fetch(api + "/dining/qr/" + diningTable.qrHandle + "/grants", {
+    method: "POST",
+  });
+  assert.equal(grantResponse.status, 201);
+  const guestGrant = await grantResponse.json();
+  const guestResponse = await fetch(api + "/dining/guest/tickets", {
+    method: "POST",
+    headers: { Authorization: "Dining " + guestGrant.credential,
+      "Content-Type": "application/json" },
+    body: JSON.stringify({
+      idempotencyKey: "qa-" + randomUUID(),
+      items: [{ productId: savedProduct.id, variantId: null,
+        modifierIds: [], comboOptionIds: [], quantity: 1 }],
+    }),
+  });
+  assert.equal(guestResponse.status, 201, "QR only creates a pending request");
+  const guestTicket = await guestResponse.json();
+  assert.equal(guestTicket.status, "PENDING_APPROVAL");
+  await page.getByRole("button", { name: "Bàn A1, Chờ xác nhận" }).click();
+  await page.getByRole("button", { name: "Duyệt món" }).click();
+  await page.getByText("Đã duyệt yêu cầu", { exact: false }).waitFor();
+  assert.equal((await db.diningTicket.findUniqueOrThrow({
+    where: { id: guestTicket.ticketId },
+  })).status, "APPROVED");
+  await page.getByRole("button", { name: "Đóng", exact: true }).click();
+  console.log("PASS L03: real area/table creation, QR SVG download, open session, guest pending and staff approval");
+
   // L08: use a real persisted featured product in all three screenshot tabs.
-  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await openCatalog();
   await page.getByRole("tab", { name: "Món gợi ý" }).click();
   await page.getByRole("button", { name: "＋ Gợi ý" }).click();
   await page.getByRole("switch", { name: "Gợi ý món Lẩu QA P4.1" }).click();
@@ -278,15 +344,16 @@ try {
 
   for (const width of [320, 360, 390, 428]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const tab of ["Tổng quan", "Thực đơn", "Quản lý"]) {
+    for (const tab of ["Tổng quan", "Thực đơn", "Bàn", "Quản lý"]) {
       if (tab === "Quản lý") await page.getByRole("button", { name: "Mở Quản lý" }).click();
+      else if (tab === "Thực đơn") await openCatalog();
       else await page.getByRole("tab", { name: tab }).click();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         true, "Admin horizontal overflow in " + tab + " at " + width);
       if (tab === "Quản lý") {
         await page.getByRole("button", { name: "Mở Giờ bán" }).waitFor();
       } else {
-        await page.getByText(tab === "Tổng quan" ? "Đơn mới cần xác nhận" : "Tìm món").first().waitFor();
+        await page.getByText(tab === "Tổng quan" ? "Đơn mới cần xác nhận" : tab === "Bàn" ? "Sơ đồ bàn" : "Tìm món").first().waitFor();
       }
       // Screen density is a visual/layout contract, not just a responsive
       // overflow check. Size relative to CSS pixels; safe-area is OS-managed.
@@ -348,7 +415,7 @@ try {
   // Browser screenshots are evidence of layout only, never visual reference approval.
   for (const width of [768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.getByRole("tab", { name: "Thực đơn" }).click();
+    await openCatalog();
     const menuTabs = page.getByRole("tablist");
     const tabY = (await menuTabs.boundingBox())?.y;
     for (const [tab, slug] of [["Món", "products"], ["Nhóm tùy chọn", "modifiers"], ["Món gợi ý", "featured"]]) {
