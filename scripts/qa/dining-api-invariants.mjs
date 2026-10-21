@@ -206,6 +206,58 @@ try {
   assert.equal(newGrant.sessionId, moving.id);
   await service.close("cashier", branch.id, moving.id);
   await rejectsCode(service.guestBill("Dining " + newGrant.credential), "DINING_GUEST_EXPIRED");
+  // L03: Admin tables and QR operations are scoped, not permitted to WAITER/KITCHEN.
+  await rejectsCode(service.configuration("waiter", branch.id), "DINING_BRANCH_FORBIDDEN");
+  await rejectsCode(service.createArea("waiter", branch.id, { name: "Sân vườn", sortOrder: 10 }),
+    "DINING_BRANCH_FORBIDDEN");
+  const garden = await service.createArea("owner", branch.id, {
+    name: " Sân   vườn ", sortOrder: 10,
+  });
+  assert.equal(garden.name, "Sân vườn");
+  const config = await service.configuration("owner", branch.id);
+  assert.equal(config.areas.some(a => a.id === garden.id), true);
+  const table2 = await service.createTable("owner", branch.id, {
+    areaId: garden.id, code: "C1", name: "Bàn C1", sortOrder: 20,
+  });
+  assert.ok(table2.qrHandle.length >= 16);
+  assert.notEqual(table2.qrHandle, nonce);
+  assert.equal((await service.locator(table2.qrHandle)).code, "C1");
+  await rejectsCode(service.createTable("owner", branch.id, {
+    areaId: area.id, code: "C1", name: "Trùng mã", sortOrder: 0,
+  }), "DINING_TABLE_CODE_EXISTS");
+  await rejectsCode(service.createTable("owner", branch.id, {
+    areaId: area.id, code: "C2", name: "Sai khu vực", sortOrder: 0,
+  }).then(() => service.editTable("owner", foreign.id, table2.id, { name: "Hack" })),
+    "DINING_BRANCH_FORBIDDEN");
+  // Opening a table pins its physical identity until cashier closes it.
+  const dine = await service.open("waiter", branch.id, table2.id);
+  await rejectsCode(service.editTable("owner", branch.id, table2.id, { isActive: false }),
+    "DINING_TABLE_HAS_OPEN_SESSION");
+  await rejectsCode(service.editArea("owner", branch.id, garden.id, { isActive: false }),
+    "DINING_AREA_HAS_OPEN_TABLES");
+  const grant3 = await service.issueGrant(table2.qrHandle);
+  const guest3 = await service.guestTicket("Dining " + grant3.credential,
+    input("qr-rotate-" + nonce, [line(hotpot.id)]));
+  assert.equal(guest3.status, "PENDING_APPROVAL");
+  const changed = await service.rotateQr("owner", branch.id, table2.id);
+  assert.notEqual(changed.qrHandle, table2.qrHandle);
+  await rejectsCode(service.locator(table2.qrHandle), "DINING_QR_NOT_FOUND");
+  await rejectsCode(service.guestBill("Dining " + grant3.credential), "DINING_GUEST_EXPIRED");
+  const canceled = await prisma.diningTicket.findUnique({ where: { id: guest3.ticketId } });
+  assert.equal(canceled.status, "REJECTED", "rotating QR revokes pending QR requests");
+  const grant4 = await service.issueGrant(changed.qrHandle);
+  assert.equal(grant4.sessionId, dine.id);
+  await service.close("cashier", branch.id, dine.id);
+  await service.editTable("owner", branch.id, table2.id, { isActive: false });
+  await service.editArea("owner", branch.id, garden.id, { isActive: false });
+  await rejectsCode(service.locator(changed.qrHandle), "DINING_QR_NOT_FOUND");
+  const savedArea = await service.editArea("owner", branch.id, garden.id,
+    { isActive: true, name: "Sân vườn 2", sortOrder: 5 });
+  assert.equal(savedArea.name, "Sân vườn 2");
+  const savedTable = await service.editTable("owner", branch.id, table2.id,
+    { isActive: true, code: "C8", name: "Bàn C8", sortOrder: 7 });
+  assert.equal(savedTable.code, "C8");
+  assert.equal(savedTable.qrHandle, changed.qrHandle, "QR remains stable across ordinary edits");
   assert.equal((await prisma.order.count({ where: { branchId: branch.id } })), 0,
     "dine-in must not create delivery orders");
   console.log("PASS L02 dining branch auth, concurrent open/approve, idempotent staff/QR, pricing, bill, kitchen, stock, close/revoke, transfer, pending edits");
