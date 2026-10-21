@@ -75,8 +75,9 @@ export async function getApi<T>(path: string, credential?: string, method: "GET"
 export function readQrHandle(search: string): string | null {
   const params = new URLSearchParams(search);
   const values = params.getAll("table");
-  if (values.length !== 1 || !/^[a-zA-Z0-9_-]{16,64}$/.test(values[0])) return null;
-  return values[0];
+  const value = values[0];
+  if (values.length !== 1 || value === undefined || !/^[a-zA-Z0-9_-]{16,64}$/.test(value)) return null;
+  return value;
 }
 export function productImage(key: string | null): string | null {
   if (!key || !/^(?:products-image|catalog-media)\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:png|webp|jpe?g)$/i.test(key) || key.includes("..")) return null;
