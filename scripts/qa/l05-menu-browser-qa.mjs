@@ -102,6 +102,15 @@ try {
   await page.getByText("Nhân viên đã xác nhận · Đã gửi Bếp").waitFor();
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
     "reload and status sync must not duplicate tickets");
+  // An unsent draft must remain in this browser tab after a refresh (no second order).
+  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).click();
+  await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: /Giỏ món/ }).click();
+  await page.getByText("1 × Lẩu QR QA").waitFor();
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
+    "restoring an unsent cart must never create a server ticket");
   for (const size of [320, 360, 390, 428, 768]) {
     await page.setViewportSize({ width: size, height: size === 320 ? 568 : 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
