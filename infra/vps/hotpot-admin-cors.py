@@ -1,8 +1,8 @@
 #!/usr/bin/python3
-"""Owner-only live API CORS adjustment for the independent Admin PWA.
+"""Owner-only live API CORS allowlist adjustment for existing and Dine-in PWAs.
 
 Changes only the existing CORS_ALLOWED_ORIGINS line in a root-controlled env
-file; validates configured HTTPS, loopback, and Admin OPTIONS preflights.
+file; validates configured HTTPS, loopback, and per-origin OPTIONS preflights.
 On verification failure the original env bytes are restored and API restarted.
 No secret values or environment contents are printed.
 """
@@ -27,7 +27,10 @@ CUSTOMER = "https://sichuan-hotpot-customer.vercel.app"
 CUSTOMER_CUSTOM = "https://www.bepsi.click"
 CUSTOMER_BARE = "https://bepsi.click"
 CUSTOMER_ORIGINS = (CUSTOMER, CUSTOMER_CUSTOM, CUSTOMER_BARE)
-PWA_ORIGINS = CUSTOMER_ORIGINS + ADMIN_ORIGINS
+RETAIL_CUSTOM = "https://retail.bepsi.click"
+MENU_CUSTOM = "https://menu.bepsi.click"
+DINEIN_ORIGINS = (RETAIL_CUSTOM, MENU_CUSTOM)
+PWA_ORIGINS = CUSTOMER_ORIGINS + ADMIN_ORIGINS + DINEIN_ORIGINS
 
 
 class Blocked(Exception):
@@ -118,12 +121,22 @@ def healthy_https_and_cors(origin):
         for path in ("/health/live", "/health/ready"):
             if not good_http(base + path):
                 return False
-        for request_origin in PWA_ORIGINS:
+        for request_origin in CUSTOMER_ORIGINS + ADMIN_ORIGINS:
             if not good_preflight(base, "POST", "/auth/login",
                                   "content-type", request_origin):
                 return False
             if not good_preflight(base, "POST", "/auth/google",
                                   "content-type", request_origin):
+                return False
+        for dinein_origin in DINEIN_ORIGINS:
+            # Anonymous Menu and authenticated Retail both require exact
+            # canonical-origin preflight. The guest API is not deployed yet.
+            # Preflight is independent of route existence: no order is created.
+            if not good_preflight(base, "GET", "/health/ready",
+                                  "content-type", dinein_origin):
+                return False
+            if not good_preflight(base, "POST", "/health/ready",
+                                  "authorization,content-type", dinein_origin):
                 return False
         for admin_origin in ADMIN_ORIGINS:
             for method in ("PATCH", "PUT"):

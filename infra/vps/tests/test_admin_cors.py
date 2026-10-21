@@ -23,6 +23,8 @@ class NarrowCORSChangeTests(unittest.TestCase):
         self.assertIn(module.ADMIN_CUSTOM.encode(), result)
         self.assertIn(module.CUSTOMER_CUSTOM.encode(), result)
         self.assertIn(module.CUSTOMER_BARE.encode(), result)
+        self.assertIn(module.RETAIL_CUSTOM.encode(), result)
+        self.assertIn(module.MENU_CUSTOM.encode(), result)
         self.assertEqual(result.count(b"CORS_ALLOWED_ORIGINS="), 1)
         self.assertEqual(module.rewrite_content(result), (result, False))
 
@@ -31,8 +33,19 @@ class NarrowCORSChangeTests(unittest.TestCase):
                 b"https://bepsi.click\r\nJWT_SECRET=placeholder\r\n")
         modified, changed = module.rewrite_content(data)
         self.assertTrue(changed)
-        self.assertIn(b"https://bepsi.click,https://www.bepsi.click,https://sichuan-hotpot-admin.vercel.app,https://admin.bepsi.click\r\n", modified)
+        self.assertIn(b"https://bepsi.click,https://www.bepsi.click,https://sichuan-hotpot-admin.vercel.app,https://admin.bepsi.click,https://retail.bepsi.click,https://menu.bepsi.click\r\n", modified)
         self.assertTrue(modified.endswith(b"JWT_SECRET=placeholder\r\n"))
+
+    def test_existing_custom_origins_remain_unique_when_adding_dinein(self):
+        raw = (b"CORS_ALLOWED_ORIGINS=https://sichuan-hotpot-customer.vercel.app,"
+               b"https://admin.bepsi.click,https://retail.bepsi.click\n"
+               b"OTHER_SECRET=never_log\n")
+        updated, changed = module.rewrite_content(raw)
+        self.assertTrue(changed)
+        self.assertEqual(updated.count(module.RETAIL_CUSTOM.encode()), 1)
+        self.assertEqual(updated.count(module.MENU_CUSTOM.encode()), 1)
+        self.assertIn(b"OTHER_SECRET=never_log\n", updated)
+        self.assertEqual(module.rewrite_content(updated), (updated, False))
 
     def test_fail_closed_missing_duplicate_or_invalid_origins(self):
         for value in (
@@ -66,6 +79,7 @@ class NarrowCORSChangeTests(unittest.TestCase):
         code = (ROOT / "hotpot-admin-cors.py").read_text()
         workflow = (ROOT.parents[1] / ".github/workflows/vps-admin-cors-owner.yml").read_text()
         self.assertIn("github.event.comment.body == '/fix-hotpot-pwa-cors'", workflow)
+        self.assertIn("github.event.comment.body == '/fix-hotpot-dinein-cors'", workflow)
         self.assertIn("github.actor == 'meyecarpenter23842'", workflow)
         self.assertIn("environment: production-api", workflow)
         self.assertIn("StrictHostKeyChecking=yes", workflow)

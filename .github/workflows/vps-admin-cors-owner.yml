@@ -13,6 +13,7 @@ jobs:
       github.event.issue.number == 3 &&
       github.event.issue.pull_request == null &&
       (github.event.comment.body == '/fix-hotpot-pwa-cors' ||
+       github.event.comment.body == '/fix-hotpot-dinein-cors' ||
        github.event.comment.body == '/fix-hotpot-admin-cors') &&
       github.actor == 'meyecarpenter23842'
     environment: production-api
@@ -41,7 +42,7 @@ jobs:
           (( VPS_PORT >= 1 && VPS_PORT <= 65535 ))
           test -n "$VPS_HOST" && test -n "$VPS_DEPLOY_SSH_KEY" && test -n "$VPS_KNOWN_HOSTS"
           python3 -m unittest discover -s infra/vps/tests -p test_admin_cors.py -v
-      - name: Apply Customer/Admin CORS allowlist and verify API with rollback
+      - name: Apply Customer/Admin/Retail/Menu CORS allowlist and verify API with rollback
         shell: bash
         run: |
           set -euo pipefail
@@ -64,7 +65,7 @@ jobs:
             echo "::error::PWA CORS proof missing."
             exit 1
           }
-          echo "Customer/Admin API CORS and HTTPS/loopback health: PASS"
+          echo "Customer/Admin/Retail/Menu API CORS and HTTPS/loopback health: PASS"
       - name: Remove temporary SSH material
         if: always()
         shell: bash
