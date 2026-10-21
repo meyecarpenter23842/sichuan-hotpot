@@ -42,7 +42,7 @@ try {
   await page.getByRole("textbox", { name: "Tài khoản nhân viên" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
   page.on("response", response => {
-    if (!response.ok() && /\\/(?:auth|admin|dining)\\//.test(response.url())) {
+    if (!response.ok() && ["/auth/", "/admin/", "/dining/"].some(prefix => new URL(response.url()).pathname.startsWith(prefix))) {
       console.log("L04_HTTP_ERROR", response.status(), new URL(response.url()).pathname);
     }
   });
