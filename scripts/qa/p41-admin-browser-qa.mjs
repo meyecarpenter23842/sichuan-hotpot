@@ -300,6 +300,10 @@ try {
   await page.getByRole("tab", { name: "Bàn" }).click();
   await page.getByRole("button", { name: "Bàn A1, Trống" }).click();
   await page.getByRole("button", { name: "Mở phiên bàn" }).click();
+  // Wait for the authenticated mutation AND the refreshed operating board.
+  // Clicking only dispatches the request; a synchronous DB assertion is racy.
+  await page.getByText("Đã mở phiên Bàn A1").waitFor();
+  await page.getByRole("button", { name: "Bàn A1, Đang phục vụ" }).waitFor();
   const dineSession = await db.diningSession.findFirstOrThrow({
     where: { tableId: diningTable.id, closedAt: null },
   });
