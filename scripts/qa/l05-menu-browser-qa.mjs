@@ -53,7 +53,7 @@ try {
   await page.getByRole("button", { name: "Kiểm tra lại" }).click();
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).waitFor();
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).click();
-  await page.getByRole("button", { name: "Lớn +120.000đ" }).click();
+  await page.getByRole("checkbox", { name: "Lớn +120.000đ" }).click();
   await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
   await page.getByRole("button", { name: "Xem giỏ →" }).click();
   await page.getByRole("button", { name: "Gửi yêu cầu gọi món" }).click();
