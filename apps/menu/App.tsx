@@ -20,7 +20,7 @@ const tone = {
 type Phase = "loading" | "ready" | "waiting" | "invalid" | "expired" | "error";
 type Screen = "menu" | "cart" | "status";
 type SavedGrant = { handle: string; credential: string; expiresAt: string; sessionId: string };
-type FrozenDraft = { sessionId: string; payload: Submission };
+type FrozenDraft = { sessionId: string; payload: Submission; cart: CartLine[]; note: string };
 function cacheKey(handle: string) { return "sichuan-menu-guest-v1-" + handle; }
 function submissionKey(handle: string) { return "sichuan-menu-request-v1-" + handle; }
 function getStored<T>(key: string): T | null {
@@ -174,7 +174,7 @@ export default function App() {
       updateGrant(current); setPhase("ready"); setOnline(true);
       const draft = getStored<FrozenDraft>(submissionKey(handle));
       if (draft?.sessionId === current.sessionId) {
-        setFrozen(draft);
+        setFrozen(draft); setCart(draft.cart); setNote(draft.note);
         setMessage("Có phiếu chưa xác nhận kết quả. Hãy kiểm tra lịch sử hoặc gửi lại đúng phiếu cũ.");
         setScreen("cart");
       } else if (draft) {
@@ -217,7 +217,7 @@ export default function App() {
     if (sendingLock.current || !current || !cart.length || !online) return;
     sendingLock.current = true; setSending(true); setError(""); setMessage("");
     const queued: FrozenDraft = frozen ?? {
-      sessionId: current.sessionId,
+      sessionId: current.sessionId, cart: cart.map(item => ({ ...item, item: { ...item.item } })), note,
       payload: {
         idempotencyKey: clientKey(),
         customerNote: note.trim(),
