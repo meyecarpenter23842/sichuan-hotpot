@@ -41,8 +41,19 @@ try {
   await page.goto(web, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Tài khoản nhân viên" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
+  page.on("response", response => {
+    if (!response.ok() && /\\/(?:auth|admin|dining)\\//.test(response.url())) {
+      console.log("L04_HTTP_ERROR", response.status(), new URL(response.url()).pathname);
+    }
+  });
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await page.getByText("Chọn bàn để phục vụ").waitFor();
+  try { await page.getByText("Chọn bàn để phục vụ").waitFor({ timeout: 12000 }); }
+  catch (error) {
+    console.log("L04_LOGIN_DIAGNOSTIC", (await page.locator("body").innerText()).slice(0, 1300));
+    console.log("L04_PAGE_ERRORS", errors.slice(0, 8));
+    await page.screenshot({ path: "apps/retail/qa-artifacts/login-diagnostic.png" });
+    throw error;
+  }
   await page.getByRole("button", { name: "Bàn A1, trống" }).click();
   await page.getByRole("button", { name: "Mở phiên bàn" }).click();
   await page.getByRole("button", { name: "Chọn Lẩu Retail QA" }).waitFor();
