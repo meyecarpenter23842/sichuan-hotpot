@@ -176,6 +176,7 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3004/ >/dev/null; then break; fi
             sleep 1
           done
+          node --check scripts/qa/l04-retail-browser-qa.mjs
           node scripts/qa/l04-retail-browser-qa.mjs
       - name: Archive P2.1 browser screenshots
         if: always()
