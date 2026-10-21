@@ -313,6 +313,14 @@ try {
   });
   assert.equal(grantResponse.status, 201);
   const guestGrant = await grantResponse.json();
+  // Category creation intentionally starts unpublished. Promote ONLY this
+  // disposable CI fixture before testing a guest purchase; production must
+  // continue rejecting products hidden from the public catalog.
+  await db.catalogCategory.update({
+    where: { id: savedProduct.categoryId },
+    data: { isPublished: true, imageKey: "catalog-media/" + branch.id
+      + "/categories/" + savedProduct.categoryId + "/ci-verified.png" },
+  });
   const guestResponse = await fetch(api + "/dining/guest/tickets", {
     method: "POST",
     headers: { Authorization: "Dining " + guestGrant.credential,
