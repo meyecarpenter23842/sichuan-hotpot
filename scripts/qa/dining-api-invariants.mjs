@@ -139,7 +139,24 @@ try {
     "DINING_TICKET_ALREADY_REVIEWED");
   const more = await service.guestTicket(guestAuth, input("extra-" + nonce, [line(beef.id)]));
   assert.equal(more.status, "PENDING_APPROVAL");
+  const pending = await prisma.diningTicket.findUniqueOrThrow({ where: { id: more.ticketId } });
+  await service.editPending("waiter", branch.id, more.ticketId, {
+    expectedUpdatedAt: pending.updatedAt.toISOString(),
+    customerNote: "Đổi sang lẩu",
+    items: [line(hotpot.id, 1, variant.id)],
+  });
+  const edited = await prisma.diningTicketItem.findMany({ where: { ticketId: more.ticketId } });
+  assert.equal(edited[0].lineTotalVnd, 370_000, "staff edits pending QR with server pricing");
+  await rejectsCode(service.editPending("waiter", branch.id, more.ticketId, {
+    expectedUpdatedAt: pending.updatedAt.toISOString(),
+    items: [line(beef.id)],
+  }), "DINING_TICKET_STALE");
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).subtotalVnd, 745_000,
+    "pending QR edit never changes bill before approval");
   await service.review("waiter", branch.id, more.ticketId, "REJECTED", "Khách đổi ý");
+  await rejectsCode(service.editPending("waiter", branch.id, more.ticketId, {
+    expectedUpdatedAt: pending.updatedAt.toISOString(), items: [line(beef.id)],
+  }), "DINING_TICKET_ALREADY_REVIEWED");
   assert.equal((await service.staffBill("cashier", branch.id, session.id)).subtotalVnd, 745_000);
   const available = await prisma.product.update({
     where: { id: beef.id }, data: { isAvailable: false },
@@ -170,9 +187,28 @@ try {
   assert.equal((await prisma.diningGuestGrant.count({
     where: { sessionId: newSession.id, revokedAt: null },
   })), 0, "all credentials revoked at close");
+  const moving = await service.open("waiter", branch.id, table.id, 2);
+  const oldGrant = await service.issueGrant(nonce);
+  const target = await prisma.diningTable.create({ data: {
+    branchId: branch.id, areaId: area.id, code: "B1", name: "Bàn B1",
+    qrHandle: "B" + nonce,
+  } });
+  const occupied = await service.open("waiter", branch.id, target.id);
+  await rejectsCode(service.transfer("waiter", branch.id, moving.id, table.id, target.id),
+    "DINING_TABLE_OCCUPIED");
+  await service.close("cashier", branch.id, occupied.id);
+  await service.transfer("waiter", branch.id, moving.id, table.id, target.id);
+  await rejectsCode(service.transfer("waiter", branch.id, moving.id, table.id, target.id),
+    "DINING_TABLE_MOVED");
+  await rejectsCode(service.guestBill("Dining " + oldGrant.credential), "DINING_GUEST_EXPIRED");
+  await rejectsCode(service.issueGrant(nonce), "DINING_TABLE_NOT_OPEN");
+  const newGrant = await service.issueGrant("B" + nonce);
+  assert.equal(newGrant.sessionId, moving.id);
+  await service.close("cashier", branch.id, moving.id);
+  await rejectsCode(service.guestBill("Dining " + newGrant.credential), "DINING_GUEST_EXPIRED");
   assert.equal((await prisma.order.count({ where: { branchId: branch.id } })), 0,
     "dine-in must not create delivery orders");
-  console.log("PASS L02 dining branch auth, concurrent open/approve, idempotent staff/QR, pricing, bill, kitchen, stock, close/revoke");
+  console.log("PASS L02 dining branch auth, concurrent open/approve, idempotent staff/QR, pricing, bill, kitchen, stock, close/revoke, transfer, pending edits");
 } finally {
   await prisma.$disconnect();
 }
