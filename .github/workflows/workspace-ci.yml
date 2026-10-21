@@ -50,6 +50,8 @@ jobs:
           set -euo pipefail
           npm exec -- prisma migrate status --schema apps/api/prisma/schema.prisma
           npm exec -- prisma migrate diff --from-schema-datasource apps/api/prisma/schema.prisma --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code
+      - name: Assert Dine-in L01 database invariants on disposable CI Postgres
+        run: node scripts/qa/dining-db-invariants.mjs
       - name: Validate source and auto-deploy lock
         run: npm run lint
       - name: TypeScript strict check
