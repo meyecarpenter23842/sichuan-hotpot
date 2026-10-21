@@ -3,10 +3,10 @@ import { createReadStream, statSync } from "node:fs";
 import { join, extname, normalize, resolve, sep } from "node:path";
 
 // Disposable CI only: mimic Vercel same-origin rewrite and serve an exported Expo PWA.
-// Admin and Customer run as separate local hosts with separate HttpOnly cookies.
+// Admin, Customer and Retail use isolated disposable browser origins.
 const app = process.env.HOTPOT_QA_PWA_APP || "customer";
 const port = Number(process.env.HOTPOT_QA_WEB_PORT || "3000");
-if (!["customer", "admin"].includes(app) || ![3000, 3002].includes(port)) {
+if (!["customer", "admin", "retail"].includes(app) || ![3000, 3002, 3004].includes(port)) {
   throw new Error("Invalid isolated QA PWA target");
 }
 const root = resolve("apps", app, "dist");
