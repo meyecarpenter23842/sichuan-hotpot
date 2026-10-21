@@ -102,11 +102,18 @@ try {
   assert.equal(startingBill.tickets[0].items[0].unitPriceVnd, 400_000);
   const qr = await service.locator(nonce);
   assert.equal(qr.code, "A1");
+  assert.equal(qr.branchId, branch.id, "guest menu uses authoritative public branch locator");
+  assert.equal(Object.hasOwn(qr, "tableId"), false, "public locator does not expose internal table ID");
   assert.equal(Object.hasOwn(qr, "sessionId"), false, "public locator does not expose session");
   const granted = await service.issueGrant(nonce);
   assert.equal(granted.sessionId, session.id);
   assert.equal(granted.credential.length > 40, true);
   const guestAuth = "Dining " + granted.credential;
+  const extended = await service.renewGuestGrant(guestAuth);
+  assert.ok(new Date(extended.expiresAt).getTime() >= new Date(granted.expiresAt).getTime() - 2000);
+  const secondGrant = await service.issueGrant(nonce);
+  assert.deepEqual(await service.guestTickets("Dining " + secondGrant.credential), [],
+    "a separate guest cannot read the first guest's tickets");
   const qrInput = input("guest-" + nonce, [line(beef.id, 2)]);
   const qrTicket = await service.guestTicket(guestAuth, qrInput);
   assert.equal(qrTicket.status, "PENDING_APPROVAL");
@@ -123,6 +130,10 @@ try {
     "kitchen must not receive modifier price details");
   await rejectsCode(service.staffBill("kitchen", branch.id, session.id),
     "DINING_BRANCH_FORBIDDEN");
+  const privateBill = await service.guestBill(guestAuth);
+  assert.equal(Object.hasOwn(privateBill, "paidVnd"), false, "guest must not read cash collection");
+  assert.equal(Object.hasOwn(privateBill, "dueVnd"), false, "guest must not read cashier balance");
+  assert.equal(Object.hasOwn(privateBill, "sessionId"), false, "guest must not read internal session ID");
   assert.equal((await service.guestBill(guestAuth)).subtotalVnd, 585_000,
     "pending QR cannot enter bill");
   const approvals = await Promise.all([
