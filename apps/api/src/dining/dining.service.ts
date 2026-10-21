@@ -7,7 +7,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { priceCart, productSelect } from "../delivery/pricing";
-import type { DiningTicketInput } from "./dining.controller";
+import type { DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
 
 type Role = "OWNER" | "MANAGER" | "WAITER" | "CASHIER" | "KITCHEN";
 type Actor = { id: string; role: Role };
@@ -184,6 +184,106 @@ export class DiningService {
         branchId, sessionId, actorId: actor.id, action: "SESSION_CLOSED", details: {},
       } });
       return { sessionId, status: "CLOSED" as const };
+    });
+  }
+
+  async transfer(auth: string | undefined, branchId: string, sessionId: string, targetTableId: string) {
+    const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER"]);
+    return serializable(this.prisma.database, async tx => {
+      const session = await tx.diningSession.findFirst({
+        where: { id: sessionId, branchId }, select: { tableId: true, status: true, closedAt: true },
+      });
+      if (!session || session.status !== "OPEN" || session.closedAt)
+        throw new ConflictException("DINING_SESSION_NOT_OPEN");
+      if (session.tableId === targetTableId)
+        return { sessionId, tableId: targetTableId, replayed: true };
+      const destination = await tx.diningTable.findFirst({ where: {
+        id: targetTableId, branchId, isActive: true, area: { isActive: true },
+      }, select: { id: true } });
+      if (!destination) throw new NotFoundException("DINING_TABLE_UNAVAILABLE");
+      const occupied = await tx.diningSession.findFirst({
+        where: { tableId: targetTableId, closedAt: null }, select: { id: true },
+      });
+      if (occupied) throw new ConflictException("DINING_TABLE_OCCUPIED");
+      const moved = await tx.diningSession.updateMany({
+        where: { id: sessionId, branchId, tableId: session.tableId, status: "OPEN", closedAt: null },
+        data: { tableId: targetTableId },
+      });
+      if (moved.count !== 1) throw new ConflictException("DINING_SESSION_MOVED");
+      await tx.diningGuestGrant.updateMany({
+        where: { sessionId, branchId, revokedAt: null }, data: { revokedAt: new Date() },
+      });
+      // Old printed QR/guest credentials must not keep submitting after reassignment.
+      await tx.diningTicket.updateMany({
+        where: { sessionId, branchId, source: "QR", status: "PENDING_APPROVAL" },
+        data: { status: "REJECTED", reviewedAt: new Date(), reviewedById: actor.id,
+          rejectionReason: "TABLE_TRANSFERRED" },
+      });
+      await tx.diningAuditEvent.create({ data: {
+        branchId, sessionId, actorId: actor.id,
+        action: "TABLE_TRANSFERRED", details: { fromTableId: session.tableId, toTableId: targetTableId },
+      } });
+      return { sessionId, tableId: targetTableId, replayed: false };
+    });
+  }
+
+  async editPending(auth: string | undefined, branchId: string, ticketId: string,
+    input: DiningTicketEditInput) {
+    const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER"]);
+    return serializable(this.prisma.database, async tx => {
+      const ticket = await tx.diningTicket.findFirst({
+        where: { id: ticketId, branchId, source: "QR" },
+        select: { id: true, sessionId: true, status: true, updatedAt: true, customerNote: true },
+      });
+      if (!ticket) throw new NotFoundException("DINING_TICKET_NOT_FOUND");
+      if (ticket.status !== "PENDING_APPROVAL")
+        throw new ConflictException("DINING_TICKET_ALREADY_REVIEWED");
+      if (ticket.updatedAt.toISOString() !== input.expectedUpdatedAt)
+        throw new ConflictException("DINING_TICKET_STALE");
+      const locked = await tx.diningSession.updateMany({
+        where: { id: ticket.sessionId, branchId, status: "OPEN", closedAt: null },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count !== 1) throw new ConflictException("DINING_SESSION_NOT_OPEN");
+      const old = await tx.diningTicketItem.aggregate({
+        where: { ticketId }, _sum: { lineTotalVnd: true },
+      });
+      const products = await tx.product.findMany({
+        where: { id: { in: [...new Set(input.items.map(x => x.productId))] },
+          category: { branchId, isPublished: true } },
+        select: productSelect,
+      });
+      const price = priceCart(input.items.map(x => ({
+        productId: x.productId, variantId: x.variantId ?? null,
+        modifierIds: x.modifierIds, comboOptionIds: x.comboOptionIds ?? [], quantity: x.quantity,
+      })), products);
+      const changed = await tx.diningTicket.updateMany({
+        where: { id: ticketId, branchId, status: "PENDING_APPROVAL", updatedAt: ticket.updatedAt },
+        data: { customerNote: input.customerNote === undefined
+          ? ticket.customerNote : cleanNote(input.customerNote) },
+      });
+      if (changed.count !== 1) throw new ConflictException("DINING_TICKET_STALE");
+      await tx.diningTicketItem.deleteMany({ where: { ticketId } });
+      await tx.diningTicketItem.createMany({ data: price.lines.map((line, index) => ({
+        ticketId, productId: line.productId, variantId: line.variantId,
+        productName: line.productName, variantName: line.variantName,
+        quantity: line.quantity, unitPriceVnd: line.unitPriceVnd,
+        lineTotalVnd: line.lineTotalVnd,
+        selectionSnapshot: JSON.parse(JSON.stringify({
+          pricingMode: line.pricingMode, modifiers: line.modifiers,
+          comboItems: line.comboItems, note: cleanNote(input.items[index]?.note),
+        })) as Prisma.InputJsonValue,
+      })) });
+      await tx.diningAuditEvent.create({ data: {
+        branchId, sessionId: ticket.sessionId, actorId: actor.id,
+        action: "QR_TICKET_EDITED",
+        details: { ticketId, oldTotalVnd: old._sum.lineTotalVnd ?? 0,
+          newTotalVnd: price.subtotalVnd },
+      } });
+      const updated = await tx.diningTicket.findUniqueOrThrow({
+        where: { id: ticketId }, select: { updatedAt: true },
+      });
+      return { ticketId, status: "PENDING_APPROVAL" as const, updatedAt: updated.updatedAt };
     });
   }
 
