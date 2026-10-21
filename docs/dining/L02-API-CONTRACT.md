@@ -13,8 +13,10 @@ Guest: the printed qrHandle is only a public locator, not a credential. POST gra
 - GET /dining/branches/:branchId/areas — dining staff
 - GET /dining/branches/:branchId/tables — dining staff; each row includes active session summary
 - POST /dining/branches/:branchId/tables/:tableId/sessions — OWNER/MANAGER/WAITER; optional guestCount 1–100
-- GET /dining/branches/:branchId/sessions/:sessionId — dining staff; bill and pending tickets
+- GET /dining/branches/:branchId/sessions/:sessionId — OWNER/MANAGER/WAITER/CASHIER; bill and pending tickets
 - POST /dining/branches/:branchId/sessions/:sessionId/tickets — OWNER/MANAGER/WAITER; direct staff approval
+- POST /dining/branches/:branchId/sessions/:sessionId/transfer — OWNER/MANAGER/WAITER; body { "expectedTableId": "UUID", "targetTableId": "UUID" }. A transfer must match the table currently owning the session and a free target table in the same branch. Old QR grants are revoked; pending QR requests are rejected with audit; new QR issues credentials for the destination. Concurrent transfers cannot reassign a stale table.
+- PUT /dining/branches/:branchId/tickets/:ticketId/items — OWNER/MANAGER/WAITER; changes **pending QR only**. Body { "expectedUpdatedAt": "ISO-8601 timestamp", "customerNote": "optional note", "items": [same ticket items as above] }. Changes are fully repriced using authoritative catalog and audited; an outdated timestamp, already reviewed ticket or closed session is rejected. Previously approved kitchen work cannot be silently edited.
 - GET /dining/branches/:branchId/approvals — OWNER/MANAGER/WAITER; pending QR only
 - POST /dining/branches/:branchId/tickets/:ticketId/approve — OWNER/MANAGER/WAITER
 - POST /dining/branches/:branchId/tickets/:ticketId/reject — OWNER/MANAGER/WAITER; reason required 3–500 chars
@@ -60,7 +62,7 @@ Idempotency key is scoped to (sessionId, source, idempotencyKey) plus requestHas
 404: DINING_QR_NOT_FOUND, DINING_TABLE_UNAVAILABLE, DINING_SESSION_NOT_FOUND, DINING_TICKET_NOT_FOUND.
 403: DINING_BRANCH_FORBIDDEN, DINING_ROLE_FORBIDDEN.
 401: DINING_GUEST_AUTH_REQUIRED, DINING_GUEST_EXPIRED.
-409: DINING_TABLE_OCCUPIED, DINING_SESSION_NOT_OPEN, DINING_BILL_UNPAID, DINING_IDEMPOTENCY_REUSED, DINING_TICKET_ALREADY_REVIEWED, DINING_CONCURRENT_RETRY, DINING_TICKET_RATE_LIMIT, DINING_GUEST_GRANT_LIMIT.
+409: DINING_TABLE_OCCUPIED, DINING_SESSION_NOT_OPEN, DINING_BILL_UNPAID, DINING_IDEMPOTENCY_REUSED, DINING_TICKET_ALREADY_REVIEWED, DINING_TICKET_STALE, DINING_TABLE_MOVED, DINING_SESSION_MOVED, DINING_CONCURRENT_RETRY, DINING_TICKET_RATE_LIMIT, DINING_GUEST_GRANT_LIMIT.
 400: DINING_REJECTION_REASON_REQUIRED, DINING_GUEST_COUNT_INVALID, INVALID_DINING_NOTE.
 422: PRODUCT_UNAVAILABLE, VARIANT_UNAVAILABLE, INVALID_MODIFIERS, INVALID_COMBO_SELECTION.
 Use the common API exception envelope and map codes to user-friendly messages.
@@ -68,7 +70,7 @@ Use the common API exception envelope and map codes to user-friendly messages.
 ## Acceptance on throwaway CI Postgres
 
 - Full schema migration / drift gate, L01 DB checks, lint, typecheck, unit, build, PWA and browser regression.
-- L02 dedicated script: role and branch isolation, concurrent open, staff/QR retry, duplicate idempotency key conflict, server variant+topping+combo price, item shortage, QR pending absent from bill/kitchen, concurrent approve produces one kitchen ticket, reject terminal, unpaid-close gate, grant revocation, close vs submit race.
+- L02 dedicated script: role and branch isolation, concurrent open, staff/QR retry, duplicate idempotency key conflict, server variant+topping+combo price, item shortage, QR pending absent from bill/kitchen, concurrent approve produces one kitchen ticket, pending QR edit with optimistic timestamp and server repricing, stale move/occupied table transfer, reject terminal, unpaid-close gate, grant revocation, close vs submit race. Kitchen role must not receive price or bill details.
 - Check delivery Order count stays zero.
 
 Scope exclusions: UI/admin table creation (L03–L05), realtime and sounds (L06), payment API (L07). Merge is NOT deploy. Before production migration, verify DB target (VPS or Neon), backup/restore, and receive explicit approval.
