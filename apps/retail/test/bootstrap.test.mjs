@@ -18,7 +18,7 @@ test("Retail is isolated Expo Web PWA with strict typed checks, no automatic pro
   assert.doesNotMatch(service, /(?:window\.localStorage|localStorage\.setItem|sessionStorage\.setItem|AsyncStorage\.setItem)/);
 });
 test("real branch-scoped staff and menu flow, no demo checkout", () => {
-  for (const snippet of ["/auth/login", "/auth/me", "/admin/branches",
+  for (const snippet of ["/auth/login", "/auth/me", "/admin/orders/branches",
     "/catalog/branches/", 'root + "/tables"', 'root + "/approvals"',
     '/sessions/" + sessionId', '"/sessions/" + frozen.sessionId + "/tickets"',
     '"/tickets/" + ticketId + "/" + decision']) assert.ok(app.includes(snippet), snippet);
