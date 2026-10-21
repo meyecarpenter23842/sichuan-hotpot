@@ -10,6 +10,8 @@ import {
   type AdminCatalog, type AuthTokens, type Branch, type Principal,
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
+import { DiningTablesPanel } from "./src/DiningTablesPanel";
+import { DiningConfigurationPanel } from "./src/DiningConfigurationPanel";
 import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
 import { SettingsHub } from "./src/SettingsHub";
@@ -28,19 +30,21 @@ import { AdminPwaReleaseNotice } from "./src/AdminPwaReleaseNotice";
 import { ALL_HISTORY, historyPeriodRange, type HistoryRange } from "./src/history-search";
 import { BusinessReportPanel, type ReportMetric } from "./src/BusinessReportPanel";
 
-type Tab = "overview" | "orders" | "kitchen" | "catalog" | "delivery" | "settings" | "account" | "report" | "lookup";
+type Tab = "overview" | "orders" | "kitchen" | "dining" | "catalog" | "dining-config" | "delivery" | "settings" | "account" | "report" | "lookup";
 const tabs: { id: Tab; label: string; shortLabel: string; icon: IconName }[] = [
   { id: "overview", label: "Tổng quan", shortLabel: "Tổng quan", icon: "dashboard" },
   { id: "orders", label: "Đơn hàng", shortLabel: "Đơn", icon: "orders" },
   { id: "kitchen", label: "Bếp", shortLabel: "Bếp", icon: "kitchen" },
-  { id: "catalog", label: "Thực đơn", shortLabel: "Món", icon: "catalog" },
+  { id: "dining", label: "Bàn", shortLabel: "Bàn", icon: "store" },
   { id: "delivery", label: "Giao hàng", shortLabel: "Giao", icon: "delivery" },
   { id: "settings", label: "Quản lý", shortLabel: "Quản lý", icon: "manage" },
   { id: "account", label: "Tài khoản", shortLabel: "Tài khoản", icon: "account" },
 ];
 function roleName(role: string): string {
   return role === "OWNER" ? "Chủ cửa hàng" : role === "KITCHEN" ? "Nhân viên bếp" :
-    role === "DRIVER" ? "Nhân viên giao hàng" : "Quản lý chi nhánh";
+    role === "DRIVER" ? "Nhân viên giao hàng" :
+    role === "WAITER" ? "Nhân viên phục vụ" :
+    role === "CASHIER" ? "Nhân viên thu ngân" : "Quản lý chi nhánh";
 }
 const formatMoney = (value: number): string => value.toLocaleString("vi-VN") + "đ";
 
@@ -277,6 +281,10 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
+  // Parent-owned table filters survive tab switches and re-mounting.
+  const [diningArea, setDiningArea] = useState<string | null>(null);
+  const [diningFilter, setDiningFilter] = useState<"all" | "available" | "active" | "pending">("all");
+  const [diningDisplay, setDiningDisplay] = useState<"grid" | "list">("grid");
   // Parent-owned: switching between bottom tabs must not reset order sub-filter.
   const [orderGroup, setOrderGroup] = useState<OrderGroup>("new");
   // History is a separate screen, not a sixth operating tab. Keep the last
@@ -366,6 +374,7 @@ export default function AdminApp() {
       ? old : (available[0]?.id ?? null));
     if (available[0]?.staffRole === "KITCHEN") setTab("kitchen");
     else if (available[0]?.staffRole === "DRIVER") setTab("delivery");
+    else if (available[0]?.staffRole === "WAITER" || available[0]?.staffRole === "CASHIER") setTab("dining");
   }, []);
 
   useEffect(() => {
@@ -508,7 +517,9 @@ export default function AdminApp() {
   }, [token, accessExpiresAt, retryAt, renew]);
 
   const reload = useCallback(async () => {
-    if (!token || !branchId || branches.find(b => b.id === branchId)?.staffRole === "KITCHEN") return;
+    if (!token || !branchId ||
+      ["KITCHEN", "DRIVER", "WAITER", "CASHIER"].includes(
+        branches.find(b => b.id === branchId)?.staffRole ?? "")) return;
     setLoading(true); setLoadError("");
     try {
       const data = await request<AdminCatalog>(
@@ -584,10 +595,12 @@ export default function AdminApp() {
   const branchRole = selectedBranch?.staffRole ?? principal?.role ?? "CUSTOMER";
   const kitchenOnly = branchRole === "KITCHEN";
   const driverOnly = branchRole === "DRIVER";
+  const diningOnly = branchRole === "WAITER" || branchRole === "CASHIER";
   const operator = branchRole === "OWNER" || branchRole === "MANAGER";
   const visibleTabs = tabs.filter(item => driverOnly ? item.id === "delivery"
     : kitchenOnly ? item.id === "kitchen"
-    : ["overview", "orders", "kitchen", "catalog", "delivery"].includes(item.id));
+    : diningOnly ? item.id === "dining"
+    : ["overview", "orders", "kitchen", "dining", "delivery"].includes(item.id));
   return <SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle={token ? "light-content" : "dark-content"}
@@ -709,7 +722,31 @@ export default function AdminApp() {
         {!!headerToast && <View pointerEvents="none" style={[styles.headerToastLayer,
           { top: headerHeight + 4 }]}><Notice text={headerToast} error /></View>}
         {tab === "catalog" && catalog && branches.length > 0 && !loadError && operator ?
-          <CatalogPanel catalog={catalog} token={token} reload={reload} /> :
+          <View style={{ flex: 1 }}>
+            <Pressable accessibilityRole="button" onPress={() => setTab("settings")}
+              style={styles.managementBack}>
+              <Text style={styles.managementBackText}>‹  Quản lý / Cửa hàng / Món & danh mục</Text>
+            </Pressable>
+            <CatalogPanel catalog={catalog} token={token} reload={reload} />
+          </View> :
+          tab === "dining-config" && branchId && operator ?
+          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}>
+            <Pressable accessibilityRole="button" onPress={() => setTab("settings")}
+              style={styles.managementBack}>
+              <Text style={styles.managementBackText}>‹  Quản lý / Cửa hàng / Bàn & QR</Text>
+            </Pressable>
+            <DiningConfigurationPanel key={branchId} token={token} branchId={branchId} />
+          </ScrollView> :
+          tab === "dining" && branchId ?
+          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}>
+            <DiningTablesPanel token={token} branchId={branchId} role={branchRole}
+              selectedArea={diningArea} onAreaChange={setDiningArea}
+              filter={diningFilter} onFilterChange={setDiningFilter}
+              display={diningDisplay} onDisplayChange={setDiningDisplay}
+              onConfigure={() => { setTab("dining-config"); }} />
+          </ScrollView> :
           (tab === "orders" || tab === "kitchen" || tab === "delivery" || tab === "lookup") && branchId
             && branches.length > 0 ?
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
@@ -808,6 +845,8 @@ export default function AdminApp() {
                 onOpenBusiness={destination => {
                   if (destination === "report") {
                     setReportBack("settings"); setTab("report");
+                  } else if (destination === "catalog" || destination === "dining-config") {
+                    setTab(destination);
                   } else {
                     // Restore previous search filters; lookup without dates searches all old orders.
                     setTab("lookup");
@@ -842,9 +881,11 @@ export default function AdminApp() {
               {branches.map(branch => <Pressable key={branch.id} accessibilityRole="button"
                 accessibilityLabel={"Chọn chi nhánh " + branch.name}
                 style={styles.branchItem} onPress={() => {
-                  setBranchId(branch.id); setChooseBranch(false);
+                  setBranchId(branch.id); setChooseBranch(false); setDiningArea(null); setDiningFilter("all");
                   setTab(branch.staffRole === "KITCHEN" ? "kitchen"
-                    : branch.staffRole === "DRIVER" ? "delivery" : "overview");
+                    : branch.staffRole === "DRIVER" ? "delivery"
+                    : branch.staffRole === "WAITER" || branch.staffRole === "CASHIER"
+                      ? "dining" : "overview");
                   lastWorkingLane.current = "new";
                   setOrderGroup("new");
                 }}>
@@ -911,6 +952,9 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, minHeight: 0 },
   scrollContent: { paddingBottom: 22, flexGrow: 1 },
   pagePadding: { padding: 12 },
+  managementBack: { minHeight: 44, paddingHorizontal: 14,
+    borderBottomWidth: 1, borderBottomColor: c.line, justifyContent: "center" },
+  managementBackText: { color: c.redDeep, fontSize: 13, fontWeight: "800" },
   bottomTabs: { flexDirection: "row", borderTopWidth: 1,
     borderTopColor: "#8D3434", backgroundColor: "#420707", paddingBottom: 3,
     paddingTop: 3, paddingHorizontal: 5 },
