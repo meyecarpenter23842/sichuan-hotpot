@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { DiningPaymentInput } from "./dining.controller";
+import { configuredQr, qrInstructions } from "../payments/vietqr";
 
 type CashierRole = "OWNER" | "MANAGER" | "CASHIER" | "WAITER";
 const BILLABLE = ["APPROVED", "PREPARING", "READY", "SERVED"] as const;
@@ -112,6 +113,9 @@ export class DiningSettlementService {
     } else if (input.method !== "QR" || input.cashReceivedVnd !== undefined) {
       throw new BadRequestException("DINING_PAYMENT_METHOD_INVALID");
     }
+    const beneficiary = input.method === "QR" ? configuredQr() : null;
+    if (input.method === "QR" && !beneficiary)
+      throw new ConflictException("DINING_QR_BENEFICIARY_NOT_CONFIGURED");
     return this.transact(async tx => {
       await this.lock(tx, branchId, sessionId);
       const previous = await tx.diningPayment.findUnique({
@@ -121,7 +125,10 @@ export class DiningSettlementService {
         if (previous.method !== input.method || previous.amountVnd !== input.amountVnd)
           throw new ConflictException("DINING_PAYMENT_KEY_REUSED");
         return { paymentId: previous.id, status: previous.status, amountVnd: previous.amountVnd,
-          replayed: true };
+          qr: qrInstructions(previous.id, previous.amountVnd, {
+            method: previous.method, qrBankBin: previous.qrBankBin,
+            qrAccountNo: previous.qrAccountNo, qrAccountName: previous.qrAccountName,
+          }), replayed: true };
       }
       await this.noPending(tx, branchId, sessionId);
       const row = await tx.diningSession.findUniqueOrThrow({ where: { id: sessionId } });
@@ -134,6 +141,8 @@ export class DiningSettlementService {
       const pay = await tx.diningPayment.create({ data: {
         branchId, sessionId, method: input.method, status, amountVnd: input.amountVnd,
         idempotencyKey: input.idempotencyKey, recordedById: actor.id,
+        ...(beneficiary ? { qrBankBin: beneficiary.bankBin, qrAccountNo: beneficiary.accountNo,
+          qrAccountName: beneficiary.accountName } : {}),
         ...(status === "CONFIRMED" ? { confirmedAt: new Date(), confirmedById: actor.id } : {}),
       }, select: { id: true } });
       await tx.diningAuditEvent.create({ data: {
@@ -144,7 +153,11 @@ export class DiningSettlementService {
           previousPaidVnd: amounts.paidVnd,
           nextPaidVnd: amounts.paidVnd + (status === "CONFIRMED" ? input.amountVnd : 0) },
       } });
-      return { paymentId: pay.id, status, amountVnd: input.amountVnd, replayed: false };
+      return { paymentId: pay.id, status, amountVnd: input.amountVnd,
+        qr: beneficiary ? qrInstructions(pay.id, input.amountVnd, {
+          method: "QR", qrBankBin: beneficiary.bankBin,
+          qrAccountNo: beneficiary.accountNo, qrAccountName: beneficiary.accountName,
+        }) : null, replayed: false };
     });
   }
 
