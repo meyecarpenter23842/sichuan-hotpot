@@ -80,6 +80,15 @@ export async function refreshRetailDiningPushIfEnabled(branchId: string): Promis
   if (permission.granted) await register(branchId, false);
 }
 
+/** Switch registrations atomically by sequence; never disable then race a re-enable. */
+export async function changeRetailDiningPushBranch(branchId: string): Promise<void> {
+  const old = await stored();
+  if (!old || old.branchId === branchId) return;
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) return;
+  await register(branchId, false);
+}
+
 export async function disableRetailDiningPush(): Promise<void> {
   const accessToken = currentSession()?.accessToken ?? null;
   const old = await stored();
@@ -104,15 +113,22 @@ export async function isRetailPushRegistered(): Promise<boolean> {
   return !!(await stored());
 }
 
-export async function testRetailNativeSound(): Promise<void> {
-  if (Platform.OS !== "android") throw new Error("Âm thanh thông báo chỉ thử trên Android.");
+async function scheduleQrAlert(test: boolean): Promise<void> {
+  if (Platform.OS !== "android") throw new Error("Âm thanh thông báo chỉ hỗ trợ Android.");
   const permission = await Notifications.getPermissionsAsync();
-  if (!permission.granted) throw new Error("Cần cấp quyền thông báo để thử âm. Kiểm tra cả chế độ im lặng Android.");
+  if (!permission.granted) {
+    if (test) throw new Error("Cần cấp quyền thông báo để thử âm. Kiểm tra cả chế độ im lặng Android.");
+    return;
+  }
   await channel();
   await Notifications.scheduleNotificationAsync({
-    content: { title: "Thử âm Retail", body: "Kiểm tra âm QR, không tạo đơn hay hóa đơn.",
-      sound: "retail_qr_alert.mp3", data: { kind: "RETAIL_SOUND_TEST" } },
+    content: { title: test ? "Thử âm Retail" : "Yêu cầu QR chờ duyệt",
+      body: test ? "Kiểm tra âm QR, không tạo đơn hay hóa đơn." : "Có yêu cầu QR tại quán cần nhân viên xem.",
+      sound: "retail_qr_alert.mp3",
+      data: { kind: test ? "RETAIL_SOUND_TEST" : "DINING_PENDING" } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 1, channelId: CHANNEL_ID },
   });
 }
+export async function testRetailNativeSound(): Promise<void> { return scheduleQrAlert(true); }
+export async function playLocalRetailQrAlert(): Promise<void> { return scheduleQrAlert(false); }

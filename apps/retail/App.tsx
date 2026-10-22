@@ -16,7 +16,7 @@ import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
 import { loadFrozenTicket, writeFrozenTicket } from "./src/retail-recovery";
-import { configureRetailNotifications, disableRetailDiningPush, enableRetailDiningPush,
+import { changeRetailDiningPushBranch, configureRetailNotifications, disableRetailDiningPush, enableRetailDiningPush,
   refreshRetailDiningPushIfEnabled, watchRetailNotificationResponses } from "./src/dining-push";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
@@ -243,12 +243,12 @@ export default function App() {
       return;
     }
     if (value === branchId) { setShowBranchMenu(false); return; }
-    void disableRetailDiningPush().catch(() => undefined);
+    void changeRetailDiningPushBranch(value).catch(cause =>
+      setError(cause instanceof Error ? cause.message : "Không chuyển được đăng ký thông báo chi nhánh."));
     ++requestVersion.current; setBranchId(value); setAreaId(null); setSelectedTableId(null);
     setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null); setToppingOnly(false);
     setPage("tables"); setShowBranchMenu(false); setError(""); setMessage("");
     setWorkspace("pos"); setQueueTicketId(null);
-    void refreshRetailDiningPushIfEnabled(value).catch(() => undefined);
   };
   const doAction = async (action: () => Promise<void>) => {
     if (lock.current) return;

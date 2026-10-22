@@ -36,6 +36,7 @@ export async function enableRetailDiningPush(branchId: string): Promise<void> {
 export function configureRetailNotifications(): void {}
 export function watchRetailNotificationResponses(_onOpen: () => void): () => void { return () => undefined; }
 export async function refreshRetailDiningPushIfEnabled(_branchId: string): Promise<void> {}
+export async function changeRetailDiningPushBranch(_branchId: string): Promise<void> {}
 export async function disableRetailDiningPush(): Promise<void> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
   const ready = await navigator.serviceWorker.ready;
