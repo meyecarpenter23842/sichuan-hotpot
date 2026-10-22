@@ -180,7 +180,7 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("paymentId", ParseUUIDPipe) paymentId: string,
     @Body() input: DiningReasonInput) {
-    return this.dining.reversePayment(auth, branchId, paymentId, "REFUNDED", input.reason);
+    return this.settlement.reverse(auth, branchId, paymentId, "REFUNDED", input.reason);
   }
   @Post("tickets/:ticketId/void")
   @Header("Cache-Control", "no-store")
