@@ -200,6 +200,19 @@ export function SharedModifierLibraryPanel({catalog,token,root,reload,onPickImag
          onValueChange={value=>void toggle("group",group.id,value,group.usedByProductIds?.length??0)}/>
       </View>
       {cannotEnable&&<Notice text={"Để bật nhóm: "+blockers.join(" · ")+". Giá topping 0đ vẫn hợp lệ."}/>}
+      <View style={s.line}>
+        <View style={s.flex}>
+          <Text style={s.name}>Cho phép gọi topping lẻ tại bàn</Text>
+          <Text style={s.hint}>Dùng lại tên, ảnh, giá và trạng thái của thư viện. Không cần tạo món thứ hai.
+            Chỉ bật cho nhóm topping thực phẩm, không bật độ cay / đường / đá.</Text>
+        </View>
+        <StatusSwitch label={"Gọi topping lẻ từ nhóm "+group.name}
+          value={group.allowStandalone===true} busy={busy}
+          disabled={!group.isAvailable || !group.options.some(o=>o.isAvailable&&!!o.imageKey)}
+          hint={!group.isAvailable?"Bật bán nhóm trước":undefined}
+          onValueChange={value=>void call("/library/groups/"+group.id,"PATCH",{allowStandalone:value})}/>
+      </View>
+
       {group.options.map(option=><View key={option.id} style={s.line}>
         <Photo imageKey={option.imageKey} label={"Ảnh topping "+option.name}/>
         <Pressable accessibilityRole="button" accessibilityLabel={"Sửa topping "+option.name}
