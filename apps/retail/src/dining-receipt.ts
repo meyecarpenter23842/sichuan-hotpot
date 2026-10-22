@@ -59,6 +59,10 @@ export function printDiningReceipt(bill: Bill): void {
   bill.payments.forEach(p => {
     add("p", (p.method === "CASH" ? "Tiền mặt" : "Chuyển khoản") + " • " +
       money(p.amountVnd) + " • " + p.status);
+    if (p.method === "CASH" && p.cashReceivedVnd !== null) {
+      add("p", "Khách đưa: " + money(p.cashReceivedVnd) +
+        " · Thối: " + money(p.cashReceivedVnd - p.amountVnd));
+    }
     if (p.confirmedAt) add("p", "Xác nhận: " + new Date(p.confirmedAt).toLocaleString("vi-VN") +
       " • NV #" + (p.confirmedById?.slice(0, 8) ?? "—"));
     if (p.status === "PENDING") add("p", "Chưa xác nhận nhận tiền");
