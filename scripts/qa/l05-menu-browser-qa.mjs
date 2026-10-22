@@ -126,7 +126,9 @@ try {
   await page.getByRole("tab", { name: /Giỏ món/ }).click();
   await page.getByText("Lẩu QR QA", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Tăng số lượng Lẩu QR QA" }).click();
-  await page.getByText("740.000đ").first().waitFor();
+  // This second draft uses the DEFAULT 250k size, not the earlier 370k large
+  // variant. Quantity 2 must be 500k, never copy pricing from another line.
+  await page.getByText("500.000đ").first().waitFor();
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
     "restoring an unsent cart must never create a server ticket");
   for (const size of [320, 360, 390, 428, 768, 1280]) {
