@@ -7,7 +7,7 @@ if (process.env.CI !== "1" || process.env.HOTPOT_FIREBASE_CI_FIXTURE !== "1") {
   throw new Error("Only CI can generate a synthetic Firebase descriptor.");
 }
 const app = process.argv[2];
-if (!["admin", "customer"].includes(app)) throw new Error("Usage: node write-ci-firebase-fixture.mjs admin|customer");
+if (!["admin", "customer", "retail"].includes(app)) throw new Error("Usage: node write-ci-firebase-fixture.mjs admin|customer");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const directory = join(root, "apps", app);
 mkdirSync(directory, { recursive: true });

@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { parseApkCertificateFingerprints } from "./apk-certificate.mjs";
 
 const app = process.argv[2];
-if (!["customer", "admin"].includes(app)) {
-  throw new Error("Usage: node scripts/android/apk-fingerprint.mjs customer|admin");
+if (!["customer", "admin", "retail"].includes(app)) {
+  throw new Error("Usage: node scripts/android/apk-fingerprint.mjs customer|admin|retail");
 }
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const appDir = join(root, "apps", app, "android");
@@ -57,6 +57,12 @@ try {
 console.log(`Android app: ${app}`);
 console.log(`APK certificate SHA-1: ${sha1.toUpperCase()}`);
 console.log(`APK certificate SHA-256: ${sha256.toUpperCase()}`);
+if (app === "retail" && !(process.env.CI === "1" && process.env.HOTPOT_FIREBASE_CI_FIXTURE === "1")) {
+  const expected = String(process.env.HOTPOT_RETAIL_EXPECTED_SHA256 || "").replaceAll(":", "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(expected) || sha256.replaceAll(":", "").toLowerCase() !== expected) {
+    throw new Error("Retail signing SHA-256 missing or mismatched; refuse release/upgrade. Check the pinned certificate.");
+  }
+}
 const gradle = readFileSync(join(appDir, "app", "build.gradle"), "utf8");
 if (/release\s*\{[^}]*signingConfig\s+signingConfigs\.debug/s.test(gradle)) {
   console.log("WARNING: This release APK is signed with a DEBUG key. Do not distribute as the final store release.");
