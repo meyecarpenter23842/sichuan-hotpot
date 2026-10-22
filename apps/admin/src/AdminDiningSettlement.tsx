@@ -13,7 +13,8 @@ export type DiningStaffBill = {
     items: { id: string; productName: string; variantName: string | null;
       quantity: number; lineTotalVnd: number }[] }[];
   payments: { id: string; method: "CASH" | "QR"; status: string;
-    amountVnd: number; confirmedAt: string | null; confirmedById: string | null;
+    amountVnd: number; cashReceivedVnd: number | null;
+    confirmedAt: string | null; confirmedById: string | null;
     qr: { imageUrl: string; accountName: string; accountNo: string;
       transferReference: string } | null }[];
 };
@@ -104,6 +105,9 @@ export function AdminDiningSettlement({ token, branchId, sessionId, tableId, rol
     add("div", "Còn thu: " + money(bill.dueVnd), "total");
     bill.payments.forEach(p => {
       add("p", p.method + " · " + money(p.amountVnd) + " · " + p.status +
+        (p.method === "CASH" && p.cashReceivedVnd !== null ?
+          " · Khách đưa " + money(p.cashReceivedVnd) +
+          " · Thối " + money(p.cashReceivedVnd - p.amountVnd) : "") +
         (p.confirmedAt ? " · " + new Date(p.confirmedAt).toLocaleString("vi-VN") +
           " · NV #" + (p.confirmedById?.slice(0, 8) ?? "") : ""));
     });
