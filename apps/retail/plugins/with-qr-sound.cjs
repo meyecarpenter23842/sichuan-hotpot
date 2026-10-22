@@ -9,7 +9,7 @@ module.exports = function withRetailQrSound(config) {
     const target = resolve(appRoot, "android/app/src/main/res/raw");
     if (!existsSync(audio)) throw new Error("Approved Retail QR sound is missing.");
     mkdirSync(target, { recursive: true });
-    copyFileSync(audio, resolve(target, "retail_qr_alert.mp3"));
+    copyFileSync(audio, resolve(target, "new_order_alert.mp3"));
     return config;
   }]);
 };

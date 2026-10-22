@@ -4,7 +4,8 @@ import { Platform } from "react-native";
 import { api, currentSession } from "./pos-api";
 import { API_ORIGIN } from "./api-origin";
 
-const CHANNEL_ID = "retail-qr-v1";
+// Must match the immutable STAFF FCM channel_id sent by the existing NestJS backend.
+const CHANNEL_ID = "new-orders-v3";
 const PUSH_KEY = "hotpot.retail.fcm-registration.v1";
 type Registration = { token: string; branchId: string };
 
@@ -13,7 +14,7 @@ async function channel(): Promise<void> {
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: "Yêu cầu QR bán tại quán",
     importance: Notifications.AndroidImportance.MAX,
-    sound: "retail_qr_alert.mp3",
+    sound: "new_order_alert.mp3",
     vibrationPattern: [0, 300, 160, 300],
     enableVibrate: true,
     showBadge: true,
@@ -127,7 +128,7 @@ async function scheduleQrAlert(test: boolean): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: { title: test ? "Thử âm Retail" : "Yêu cầu QR chờ duyệt",
       body: test ? "Kiểm tra âm QR, không tạo đơn hay hóa đơn." : "Có yêu cầu QR tại quán cần nhân viên xem.",
-      sound: "retail_qr_alert.mp3",
+      sound: "new_order_alert.mp3",
       data: { kind: test ? "RETAIL_SOUND_TEST" : "DINING_PENDING" } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 1, channelId: CHANNEL_ID },

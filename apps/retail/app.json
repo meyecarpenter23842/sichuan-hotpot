@@ -32,7 +32,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "retail-qr-v1",
+          "defaultChannel": "new-orders-v3",
           "color": "#942B35"
         }
       ],

@@ -79,7 +79,7 @@ jobs:
           grep -Fq 'vn.sichuanhotpot.retail' apps/retail/android/app/build.gradle
           grep -Fq 'RETAIL_SIGNING_CONTRACT_V1' apps/retail/android/app/build.gradle
           grep -Fq 'signingConfig signingConfigs.retailRelease' apps/retail/android/app/build.gradle
-          cmp sound-native-android.mp3 apps/retail/android/app/src/main/res/raw/retail_qr_alert.mp3
+          cmp sound-native-android.mp3 apps/retail/android/app/src/main/res/raw/new_order_alert.mp3
           grep -Fq 'android.intent.category.LAUNCHER' apps/retail/android/app/src/main/AndroidManifest.xml
           git diff --exit-code -- apps/retail/app.json
           chmod +x apps/retail/android/gradlew
