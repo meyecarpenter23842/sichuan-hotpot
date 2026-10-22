@@ -30,7 +30,9 @@ test("catalog query returns categories/products/variants in declared sort order"
     return stubMenu;
   } } } };
   const result = await new CatalogController(new CatalogService(fake)).menu("branch-1");
-  assert.equal(result, stubMenu);
+  assert.deepEqual(result, { ...stubMenu, modifierLibrary: undefined, standaloneToppings: [] });
+  assert.equal(captured.select.modifierLibrary.where.allowStandalone, true);
+  assert.equal(captured.select.modifierLibrary.where.branchId, "branch-1");
   assert.deepEqual(captured.where, { id: "branch-1" });
   assert.equal(captured.select.isActive, true);
   assert.equal(captured.select.categories.select.products.select.priceVnd, true);
