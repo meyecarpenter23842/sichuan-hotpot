@@ -3,7 +3,8 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { CartLine, Product } from "./menu-api";
 import { money, productImage } from "./menu-api";
-import { emptySelection, isSelectionValid, lineFromSelection, toggleMultiple, usableComboOptions } from "./menu-cart";
+import { emptySelection, isSelectionValid, lineFromSelection, setOptionQuantity, toggleMultiple, usableComboOptions } from "./menu-cart";
+import { ToppingQuantityGrid } from "./ToppingQuantityGrid";
 
 const ink = "#332322", accent = "#902C34", pale = "#F7F0EB", border = "#E7DDD7";
 export function ProductSheet({ product, onClose, onAdd }: {
@@ -54,14 +55,14 @@ export function ProductSheet({ product, onClose, onAdd }: {
           {product.modifierGroups.map(g => <View key={g.id} style={st.section}>
             <View style={st.sectionTitle}>
               <Text style={st.sectionName}>{g.name}</Text>
-              <Text style={st.hint}>{g.minSelect > 0 ? "Bắt buộc" : "Tùy chọn"} · {g.minSelect}–{g.maxSelect}</Text>
+              <Text style={st.hint}>{g.minSelect > 0 ? "Bắt buộc" : "Tùy chọn"} · {g.minSelect}–{g.maxSelect} phần</Text>
             </View>
-            <View style={st.wrap}>
-              {g.options.filter(o => o.isAvailable).map(o => <Chip key={o.id}
-                text={o.name + (o.priceDeltaVnd ? " +" + money(o.priceDeltaVnd) : "")}
-                checked={(choice.modifiers[g.id] ?? []).includes(o.id)}
-                onPress={() => choose("modifiers", g.id, o.id, g.maxSelect)}/>)}
-            </View>
+            <ToppingQuantityGrid options={g.options}
+              selected={choice.modifiers[g.id] ?? []} max={g.maxSelect}
+              onQuantity={(id, quantity) => setChoice(previous => ({
+                ...previous, modifiers: { ...previous.modifiers,
+                  [g.id]: setOptionQuantity(previous.modifiers[g.id] ?? [], id, quantity, g.maxSelect) },
+              }))}/>
           </View>)}
           {product.kind === "COMBO" && product.comboFixedItems.length > 0 && <View style={st.section}>
             <Text style={st.sectionName}>Có sẵn trong combo</Text>
@@ -117,7 +118,7 @@ const st = StyleSheet.create({
   backdrop: { flex: 1, padding: 12, backgroundColor: "rgba(30,18,15,0.58)", justifyContent: "center" },
   sheet: { backgroundColor: "#FFFFFF", width: "100%", maxWidth: 570, maxHeight: "96%",
     alignSelf: "center", borderRadius: 18, overflow: "hidden" },
-  hero: { width: "100%", height: 190, backgroundColor: pale, position: "relative" },
+  hero: { width: "100%", height: 165, backgroundColor: pale, position: "relative" },
   photo: { height: "100%", width: "100%" },
   photoEmpty: { height: "100%", backgroundColor: pale, justifyContent: "center", alignItems: "center" },
   floatingClose: { position: "absolute", top: 8, right: 8, minWidth: 44, minHeight: 44,
