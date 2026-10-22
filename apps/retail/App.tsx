@@ -270,8 +270,10 @@ export default function App() {
   const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
     c.products.map(p => ({ ...p, categoryId: c.id }))).filter(p =>
       (!categoryId || p.categoryId === categoryId) &&
+      (!toppingOnly || toppingCategoryIds.has(p.categoryId)) &&
       (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
-        .includes(search.toLocaleLowerCase("vi").trim()))), [catalog, categoryId, search]);
+        .includes(search.toLocaleLowerCase("vi").trim()))),
+    [catalog, categoryId, search, toppingOnly, toppingCategoryIds]);
   const removeLine = (id: string) => {
     if (pendingSubmit) return;
     setCart(c => c.filter(x => x.id !== id));
@@ -484,7 +486,6 @@ export default function App() {
       products.length === 0 ? <Text style={st.caption}>Không tìm thấy món phù hợp.</Text> :
         <View style={st.products}>{products.map(p => {
           const image = productImage(p.imageKey);
-          if (toppingOnly && (!p.categoryId || !toppingCategoryIds.has(p.categoryId))) return null;
           return <Pressable key={p.id} accessibilityRole="button"
             accessibilityLabel={"Chọn " + p.name} disabled={!p.isAvailable || !sessionId || !canOrder(role) ||
               !!pendingSubmit || busy || !online}
