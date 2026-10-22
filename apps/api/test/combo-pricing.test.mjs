@@ -168,3 +168,31 @@ test("shared topping combo choice is rejected when topping or source group is un
   assert.throws(() => priceCart([line([randomUUID()])], [make(true, true)]),
     error => error.getStatus?.() === 422);
 });
+
+test("dining LEGACY topping counts are server-priced and capped by group maximum", () => {
+  const toppingId = randomUUID();
+  const dish = {
+    id: comboId, name: "Lẩu QA", kind: "STANDARD", isAvailable: true, priceVnd: 250000,
+    variants: [], comboFixedItems: [], comboGroups: [], modifierAssignments: [],
+    modifierGroups: [{
+      name: "Topping lẩu", branchId: null, minSelect: 0, maxSelect: 3,
+      isAvailable: true,
+      options: [{ id: toppingId, name: "Bò cuộn", isAvailable: true, priceDeltaVnd: 30000 }],
+    }],
+  };
+  const input = (count, qty = 1) => ({
+    productId: dish.id, variantId: null, comboOptionIds: [],
+    modifierIds: Array(count).fill(toppingId), quantity: qty,
+  });
+  const priced = priceCart([input(2)], [dish]);
+  assert.equal(priced.subtotalVnd, 310000);
+  assert.equal(priced.lines[0].unitPriceVnd, 310000);
+  assert.equal(priced.lines[0].modifiers.length, 2);
+  assert.deepEqual(priced.lines[0].modifiers.map(m => m.optionId), [toppingId, toppingId]);
+  assert.equal(priceCart([input(2, 2)], [dish]).subtotalVnd, 620000,
+    "dining legacy price is per serving and must remain backwards-compatible");
+  assert.throws(() => priceCart([input(4)], [dish]), e => e.getStatus?.() === 422);
+  assert.throws(() => priceCart([{
+    ...input(2), modifierIds: [toppingId, randomUUID()],
+  }], [dish]), e => e.getStatus?.() === 422);
+});
