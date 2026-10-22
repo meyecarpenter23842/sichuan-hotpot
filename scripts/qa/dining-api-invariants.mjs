@@ -459,6 +459,38 @@ try {
     .totals.cashCollectedVnd, 745_000, "00:00 VN correctly rolls to next day");
   assert.equal((await diningReport.summary("owner", branch.id, "2024-08-12", "2024-08-12"))
     .totals.cashCollectedVnd, 0, "no UTC/Vietnam midnight double count");
+  // L09: an invoice is immutable after closing, but owners can refund its
+  // confirmed payment later. Two simultaneous refunds must create ONE outflow.
+  const beforeLateRefund = await diningReport.summary("owner", branch.id, vnToday, vnToday);
+  await rejectsCode(settlement.reverse("cashier", branch.id, winner.paymentId, "REFUNDED",
+    "Khách yêu cầu hoàn tiền sau khi đóng bàn"), "DINING_BRANCH_FORBIDDEN");
+  const lateRefunds = await Promise.all([
+    settlement.reverse("owner", branch.id, winner.paymentId, "REFUNDED",
+      "Khách yêu cầu hoàn tiền sau khi đóng bàn"),
+    settlement.reverse("owner", branch.id, winner.paymentId, "REFUNDED",
+      "Khách yêu cầu hoàn tiền sau khi đóng bàn"),
+  ]);
+  assert.equal(lateRefunds.filter(result => !result.replayed).length, 1,
+    "simultaneous closed-invoice refund is recorded exactly once");
+  const afterLateRefund = await diningReport.summary("owner", branch.id, vnToday, vnToday);
+  assert.equal(afterLateRefund.totals.closedInvoiceVnd, beforeLateRefund.totals.closedInvoiceVnd,
+    "refund does not rewrite historical invoice value");
+  assert.equal(afterLateRefund.totals.refundedVnd,
+    beforeLateRefund.totals.refundedVnd + 745_000,
+    "refund is an outflow on audit event day, not on confirmedAt day");
+  assert.equal(afterLateRefund.totals.netCollectedVnd,
+    beforeLateRefund.totals.netCollectedVnd - 745_000,
+    "refund reduces net cashflow exactly once");
+  assert.equal(await prisma.diningAuditEvent.count({ where: {
+    branchId: branch.id, sessionId: session.id, action: "PAYMENT_REFUNDED",
+  } }), 2, "one earlier QR refund plus one late cash refund");
+  assert.equal((await prisma.diningSession.findUniqueOrThrow({ where: { id: session.id } })).status,
+    "CLOSED", "refund must not reopen a settled table");
+  await rejectsCode(settlement.record("cashier", branch.id, session.id, {
+    method: "CASH", amountVnd: 1, cashReceivedVnd: 1,
+    idempotencyKey: "late-charge-" + nonce,
+  }), "DINING_SESSION_NOT_OPEN");
+  console.log("PASS L09 closed-bill refund concurrency, protected financial history and no post-close collection");
   console.log("PASS L08 SQL paid-session invoice, refunds, net, products paging, staff, role/branch and VN-day boundaries");
   console.log("PASS L02/L06 dining auth, commit-only hints/push, exactly-once approval, kitchen lifecycle, guest scope, branch isolation, pricing and revoke");
 } finally {

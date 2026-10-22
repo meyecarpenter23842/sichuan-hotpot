@@ -65,6 +65,17 @@ export class DiningSettlementService {
     if (changed.count !== 1) throw new ConflictException("DINING_SESSION_NOT_OPEN");
   }
 
+  /** Full refunds are allowed after a settled session closes. Keep the invoice
+   * immutable while serializing competing refund requests on its session row.
+   * Only reverse(REFUNDED) may use this lock; new collections still require OPEN/CHECKOUT. */
+  private async lockForRefund(tx: Prisma.TransactionClient, branchId: string, sessionId: string) {
+    const changed = await tx.diningSession.updateMany({
+      where: { id: sessionId, branchId, status: { in: ["OPEN", "CHECKOUT", "CLOSED"] } },
+      data: { updatedAt: new Date() },
+    });
+    if (changed.count !== 1) throw new ConflictException("DINING_SESSION_NOT_FOUND");
+  }
+
   private async amounts(tx: Prisma.TransactionClient, branchId: string, sessionId: string) {
     const [items, payments] = await Promise.all([
       tx.diningTicketItem.aggregate({ where: {
@@ -201,7 +212,8 @@ export class DiningSettlementService {
     return this.transact(async tx => {
       const payment = await tx.diningPayment.findFirst({ where: { id: paymentId, branchId } });
       if (!payment) throw new NotFoundException("DINING_PAYMENT_NOT_FOUND");
-      await this.lock(tx, branchId, payment.sessionId);
+      if (status === "REFUNDED") await this.lockForRefund(tx, branchId, payment.sessionId);
+      else await this.lock(tx, branchId, payment.sessionId);
       if (payment.status === status) return { paymentId, status, replayed: true };
       if (payment.status !== (status === "VOIDED" ? "PENDING" : "CONFIRMED"))
         throw new ConflictException("DINING_PAYMENT_REVERSAL_INVALID");

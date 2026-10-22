@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { Type } from "class-transformer";
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsISO8601, IsIn, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { DiningService } from "./dining.service";
@@ -268,16 +268,19 @@ export class DiningGuestController {
   locator(@Param("qrHandle") handle: string) {
     return this.dining.locator(handle);
   }
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Post("qr/:qrHandle/grants")
   @Header("Cache-Control", "no-store")
   grant(@Param("qrHandle") handle: string) {
     return this.dining.issueGrant(handle);
   }
+  @Throttle({ default: { ttl: 60_000, limit: 240 } })
   @Post("guest/renew")
   @Header("Cache-Control", "no-store")
   renew(@Headers("authorization") credential: string | undefined) {
     return this.dining.renewGuestGrant(credential);
   }
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   @Post("guest/tickets")
   @Header("Cache-Control", "no-store")
   ticket(@Headers("authorization") credential: string | undefined, @Body() input: DiningTicketInput) {

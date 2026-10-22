@@ -44,6 +44,12 @@ try {
     normalizedUsername: username, verifiedEmail: username + "@example.test",
     passwordHash: await hash(password) } });
   const href = web + "?table=" + unique;
+  // Guests in the dining room share a single Wi-Fi/NAT IP. Normal locator
+  // refreshes must not exhaust the protected grant/ticket write-rate budget.
+  for (let i = 0; i < 30; i++) {
+    const response = await fetch(api + "/dining/qr/" + unique);
+    assert.equal(response.status, 200, "shared Wi-Fi QR read " + (i + 1));
+  }
   await page.goto(href, { waitUntil: "domcontentloaded" });
   await page.getByText("Bàn chưa mở phiên phục vụ").waitFor();
   assert.equal(await db.diningTicket.count({ where: { branchId: branch.id } }), 0);
