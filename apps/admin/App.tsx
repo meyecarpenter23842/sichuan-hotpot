@@ -284,6 +284,7 @@ export default function AdminApp() {
   const [tab, setTab] = useState<Tab>("overview");
   // Parent-owned table filters survive tab switches and re-mounting.
   const [diningArea, setDiningArea] = useState<string | null>(null);
+  const [pendingFocusTicket, setPendingFocusTicket] = useState<string | null>(null);
   const [diningFilter, setDiningFilter] = useState<"all" | "available" | "active" | "pending">("all");
   const [diningDisplay, setDiningDisplay] = useState<"grid" | "list">("grid");
   // Parent-owned: switching between bottom tabs must not reset order sub-filter.
@@ -346,11 +347,17 @@ export default function AdminApp() {
     let stop: (() => void) | undefined;
     void watchAdminNotificationResponses(id => {
       setChooseBranch(false);
-      setTab(id?.startsWith("dining:") ? "dining" : "orders");
+      if (id?.startsWith("dining:")) {
+        setPendingFocusTicket(id.slice("dining:".length)); setTab("dining");
+      } else setTab("orders");
     }).then(dispose => { stop = dispose; }).catch(() => undefined);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const params = new URL(window.location.href).searchParams;
-      if (params.get("notification") === "dining") setTab("dining");
+      if (params.get("notification") === "dining") {
+        const ticket = params.get("ticket");
+        if (ticket && /^[0-9a-f-]{36}$/i.test(ticket)) setPendingFocusTicket(ticket);
+        setTab("dining");
+      }
       else if (params.get("notification") === "orders" || params.get("order")) setTab("orders");
     }
     return () => { stop?.(); };
@@ -744,6 +751,7 @@ export default function AdminApp() {
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}>
             <DiningTablesPanel token={token} branchId={branchId} role={branchRole}
+              focusTicketId={pendingFocusTicket} onFocusHandled={() => setPendingFocusTicket(null)}
               selectedArea={diningArea} onAreaChange={setDiningArea}
               filter={diningFilter} onFilterChange={setDiningFilter}
               display={diningDisplay} onDisplayChange={setDiningDisplay}
@@ -886,7 +894,7 @@ export default function AdminApp() {
               {branches.map(branch => <Pressable key={branch.id} accessibilityRole="button"
                 accessibilityLabel={"Chọn chi nhánh " + branch.name}
                 style={styles.branchItem} onPress={() => {
-                  setBranchId(branch.id); setChooseBranch(false); setDiningArea(null); setDiningFilter("all");
+                  setBranchId(branch.id); setChooseBranch(false); setDiningArea(null); setDiningFilter("all"); setPendingFocusTicket(null);
                   setTab(branch.staffRole === "KITCHEN" ? "kitchen"
                     : branch.staffRole === "DRIVER" ? "delivery"
                     : branch.staffRole === "WAITER" || branch.staffRole === "CASHIER"
