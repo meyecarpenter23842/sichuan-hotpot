@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import type { Option } from "./pos-api";
 import { money, productImage } from "./pos-api";
 import { optionQuantity } from "./pos-cart";
@@ -9,12 +9,13 @@ export function ToppingQuantityGrid({ options, selected, max, onQuantity }: {
   options: Option[]; selected: string[]; max: number;
   onQuantity: (id: string, quantity: number) => void;
 }) {
+  const { width } = useWindowDimensions();
   return <View style={s.grid}>
     {options.filter(o => o.isAvailable).map(o => {
       const count = optionQuantity(selected, o.id);
       const image = productImage(o.imageKey);
       const full = selected.length >= max;
-      return <View key={o.id} style={[s.card, count > 0 && s.active]} testID={"modifier-"+o.id}>
+      return <View key={o.id} style={[s.card, width < 500 && s.mobileCard, count > 0 && s.active]} testID={"modifier-"+o.id}>
         {image ? <Image source={{ uri: image }} resizeMode="cover" style={s.photo}/> :
           <View style={s.placeholder}><Text style={s.photoHint}>🥬</Text></View>}
         <View style={s.info}>
@@ -43,6 +44,7 @@ const s=StyleSheet.create({
   card:{width:"48%",minWidth:0,flexDirection:"row",gap:8,padding:7,
     backgroundColor:"#FFFFFF",borderWidth:1,borderColor:border,borderRadius:11},
   active:{borderColor:red,backgroundColor:"#FFF6F5"},
+  mobileCard:{width:"100%"},
   photo:{width:62,height:70,borderRadius:8,backgroundColor:"#F4ECE5"},
   placeholder:{width:62,height:70,borderRadius:8,backgroundColor:"#F4ECE5",
     alignItems:"center",justifyContent:"center"},
