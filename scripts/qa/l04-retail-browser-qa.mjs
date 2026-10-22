@@ -127,6 +127,16 @@ try {
     status: "PENDING_APPROVAL" } }), 0, "no pending QR tickets after staff approval");
   for (const width of [320, 360, 390, 428, 768, 1024, 1280, 1440]) {
     await device.setViewportSize({ width, height: 820 });
+    // React Native Web useWindowDimensions updates after browser resize;
+    // wait for the *actual* responsive branch before judging real overflow.
+    if (width < 768) {
+      await device.getByRole("tab", { name: "Bàn", exact: true }).waitFor({ timeout: 7000 });
+      await device.getByTestId("retail-desk-menu").waitFor({ state: "detached", timeout: 7000 });
+    } else {
+      await device.getByTestId("retail-desk-menu").waitFor({ timeout: 7000 });
+    }
+    await device.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const layout = await device.evaluate(() => {
       const extra = [...document.querySelectorAll("*")].map(node => {
         const r = node.getBoundingClientRect();
