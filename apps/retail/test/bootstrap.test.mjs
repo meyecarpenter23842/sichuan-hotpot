@@ -39,7 +39,8 @@ test("real branch-scoped staff and menu flow, no demo checkout", () => {
   assert.match(settlement, /"\/transfer"/);
   assert.match(settlement, /"\/confirm"/);
   assert.match(settlement, /"\/refund"/);
-  assert.match(settlement, /"\/clean"/);
+  // Cleaning is a table-list action, not part of the settlement form.
+  assert.match(app, /"\/clean"/);
   assert.doesNotMatch(app, /\/customer\/checkout|payment\/confirm|\/delivery\//);
 });
 test("real image paths and sizes, modifiers, combo requirements respect backend limits", () => {
