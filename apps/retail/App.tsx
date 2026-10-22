@@ -253,6 +253,14 @@ export default function App() {
       }
     });
   };
+  const productPhotos = useMemo(() => {
+    const photos = new Map<string, string>();
+    for (const group of catalog?.categories ?? []) for (const product of group.products) {
+      const imageUrl = productImage(product.imageKey);
+      if (imageUrl) photos.set(product.id, imageUrl);
+    }
+    return photos;
+  }, [catalog]);
   const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
     c.products.map(p => ({ ...p, categoryId: c.id }))).filter(p =>
       (!categoryId || p.categoryId === categoryId) &&
@@ -400,9 +408,9 @@ export default function App() {
       <Text style={st.subhead}>Món chuẩn bị gửi</Text>
       {!cart.length ? <Text style={st.caption}>Chưa chọn món trong giỏ.</Text> :
         cart.map(l => <View key={l.id} style={st.draftLine}>
-          {catalog?.categories.flatMap(c => c.products).find(p => p.id === l.item.productId)?.imageKey ?
-            <Image source={{ uri: productImage(catalog.categories.flatMap(c => c.products)
-              .find(p => p.id === l.item.productId)!.imageKey) }} style={st.draftPhoto} resizeMode="cover"/> :
+          {productPhotos.has(l.item.productId) ?
+            <Image source={{ uri: productPhotos.get(l.item.productId)! }}
+              style={st.draftPhoto} resizeMode="cover"/> :
             <View style={st.draftPhotoEmpty}><Text>🍲</Text></View>}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={st.itemText}>{l.item.quantity} × {l.name} {l.variantName ? "· " + l.variantName : ""}</Text>
