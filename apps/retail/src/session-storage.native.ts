@@ -9,7 +9,7 @@ function valid(value: unknown): value is Tokens {
     typeof t.refreshToken === "string" && t.refreshToken.length > 0 &&
     typeof t.accessTokenExpiresInSeconds === "number";
 }
-/** Android KeyStore-backed credential persistence. Never use AsyncStorage for JWT. */
+/** Android KeyStore-backed credential persistence. Tokens are never written to unencrypted stores. */
 export async function loadStoredSession(): Promise<Tokens | null> {
   const raw = await SecureStore.getItemAsync(STORAGE_KEY);
   if (!raw) return null;
