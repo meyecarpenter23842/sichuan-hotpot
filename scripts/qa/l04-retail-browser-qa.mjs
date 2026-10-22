@@ -44,11 +44,14 @@ try {
   await db.modifierOption.create({ data: {
     groupId: toppingGroup.id, name: "Bò cuộn QA", priceDeltaVnd: 30_000,
   } });
-  const toppingCategory = await db.catalogCategory.create({ data: {
-    branchId: branch.id, name: "Topping gọi thêm", isPublished: true,
+  // One original shared ModifierOption is sold standalone. No duplicate Product.
+  const sharedGroup = await db.modifierGroup.create({ data: {
+    branchId: branch.id, name: "Topping dùng chung QA", minSelect: 0, maxSelect: 5,
+    isAvailable: true, allowStandalone: true, imageKey: "catalog-media/qa-group.webp",
   } });
-  await db.product.create({ data: {
-    categoryId: toppingCategory.id, name: "Nấm ăn thêm QA", priceVnd: 20_000, isAvailable: true,
+  const soloOption = await db.modifierOption.create({ data: {
+    groupId: sharedGroup.id, name: "Nấm ăn thêm QA", priceDeltaVnd: 20_000,
+    isAvailable: true, imageKey: "catalog-media/qa-nam.webp",
   } });
   // Product cards must form a real 4-column compact square-image grid at 1280+, not
   // stretch into very wide landscape cards. Check real catalogue fixtures.
@@ -226,6 +229,8 @@ try {
   });
   assert.equal(addon.items[0].productName, "Nấm ăn thêm QA");
   assert.equal(addon.items[0].lineTotalVnd, 20_000);
+  assert.equal(addon.items[0].productId, null, "standalone topping must not create duplicate Product");
+  assert.equal(addon.items[0].selectionSnapshot.standaloneToppingOptionId, soloOption.id);
   assert.deepEqual(errors, []);
   await second.close();
   console.log("PASS L04 Retail real auth/branch, multi-device table session, idempotent staff ticket, QR review and responsive 360–1440");
