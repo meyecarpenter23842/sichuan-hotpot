@@ -17,7 +17,8 @@ test("Native QR test uses local device sound, independent of orders", () => {
   const notification = src("src/dining-push.native.ts");
   assert.match(audio, /testRetailNativeSound/);
   assert.match(notification, /kind: "RETAIL_SOUND_TEST"/);
-  assert.match(notification, /retail_qr_alert\.mp3/);
+  assert.match(notification, /new_order_alert\.mp3/);
+  assert.match(notification, /CHANNEL_ID = "new-orders-v3"/);
 });
 test("Native receipt supports Android share without web window.print", () => {
   const native = src("src/dining-receipt.native.ts");
