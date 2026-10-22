@@ -119,17 +119,28 @@ export default function App() {
       const url = productImage(product.imageKey);
       if (url) images.set(product.id, url);
     }
+    for (const topping of catalog?.standaloneToppings ?? []) {
+      const url = productImage(topping.imageKey);
+      if (url) images.set(topping.id, url);
+    }
     return images;
   }, [catalog]);
-  const toppingCategoryIds = useMemo(() => new Set((catalog?.categories ?? [])
-    .filter(group => /topping|ăn kèm|gọi thêm|món thêm/u.test(group.name.toLocaleLowerCase("vi")))
-    .map(group => group.id)), [catalog]);
-  const products = useMemo(() => (catalog?.categories ?? [])
-    .flatMap(group => group.products.map(product => ({ ...product, categoryId: group.id })))
-    .filter(p => (!category || p.categoryId === category) &&
-      (!toppingOnly || toppingCategoryIds.has(p.categoryId)) &&
-      (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
-        .includes(search.trim().toLocaleLowerCase("vi")))), [catalog, category, search, toppingOnly, toppingCategoryIds]);
+  // View models only: these UUIDs remain ModifierOption IDs.
+  // Backend persists them as null-product dining ticket lines, never duplicate Products.
+  const standaloneProducts = useMemo(() => (catalog?.standaloneToppings ?? []).map(option => ({
+    id: option.id, categoryId: "__standalone_topping__", standaloneTopping: true,
+    name: option.name, description: option.groupName, imageKey: option.imageKey,
+    priceVnd: option.priceVnd, isAvailable: option.isAvailable,
+    kind: "STANDARD" as const, variants: [], modifierGroups: [],
+    comboGroups: [], comboFixedItems: [],
+  })), [catalog]);
+  const products = useMemo(() => (
+    toppingOnly ? standaloneProducts : (catalog?.categories ?? [])
+      .flatMap(group => group.products.map(product => ({ ...product, categoryId: group.id })))
+  ).filter(p => (toppingOnly || !category || p.categoryId === category) &&
+    (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
+      .includes(search.trim().toLocaleLowerCase("vi")))),
+    [catalog, category, search, toppingOnly, standaloneProducts]);
   const updateGrant = useCallback((value: SavedGrant | null) => {
     guestRef.current = value;
     setGrant(value);
@@ -398,14 +409,14 @@ export default function App() {
                   onPress={() => { setCategory(g.id); setToppingOnly(false); }}/>)}
               </ScrollView>
               <View style={s.menuHeading}>
-                <Text style={s.sectionHeading}>{category
+                <Text style={s.sectionHeading}>{toppingOnly ? "Topping gọi thêm" : category
                   ? catalog?.categories.find(g => g.id === category)?.name ?? "Thực đơn"
                   : "Món nổi bật"}</Text>
                 <Text style={s.micro}>{products.length} món</Text>
               </View>
-              {toppingOnly && toppingCategoryIds.size === 0 &&
-                <Text style={s.empty}>Quán chưa đăng món topping bán riêng trong thực đơn.
-                  Vui lòng nhờ nhân viên hỗ trợ hoặc chọn món khác.</Text>}
+              {toppingOnly && !standaloneProducts.length &&
+                <Text style={s.empty}>Quán chưa bật nhóm topping gọi lẻ.
+                  Vui lòng nhờ nhân viên hỗ trợ.</Text>}
               {!products.length ? <Text style={s.empty}>Không có món phù hợp.</Text> :
                 <View style={s.grid}>{products.map(product => {
                   const image = productImage(product.imageKey);
