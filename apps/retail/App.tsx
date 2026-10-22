@@ -502,7 +502,11 @@ export default function App() {
             {tableStrip}
             <View style={st.tableGrid}>{shownTables.map(t => {
               const count = t.sessions[0]?._count.tickets ?? 0;
-              return <Pressable key={t.id} accessibilityRole="button" onPress={() => selectTable(t)}
+              return <Pressable key={t.id} accessibilityRole="button"
+                accessibilityLabel={t.name + (count ? ", chờ duyệt " + count :
+                  t.sessions.length ? ", đang có khách" : t.needsCleaning ? ", chờ dọn" : ", trống")}
+                accessibilityState={{ selected: selectedTableId === t.id }}
+                onPress={() => selectTable(t)}
                 style={[st.tableTile, count > 0 ? st.pendingTile : t.sessions.length ? st.openTile : t.needsCleaning ? st.pendingTile : st.freeTile]}>
                 <Text style={st.tableCode}>{t.code}</Text><Text style={st.itemText}>{t.name}</Text>
                 <Text style={st.caption}>{count ? "🔔 " + count + " chờ duyệt" :
