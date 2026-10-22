@@ -108,6 +108,8 @@ test("P0 #277 topping quantity, photographed picker, snapshot and standalone sal
   assert.match(grid, /accessibilityLabel=\{"Tăng "\+o\.name\}/);
   assert.match(grid, /productImage\(o\.imageKey \?\? null\)/);
   assert.match(model, /setOptionQuantity/);
+  assert.doesNotMatch(model, /selection\.length !== new Set\(selection\)\.size/);
+  assert.match(model, /selection\.length > group\.maxSelect/);
   assert.match(model, /Array\(desired\)\.fill\(id\)/);
   assert.match(model, /cartSelectionLabels/);
   assert.match(sheet, /ToppingQuantityGrid/);
