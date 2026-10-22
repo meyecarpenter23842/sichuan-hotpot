@@ -106,7 +106,7 @@ test("P0 #277 topping quantity, photographed picker, snapshot and standalone sal
   const kitchen = read("../../api/src/dining/dining.service.ts");
   const receipt = read("../src/dining-receipt.ts");
   assert.match(grid, /accessibilityLabel=\{"Tăng "\+o\.name\}/);
-  assert.match(grid, /productImage\(o\.imageKey\)/);
+  assert.match(grid, /productImage\(o\.imageKey \?\? null\)/);
   assert.match(model, /setOptionQuantity/);
   assert.match(model, /Array\(desired\)\.fill\(id\)/);
   assert.match(model, /cartSelectionLabels/);
