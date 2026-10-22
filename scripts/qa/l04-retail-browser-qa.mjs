@@ -38,6 +38,18 @@ try {
     isPublished: true } });
   const product = await db.product.create({ data: { categoryId: category.id,
     name: "Lẩu Retail QA", priceVnd: 250_000, isAvailable: true } });
+  const toppingGroup = await db.modifierGroup.create({ data: {
+    productId: product.id, name: "Topping Lẩu", minSelect: 0, maxSelect: 3,
+  } });
+  await db.modifierOption.create({ data: {
+    groupId: toppingGroup.id, name: "Bò cuộn QA", priceDeltaVnd: 30_000,
+  } });
+  const toppingCategory = await db.catalogCategory.create({ data: {
+    branchId: branch.id, name: "Topping gọi thêm", isPublished: true,
+  } });
+  await db.product.create({ data: {
+    categoryId: toppingCategory.id, name: "Nấm ăn thêm QA", priceVnd: 20_000, isAvailable: true,
+  } });
   // Product cards must form a real 4-column compact square-image grid at 1280+, not
   // stretch into very wide landscape cards. Check real catalogue fixtures.
   await db.product.createMany({ data: [
@@ -65,8 +77,16 @@ try {
   await page.getByRole("button", { name: "Mở phiên bàn" }).click();
   await page.getByRole("button", { name: "Chọn Lẩu Retail QA" }).waitFor();
   await page.getByRole("button", { name: "Chọn Lẩu Retail QA" }).click();
+  await page.getByRole("button", { name: "Tăng Bò cuộn QA" }).click();
+  await page.getByRole("button", { name: "Tăng Bò cuộn QA" }).click();
+  await page.getByText("Bò cuộn QA: 2", { exact: false }).first().waitFor({ timeout: 8000 }).catch(async () => {
+    // The visible counter's accessible name is the option and its quantity.
+    await page.getByLabel("Bò cuộn QA: 2").waitFor();
+  });
+  await page.screenshot({ path: "apps/retail/qa-artifacts/topping-picker-390.png" });
   await page.getByRole("button", { name: "Thêm 1 vào hóa đơn" }).click();
   await page.getByText("1 món trong giỏ bàn").waitFor();
+  await page.getByText("Topping Lẩu: 2 × Bò cuộn QA").waitFor();
   await page.getByRole("button", { name: "Xem hóa đơn" }).click();
   await page.getByTestId("retail-bill-accepted").waitFor();
   await page.getByRole("tab", { name: "Hóa đơn (1)" }).waitFor();
@@ -81,7 +101,10 @@ try {
     include: { items: true },
   });
   assert.equal(approved.status, "APPROVED");
-  assert.equal(approved.items[0].lineTotalVnd, 250_000);
+  assert.equal(approved.items[0].lineTotalVnd, 310_000);
+  const snapshot = approved.items[0].selectionSnapshot;
+  assert.equal(snapshot.modifiers.filter(x => x.name === "Bò cuộn QA").length, 2,
+    "staff ticket must preserve topping quantity in server snapshot");
   // Second real browser session sees the same table after 5-second polling / reload.
   const second = await browser.newContext({ viewport: { width: 1024, height: 768 } });
   const device = await second.newPage();
@@ -126,6 +149,7 @@ try {
   await device.getByTestId("retail-bill-accepted").getByText("Món đã xác nhận (2)").waitFor();
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id,
     status: "PENDING_APPROVAL" } }), 0, "no pending QR tickets after staff approval");
+  await device.getByText("Topping: 2 × Bò cuộn QA").waitFor();
   for (const width of [320, 360, 390, 428, 768, 1024, 1280, 1440]) {
     await device.setViewportSize({ width, height: 820 });
     // React Native Web useWindowDimensions updates after browser resize;
@@ -181,6 +205,20 @@ try {
     }
     await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
   }
+  // A separately configured, real-priced topping product can be ordered on an
+  // already-open table. This creates a new STAFF ticket, not an edit to hotpot.
+  await device.getByRole("button", { name: "🥬 Gọi topping lẻ" }).click();
+  await device.getByRole("button", { name: "Chọn Nấm ăn thêm QA" }).click();
+  await device.getByRole("button", { name: "Thêm 1 vào hóa đơn" }).click();
+  await device.getByRole("button", { name: "Xác nhận & gửi Bếp" }).click();
+  await device.getByText("Đã gửi món xuống Bếp.").waitFor();
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id, source: "STAFF" } }), 2);
+  const addon = await db.diningTicket.findFirstOrThrow({
+    where: { sessionId: session.id, source: "STAFF" },
+    orderBy: { createdAt: "desc" }, include: { items: true },
+  });
+  assert.equal(addon.items[0].productName, "Nấm ăn thêm QA");
+  assert.equal(addon.items[0].lineTotalVnd, 20_000);
   assert.deepEqual(errors, []);
   await second.close();
   console.log("PASS L04 Retail real auth/branch, multi-device table session, idempotent staff ticket, QR review and responsive 360–1440");
