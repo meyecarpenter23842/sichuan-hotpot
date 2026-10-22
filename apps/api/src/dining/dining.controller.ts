@@ -7,6 +7,8 @@ import { DiningSettlementService } from "./dining-settlement.service";
 
 class DiningLineInput {
   @IsUUID("4") productId!: string;
+  // Discriminant: productId is a ModifierOption UUID only for standalone addons.
+  @IsOptional() @IsBoolean() standaloneTopping?: boolean;
   @IsOptional() @IsUUID("4") variantId?: string | null;
   @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) modifierIds!: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(30) @IsUUID("4", { each: true }) comboOptionIds?: string[];
