@@ -3,6 +3,7 @@ import { ThrottlerGuard } from "@nestjs/throttler";
 import { Type } from "class-transformer";
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsISO8601, IsIn, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { DiningService } from "./dining.service";
+import { DiningSettlementService } from "./dining-settlement.service";
 
 class DiningLineInput {
   @IsUUID("4") productId!: string;
@@ -77,7 +78,8 @@ class RejectTicketInput {
 
 @Controller("dining/branches/:branchId")
 export class DiningStaffController {
-  constructor(private readonly dining: DiningService) {}
+  constructor(private readonly dining: DiningService,
+    private readonly settlement: DiningSettlementService) {}
 
   @Get("areas")
   @Header("Cache-Control", "no-store")
@@ -140,14 +142,14 @@ export class DiningStaffController {
   cleanTable(@Headers("authorization") auth: string | undefined,
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("tableId", ParseUUIDPipe) tableId: string) {
-    return this.dining.cleanTable(auth, branchId, tableId);
+    return this.settlement.cleaned(auth, branchId, tableId);
   }
   @Post("sessions/:sessionId/checkout")
   @Header("Cache-Control", "no-store")
   checkout(@Headers("authorization") auth: string | undefined,
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("sessionId", ParseUUIDPipe) sessionId: string) {
-    return this.dining.checkout(auth, branchId, sessionId);
+    return this.settlement.checkout(auth, branchId, sessionId);
   }
   @Post("sessions/:sessionId/payments")
   @Header("Cache-Control", "no-store")
@@ -155,14 +157,14 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("sessionId", ParseUUIDPipe) sessionId: string,
     @Body() input: DiningPaymentInput) {
-    return this.dining.recordPayment(auth, branchId, sessionId, input);
+    return this.settlement.record(auth, branchId, sessionId, input);
   }
   @Post("payments/:paymentId/confirm")
   @Header("Cache-Control", "no-store")
   confirmPayment(@Headers("authorization") auth: string | undefined,
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("paymentId", ParseUUIDPipe) paymentId: string) {
-    return this.dining.confirmPayment(auth, branchId, paymentId);
+    return this.settlement.confirm(auth, branchId, paymentId);
   }
   @Post("payments/:paymentId/void")
   @Header("Cache-Control", "no-store")
@@ -170,7 +172,7 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("paymentId", ParseUUIDPipe) paymentId: string,
     @Body() input: DiningReasonInput) {
-    return this.dining.reversePayment(auth, branchId, paymentId, "VOIDED", input.reason);
+    return this.settlement.reverse(auth, branchId, paymentId, "VOIDED", input.reason);
   }
   @Post("payments/:paymentId/refund")
   @Header("Cache-Control", "no-store")
@@ -186,7 +188,7 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("ticketId", ParseUUIDPipe) ticketId: string,
     @Body() input: DiningReasonInput) {
-    return this.dining.voidApprovedTicket(auth, branchId, ticketId, input.reason);
+    return this.settlement.voidTicket(auth, branchId, ticketId, input.reason);
   }
   @Post("sessions/:sessionId/close")
   @Header("Cache-Control", "no-store")
