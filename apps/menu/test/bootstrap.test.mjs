@@ -91,7 +91,7 @@ test("mobile first: safe area, tabs, loading/offline/empty and large hit targets
 
 test("P0 #277 photo topping quantities and independently orderable catalog products", () => {
   const grid = read("../src/ToppingQuantityGrid.tsx");
-  assert.match(grid, /productImage\(o\.imageKey\)/);
+  assert.match(grid, /productImage\(o\.imageKey \?\? null\)/);
   assert.match(grid, /optionQuantity\(selected, o\.id\)/);
   assert.match(grid, /width < 500/);
   assert.match(cart, /setOptionQuantity/);
