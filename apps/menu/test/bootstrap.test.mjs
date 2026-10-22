@@ -100,6 +100,8 @@ test("P0 #277 photo topping quantities and independently orderable catalog produ
   assert.match(cart, /Array\(desired\)\.fill\(id\)/);
   assert.match(sheet, /ToppingQuantityGrid/);
   assert.match(app, /🥬 Gọi topping lẻ/);
-  assert.match(app, /toppingCategoryIds\.has\(p\.categoryId\)/);
+  assert.match(app, /standaloneProducts/);
+  assert.match(app, /standaloneTopping: true/);
+  assert.doesNotMatch(app, /toppingCategoryIds\.has\(p\.categoryId\)/);
   assert.match(app, /cartSelectionLabels/);
 });
