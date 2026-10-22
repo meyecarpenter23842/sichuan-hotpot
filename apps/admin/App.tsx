@@ -11,6 +11,7 @@ import {
 } from "./src/api";
 import { CatalogPanel } from "./src/CatalogPanel";
 import { DiningTablesPanel } from "./src/DiningTablesPanel";
+import { DiningKitchenPanel } from "./src/DiningKitchenPanel";
 import { DiningConfigurationPanel } from "./src/DiningConfigurationPanel";
 import { StatusSwitch } from "./src/StatusSwitch";
 import { BranchPanel } from "./src/BranchPanel";
@@ -343,13 +344,14 @@ export default function AdminApp() {
   useEffect(() => {
     void configureAdminNotificationPresentation().catch(() => undefined);
     let stop: (() => void) | undefined;
-    void watchAdminNotificationResponses(() => {
+    void watchAdminNotificationResponses(id => {
       setChooseBranch(false);
-      setTab("orders");
+      setTab(id?.startsWith("dining:") ? "dining" : "orders");
     }).then(dispose => { stop = dispose; }).catch(() => undefined);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const params = new URL(window.location.href).searchParams;
-      if (params.get("notification") === "orders" || params.get("order")) setTab("orders");
+      if (params.get("notification") === "dining") setTab("dining");
+      else if (params.get("notification") === "orders" || params.get("order")) setTab("orders");
     }
     return () => { stop?.(); };
   }, []);
@@ -749,6 +751,8 @@ export default function AdminApp() {
           </ScrollView> :
           (tab === "orders" || tab === "kitchen" || tab === "delivery" || tab === "lookup") && branchId
             && branches.length > 0 ?
+            <View style={{ flex: 1 }}>
+            {tab === "kitchen" && <DiningKitchenPanel token={token} branchId={branchId} />}
             <OrderQueuePanel key={branchId + ":" + tab} token={token} branchId={branchId}
               role={branchRole} mode={tab === "lookup" ? "orders" : tab} active
               group={tab === "lookup" ? "history" : orderGroup}
@@ -780,7 +784,8 @@ export default function AdminApp() {
               onClearReportMetric={() => setReportMetric(null)}
               onHistoryStatusChange={next => {
                 setReportMetric(null); setHistoryStatus(next);
-              }} /> :
+              }} />
+            </View> :
           <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!!notice && <View style={styles.pagePadding}><Notice text={notice} /></View>}
