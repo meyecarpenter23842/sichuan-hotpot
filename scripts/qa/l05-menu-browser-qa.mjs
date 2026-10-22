@@ -41,11 +41,13 @@ try {
   await db.modifierOption.create({ data: {
     groupId: group.id, name: "Bò cuộn QR QA", priceDeltaVnd: 30_000,
   } });
-  const addonCategory = await db.catalogCategory.create({ data: {
-    branchId: branch.id, name: "Topping gọi thêm", isPublished: true,
+  const sharedGroup = await db.modifierGroup.create({ data: {
+    branchId: branch.id, name: "Topping bán lẻ QA", minSelect: 0, maxSelect: 5,
+    isAvailable: true, allowStandalone: true, imageKey: "catalog-media/qa-group.webp",
   } });
-  await db.product.create({ data: { categoryId: addonCategory.id,
-    name: "Nấm lẻ QR QA", priceVnd: 20_000, isAvailable: true,
+  const solo = await db.modifierOption.create({ data: {
+    groupId: sharedGroup.id, name: "Nấm lẻ QR QA", priceDeltaVnd: 20_000,
+    isAvailable: true, imageKey: "catalog-media/qa-nam.webp",
   } });
   const variant = await db.productVariant.create({ data: { productId: product.id,
     name: "Lớn", priceDeltaVnd: 120_000, isAvailable: true } });
@@ -137,8 +139,27 @@ try {
   await page.getByText("Nhân viên đã xác nhận · Đã gửi Bếp").waitFor();
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
     "reload and status sync must not duplicate tickets");
+  // Same original ModifierOption in a guest QR request: 2x20k, new PENDING ticket,
+  // no kitchen work until a staff member approves it.
+  await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await page.getByRole("button", { name: "🥬 Gọi topping lẻ" }).click();
+  await page.getByRole("button", { name: "Chọn Nấm lẻ QR QA" }).click();
+  await page.getByRole("button", { name: "Tăng số lượng" }).click();
+  await page.getByRole("button", { name: "Thêm 2 vào giỏ" }).click();
+  await page.getByRole("tab", { name: /Giỏ món/ }).click();
+  await page.getByRole("button", { name: "Gửi yêu cầu gọi món" }).click();
+  await page.getByText("Đang chờ nhân viên xác nhận", { exact: true }).waitFor();
+  const addon = await db.diningTicket.findFirstOrThrow({
+    where: { sessionId: session.id, source: "QR", status: "PENDING_APPROVAL" },
+    include: { items: true },
+  });
+  assert.equal(addon.items[0].productId, null);
+  assert.equal(addon.items[0].lineTotalVnd, 40_000);
+  assert.equal(addon.items[0].selectionSnapshot.standaloneToppingOptionId, solo.id);
+  assert.equal(await db.product.count({ where: { name: "Nấm lẻ QR QA" } }), 0);
   // An unsent draft must remain in this browser tab after a refresh (no second order).
   await page.getByRole("tab", { name: "Thực đơn" }).click();
+  await page.getByRole("button", { name: "Tất cả" }).click();
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).click();
   await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -148,7 +169,7 @@ try {
   // This second draft uses the DEFAULT 250k size, not the earlier 370k large
   // variant. Quantity 2 must be 500k, never copy pricing from another line.
   await page.getByText("500.000đ").first().waitFor();
-  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 2,
     "restoring an unsent cart must never create a server ticket");
   for (const size of [320, 360, 390, 428, 768, 1280]) {
     await page.setViewportSize({ width: size, height: size === 320 ? 568 : 844 });
@@ -185,7 +206,7 @@ try {
   await page.getByText("Phiên bàn đã kết thúc").waitFor();
   await other.reload({ waitUntil: "domcontentloaded" });
   await other.getByText("Mã QR không hợp lệ").waitFor();
-  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1);
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 2);
   assert.deepEqual(errors, []);
   console.log("PASS L05 QR guest: unopened table, priced variant, pending-only kitchen, separate guests, staff review, grant renew, reload, QR revoke, 320–768 responsive");
 } finally {
