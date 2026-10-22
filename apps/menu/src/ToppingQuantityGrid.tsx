@@ -13,7 +13,7 @@ export function ToppingQuantityGrid({ options, selected, max, onQuantity }: {
   return <View style={s.grid}>
     {options.filter(o => o.isAvailable).map(o => {
       const count = optionQuantity(selected, o.id);
-      const image = productImage(o.imageKey);
+      const image = productImage(o.imageKey ?? null);
       const full = selected.length >= max;
       return <View key={o.id} style={[s.card, width < 500 && s.mobileCard, count > 0 && s.active]} testID={"modifier-"+o.id}>
         {image ? <Image source={{ uri: image }} resizeMode="cover" style={s.photo}/> :
