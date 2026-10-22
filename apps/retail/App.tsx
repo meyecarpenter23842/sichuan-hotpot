@@ -252,32 +252,48 @@ export default function App() {
     setCart(c => c.filter(x => x.id !== id));
   };
 
-  const tableStrip = <View style={st.tableSection}>
-    <View style={st.sectionHead}><Text style={st.sectionTitle}>Khu vực & bàn</Text>
-      <Text style={st.caption}>{tables.filter(t => t.sessions.length > 0).length} bàn đang phục vụ</Text></View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      contentContainerStyle={st.chips}>
-      <Chip label="Tất cả khu vực" active={!areaId} onPress={() => setAreaId(null)}/>
-      {usableAreas.map(a => <Chip key={a.id} label={a.name} active={areaId === a.id}
-        onPress={() => setAreaId(a.id)}/>)}
-    </ScrollView>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      contentContainerStyle={st.chips}>
-      {shownTables.map(t => {
-        const active = !!t.sessions.length;
-        const waiting = t.sessions[0]?._count.tickets ?? 0;
-        return <Pressable key={t.id} accessibilityRole="button"
-          accessibilityLabel={t.name + (waiting ? ", chờ duyệt " + waiting : active ? ", đang có khách" : t.needsCleaning ? ", chờ dọn" : ", trống")}
-          onPress={() => selectTable(t)} style={[st.tableChip,
-            selectedTableId === t.id && st.tableSelected, waiting > 0 && st.tablePending]}>
-          <Text style={[st.tableCode, selectedTableId === t.id && st.selectedText]}>{t.code}</Text>
-          <Text style={[st.caption, selectedTableId === t.id && st.selectedText]}>
-            {waiting ? "🔔 " + waiting + " chờ" : active ? "Có khách" : t.needsCleaning ? "Chờ dọn" : "Trống"}
-          </Text>
-        </Pressable>;
-      })}
-      {!shownTables.length && <Text style={st.caption}>Chưa có bàn được bật trong khu vực.</Text>}
-    </ScrollView>
+  // A single compact desktop worktop: area filters and the live table strip
+  // share one row so the menu and invoice keep the useful viewport height.
+  const areaFilters = <ScrollView horizontal showsHorizontalScrollIndicator={false}
+    style={desktop ? st.areaScroll : undefined} contentContainerStyle={st.chips}>
+    <Chip label="Tất cả" active={!areaId} onPress={() => setAreaId(null)}/>
+    {usableAreas.map(a => <Chip key={a.id} label={a.name} active={areaId === a.id}
+      onPress={() => setAreaId(a.id)}/>)}
+  </ScrollView>;
+  const tableStrip = <View testID="retail-table-strip" style={st.tableSection}>
+    {desktop ? <View style={st.desktopTableRow}>
+      <View style={st.desktopAreaWrap}>
+        <Text style={st.tableMiniLabel}>KHU VỰC</Text>
+        {areaFilters}
+      </View>
+      <View style={st.desktopTableWrap}>
+        <Text style={st.tableMiniLabel}>BÀN · {tables.filter(t => t.sessions.length > 0).length} ĐANG PHỤC VỤ</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={st.tableScroll} contentContainerStyle={st.chips}>
+          {shownTables.map(t => {
+            const active = !!t.sessions.length;
+            const waiting = t.sessions[0]?._count.tickets ?? 0;
+            return <Pressable key={t.id} accessibilityRole="button"
+              accessibilityLabel={t.name + (waiting ? ", chờ duyệt " + waiting : active ? ", đang có khách" : t.needsCleaning ? ", chờ dọn" : ", trống")}
+              onPress={() => selectTable(t)} style={[st.tableChip,
+                waiting > 0 ? st.tablePending : active ? st.tableOpen : t.needsCleaning ? st.tableDirty : st.tableFree,
+                selectedTableId === t.id && st.tableSelected]}>
+              <Text style={[st.tableCode, selectedTableId === t.id && st.selectedText]}>{t.code}</Text>
+              <Text numberOfLines={1} style={[st.tableState, selectedTableId === t.id && st.selectedText]}>
+                {waiting ? waiting + " chờ xác nhận" : active ? "Đang phục vụ" : t.needsCleaning ? "Chờ dọn" : "Trống"}
+              </Text>
+            </Pressable>;
+          })}
+          {!shownTables.length && <Text style={st.caption}>Khu vực chưa có bàn.</Text>}
+        </ScrollView>
+      </View>
+    </View> : <>
+      <View style={st.sectionHead}>
+        <Text style={st.sectionTitle}>Khu vực & bàn</Text>
+        <Text style={st.caption}>{tables.filter(t => t.sessions.length > 0).length} đang phục vụ</Text>
+      </View>
+      {areaFilters}
+    </>}
   </View>;
 
   const approvalPanel = currentApprovals.length > 0 && canOrder(role) && <View style={st.approvals}>
@@ -370,7 +386,7 @@ export default function App() {
   const menuPanel = <View style={st.menuPanel}>
     <View style={st.sectionHead}><View>
       <Text style={st.sectionTitle}>Thực đơn</Text>
-      <Text style={st.caption}>Ảnh và giá lấy từ cửa hàng · giá chốt tại server</Text>
+      <Text style={st.caption}>Chọn món cho bàn · giá chốt tại quán</Text>
     </View><Text style={st.caption}>{products.length} món</Text></View>
     <TextInput style={st.input} placeholder="Tìm lẩu, trà sữa, combo, topping…"
       placeholderTextColor="#978984" value={search} onChangeText={setSearch}
@@ -387,7 +403,7 @@ export default function App() {
           return <Pressable key={p.id} accessibilityRole="button"
             accessibilityLabel={"Chọn " + p.name} disabled={!p.isAvailable || !sessionId || !canOrder(role) ||
               !!pendingSubmit || busy || !online}
-            onPress={() => setSelectedProduct(p)} style={[st.product, !p.isAvailable && st.faded]}>
+            onPress={() => setSelectedProduct(p)} style={[st.product, desktop && width >= 1200 && st.productWide, !p.isAvailable && st.faded]}>
             {image ? <Image source={{ uri: image }} style={st.productPhoto} resizeMode="cover"/> :
               <View style={st.productEmpty}><Text style={st.productPlaceholder}>LẨU TỨ XUYÊN</Text></View>}
             <View style={st.productBody}>
@@ -420,15 +436,15 @@ export default function App() {
       </View>
     </View> : <>
       <View style={st.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={st.brand}>LẨU TỨ XUYÊN</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={st.brand}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
           <Pressable accessibilityRole="button" onPress={() => setShowBranchMenu(v => !v)}
             style={st.branchButton}><Text style={st.branchName} numberOfLines={1}>
               {branch?.name ?? "Chọn chi nhánh"} ▾</Text></Pressable>
         </View>
         <View style={st.headerRight}>
-          <Text style={[st.caption, { color: online ? C.olive : C.red }]}>
-            {online ? "● Đã kết nối" : "○ Mất mạng"}</Text>
+          <Text style={[st.connectionLabel, { color: online ? "#C4F2D5" : "#FFE3B2" }]}>
+            {online ? "● Online" : "○ Mất mạng"}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Đăng xuất"
             style={st.exit} onPress={logout}><Text style={st.exitText}>Thoát</Text></Pressable>
         </View>
@@ -472,9 +488,9 @@ export default function App() {
       {desktop ? <>
         {tableStrip}
         <View style={st.desktop}>
-          <ScrollView style={st.leftScroll} contentContainerStyle={st.panelContent}
+          <ScrollView testID="retail-desk-order" style={st.leftScroll} contentContainerStyle={st.panelContent}
             keyboardShouldPersistTaps="handled">{ticketPanel}</ScrollView>
-          <ScrollView style={st.rightScroll} contentContainerStyle={st.panelContent}
+          <ScrollView testID="retail-desk-menu" style={st.rightScroll} contentContainerStyle={st.panelContent}
             keyboardShouldPersistTaps="handled">{menuPanel}</ScrollView>
         </View>
       </> : <>
@@ -549,21 +565,22 @@ function Button({ title, onPress, disabled, danger, kind }: {
 }
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.cream },
-  header: { minHeight: 76, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: C.paper,
-    borderBottomWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", gap: 10 },
-  brand: { fontSize: 12, letterSpacing: 1.2, color: C.red, fontWeight: "900" },
-  branchButton: { minHeight: 32, justifyContent: "center" },
-  branchName: { fontSize: 15, fontWeight: "800", color: C.dark },
+  header: { minHeight: 58, paddingHorizontal: 14, paddingVertical: 5, backgroundColor: "#721419",
+    borderBottomWidth: 1, borderColor: "#9B343A", flexDirection: "row", alignItems: "center", gap: 8 },
+  brand: { fontSize: 11, letterSpacing: 0.7, color: "#FFE7D7", fontWeight: "900" },
+  branchButton: { minHeight: 28, justifyContent: "center" },
+  branchName: { fontSize: 14, fontWeight: "800", color: "#FFFFFF" },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
-  qrToolbar: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: C.paper,
+  connectionLabel: { fontSize: 11, fontWeight: "800" },
+  qrToolbar: { paddingHorizontal: 12, paddingVertical: 3, backgroundColor: "#FFFBF7",
     borderBottomWidth: 1, borderBottomColor: C.border,
-    flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+    flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 6 },
   iconButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center",
-    backgroundColor: C.soft, borderRadius: 10 },
-  iconText: { fontSize: 21, color: C.red },
+    backgroundColor: "#F5EBE5", borderRadius: 10 },
+  iconText: { fontSize: 19, color: C.redDark },
   exit: { minHeight: 44, paddingHorizontal: 10, justifyContent: "center" },
-  exitText: { color: C.red, fontWeight: "800", fontSize: 12 },
-  branchPicker: { position: "absolute", zIndex: 90, top: 128, left: 12, minWidth: 230,
+  exitText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
+  branchPicker: { position: "absolute", zIndex: 90, top: 104, left: 12, minWidth: 230,
     borderWidth: 1, borderColor: C.border, backgroundColor: C.paper,
     borderRadius: 12, padding: 6, elevation: 8 },
   branchItem: { minHeight: 44, paddingHorizontal: 13, justifyContent: "center" },
@@ -573,31 +590,44 @@ const st = StyleSheet.create({
   success: { flexDirection: "row", justifyContent: "space-between", alignItems: "center",
     paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.paleGreen },
   successText: { color: C.olive, fontSize: 13, fontWeight: "700", flex: 1 },
-  desktop: { flex: 1, flexDirection: "row", padding: 12, gap: 12, minHeight: 0 },
-  leftScroll: { width: "40%", backgroundColor: C.paper, borderRadius: 14,
+  desktop: { flex: 1, flexDirection: "row", padding: 10, gap: 10, minHeight: 0, minWidth: 0 },
+  // Web flexbox defaults min-width:auto on scroll containers; minWidth:0 keeps the
+  // 38/62 split even when bills, category chips, or product images are very wide.
+  leftScroll: { width: "38%", flexGrow: 0, flexShrink: 0, minWidth: 0,
+    backgroundColor: C.paper, borderRadius: 14,
     borderWidth: 1, borderColor: C.border },
-  rightScroll: { flex: 1, backgroundColor: C.paper, borderRadius: 14,
+  rightScroll: { flex: 1, minWidth: 0, backgroundColor: C.paper, borderRadius: 14,
     borderWidth: 1, borderColor: C.border },
-  panelContent: { padding: 16, paddingBottom: 32 },
+  panelContent: { padding: 12, paddingBottom: 32 },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   sectionTitle: { fontSize: 16, color: C.dark, fontWeight: "800" },
   caption: { fontSize: 12, lineHeight: 18, color: C.muted },
-  tableSection: { paddingHorizontal: 15, paddingTop: 12, paddingBottom: 10, gap: 9,
-    backgroundColor: C.paper, borderBottomWidth: 1, borderColor: C.border },
-  chips: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 1 },
-  chip: { minHeight: 44, justifyContent: "center", borderRadius: 10, borderWidth: 1,
-    borderColor: C.border, paddingHorizontal: 14, backgroundColor: C.paper },
+  tableSection: { paddingHorizontal: 12, paddingVertical: 8, gap: 7,
+    backgroundColor: "#FFFDFB", borderBottomWidth: 1, borderColor: C.border },
+  desktopTableRow: { flexDirection: "row", alignItems: "stretch", gap: 12, minWidth: 0 },
+  desktopAreaWrap: { width: "30%", flexShrink: 0, gap: 3, minWidth: 0 },
+  desktopTableWrap: { flex: 1, minWidth: 0, gap: 3 },
+  tableMiniLabel: { fontSize: 10, fontWeight: "900", letterSpacing: 0.5, color: C.muted },
+  areaScroll: { minWidth: 0 },
+  tableScroll: { minWidth: 0 },
+  chips: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 1 },
+  chip: { minHeight: 44, justifyContent: "center", borderRadius: 9, borderWidth: 1,
+    borderColor: C.border, paddingHorizontal: 12, backgroundColor: C.paper },
   chipOn: { borderColor: C.red, backgroundColor: "#FCE8E8" },
   chipText: { fontSize: 12, fontWeight: "700", color: C.dark },
   chipTextOn: { color: C.red },
-  tableChip: { minWidth: 93, minHeight: 62, paddingHorizontal: 11, paddingVertical: 7,
-    backgroundColor: C.paleGreen, borderColor: "#C5E2D2", borderWidth: 1, borderRadius: 10, gap: 3 },
-  tableSelected: { backgroundColor: C.red, borderColor: C.red },
-  tablePending: { borderColor: "#EBAD74" },
-  tableCode: { fontWeight: "900", fontSize: 17, color: C.dark },
+  tableChip: { minWidth: 104, minHeight: 52, maxWidth: 140, paddingHorizontal: 10, paddingVertical: 6,
+    borderColor: C.border, borderWidth: 1, borderRadius: 9, gap: 2, justifyContent: "center" },
+  tableFree: { backgroundColor: "#E7F4EB", borderColor: "#C5E2D2" },
+  tableOpen: { backgroundColor: "#FFF0DB", borderColor: "#ECC8A2" },
+  tableDirty: { backgroundColor: "#FEF0CF", borderColor: "#EAD09B" },
+  tablePending: { backgroundColor: "#FFE6E4", borderColor: "#EA8A88" },
+  tableSelected: { backgroundColor: "#922530", borderColor: "#922530" },
+  tableCode: { fontWeight: "900", fontSize: 15, color: C.dark },
+  tableState: { color: C.muted, fontSize: 10, fontWeight: "700" },
   selectedText: { color: "#FFFFFF" },
-  billPanel: { gap: 15 },
-  menuPanel: { gap: 15 },
+  billPanel: { gap: 11 },
+  menuPanel: { gap: 11 },
   empty: { borderStyle: "dashed", borderWidth: 1, borderColor: C.border,
     borderRadius: 12, padding: 22, alignItems: "center", gap: 10 },
   emptyTitle: { fontWeight: "800", fontSize: 15, color: C.dark },
@@ -629,17 +659,18 @@ const st = StyleSheet.create({
   ghostText: { color: C.red },
   danger: { backgroundColor: "#A52A29" },
   disabled: { opacity: 0.5 },
-  products: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  product: { backgroundColor: C.paper, width: "47.5%", borderWidth: 1,
-    borderColor: C.border, borderRadius: 12, overflow: "hidden", minHeight: 194 },
+  products: { flexDirection: "row", flexWrap: "wrap", gap: 9, alignItems: "stretch" },
+  product: { backgroundColor: C.paper, width: "48%", borderWidth: 1,
+    borderColor: C.border, borderRadius: 12, overflow: "hidden", minHeight: 210 },
+  productWide: { width: "31.7%" },
   faded: { opacity: 0.55 },
-  productPhoto: { width: "100%", height: 122 },
-  productEmpty: { width: "100%", height: 122, backgroundColor: C.soft,
+  productPhoto: { width: "100%", height: 144 },
+  productEmpty: { width: "100%", height: 144, backgroundColor: C.soft,
     alignItems: "center", justifyContent: "center" },
   productPlaceholder: { color: "#A78074", fontSize: 11, fontWeight: "800" },
-  productBody: { padding: 10, gap: 6 },
-  productName: { color: C.dark, fontSize: 13, fontWeight: "800", minHeight: 36 },
-  productPrice: { color: C.red, fontWeight: "800", fontSize: 14 },
+  productBody: { padding: 10, gap: 5 },
+  productName: { color: C.dark, fontSize: 13, fontWeight: "800", minHeight: 32 },
+  productPrice: { color: C.redDark, fontWeight: "900", fontSize: 14 },
   loginScreen: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
   loginCard: { width: "100%", maxWidth: 420, borderRadius: 18, backgroundColor: C.paper,
     borderWidth: 1, borderColor: C.border, padding: 24, gap: 15 },
