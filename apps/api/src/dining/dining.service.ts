@@ -6,6 +6,8 @@ import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { OrderRealtimeService, type DiningChange } from "../orders/order-realtime.service";
+import { PushService } from "../push/push.service";
 import { priceCart, productSelect } from "../delivery/pricing";
 import type { DiningAreaCreateInput, DiningAreaUpdateInput, DiningTableCreateInput,
   DiningTableUpdateInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
@@ -69,7 +71,18 @@ export class DiningService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
+    private readonly realtime: OrderRealtimeService,
+    private readonly push: PushService,
   ) {}
+
+  private async publishCommitted(change: DiningChange, pushPending = false): Promise<void> {
+    // Never turn an already committed ticket into an HTTP failure after a
+    // transient realtime/FCM outage. Polling is the recovery path.
+    await Promise.allSettled([
+      this.realtime?.publishDining(change),
+      pushPending ? this.push?.notifyStaffDiningPending(change.branchId, change.ticketId) : undefined,
+    ]);
+  }
 
   private async staff(auth: string | undefined, branchId: string, allowed: readonly Role[]): Promise<Actor> {
     const principal = await this.auth.principal(auth);
@@ -414,7 +427,7 @@ export class DiningService {
   async editPending(auth: string | undefined, branchId: string, ticketId: string,
     input: DiningTicketEditInput) {
     const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "WAITER"]);
-    return serializable(this.prisma.database, async tx => {
+    const result = await serializable(this.prisma.database, async tx => {
       const ticket = await tx.diningTicket.findFirst({
         where: { id: ticketId, branchId, source: "QR" },
         select: { id: true, sessionId: true, status: true, updatedAt: true, customerNote: true },
@@ -554,7 +567,7 @@ export class DiningService {
     const note = cleanNote(input.customerNote);
     const hash = fingerprint(actorId, input.items, note);
     const key = { sessionId, source, idempotencyKey: input.idempotencyKey };
-    return serializable(this.prisma.database, async tx => {
+    const result = await serializable(this.prisma.database, async tx => {
       const previous = await tx.diningTicket.findUnique({
         where: { sessionId_source_idempotencyKey: key }, select: {
           id: true, requestHash: true, createdById: true, guestGrantId: true, status: true,
@@ -622,6 +635,11 @@ export class DiningService {
       // A future realtime publisher must observe committed APPROVED rows, not create another order.
       return { ticketId: ticket.id, status: ticket.status, replayed: false };
     });
+    if (!result.replayed) await this.publishCommitted({
+      type: source === "QR" ? "dining.pending" : "dining.kitchen",
+      branchId, sessionId, ticketId: result.ticketId, status: result.status,
+    }, source === "QR");
+    return result;
   }
 
   async staffTicket(auth: string | undefined, branchId: string, sessionId: string, input: DiningTicketInput) {
@@ -724,8 +742,46 @@ export class DiningService {
         action: decision === "APPROVED" ? "QR_TICKET_APPROVED" : "QR_TICKET_REJECTED",
         details: { ticketId, reason: cleanReason },
       } });
-      return { ticketId, status: decision, replayed: false };
+      return { ticketId, status: decision, replayed: false, sessionId: ticket.sessionId };
     });
+    if (!result.replayed) await this.publishCommitted({
+      type: decision === "APPROVED" ? "dining.kitchen" : "dining.ticket",
+      branchId, sessionId: result.sessionId, ticketId, status: decision,
+    });
+    return { ticketId: result.ticketId, status: result.status, replayed: result.replayed };
+  }
+
+  async advanceKitchen(auth: string | undefined, branchId: string, ticketId: string,
+    expected: "APPROVED" | "PREPARING" | "READY", next: "PREPARING" | "READY" | "SERVED") {
+    const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "KITCHEN", "WAITER"]);
+    const allowed = { APPROVED: "PREPARING", PREPARING: "READY", READY: "SERVED" } as const;
+    if (allowed[expected] !== next) throw new BadRequestException("DINING_KITCHEN_TRANSITION_INVALID");
+    const result = await serializable(this.prisma.database, async tx => {
+      const ticket = await tx.diningTicket.findFirst({
+        where: { id: ticketId, branchId }, select: { id: true, sessionId: true, status: true },
+      });
+      if (!ticket) throw new NotFoundException("DINING_TICKET_NOT_FOUND");
+      if (ticket.status === next) return { ticketId, status: next, replayed: true, sessionId: ticket.sessionId };
+      if (ticket.status !== expected) throw new ConflictException("DINING_TICKET_STATUS_STALE");
+      const active = await tx.diningSession.updateMany({
+        where: { id: ticket.sessionId, branchId, status: "OPEN", closedAt: null },
+        data: { updatedAt: new Date() },
+      });
+      if (active.count !== 1) throw new ConflictException("DINING_SESSION_NOT_OPEN");
+      const changed = await tx.diningTicket.updateMany({
+        where: { id: ticketId, branchId, status: expected }, data: { status: next },
+      });
+      if (changed.count !== 1) throw new ConflictException("DINING_TICKET_STATUS_STALE");
+      await tx.diningAuditEvent.create({ data: {
+        branchId, sessionId: ticket.sessionId, actorId: actor.id,
+        action: "KITCHEN_TICKET_STATUS", details: { ticketId, from: expected, to: next },
+      } });
+      return { ticketId, status: next, replayed: false, sessionId: ticket.sessionId };
+    });
+    if (!result.replayed) await this.publishCommitted({
+      type: "dining.kitchen", branchId, sessionId: result.sessionId, ticketId, status: next,
+    });
+    return { ticketId: result.ticketId, status: result.status, replayed: result.replayed };
   }
 
   async kitchen(auth: string | undefined, branchId: string) {
