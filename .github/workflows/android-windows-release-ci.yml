@@ -6,7 +6,6 @@ on:
       - "apps/customer/**"
       - "apps/admin/**"
       - "apps/retail/**"
-      - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "scripts/test/android-release-env.test.mjs"
@@ -18,6 +17,7 @@ on:
     paths:
       - "apps/customer/**"
       - "apps/admin/**"
+      - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "scripts/test/android-release-env.test.mjs"
