@@ -114,15 +114,14 @@ export class DiningSettlementService {
       throw new BadRequestException("DINING_PAYMENT_METHOD_INVALID");
     }
     const beneficiary = input.method === "QR" ? configuredQr() : null;
-    if (input.method === "QR" && !beneficiary)
-      throw new ConflictException("DINING_QR_BENEFICIARY_NOT_CONFIGURED");
     return this.transact(async tx => {
       await this.lock(tx, branchId, sessionId);
       const previous = await tx.diningPayment.findUnique({
         where: { sessionId_idempotencyKey: { sessionId, idempotencyKey: input.idempotencyKey } },
       });
       if (previous) {
-        if (previous.method !== input.method || previous.amountVnd !== input.amountVnd)
+        if (previous.method !== input.method || previous.amountVnd !== input.amountVnd
+          || (input.method === "CASH" && previous.cashReceivedVnd !== input.cashReceivedVnd))
           throw new ConflictException("DINING_PAYMENT_KEY_REUSED");
         return { paymentId: previous.id, status: previous.status, amountVnd: previous.amountVnd,
           qr: qrInstructions(previous.id, previous.amountVnd, {
@@ -130,6 +129,8 @@ export class DiningSettlementService {
             qrAccountNo: previous.qrAccountNo, qrAccountName: previous.qrAccountName,
           }), replayed: true };
       }
+      if (input.method === "QR" && !beneficiary)
+        throw new ConflictException("DINING_QR_BENEFICIARY_NOT_CONFIGURED");
       await this.noPending(tx, branchId, sessionId);
       const row = await tx.diningSession.findUniqueOrThrow({ where: { id: sessionId } });
       if (row.status !== "CHECKOUT") throw new ConflictException("DINING_CHECKOUT_REQUIRED");
@@ -141,6 +142,7 @@ export class DiningSettlementService {
       const pay = await tx.diningPayment.create({ data: {
         branchId, sessionId, method: input.method, status, amountVnd: input.amountVnd,
         idempotencyKey: input.idempotencyKey, recordedById: actor.id,
+        ...(input.method === "CASH" ? { cashReceivedVnd: input.cashReceivedVnd } : {}),
         ...(beneficiary ? { qrBankBin: beneficiary.bankBin, qrAccountNo: beneficiary.accountNo,
           qrAccountName: beneficiary.accountName } : {}),
         ...(status === "CONFIRMED" ? { confirmedAt: new Date(), confirmedById: actor.id } : {}),
