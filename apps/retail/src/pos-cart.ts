@@ -58,6 +58,19 @@ export function lineFromSelection(product: Product, choice: Selection, uid: stri
   return { id: uid, name: product.name, variantName: variant?.name,
     previewVnd: estimated, item };
 }
+/** Topping quantities are encoded as repeated option IDs: validated and priced by
+ * the existing server contract, with a maximum of 30 selections per group.
+ * This never multiplies the whole dish quantity or sends client prices. */
+export function setOptionQuantity(current: string[], id: string, desired: number, max: number): string[] {
+  if (!Number.isSafeInteger(desired) || desired < 0 || desired > 30
+      || !Number.isSafeInteger(max) || max < 0 || max > 30) return current;
+  const others = current.filter(value => value !== id);
+  if (others.length + desired > max) return current;
+  return [...others, ...Array(desired).fill(id)];
+}
+export function optionQuantity(current: string[], id: string): number {
+  return current.filter(value => value === id).length;
+}
 export function toggleMultiple(current: string[], value: string, max: number) {
   if (current.includes(value)) return current.filter(id => id !== value);
   if (current.length >= max) return current;
