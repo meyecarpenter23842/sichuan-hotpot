@@ -599,6 +599,7 @@ model Payment {
   method     PaymentMethod
   status     PaymentStatus  @default(PENDING)
   amountVnd     Int
+  cashReceivedVnd Int?
   qrBankBin     String?        @db.VarChar(6)
   qrAccountNo   String?        @db.VarChar(19)
   qrAccountName String?        @db.VarChar(80)
