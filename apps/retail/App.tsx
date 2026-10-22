@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AppState, Image, Platform, Pressable, ScrollView, StyleSheet,
+  AppState, BackHandler, Image, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -218,6 +218,25 @@ export default function App() {
     return () => { cancelled = true; };
   }, [activateStaff]);
 
+  useEffect(() => {
+    if (Platform.OS !== "android" || !token) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedProduct) { setSelectedProduct(null); return true; }
+      if (showBranchMenu) { setShowBranchMenu(false); return true; }
+      if (desktop && workspace === "queue") { setWorkspace("pos"); return true; }
+      if (!desktop && page !== "tables") {
+        setPage(page === "bill" ? "menu" : "tables");
+        return true;
+      }
+      if (cart.length || pendingSubmit) {
+        setError("Bàn còn giỏ hoặc phiếu chưa rõ kết quả. Hoàn tất hay xử lý trước khi thoát.");
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [token, desktop, workspace, selectedProduct, showBranchMenu, page, cart.length, pendingSubmit]);
+
   const login = async () => {
     if (lock.current || restoring || !credential.username.trim() || !credential.password) return;
     lock.current = true; setBusy(true); setError(""); setMessage("");
@@ -389,7 +408,7 @@ export default function App() {
           {!shownTables.length && <Text style={st.caption}>Khu vực chưa có bàn.</Text>}
         </ScrollView>
       </View>
-    </View> : <>
+    </ScrollView> : <>
       <View style={st.sectionHead}>
         <Text style={st.sectionTitle}>Khu vực & bàn</Text>
         <Text style={st.caption}>{tables.filter(t => t.sessions.length > 0).length} đang phục vụ</Text>
@@ -579,7 +598,7 @@ export default function App() {
   </View>;
 
   return <SafeAreaProvider><SafeAreaView style={st.safe} edges={["top", "bottom"]}>
-    {!token ? <View style={st.loginScreen}>
+    {!token ? <ScrollView style={{ flex: 1 }} contentContainerStyle={st.loginScreen} keyboardShouldPersistTaps="handled">
       <View style={st.loginCard}>
         <Text style={st.brand}>LẨU TỨ XUYÊN</Text>
         <Text style={st.loginTitle}>Bán tại quán</Text>
@@ -908,7 +927,7 @@ const st = StyleSheet.create({
   mobileCartBar: { flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: "#FFF5F0", borderTopWidth: 1, borderColor: C.border,
     paddingHorizontal: 12, paddingVertical: 7 },
-  loginScreen: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
+  loginScreen: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 20 },
   loginCard: { width: "100%", maxWidth: 420, borderRadius: 18, backgroundColor: C.paper,
     borderWidth: 1, borderColor: C.border, padding: 24, gap: 15 },
   loginTitle: { fontSize: 26, fontWeight: "900", color: C.dark },
