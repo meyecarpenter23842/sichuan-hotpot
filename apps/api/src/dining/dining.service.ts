@@ -29,7 +29,9 @@ const ticketSelect = {
 
 function fingerprint(actor: string, items: DiningTicketInput["items"], note: string | null): string {
   return createHash("sha256").update(JSON.stringify({ actor, items: items.map(item => ({
-    productId: item.productId, standaloneTopping: item.standaloneTopping === true,
+    productId: item.productId,
+    // Absent flag preserves historic idempotency hashes for all existing tickets.
+    ...(item.standaloneTopping === true ? { standaloneTopping: true } : {}),
     variantId: item.variantId ?? null,
     modifierIds: [...item.modifierIds].sort(),
     comboOptionIds: [...(item.comboOptionIds ?? [])].sort(),
