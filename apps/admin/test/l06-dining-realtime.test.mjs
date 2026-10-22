@@ -19,7 +19,10 @@ test("L06: publish only after committed ticket and approval, not on replay", () 
   assert.match(realtime, /publishDining\(change: DiningChange\)/);
   assert.match(realtime, /sub\.role === "DINING_GUEST"/);
   assert.match(realtime, /grant\.revokedAt/);
-  assert.match(realtime, /\["APPROVED", "PREPARING", "READY", "SERVED"\]/);
+  // L07 audited voids must notify the kitchen to remove cancelled work items.
+  assert.match(realtime, /\["APPROVED", "PREPARING", "READY", "SERVED", "CANCELED"\]/);
+  assert.match(realtime, /sub\.role === "KITCHEN"/);
+  assert.match(realtime, /"PENDING_APPROVAL"/);
   assert.match(realtime, /"WAITER", "CASHIER"/);
   assert.doesNotMatch(realtime, /lineTotalVnd|paidVnd|phoneE164/);
 });
