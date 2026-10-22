@@ -637,7 +637,8 @@ export class DiningService {
     });
     if (!result.replayed) await this.publishCommitted({
       type: source === "QR" ? "dining.pending" : "dining.kitchen",
-      branchId, sessionId, ticketId: result.ticketId, status: result.status,
+      branchId, sessionId, ticketId: result.ticketId,
+      status: source === "QR" ? "PENDING_APPROVAL" : "APPROVED",
     }, source === "QR");
     return result;
   }
@@ -716,7 +717,7 @@ export class DiningService {
     const cleanReason = decision === "REJECTED" ? cleanNote(reason) : null;
     if (decision === "REJECTED" && (!cleanReason || cleanReason.length < 3))
       throw new BadRequestException("DINING_REJECTION_REASON_REQUIRED");
-    return serializable(this.prisma.database, async tx => {
+    const result = await serializable(this.prisma.database, async tx => {
       const ticket = await tx.diningTicket.findFirst({
         where: { id: ticketId, branchId, source: "QR" },
         select: { id: true, sessionId: true, status: true },
