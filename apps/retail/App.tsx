@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
-  api, branchPath, currentSession, money, productImage, setSession,
+  api, branchPath, currentSession, money, productImage, restoreSession, setSession,
   type Area, type Bill, type Branch, type CartLine, type Menu, type Principal,
   type Product, type Receipt, type Submission, type Table, type Ticket, type Tokens,
 } from "./src/pos-api";
@@ -15,6 +15,7 @@ import { RetailTicketCard, ticketGroup } from "./src/RetailTicketCard";
 import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
+import { loadFrozenTicket, writeFrozenTicket } from "./src/retail-recovery";
 import { enableRetailDiningPush } from "./src/dining-push";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
@@ -30,6 +31,8 @@ export default function App() {
   const desktop = width >= 768;
   const [credential, setCredential] = useState({ username: "", password: "" });
   const [token, setToken] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(true);
+  const [staffId, setStaffId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [areaId, setAreaId] = useState<string | null>(null);
@@ -147,34 +150,70 @@ export default function App() {
     return () => { current = false; clearInterval(timer); };
   }, [token, branchId, sessionId]);
 
+  const activateStaff = useCallback(async (tokens: Tokens) => {
+    setSession(tokens);
+    const [person, scoped] = await Promise.all([
+      api<Principal>("/auth/me"),
+      api<Branch[]>("/admin/orders/branches"),
+    ]);
+    const allowed = scoped.filter(b => b.isActive && permitted.includes(b.staffRole ?? "")
+      && (person.role === "OWNER" || b.staffRole !== "OWNER"));
+    if (!allowed.length) {
+      throw new Error("Tài khoản không có quyền bán tại quán ở chi nhánh đang hoạt động.");
+    }
+    const stored = await loadFrozenTicket();
+    const recovered = stored && stored.staffId === person.id &&
+      allowed.some(b => b.id === stored.branchId) ? stored : null;
+    setStaffId(person.id);
+    setBranches(allowed);
+    setBranchId(recovered?.branchId ?? allowed[0]!.id);
+    if (recovered) {
+      setSelectedTableId(recovered.tableId);
+      setCart(recovered.cart);
+      setNote(recovered.note);
+      setPendingSubmit({ sessionId: recovered.sessionId, payload: recovered.payload });
+      setMessage("Có phiếu chưa rõ kết quả. Vui lòng kiểm tra và gửi lại bằng mã phiếu cũ.");
+    }
+    setToken(currentSession()?.accessToken ?? tokens.accessToken);
+    setCredential(c => ({ ...c, password: "" }));
+    setPage(recovered ? "bill" : "tables");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const existing = await restoreSession();
+        if (!existing || cancelled) return;
+        await activateStaff(existing);
+        if (cancelled) return;
+      } catch (cause) {
+        if (!cancelled) {
+          // Unreachable server is not proof of a revoked session.
+          // Keep encrypted credentials available for a later authenticated retry.
+          const network = cause instanceof Error && /kết nối|máy chủ/i.test(cause.message);
+          if (!network) setSession(null);
+          setError(network ? "Không kết nối được máy chủ. Phiên đã lưu vẫn an toàn; thử đăng nhập hoặc mở lại khi có mạng."
+            : "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+        }
+      } finally { if (!cancelled) setRestoring(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [activateStaff]);
+
   const login = async () => {
-    if (lock.current || !credential.username.trim() || !credential.password) return;
+    if (lock.current || restoring || !credential.username.trim() || !credential.password) return;
     lock.current = true; setBusy(true); setError(""); setMessage("");
     try {
       const tokens = await api<Tokens>("/auth/login", { method: "POST", anonymous: true,
         body: { username: credential.username.trim(), password: credential.password } });
-      setSession(tokens);
-      const [person, scoped] = await Promise.all([
-        api<Principal>("/auth/me"),
-        api<Branch[]>("/admin/orders/branches"),
-      ]);
-      const allowed = scoped.filter(b => b.isActive && permitted.includes(b.staffRole ?? "")
-        && (person.role === "OWNER" || b.staffRole !== "OWNER"));
-      if (!allowed.length) {
-        setSession(null);
-        throw new Error("Tài khoản không có quyền bán tại quán ở chi nhánh đang hoạt động.");
-      }
-      setBranches(allowed);
-      setBranchId(allowed[0]!.id);
-      setToken(tokens.accessToken);
-      setCredential(c => ({ ...c, password: "" }));
-      setPage("tables");
+      await activateStaff(tokens);
     } catch (e) { setSession(null); setError(e instanceof Error ? e.message : "Không đăng nhập được."); }
     finally { lock.current = false; setBusy(false); }
   };
   const logout = () => {
     ++requestVersion.current;
-    setSession(null); setToken(null); setBranches([]); setBranchId(null); setAreas([]);
+    setSession(null); setToken(null); setStaffId(null); setBranches([]); setBranchId(null); setAreas([]);
     setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null);
     setCart([]); setPendingSubmit(null); setBill(null); setMessage(""); setError(""); setPage("tables");
     setWorkspace("pos"); setQueueTicketId(null);
@@ -223,7 +262,10 @@ export default function App() {
     });
   };
   const send = async () => {
-    if (!branchId || !sessionId || !canOrder(role) || !cart.length || !online) return;
+    if (!branchId || !sessionId || !staffId || !selectedTableId || !canOrder(role) || !cart.length || !online) return;
+    if (pendingSubmit && pendingSubmit.sessionId !== sessionId) {
+      setError("Phiếu chưa rõ kết quả thuộc phiên bàn trước. Không thể tạo yêu cầu mới."); return;
+    }
     const payload = pendingSubmit?.payload ?? {
       idempotencyKey: clientKey(), customerNote: note.trim(),
       items: cart.map(({ item }) => ({ ...item, modifierIds: [...item.modifierIds],
@@ -233,8 +275,12 @@ export default function App() {
     // Save the exact request before sending. Unknown network failures retain it for safe retry.
     setPendingSubmit(frozen);
     await doAction(async () => {
+      // Persist the exact key and request before HTTP: restart must never create a new ticket.
+      await writeFrozenTicket({ staffId, branchId, tableId: selectedTableId,
+        sessionId: frozen.sessionId, payload: frozen.payload, cart, note });
       const result = await api<Receipt>(branchPath(branchId) + "/sessions/" + frozen.sessionId + "/tickets",
         { method: "POST", body: frozen.payload });
+      await writeFrozenTicket(null);
       setPendingSubmit(null); setCart([]); setNote(""); setPage("bill");
       setMessage(result.replayed ? "Phiếu đã được ghi nhận trước đó, không tạo lại." : "Đã gửi món xuống Bếp.");
       await refresh(true);
@@ -525,7 +571,7 @@ export default function App() {
           placeholder="Mật khẩu" accessibilityLabel="Mật khẩu"
           onSubmitEditing={() => { void login(); }}/>
         {!!error && <Text accessibilityRole="alert" style={st.warning}>{error}</Text>}
-        <Button title={busy ? "Đang xác thực…" : "Đăng nhập"} disabled={busy}
+        <Button title={restoring ? "Đang khôi phục phiên…" : busy ? "Đang xác thực…" : "Đăng nhập"} disabled={busy || restoring}
           onPress={() => { void login(); }}/>
         <Text style={st.micro}>Chỉ nhân viên có quyền mới được xem bàn, gọi món và duyệt QR.</Text>
       </View>
