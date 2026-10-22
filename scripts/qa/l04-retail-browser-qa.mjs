@@ -92,9 +92,10 @@ try {
   assert.equal(await modalAdd.count(), 1, "valid 2x topping popup must expose add-to-bill");
   await modalAdd.click();
   await page.getByText("1 món trong giỏ bàn").waitFor();
-  await page.getByText("Topping Lẩu: 2 × Bò cuộn QA").waitFor();
+  // Draft line items are inside the invoice tab, not the menu/table rail.
   await page.getByRole("button", { name: "Xem hóa đơn" }).click();
   await page.getByTestId("retail-bill-accepted").waitFor();
+  await page.getByText("Topping Lẩu: 2 × Bò cuộn QA").waitFor();
   await page.getByRole("tab", { name: "Hóa đơn (1)" }).waitFor();
   await page.getByRole("button", { name: "Xác nhận & gửi Bếp" }).click();
   await page.getByText("Đã gửi món xuống Bếp.").waitFor();
