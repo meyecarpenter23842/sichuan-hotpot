@@ -26,15 +26,19 @@ export function ProductSheet({ product, onClose, onAdd }: {
   return <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <SafeAreaView style={st.backdrop} edges={["top", "bottom"]}>
       <View style={st.sheet}>
-        <View style={st.top}>
-          <Text style={st.title} numberOfLines={2}>{product.name}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn món"
-            style={st.close} onPress={onClose}><Text style={st.closeText}>✕</Text></Pressable>
-        </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={st.body}>
+        <View style={st.hero}>
           {image ? <Image source={{ uri: image }} style={st.photo} resizeMode="cover" /> :
             <View style={st.photoEmpty}><Text style={st.photoHint}>LẨU TỨ XUYÊN</Text></View>}
-          <Text style={st.price}>{money(product.priceVnd)} <Text style={st.hint}>giá gốc</Text></Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn món"
+            style={st.floatingClose} onPress={onClose}><Text style={st.closeText}>✕</Text></Pressable>
+        </View>
+        <View style={st.top}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={st.title} numberOfLines={2}>{product.name}</Text>
+            <Text style={st.price}>{money(product.priceVnd)} <Text style={st.hint}>giá gốc</Text></Text>
+          </View>
+        </View>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={st.body}>
           {!!product.description && <Text style={st.description}>{product.description}</Text>}
           {product.variants.some(v => v.isAvailable) && <View style={st.section}>
             <Text style={st.sectionName}>Chọn size</Text>
@@ -92,7 +96,7 @@ export function ProductSheet({ product, onClose, onAdd }: {
           {!!error && <Text accessibilityRole="alert" style={st.error}>{error}</Text>}
         </ScrollView>
         <View style={st.footer}>
-          <Text style={st.hint}>Giá trên menu chỉ là dự kiến. Quán xác nhận món và giá sau khi duyệt.</Text>
+          <Text style={st.hint}>Giá dự kiến · Quán xác nhận món và giá sau khi duyệt.</Text>
           <Pressable accessibilityRole="button" disabled={!!message}
             accessibilityState={{ disabled: !!message }} onPress={save}
             style={[st.add, !!message && st.disabled]}>
@@ -113,16 +117,19 @@ const st = StyleSheet.create({
   backdrop: { flex: 1, padding: 12, backgroundColor: "rgba(30,18,15,0.58)", justifyContent: "center" },
   sheet: { backgroundColor: "#FFFFFF", width: "100%", maxWidth: 570, maxHeight: "96%",
     alignSelf: "center", borderRadius: 18, overflow: "hidden" },
-  top: { paddingHorizontal: 18, paddingVertical: 10, flexDirection: "row",
+  hero: { width: "100%", height: 190, backgroundColor: pale, position: "relative" },
+  photo: { height: "100%", width: "100%" },
+  photoEmpty: { height: "100%", backgroundColor: pale, justifyContent: "center", alignItems: "center" },
+  floatingClose: { position: "absolute", top: 8, right: 8, minWidth: 44, minHeight: 44,
+    backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 22, alignItems: "center",
+    justifyContent: "center" },
+  top: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row",
     alignItems: "center", borderBottomWidth: 1, borderColor: border, gap: 10 },
-  title: { fontSize: 19, fontWeight: "800", color: ink, flex: 1 },
-  close: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  closeText: { color: ink, fontSize: 20 },
-  body: { padding: 18, gap: 15 },
-  photo: { height: 160, width: "100%", borderRadius: 12 },
-  photoEmpty: { height: 90, backgroundColor: pale, justifyContent: "center", alignItems: "center", borderRadius: 12 },
+  title: { fontSize: 18, fontWeight: "900", color: ink },
+  closeText: { color: ink, fontSize: 18 },
+  body: { padding: 14, gap: 15 },
   photoHint: { fontSize: 15, fontWeight: "900", color: "#BD8C70" },
-  price: { fontSize: 21, fontWeight: "800", color: accent },
+  price: { fontSize: 17, fontWeight: "900", color: accent },
   hint: { fontSize: 12, color: "#796A65" },
   description: { fontSize: 13, lineHeight: 20, color: "#645451" },
   section: { gap: 9, borderTopWidth: 1, borderColor: border, paddingTop: 12 },
@@ -142,7 +149,8 @@ const st = StyleSheet.create({
   input: { minHeight: 74, borderWidth: 1, borderColor: border, borderRadius: 10,
     padding: 12, color: ink, fontSize: 14, textAlignVertical: "top" },
   error: { color: accent, fontSize: 13 },
-  footer: { padding: 13, gap: 8, borderTopWidth: 1, borderColor: border },
+  footer: { padding: 12, paddingBottom: 16, gap: 8, borderTopWidth: 1, borderColor: border,
+    backgroundColor: "#FFFFFF" },
   add: { minHeight: 50, backgroundColor: accent, borderRadius: 11,
     justifyContent: "center", alignItems: "center" },
   disabled: { opacity: 0.5 },
