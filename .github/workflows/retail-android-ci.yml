@@ -1,0 +1,104 @@
+name: Retail Android Native CI (non-distributable fixture)
+
+on:
+  pull_request:
+    paths:
+      - "apps/retail/**"
+      - "scripts/android/**"
+      - "scripts/test/android-retail-bootstrap.test.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/retail-android-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/retail/**"
+      - "scripts/android/**"
+      - "scripts/test/android-retail-bootstrap.test.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/retail-android-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  retail-native:
+    name: Linux Retail Native release bundle (CI fixture)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CI: "1"
+      HOTPOT_FIREBASE_CI_FIXTURE: "1"
+      EXPO_NO_DOTENV: "1"
+      EXPO_PUBLIC_API_BASE_URL: "https://api-ci.invalid"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install pinned workspaces
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Unit-test Retail bootstrap and release guards
+        run: |
+          node --test scripts/test/android-retail-bootstrap.test.mjs
+          npm run lint --workspace @hotpot/retail
+          npm run typecheck --workspace @hotpot/retail
+          npm run test --workspace @hotpot/retail
+
+      - name: Never allow committed Firebase configs or keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e apps/retail/google-services.json
+          test -z "$(git ls-files 'apps/retail/google-services.json' 'apps/retail/*.jks' 'apps/retail/*.keystore' 'apps/retail/android/**')"
+
+      - name: Generate Firebase fixture for CI only (never for production)
+        run: node scripts/android/write-ci-firebase-fixture.mjs retail
+
+      - name: Prebuild Android with independent Retail package
+        run: npm run android:prebuild --workspace @hotpot/retail
+
+      - name: Check app identity, launcher, signing and embedded JS contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/android/release-gradle.mjs retail
+          grep -Fq 'vn.sichuanhotpot.retail' apps/retail/android/app/build.gradle
+          grep -Fq 'RETAIL_SIGNING_CONTRACT_V1' apps/retail/android/app/build.gradle
+          grep -Fq 'signingConfig signingConfigs.retailRelease' apps/retail/android/app/build.gradle
+          grep -Fq 'android.intent.category.LAUNCHER' apps/retail/android/app/src/main/AndroidManifest.xml
+          git diff --exit-code -- apps/retail/app.json
+          chmod +x apps/retail/android/gradlew
+
+      - name: Assemble CI fixture Android APK (not production signed)
+        run: npm run android:release:retail
+
+      - name: Verify JavaScript and Retail release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="dist/android/sichuan-hotpot-retail-release.apk"
+          test -s "$apk"
+          unzip -Z1 "$apk" | grep -Fx 'assets/index.android.bundle'
+          npm run android:sha1:retail
+          echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
+          echo "::warning::Do not distribute CI Retail APK; Firebase and API endpoint are synthetic."
+
+      - name: Archive non-distributable CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retail-android-CI-FIREBASE-FIXTURE-NOT-FOR-DISTRIBUTION
+          path: dist/android/sichuan-hotpot-retail-release.apk
+          if-no-files-found: error
+          retention-days: 7
