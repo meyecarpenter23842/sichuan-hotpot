@@ -38,6 +38,12 @@ try {
     isPublished: true } });
   const product = await db.product.create({ data: { categoryId: category.id,
     name: "Lẩu Retail QA", priceVnd: 250_000, isAvailable: true } });
+  // Product cards must form a real 3-column grid at 1280+, not just render
+  // three empty placeholders in a screenshot.
+  await db.product.createMany({ data: [
+    { categoryId: category.id, name: "Bò sốt tiêu QA", priceVnd: 185_000, isAvailable: true },
+    { categoryId: category.id, name: "Trà sữa QA", priceVnd: 35_000, isAvailable: true },
+  ] });
   await page.goto(web, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Tài khoản nhân viên" }).fill(username);
   await page.getByRole("textbox", { name: "Mật khẩu" }).fill(password);
@@ -103,10 +109,30 @@ try {
   assert.equal((await db.diningTicket.findUniqueOrThrow({ where: { id: guestTicket.ticketId } })).status,
     "APPROVED");
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 2);
-  for (const width of [360, 390, 428, 768, 1024, 1280, 1440]) {
+  for (const width of [320, 360, 390, 428, 768, 1024, 1280, 1440]) {
     await device.setViewportSize({ width, height: 820 });
     assert.equal(await device.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true,
       "Retail POS overflow at " + width);
+    if (width >= 768) {
+      const rail = await device.getByTestId("retail-table-strip").boundingBox();
+      const order = await device.getByTestId("retail-desk-order").boundingBox();
+      const menu = await device.getByTestId("retail-desk-menu").boundingBox();
+      assert.ok(rail && order && menu, "desktop rail and split are visible at " + width);
+      assert.ok(rail.height < 112, "table strip must not waste height at " + width + ": " + rail.height);
+      assert.ok(menu.width / (menu.width + order.width) >= 0.57,
+        "menu needs at least 57% of useful desktop width at " + width);
+      assert.ok(menu.x > order.x + order.width - 1,
+        "invoice and menu must not overlap at " + width);
+    }
+    if (width >= 1280) {
+      const cards = await Promise.all(["Lẩu Retail QA", "Bò sốt tiêu QA", "Trà sữa QA"]
+        .map(name => device.getByRole("button", { name: "Chọn " + name }).boundingBox()));
+      assert.ok(cards.every(Boolean), "three real product cards displayed at " + width);
+      assert.ok(cards.every(card => Math.abs(card.y - cards[0].y) < 2),
+        "three product cards must share the first row at " + width);
+      assert.ok(cards.every(card => card.width >= 120),
+        "product cards must remain readable at " + width);
+    }
     await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
   }
   assert.deepEqual(errors, []);
