@@ -5,6 +5,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { request } from "./api";
+import { watchOrderEvents } from "./order-realtime";
+import { loadOrderChime } from "./order-notifications";
+import { playDiningAlert } from "./dining-alert";
 import { Action, Field, Notice } from "./ui";
 import { type DiningArea } from "./DiningConfigurationPanel";
 import { c } from "./theme";
@@ -46,6 +49,8 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
   const [rejectTicket, setRejectTicket] = useState<Ticket | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const sequence = useRef(0);
+  const seenPending = useRef(new Set<string>());
+  const lastSound = useRef(0);
   const { width } = useWindowDimensions();
   const base = "/dining/branches/" + branchId;
   const canApprove = ["OWNER", "MANAGER", "WAITER"].includes(role);
@@ -64,6 +69,7 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
       ]);
       if (current !== sequence.current) return;
       setAreas(nextAreas); setTables(nextTables); setApprovals(nextApprovals);
+      nextApprovals.forEach(ticket => seenPending.current.add(ticket.id));
       setError("");
     } catch (err) {
       if (current === sequence.current)
@@ -73,14 +79,33 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
   useEffect(() => {
     setLoading(true); setAreas([]); setTables([]); setApprovals([]);
     setSelected(null); setBill(null); setError(""); setNotice("");
+    seenPending.current.clear(); lastSound.current = 0;
     void refresh();
+    const stop = watchOrderEvents({
+      branchId, token, onReady: () => { void refresh(); },
+      onChange: event => {
+        if (!event.type.startsWith("dining.")) return;
+        // Never play again on replay/reconnect/other branch.
+        if (event.type === "dining.pending" && event.ticketId &&
+          !seenPending.current.has(event.ticketId)) {
+          seenPending.current.add(event.ticketId);
+          if (Date.now() - lastSound.current > 2500) {
+            lastSound.current = Date.now();
+            void loadOrderChime().then(enabled => {
+              if (enabled) return playDiningAlert();
+            }).catch(() => undefined);
+          }
+        }
+        void refresh();
+      },
+    });
     const interval = setInterval(() => {
       if (AppState.currentState === "active") void refresh();
     }, 12000);
     const listener = AppState.addEventListener("change", state => {
       if (state === "active") void refresh();
     });
-    return () => { sequence.current++; clearInterval(interval); listener.remove(); };
+    return () => { sequence.current++; stop(); clearInterval(interval); listener.remove(); };
   }, [refresh]);
 
   const open = async (table: Table) => {
@@ -152,6 +177,22 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
         <Text style={s.title}>Sơ đồ bàn</Text>
         <Text style={s.sub}>Trống {counts.available} · Có khách {counts.active} · Chờ duyệt {pendingCount}</Text>
       </View>
+      {canApprove && <Pressable accessibilityRole="button"
+        accessibilityLabel={"Chuông yêu cầu QR, " + pendingCount + " đang chờ"}
+        style={s.manage} onPress={() => {
+          onAreaChange(null); onFilterChange("pending");
+          const ticket = approvals[0];
+          const table = ticket && tables.find(t => t.sessions[0]?.id === ticket.sessionId);
+          if (table) void inspect(table);
+        }}>
+        <Text style={s.manageText}>🔔 {pendingCount}</Text>
+      </Pressable>}
+      <Pressable accessibilityRole="button" accessibilityLabel="Test thông báo và âm QR"
+        style={s.refresh} onPress={() => { void playDiningAlert(true)
+          .then(() => setNotice("Đã yêu cầu phát thử âm. Không có phiếu hoặc đơn mới được tạo."))
+          .catch(cause => setError(cause instanceof Error ? cause.message : "Không thử được âm.")); }}>
+        <Text style={s.refreshText}>♫</Text>
+      </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Làm mới bàn" style={s.refresh}
         onPress={() => { void refresh(); }}><Text style={s.refreshText}>↻</Text></Pressable>
       {canManage && <Pressable accessibilityRole="button" style={s.manage} onPress={onConfigure}>
