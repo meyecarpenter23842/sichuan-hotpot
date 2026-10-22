@@ -71,6 +71,26 @@ export function setOptionQuantity(current: string[], id: string, desired: number
 export function optionQuantity(current: string[], id: string): number {
   return current.filter(value => value === id).length;
 }
+/** Describe the actual selected options, including repeated topping IDs. */
+export function cartSelectionLabels(product: Product | undefined, item: ItemInput): string[] {
+  if (!product) return item.modifierIds.length ? ["Topping đã chọn: "+item.modifierIds.length+" phần"] : [];
+  const lines: string[] = [];
+  for (const group of product.modifierGroups) {
+    const selected = group.options.map(option => {
+      const quantity = optionQuantity(item.modifierIds, option.id);
+      return quantity > 0 ? quantity+" × "+option.name : null;
+    }).filter((label): label is string => label !== null);
+    if (selected.length) lines.push(group.name+": "+selected.join(", "));
+  }
+  for (const group of product.comboGroups) {
+    const selected = usableComboOptions(group).map(option => {
+      const quantity = optionQuantity(item.comboOptionIds, option.id);
+      return quantity > 0 ? quantity+" × "+option.label : null;
+    }).filter((label): label is string => label !== null);
+    if (selected.length) lines.push(group.name+": "+selected.join(", "));
+  }
+  return lines;
+}
 export function toggleMultiple(current: string[], value: string, max: number) {
   if (current.includes(value)) return current.filter(id => id !== value);
   if (current.length >= max) return current;
