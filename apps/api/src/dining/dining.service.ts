@@ -688,7 +688,8 @@ export class DiningService {
         payments: { orderBy: { createdAt: "asc" },
           select: { id: true, method: true, status: true, amountVnd: true,
             createdAt: true, confirmedAt: true, confirmedById: true, recordedById: true,
-            qrBankBin: true, qrAccountNo: true, qrAccountName: true } },
+            qrBankBin: true, qrAccountNo: true, qrAccountName: true,
+            cashReceivedVnd: true } },
       },
     });
     if (!session) throw new NotFoundException("DINING_SESSION_NOT_FOUND");
