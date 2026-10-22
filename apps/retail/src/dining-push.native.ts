@@ -115,7 +115,10 @@ export async function isRetailPushRegistered(): Promise<boolean> {
 
 async function scheduleQrAlert(test: boolean): Promise<void> {
   if (Platform.OS !== "android") throw new Error("Âm thanh thông báo chỉ hỗ trợ Android.");
-  const permission = await Notifications.getPermissionsAsync();
+  let permission = await Notifications.getPermissionsAsync();
+  // The test button is an explicit user gesture: it may request permission.
+  // Automatic realtime alerts never open a surprise permission dialog.
+  if (!permission.granted && test) permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) {
     if (test) throw new Error("Cần cấp quyền thông báo để thử âm. Kiểm tra cả chế độ im lặng Android.");
     return;
