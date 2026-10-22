@@ -2,6 +2,7 @@ import {
   BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { OrderRealtimeService } from "../orders/order-realtime.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { DiningPaymentInput } from "./dining.controller";
@@ -17,7 +18,8 @@ const BILLABLE = ["APPROVED", "PREPARING", "READY", "SERVED"] as const;
  */
 @Injectable()
 export class DiningSettlementService {
-  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auth: AuthService,
+    private readonly realtime: OrderRealtimeService) {}
 
   private async actor(auth: string | undefined, branchId: string,
     roles: readonly CashierRole[]) {
@@ -219,7 +221,7 @@ export class DiningSettlementService {
     const actor = await this.actor(auth, branchId, ["OWNER", "MANAGER"]);
     const note = reason.trim();
     if (note.length < 3 || note.length > 500) throw new BadRequestException("DINING_REASON_REQUIRED");
-    return this.transact(async tx => {
+    const result = await this.transact(async tx => {
       const ticket = await tx.diningTicket.findFirst({
         where: { id: ticketId, branchId }, select: { sessionId: true, status: true },
       });
@@ -246,8 +248,14 @@ export class DiningSettlementService {
         details: { ticketId, reason: note, beforeSubtotalVnd: before.subtotalVnd,
           afterSubtotalVnd: before.subtotalVnd - removedVnd, items },
       } });
-      return { ticketId, status: "CANCELED" as const, replayed: false };
+      return { ticketId, status: "CANCELED" as const, replayed: false,
+        sessionId: ticket.sessionId };
     });
+    if (!result.replayed) await Promise.allSettled([this.realtime.publishDining({
+      type: "dining.ticket", branchId, sessionId: result.sessionId,
+      ticketId, status: "CANCELED",
+    })]);
+    return { ticketId: result.ticketId, status: result.status, replayed: result.replayed };
   }
 
   async cleaned(auth: string | undefined, branchId: string, tableId: string) {
