@@ -11,6 +11,8 @@ import {
 } from "./src/pos-api";
 import { clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
+import { watchRetailDining } from "./src/dining-live";
+import { playRetailQrAlert } from "./src/dining-alert";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
   cream: "#FAF7F3", paper: "#FFFFFF", border: "#EAE1DA", soft: "#F5ECE6",
@@ -51,6 +53,8 @@ export default function App() {
   const [pendingSubmit, setPendingSubmit] = useState<{ sessionId: string; payload: Submission } | null>(null);
   const lock = useRef(false);
   const requestVersion = useRef(0);
+  const seenPending = useRef(new Set<string>());
+  const lastSoundAt = useRef(0);
   const branch = branches.find(b => b.id === branchId) ?? null;
   const role = branch?.staffRole ?? "";
   const activeTable = tables.find(t => t.id === selectedTableId) ?? null;
@@ -75,6 +79,7 @@ export default function App() {
       ]);
       if (version !== requestVersion.current) return;
       setAreas(a); setTables(t); setCatalog(m); setApprovals(q);
+      q.forEach(ticket => seenPending.current.add(ticket.id));
       setOnline(true); setError("");
     } catch (e) {
       if (version === requestVersion.current) {
@@ -85,12 +90,27 @@ export default function App() {
 
   useEffect(() => {
     if (!token || !branchId) return;
+    seenPending.current.clear(); lastSoundAt.current = 0;
     void refresh(true);
+    const stop = watchRetailDining(token, branchId, {
+      onReady: () => { void refresh(); },
+      onChange: hint => {
+        if (hint.type === "dining.pending" && hint.ticketId &&
+          !seenPending.current.has(hint.ticketId)) {
+          seenPending.current.add(hint.ticketId);
+          if (Date.now() - lastSoundAt.current > 2500) {
+            lastSoundAt.current = Date.now();
+            void playRetailQrAlert().catch(() => undefined);
+          }
+        }
+        void refresh();
+      },
+    });
     const timer = setInterval(() => { if (AppState.currentState === "active") void refresh(); }, 5000);
     const sub = AppState.addEventListener("change", s => {
       if (s === "active") void refresh(true);
     });
-    return () => { clearInterval(timer); sub.remove(); };
+    return () => { stop(); clearInterval(timer); sub.remove(); };
   }, [token, branchId, refresh]);
 
   useEffect(() => {
@@ -400,6 +420,22 @@ export default function App() {
         <View style={st.headerRight}>
           <Text style={[st.caption, { color: online ? C.olive : C.red }]}>
             {online ? "● Đã kết nối" : "○ Mất mạng"}</Text>
+          {canOrder(role) && <Pressable accessibilityRole="button"
+            accessibilityLabel={"Chuông QR, " + approvals.length + " yêu cầu chờ duyệt"}
+            style={st.iconButton} onPress={() => {
+              const pending = approvals[0];
+              const table = pending && tables.find(t => t.sessions[0]?.id === pending.sessionId);
+              if (table) { selectTable(table); setPage("bill"); }
+              else { setAreaId(null); setPage("tables"); }
+            }}>
+            <Text style={st.iconText}>🔔 {approvals.length}</Text>
+          </Pressable>}
+          <Pressable accessibilityRole="button" accessibilityLabel="Test thông báo và âm QR"
+            style={st.iconButton} onPress={() => {
+              void playRetailQrAlert(true).then(() => {
+                setMessage("Đã phát thử chuông QR cục bộ. Không tạo đơn hay phiếu.");
+              }).catch(cause => setError(cause instanceof Error ? cause.message : "Không phát được âm thử."));
+            }}><Text style={st.iconText}>♫</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ lại"
             style={st.iconButton} onPress={() => { void refresh(true); }}>
             <Text style={st.iconText}>{syncing ? "…" : "↻"}</Text></Pressable>
