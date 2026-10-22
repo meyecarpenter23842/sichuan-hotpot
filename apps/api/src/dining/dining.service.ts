@@ -830,7 +830,11 @@ export class DiningService {
         return {
           productName: item.productName, variantName: item.variantName,
           quantity: item.quantity, note: snap?.note ?? null,
-          modifiers: (snap?.modifiers ?? []).map(option => ({ name: option.name ?? "" })),
+          modifiers: [...(snap?.modifiers ?? []).reduce((counts, option) => {
+            const name = option.name ?? "";
+            if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+            return counts;
+          }, new Map<string, number>())].map(([name, quantity]) => ({ name, quantity })),
           comboItems: (snap?.comboItems ?? []).map(option => ({
             productName: option.productName ?? "", variantName: option.variantName ?? null,
             quantity: option.quantity ?? 1,

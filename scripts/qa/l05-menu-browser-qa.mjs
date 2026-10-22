@@ -35,6 +35,18 @@ try {
     isPublished: true } });
   const product = await db.product.create({ data: { categoryId: category.id,
     name: "Lẩu QR QA", priceVnd: 250_000, isAvailable: true } });
+  const group = await db.modifierGroup.create({ data: {
+    productId: product.id, name: "Topping Lẩu", minSelect: 0, maxSelect: 3,
+  } });
+  await db.modifierOption.create({ data: {
+    groupId: group.id, name: "Bò cuộn QR QA", priceDeltaVnd: 30_000,
+  } });
+  const addonCategory = await db.catalogCategory.create({ data: {
+    branchId: branch.id, name: "Topping gọi thêm", isPublished: true,
+  } });
+  await db.product.create({ data: { categoryId: addonCategory.id,
+    name: "Nấm lẻ QR QA", priceVnd: 20_000, isAvailable: true,
+  } });
   const variant = await db.productVariant.create({ data: { productId: product.id,
     name: "Lớn", priceDeltaVnd: 120_000, isAvailable: true } });
   const staff = await db.user.create({ data: { role: "WAITER" } });
@@ -62,6 +74,13 @@ try {
   await page.screenshot({ path: "apps/menu/qa-artifacts/home-390.png" });
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).waitFor();
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).click();
+  await page.getByRole("button", { name: "Tăng Bò cuộn QR QA" }).click();
+  await page.getByRole("button", { name: "Tăng Bò cuộn QR QA" }).click();
+  await page.getByLabel("Bò cuộn QR QA: 2").waitFor();
+  await page.screenshot({ path: "apps/menu/qa-artifacts/topping-picker-390.png" });
+  await page.getByRole("button", { name: "Giảm Bò cuộn QR QA" }).click();
+  await page.getByRole("button", { name: "Giảm Bò cuộn QR QA" }).click();
+  await page.getByLabel("Bò cuộn QR QA: 0").waitFor();
   await page.getByRole("checkbox", { name: "Lớn +120.000đ" }).click();
   await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
   await page.getByRole("button", { name: "Xem giỏ →" }).click();

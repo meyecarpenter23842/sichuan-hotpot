@@ -23,6 +23,38 @@ export function ticketStatus(status: string) {
   return labels[status] ?? status;
 }
 
+/** Saved ticket snapshots survive subsequent edits/deletion in the catalog.
+ * Duplicate option IDs represent topping quantity, not duplicate tickets. */
+export function snapshotLabels(snapshot: unknown): string[] {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return [];
+  const record = snapshot as Record<string, unknown>;
+  const result: string[] = [];
+  if (Array.isArray(record.modifiers)) {
+    const modifiers = new Map<string, { name: string; quantity: number }>();
+    for (const candidate of record.modifiers) {
+      if (!candidate || typeof candidate !== "object" || !("name" in candidate)
+          || typeof candidate.name !== "string" || !candidate.name) continue;
+      const name = candidate.name;
+      const key = "optionId" in candidate && typeof candidate.optionId === "string"
+        ? candidate.optionId : name;
+      const current = modifiers.get(key);
+      modifiers.set(key, { name, quantity: (current?.quantity ?? 0) + 1 });
+    }
+    for (const option of modifiers.values()) {
+      result.push("Topping: " + option.quantity + " × " + option.name);
+    }
+  }
+  if (Array.isArray(record.comboItems)) for (const candidate of record.comboItems) {
+    if (!candidate || typeof candidate !== "object" || !("productName" in candidate)
+        || typeof candidate.productName !== "string" || !candidate.productName) continue;
+    const units = "quantity" in candidate && typeof candidate.quantity === "number"
+      && Number.isSafeInteger(candidate.quantity) && candidate.quantity > 0
+        ? candidate.quantity : 1;
+    result.push("Combo: " + units + " × " + candidate.productName);
+  }
+  if (typeof record.note === "string" && record.note) result.push("Ghi chú: " + record.note);
+  return result;
+}
 function TicketProduct({ item, catalog }: { item: TicketItem; catalog: Menu | null }) {
   // Use the stable server product id; historical items with removed products get
   // a placeholder rather than a possibly incorrect image matched by name.
@@ -35,6 +67,8 @@ function TicketProduct({ item, catalog }: { item: TicketItem; catalog: Menu | nu
       <Text style={s.itemName} numberOfLines={2}>{item.productName}</Text>
       {!!item.variantName && <Text style={s.detail} numberOfLines={1}>{item.variantName}</Text>}
       <Text style={s.detail}>Số lượng: {item.quantity}</Text>
+      {snapshotLabels(item.selectionSnapshot).map((description, index) =>
+        <Text key={index} style={s.modifierDetail}>{description}</Text>)}
     </View>
     <Text style={s.price}>{money(item.lineTotalVnd)}</Text>
   </View>;
@@ -85,6 +119,7 @@ const s = StyleSheet.create({
   itemMain: { flex: 1, minWidth: 0, gap: 2 },
   itemName: { color: "#362420", fontWeight: "800", fontSize: 12 },
   detail: { color: "#796C67", fontSize: 11 },
+  modifierDetail: { color: "#8D2734", fontSize: 11, lineHeight: 16, fontWeight: "700" },
   price: { color: "#76202A", fontWeight: "900", fontSize: 12 },
   note: { padding: 8, backgroundColor: "#FFF2E4", borderRadius: 8,
     fontSize: 11, lineHeight: 16, color: "#694D32" },

@@ -9,7 +9,7 @@ import {
   type Area, type Bill, type Branch, type CartLine, type Menu, type Principal,
   type Product, type Receipt, type Submission, type Table, type Ticket, type Tokens,
 } from "./src/pos-api";
-import { clientKey } from "./src/pos-cart";
+import { cartSelectionLabels, clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
 import { RetailTicketCard, ticketGroup } from "./src/RetailTicketCard";
 import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
@@ -43,6 +43,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<"pos" | "queue">("pos");
   const [queueTicketId, setQueueTicketId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [toppingOnly, setToppingOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -74,6 +75,11 @@ export default function App() {
   const acceptedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "accepted") ?? [];
   const excludedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "excluded") ?? [];
   const estimatedVnd = cart.reduce((n, x) => n + x.previewVnd, 0);
+  // Only separately priced CATALOG PRODUCTS are orderable on their own.
+  // A modifier option alone is not a billable product, so never fabricate price.
+  const toppingCategoryIds = useMemo(() => new Set((catalog?.categories ?? [])
+    .filter(group => /topping|ăn kèm|gọi thêm|món thêm/u.test(group.name.toLocaleLowerCase("vi")))
+    .map(group => group.id)), [catalog]);
 
   const refresh = useCallback(async (showSpinner = false) => {
     if (!branchId || !currentSession()) return;
@@ -176,7 +182,7 @@ export default function App() {
     }
     if (value === branchId) { setShowBranchMenu(false); return; }
     ++requestVersion.current; setBranchId(value); setAreaId(null); setSelectedTableId(null);
-    setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null);
+    setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null); setToppingOnly(false);
     setPage("tables"); setShowBranchMenu(false); setError(""); setMessage("");
     setWorkspace("pos"); setQueueTicketId(null);
   };
@@ -264,8 +270,10 @@ export default function App() {
   const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
     c.products.map(p => ({ ...p, categoryId: c.id }))).filter(p =>
       (!categoryId || p.categoryId === categoryId) &&
+      (!toppingOnly || toppingCategoryIds.has(p.categoryId)) &&
       (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
-        .includes(search.toLocaleLowerCase("vi").trim()))), [catalog, categoryId, search]);
+        .includes(search.toLocaleLowerCase("vi").trim()))),
+    [catalog, categoryId, search, toppingOnly, toppingCategoryIds]);
   const removeLine = (id: string) => {
     if (pendingSubmit) return;
     setCart(c => c.filter(x => x.id !== id));
@@ -414,6 +422,9 @@ export default function App() {
             <View style={st.draftPhotoEmpty}><Text>🍲</Text></View>}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={st.itemText}>{l.item.quantity} × {l.name} {l.variantName ? "· " + l.variantName : ""}</Text>
+            {cartSelectionLabels(catalog?.categories.flatMap(g => g.products)
+              .find(p => p.id === l.item.productId), l.item).map((detail, index) =>
+              <Text key={index} style={st.detailLine}>{detail}</Text>)}
             <Text style={st.caption}>{money(l.previewVnd)} · tạm tính</Text>
             {!!l.item.note && <Text style={st.caption}>{l.item.note}</Text>}
           </View>
@@ -459,10 +470,18 @@ export default function App() {
       placeholderTextColor="#978984" value={search} onChangeText={setSearch}
       accessibilityLabel="Tìm món"/>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.chips}>
-      <Chip label="Tất cả" active={!categoryId} onPress={() => setCategoryId(null)}/>
+      <Chip label="Tất cả" active={!categoryId && !toppingOnly}
+        onPress={() => { setCategoryId(null); setToppingOnly(false); }}/>
+      <Chip label="🥬 Gọi topping lẻ" active={toppingOnly} onPress={() => {
+        setToppingOnly(value => !value); setCategoryId(null); setSearch("");
+      }}/>
       {(catalog?.categories ?? []).map(c => <Chip key={c.id} label={c.name}
-        active={categoryId === c.id} onPress={() => setCategoryId(c.id)}/>)}
+        active={!toppingOnly && categoryId === c.id}
+        onPress={() => { setCategoryId(c.id); setToppingOnly(false); }}/>)}
     </ScrollView>
+    {toppingOnly && toppingCategoryIds.size === 0 &&
+      <Text style={st.warning}>Chưa có danh mục sản phẩm topping bán lẻ.
+        Hãy tạo món topping có giá và ảnh trong Admin để gọi riêng, không dùng giá tùy chọn của món lẩu.</Text>}
     {!catalog ? <Text style={st.caption}>Đang tải thực đơn…</Text> :
       products.length === 0 ? <Text style={st.caption}>Không tìm thấy món phù hợp.</Text> :
         <View style={st.products}>{products.map(p => {
@@ -805,6 +824,7 @@ const st = StyleSheet.create({
     borderRadius: 12, padding: 8 },
   groupPendingHeading: { color: "#A3202D", fontSize: 13, fontWeight: "900" },
   groupAcceptedHeading: { color: "#216C47", fontSize: 13, fontWeight: "900" },
+  detailLine: { fontSize: 11, lineHeight: 17, fontWeight: "700", color: C.redDark },
   draftPhoto: { width: 48, height: 48, borderRadius: 8, backgroundColor: C.soft },
   draftPhotoEmpty: { width: 48, height: 48, borderRadius: 8, backgroundColor: C.soft,
     alignItems: "center", justifyContent: "center" },

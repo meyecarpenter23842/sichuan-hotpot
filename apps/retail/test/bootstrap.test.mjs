@@ -99,3 +99,24 @@ test("tablet/desktop split and distinct mobile routes enforce tap accessibility"
   assert.match(app, /SafeAreaProvider/);
   assert.match(app, /keyboardShouldPersistTaps="handled"/);
 });
+
+test("P0 #277 topping quantity, photographed picker, snapshot and standalone sales", () => {
+  const grid = read("../src/ToppingQuantityGrid.tsx");
+  const billCard = read("../src/RetailTicketCard.tsx");
+  const kitchen = read("../../api/src/dining/dining.service.ts");
+  const receipt = read("../src/dining-receipt.ts");
+  assert.match(grid, /accessibilityLabel=\{"Tăng "\+o\.name\}/);
+  assert.match(grid, /productImage\(o\.imageKey \?\? null\)/);
+  assert.match(model, /setOptionQuantity/);
+  assert.doesNotMatch(model, /selection\.length !== new Set\(selection\)\.size/);
+  assert.match(model, /selection\.length > group\.maxSelect/);
+  assert.match(model, /Array\(desired\)\.fill\(id\)/);
+  assert.match(model, /cartSelectionLabels/);
+  assert.match(sheet, /ToppingQuantityGrid/);
+  assert.match(app, /🥬 Gọi topping lẻ/);
+  assert.match(app, /cartSelectionLabels/);
+  assert.match(billCard, /snapshotLabels/);
+  assert.match(billCard, /option\.quantity/);
+  assert.match(kitchen, /new Map<string, number>/);
+  assert.match(receipt, /Topping: /);
+});

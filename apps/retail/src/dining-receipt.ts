@@ -39,9 +39,14 @@ export function printDiningReceipt(bill: Bill): void {
       if (snap && typeof snap === "object" && !Array.isArray(snap)) {
         const selections = snap as Record<string, unknown>;
         if (Array.isArray(selections.modifiers)) {
-          const labels = selections.modifiers.map((x: unknown) => x && typeof x === "object"
-            && "name" in x && typeof x.name === "string" ? x.name : "").filter(Boolean);
-          if (labels.length) add("p", "Tùy chọn: " + labels.join(", "));
+          const counts = new Map<string, number>();
+          for (const x of selections.modifiers) {
+            const name = x && typeof x === "object" && "name" in x && typeof x.name === "string"
+              ? x.name : "";
+            if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+          }
+          if (counts.size) add("p", "Topping: " +
+            [...counts].map(([name, count]) => count + " × " + name).join(", "));
         }
         if (Array.isArray(selections.comboItems)) for (const child of selections.comboItems) {
           if (!child || typeof child !== "object") continue;
