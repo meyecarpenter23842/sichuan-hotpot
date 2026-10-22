@@ -118,7 +118,7 @@ export class DiningService {
     return this.prisma.database.diningTable.findMany({
       where: { branchId }, orderBy: [{ area: { sortOrder: "asc" } }, { sortOrder: "asc" }],
       select: {
-        id: true, code: true, name: true, areaId: true, isActive: true, sortOrder: true,
+        id: true, code: true, name: true, areaId: true, isActive: true, needsCleaning: true, sortOrder: true,
         sessions: { where: { closedAt: null }, take: 1,
           select: { id: true, status: true, guestCount: true, openedAt: true,
             _count: { select: { tickets: { where: { status: "PENDING_APPROVAL" } } } } } },
@@ -316,7 +316,7 @@ export class DiningService {
     try {
       return await serializable(this.prisma.database, async tx => {
         const table = await tx.diningTable.findFirst({
-          where: { id: tableId, branchId, isActive: true, area: { isActive: true },
+          where: { id: tableId, branchId, isActive: true, needsCleaning: false, area: { isActive: true },
             branch: { isActive: true } }, select: { id: true },
         });
         if (!table) throw new NotFoundException("DINING_TABLE_UNAVAILABLE");
@@ -345,11 +345,27 @@ export class DiningService {
     const actor = await this.staff(auth, branchId, ["OWNER", "MANAGER", "CASHIER"]);
     return serializable(this.prisma.database, async tx => {
       const session = await tx.diningSession.findFirst({
-        where: { id: sessionId, branchId }, select: { status: true, closedAt: true },
+        where: { id: sessionId, branchId }, select: { status: true, closedAt: true, tableId: true },
       });
       if (!session) throw new NotFoundException("DINING_SESSION_NOT_FOUND");
       if (session.closedAt) throw new ConflictException("DINING_SESSION_CLOSED");
-      // L07 settlement may add payment flows; never let close erase an unpaid bill.
+      const locked = await tx.diningSession.updateMany({
+        where: { id: sessionId, branchId, closedAt: null,
+          status: { in: ["OPEN", "CHECKOUT"] } }, data: { updatedAt: new Date() },
+      });
+      if (locked.count !== 1) throw new ConflictException("DINING_SESSION_NOT_OPEN");
+      const pending = await tx.diningTicket.count({
+        where: { sessionId, branchId, status: "PENDING_APPROVAL" },
+      });
+      if (pending) throw new ConflictException("DINING_PENDING_QR_TICKETS");
+      if (await tx.diningPayment.count({ where: { sessionId, branchId, status: "PENDING" } }))
+        throw new ConflictException("DINING_QR_PAYMENT_PENDING");
+      if (session.status !== "CHECKOUT" &&
+        await tx.diningTicket.count({ where: { sessionId, branchId,
+          status: { in: [...ACTIVE_KITCHEN] } } })) {
+        throw new ConflictException("DINING_CHECKOUT_REQUIRED");
+      }
+      // Verify precise settlement before closing; QR requests are not revenue.
       const [eligible, paid] = await Promise.all([
         tx.diningTicketItem.aggregate({
           where: { ticket: { sessionId, branchId, status: { in: [...ACTIVE_KITCHEN] } } },
@@ -371,13 +387,12 @@ export class DiningService {
       await tx.diningGuestGrant.updateMany({
         where: { sessionId, branchId, revokedAt: null }, data: { revokedAt: new Date() },
       });
-      await tx.diningTicket.updateMany({
-        where: { sessionId, branchId, status: "PENDING_APPROVAL" },
-        data: { status: "REJECTED", reviewedById: actor.id, reviewedAt: new Date(),
-          rejectionReason: "SESSION_CLOSED" },
+      await tx.diningTable.update({
+        where: { id: session.tableId }, data: { needsCleaning: true },
       });
       await tx.diningAuditEvent.create({ data: {
-        branchId, sessionId, actorId: actor.id, action: "SESSION_CLOSED", details: {},
+        branchId, sessionId, actorId: actor.id, action: "SESSION_CLOSED",
+        details: { tableId: session.tableId, needsCleaning: true },
       } });
       return { sessionId, status: "CLOSED" as const };
     });
@@ -395,9 +410,13 @@ export class DiningService {
       if (session.tableId === targetTableId)
         return { sessionId, tableId: targetTableId, replayed: true };
       const destination = await tx.diningTable.findFirst({ where: {
-        id: targetTableId, branchId, isActive: true, area: { isActive: true },
+        id: targetTableId, branchId, isActive: true, needsCleaning: false, area: { isActive: true },
       }, select: { id: true } });
       if (!destination) throw new NotFoundException("DINING_TABLE_UNAVAILABLE");
+      const pending = await tx.diningTicket.count({
+        where: { sessionId, branchId, status: "PENDING_APPROVAL" },
+      });
+      if (pending) throw new ConflictException("DINING_PENDING_QR_TICKETS");
       const occupied = await tx.diningSession.findFirst({
         where: { tableId: targetTableId, closedAt: null }, select: { id: true },
       });
@@ -410,12 +429,7 @@ export class DiningService {
       await tx.diningGuestGrant.updateMany({
         where: { sessionId, branchId, revokedAt: null }, data: { revokedAt: new Date() },
       });
-      // Old printed QR/guest credentials must not keep submitting after reassignment.
-      await tx.diningTicket.updateMany({
-        where: { sessionId, branchId, source: "QR", status: "PENDING_APPROVAL" },
-        data: { status: "REJECTED", reviewedAt: new Date(), reviewedById: actor.id,
-          rejectionReason: "TABLE_TRANSFERRED" },
-      });
+      // Requests pending approval are blocked above, never silently canceled.
       await tx.diningAuditEvent.create({ data: {
         branchId, sessionId, actorId: actor.id,
         action: "TABLE_TRANSFERRED", details: { fromTableId: session.tableId, toTableId: targetTableId },
@@ -665,17 +679,22 @@ export class DiningService {
     const session = await this.prisma.database.diningSession.findFirst({
       where: { id: sessionId, branchId },
       select: { id: true, tableId: true, status: true, guestCount: true, openedAt: true,
+        closedAt: true, branch: { select: { name: true } },
+        table: { select: { code: true, name: true } },
         tickets: { orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           where: includePending ? {} : { status: { in: [...ACTIVE_KITCHEN] } },
           select: ticketSelect },
-        payments: { where: { status: "CONFIRMED" }, select: { amountVnd: true } },
+        payments: { orderBy: { createdAt: "asc" },
+          select: { id: true, method: true, status: true, amountVnd: true,
+            createdAt: true, confirmedAt: true, confirmedById: true, recordedById: true } },
       },
     });
     if (!session) throw new NotFoundException("DINING_SESSION_NOT_FOUND");
     const subtotalVnd = session.tickets.filter(t => ACTIVE_KITCHEN.some(s => s === t.status))
       .reduce((sum, ticket) => sum + ticket.items.reduce((s, line) => s + line.lineTotalVnd, 0), 0);
-    const paidVnd = session.payments.reduce((s, p) => s + p.amountVnd, 0);
-    return { ...session, payments: undefined, subtotalVnd, paidVnd,
+    const paidVnd = session.payments.filter(p => p.status === "CONFIRMED")
+      .reduce((s, p) => s + p.amountVnd, 0);
+    return { ...session, subtotalVnd, paidVnd,
       dueVnd: Math.max(0, subtotalVnd - paidVnd) };
   }
 
