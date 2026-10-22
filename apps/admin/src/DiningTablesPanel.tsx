@@ -29,12 +29,14 @@ const money = (n: number) => n.toLocaleString("vi-VN") + "đ";
 const formatDate = (s: string) => new Date(s).toLocaleTimeString("vi-VN", {
   hour: "2-digit", minute: "2-digit" });
 export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaChange,
-  filter, onFilterChange, display, onDisplayChange, onConfigure }: {
+  filter, onFilterChange, display, onDisplayChange, onConfigure,
+  focusTicketId, onFocusHandled }: {
   token: string; branchId: string; role: string;
   selectedArea: string | null; onAreaChange: (id: string | null) => void;
   filter: Filter; onFilterChange: (next: Filter) => void;
   display: Display; onDisplayChange: (next: Display) => void;
   onConfigure: () => void;
+  focusTicketId?: string | null; onFocusHandled?: () => void;
 }) {
   const [areas, setAreas] = useState<DiningArea[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
@@ -125,6 +127,17 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
     catch (err) { setError(err instanceof Error ? err.message : "Không đọc được hóa đơn."); }
     finally { setBillLoading(false); }
   };
+  useEffect(() => {
+    if (!focusTicketId || !approvals.length) return;
+    const ticket = approvals.find(item => item.id === focusTicketId);
+    const table = ticket && tables.find(item => item.sessions[0]?.id === ticket.sessionId);
+    if (!table) return;
+    onAreaChange(null); onFilterChange("pending");
+    void inspect(table);
+    onFocusHandled?.();
+  // Focus changes are driven by an explicit notification and fresh approved API snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTicketId, approvals, tables]);
   const approve = async (ticket: Ticket) => {
     if (busy) return;
     setBusy(true); setError(""); setNotice("");
