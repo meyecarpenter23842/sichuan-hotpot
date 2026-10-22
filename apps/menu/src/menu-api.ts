@@ -5,12 +5,14 @@ export type Group = { id: string; name: string; minSelect: number; maxSelect: nu
 export type ComboOption = { id: string; priceDeltaVnd: number; quantity: number; variant: Option | null; childProduct: { name: string; isAvailable: boolean } };
 export type ComboModifier = { id: string; priceDeltaVnd: number; quantity: number; modifierOption: Option & { group: { name: string; isAvailable: boolean } } };
 export type ComboGroup = { id: string; name: string; minSelect: number; maxSelect: number; options: ComboOption[]; modifierOptions: ComboModifier[] };
-export type Product = { id: string; categoryId?: string; name: string; description: string | null; imageKey: string | null; priceVnd: number;
+export type StandaloneTopping = { id: string; groupId: string; groupName: string;
+  name: string; priceVnd: number; imageKey: string | null; isAvailable: boolean };
+export type Product = { id: string; categoryId?: string; standaloneTopping?: boolean; name: string; description: string | null; imageKey: string | null; priceVnd: number;
   kind: "STANDARD" | "COMBO"; isAvailable: boolean; variants: Option[]; modifierGroups: Group[];
   comboGroups: ComboGroup[]; comboFixedItems: { id: string; quantity: number; variant: Option | null; childProduct: { name: string; isAvailable: boolean } }[];
 };
 export type Category = { id: string; name: string; imageKey?: string | null; products: Product[] };
-export type Menu = { id: string; name: string; isActive: boolean; categories: Category[] };
+export type Menu = { id: string; name: string; isActive: boolean; categories: Category[]; standaloneToppings?: StandaloneTopping[] };
 export type Locator = { table: string; code: string; area: string; branch: string; branchId: string };
 export type GuestGrant = { credential: string; expiresAt: string; sessionId: string };
 export type GuestTicket = { id: string; status: string; source: "QR" | "STAFF"; createdAt: string;
@@ -21,7 +23,7 @@ export type GuestBill = { status: string; subtotalVnd: number; tickets: {
   id: string; status: string; createdAt: string;
   items: { productName: string; variantName: string | null; quantity: number; lineTotalVnd: number }[];
 }[] };
-export type ItemInput = { productId: string; variantId: string | null; modifierIds: string[]; comboOptionIds: string[];
+export type ItemInput = { productId: string; standaloneTopping?: boolean; variantId: string | null; modifierIds: string[]; comboOptionIds: string[];
   quantity: number; note: string };
 export type CartLine = { id: string; name: string; variantName?: string; previewVnd: number; item: ItemInput };
 export type Submission = { idempotencyKey: string; customerNote?: string; items: ItemInput[] };
