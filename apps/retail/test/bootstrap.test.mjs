@@ -83,8 +83,14 @@ test("tablet/desktop split and distinct mobile routes enforce tap accessibility"
   assert.match(app, /leftScroll: \{ width: "38%", flexGrow: 0, flexShrink: 0, minWidth: 0/);
   assert.match(app, /retail-table-strip/);
   assert.match(app, /retail-desk-menu/);
+  assert.match(app, /desktop && width >= 1024 && st\.productTablet/);
   assert.match(app, /desktop && width >= 1200 && st\.productWide/);
-  assert.match(app, /productWide: \{ width: "31\.7%" \}/);
+  assert.match(app, /productTablet: \{ width: "31\.7%" \}/);
+  assert.match(app, /productWide: \{ width: "23\.7%" \}/);
+  assert.match(app, /productPhoto: \{ width: "100%", aspectRatio: 1 \}/);
+  assert.match(app, /productEmpty: \{ width: "100%", aspectRatio: 1/);
+  assert.match(app, /retail-header-actions/);
+  assert.match(app, /contentContainerStyle=\{st\.qrToolbarContent\}/);
   assert.match(app, /desktopTableRow/);
   assert.match(app, /page === "tables"/);
   assert.match(app, /page === "menu"/);
