@@ -96,20 +96,11 @@ jobs:
           unzip -Z1 "$apk" | grep -Fx 'assets/index.android.bundle'
           found=0
           while IFS= read -r entry; do
-            if unzip -p "$apk" "$entry" | cmp -s sound-native-android.mp3 -; then found=1; break; fi
-          done < <(unzip -Z1 "$apk" | grep -E '^res/.*\\.mp3
-          npm run android:sha1:retail
-          echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
-          echo "::warning::Do not distribute CI Retail APK; Firebase and API endpoint are synthetic."
-
-      - name: Archive non-distributable CI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: retail-android-CI-FIREBASE-FIXTURE-NOT-FOR-DISTRIBUTION
-          path: dist/android/sichuan-hotpot-retail-release.apk
-          if-no-files-found: error
-          retention-days: 7
- || true)
+            if unzip -p "$apk" "$entry" | cmp -s sound-native-android.mp3 -; then
+              found=1
+              break
+            fi
+          done < <(unzip -Z1 "$apk" | grep -E '^res/.*\.mp3$' || true)
           test "$found" = "1"
           npm run android:sha1:retail
           echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
