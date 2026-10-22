@@ -84,7 +84,13 @@ try {
     await page.getByLabel("Bò cuộn QA: 2").waitFor();
   });
   await page.screenshot({ path: "apps/retail/qa-artifacts/topping-picker-390.png" });
-  await page.getByRole("button", { name: "Thêm 1 vào hóa đơn" }).click();
+  const modalAdd = page.getByRole("button", { name: "Thêm 1 vào hóa đơn" });
+  if (await modalAdd.count() !== 1) {
+    console.log("L277_MODAL_DIAGNOSTIC", (await page.locator("body").innerText()).slice(-2800));
+    console.log("L277_VISIBLE_BUTTONS", await page.getByRole("button").allTextContents());
+  }
+  assert.equal(await modalAdd.count(), 1, "valid 2x topping popup must expose add-to-bill");
+  await modalAdd.click();
   await page.getByText("1 món trong giỏ bàn").waitFor();
   await page.getByText("Topping Lẩu: 2 × Bò cuộn QA").waitFor();
   await page.getByRole("button", { name: "Xem hóa đơn" }).click();
