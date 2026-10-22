@@ -10,7 +10,7 @@ import {
   type CartLine, type GuestBill, type GuestGrant, type GuestTicket,
   type Locator, type Menu, type Product, type Receipt, type Submission,
 } from "./src/menu-api";
-import { changeCartQuantity, clientKey } from "./src/menu-cart";
+import { cartSelectionLabels, changeCartQuantity, clientKey } from "./src/menu-cart";
 import { ProductSheet } from "./src/ProductSheet";
 
 const tone = {
@@ -93,6 +93,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("menu");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [category, setCategory] = useState<string | null>(null);
+  const [toppingOnly, setToppingOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [note, setNote] = useState("");
@@ -120,11 +121,15 @@ export default function App() {
     }
     return images;
   }, [catalog]);
+  const toppingCategoryIds = useMemo(() => new Set((catalog?.categories ?? [])
+    .filter(group => /topping|ăn kèm|gọi thêm|món thêm/u.test(group.name.toLocaleLowerCase("vi")))
+    .map(group => group.id)), [catalog]);
   const products = useMemo(() => (catalog?.categories ?? [])
     .flatMap(group => group.products.map(product => ({ ...product, categoryId: group.id })))
     .filter(p => (!category || p.categoryId === category) &&
+      (!toppingOnly || toppingCategoryIds.has(p.categoryId)) &&
       (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
-        .includes(search.trim().toLocaleLowerCase("vi")))), [catalog, category, search]);
+        .includes(search.trim().toLocaleLowerCase("vi")))), [catalog, category, search, toppingOnly, toppingCategoryIds]);
   const updateGrant = useCallback((value: SavedGrant | null) => {
     guestRef.current = value;
     setGrant(value);
@@ -383,10 +388,14 @@ export default function App() {
                 placeholderTextColor="#8B817D" value={search} onChangeText={setSearch} accessibilityLabel="Tìm món"/>
               <Text style={s.sectionHeading}>Danh mục</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryBar}>
-                <Chip label="Tất cả" checked={!category} onPress={() => setCategory(null)}/>
+                <Chip label="Tất cả" checked={!category && !toppingOnly}
+                  onPress={() => { setCategory(null); setToppingOnly(false); }}/>
+                <Chip label="🥬 Gọi topping lẻ" checked={toppingOnly}
+                  onPress={() => { setToppingOnly(v => !v); setCategory(null); setSearch(""); }}/>
                 {(catalog?.categories ?? []).map(g => <Chip key={g.id}
                   label={categoryIcon(g.name) + " " + g.name}
-                  checked={category === g.id} onPress={() => setCategory(g.id)}/>)}
+                  checked={!toppingOnly && category === g.id}
+                  onPress={() => { setCategory(g.id); setToppingOnly(false); }}/>)}
               </ScrollView>
               <View style={s.menuHeading}>
                 <Text style={s.sectionHeading}>{category
@@ -394,6 +403,9 @@ export default function App() {
                   : "Món nổi bật"}</Text>
                 <Text style={s.micro}>{products.length} món</Text>
               </View>
+              {toppingOnly && toppingCategoryIds.size === 0 &&
+                <Text style={s.empty}>Quán chưa đăng món topping bán riêng trong thực đơn.
+                  Vui lòng nhờ nhân viên hỗ trợ hoặc chọn món khác.</Text>}
               {!products.length ? <Text style={s.empty}>Không có món phù hợp.</Text> :
                 <View style={s.grid}>{products.map(product => {
                   const image = productImage(product.imageKey);
@@ -437,6 +449,9 @@ export default function App() {
                       </Pressable>
                     </View>
                     {!!line.variantName && <Text style={s.muted} numberOfLines={1}>{line.variantName}</Text>}
+                    {cartSelectionLabels(catalog?.categories.flatMap(g => g.products)
+                      .find(product => product.id === line.item.productId), line.item).map((detail, index) =>
+                      <Text key={index} style={s.toppingDetail}>{detail}</Text>)}
                     {!!line.item.note && <Text style={s.micro} numberOfLines={2}>Ghi chú: {line.item.note}</Text>}
                     <View style={s.cartBottom}>
                       <View style={s.quantityControls}>
@@ -614,6 +629,7 @@ const s = StyleSheet.create({
     backgroundColor: tone.soft, alignItems: "center", justifyContent: "center" },
   cartPhotoSymbol: { fontSize: 26 },
   cartMain: { flex: 1, minWidth: 0, gap: 4 },
+  toppingDetail: { fontSize: 11, fontWeight: "700", color: "#902C34", lineHeight: 17 },
   cartNameRow: { flexDirection: "row", alignItems: "flex-start", gap: 3, minWidth: 0 },
   cartBottom: { flexDirection: "row", alignItems: "center",
     justifyContent: "space-between", flexWrap: "wrap", gap: 7 },
