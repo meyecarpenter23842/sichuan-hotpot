@@ -46,3 +46,12 @@ export async function disableRetailDiningPush(): Promise<void> {
   try { await api("/push/subscriptions/remove", { method: "POST", body: { token: previous.endpoint } }); }
   finally { await previous.unsubscribe(); }
 }
+
+/** Type-safe browser fallbacks for the Android-only native alert interface. */
+export async function isRetailPushRegistered(): Promise<boolean> { return false; }
+export async function testRetailNativeSound(): Promise<void> {
+  throw new Error("Âm thử này chỉ hỗ trợ Android Native.");
+}
+export async function playLocalRetailQrAlert(): Promise<void> {
+  throw new Error("Chuông QR này chỉ hỗ trợ Android Native.");
+}
