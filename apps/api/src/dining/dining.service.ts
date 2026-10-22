@@ -9,7 +9,7 @@ import { PrismaService } from "../database/prisma.service";
 import { OrderRealtimeService, type DiningChange } from "../orders/order-realtime.service";
 import { PushService } from "../push/push.service";
 import { qrInstructions } from "../payments/vietqr";
-import { priceCart, productSelect } from "../delivery/pricing";
+import { priceDiningItems } from "./dining-pricing";
 import type { DiningAreaCreateInput, DiningAreaUpdateInput, DiningTableCreateInput,
   DiningTableUpdateInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
 
@@ -29,7 +29,8 @@ const ticketSelect = {
 
 function fingerprint(actor: string, items: DiningTicketInput["items"], note: string | null): string {
   return createHash("sha256").update(JSON.stringify({ actor, items: items.map(item => ({
-    productId: item.productId, variantId: item.variantId ?? null,
+    productId: item.productId, standaloneTopping: item.standaloneTopping === true,
+    variantId: item.variantId ?? null,
     modifierIds: [...item.modifierIds].sort(),
     comboOptionIds: [...(item.comboOptionIds ?? [])].sort(),
     quantity: item.quantity, note: cleanNote(item.note) ?? null,
@@ -460,15 +461,7 @@ export class DiningService {
       const old = await tx.diningTicketItem.aggregate({
         where: { ticketId }, _sum: { lineTotalVnd: true },
       });
-      const products = await tx.product.findMany({
-        where: { id: { in: [...new Set(input.items.map(x => x.productId))] },
-          category: { branchId, isPublished: true } },
-        select: productSelect,
-      });
-      const price = priceCart(input.items.map(x => ({
-        productId: x.productId, variantId: x.variantId ?? null,
-        modifierIds: x.modifierIds, comboOptionIds: x.comboOptionIds ?? [], quantity: x.quantity,
-      })), products);
+      const price = await priceDiningItems(tx, branchId, input.items);
       const changed = await tx.diningTicket.updateMany({
         where: { id: ticketId, branchId, status: "PENDING_APPROVAL", updatedAt: ticket.updatedAt },
         data: { customerNote: input.customerNote === undefined
@@ -482,7 +475,9 @@ export class DiningService {
         quantity: line.quantity, unitPriceVnd: line.unitPriceVnd,
         lineTotalVnd: line.lineTotalVnd,
         selectionSnapshot: JSON.parse(JSON.stringify({
-          pricingMode: line.pricingMode, modifiers: line.modifiers,
+          pricingMode: line.pricingMode,
+          ...(line.standaloneToppingOptionId ? { standaloneToppingOptionId: line.standaloneToppingOptionId } : {}),
+          modifiers: line.modifiers,
           comboItems: line.comboItems, note: cleanNote(input.items[index]?.note),
         })) as Prisma.InputJsonValue,
       })) });
@@ -612,15 +607,7 @@ export class DiningService {
         ]);
         if (guestCount >= 20 || tableCount >= 120) throw new ConflictException("DINING_TICKET_RATE_LIMIT");
       }
-      const products = await tx.product.findMany({
-        where: { id: { in: [...new Set(input.items.map(x => x.productId))] },
-          category: { branchId, isPublished: true } },
-        select: productSelect,
-      });
-      const price = priceCart(input.items.map(x => ({
-        productId: x.productId, variantId: x.variantId ?? null,
-        modifierIds: x.modifierIds, comboOptionIds: x.comboOptionIds ?? [], quantity: x.quantity,
-      })), products);
+      const price = await priceDiningItems(tx, branchId, input.items);
       // Price and snapshot are computed exclusively inside the transaction.
       const ticket = await tx.diningTicket.create({
         data: {
@@ -634,7 +621,9 @@ export class DiningService {
             quantity: line.quantity, unitPriceVnd: line.unitPriceVnd,
             lineTotalVnd: line.lineTotalVnd,
             selectionSnapshot: JSON.parse(JSON.stringify({
-              pricingMode: line.pricingMode, modifiers: line.modifiers,
+              pricingMode: line.pricingMode,
+          ...(line.standaloneToppingOptionId ? { standaloneToppingOptionId: line.standaloneToppingOptionId } : {}),
+          modifiers: line.modifiers,
               comboItems: line.comboItems, note: cleanNote(input.items[index]?.note),
             })) as Prisma.InputJsonValue,
           })) },
