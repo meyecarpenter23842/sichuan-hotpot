@@ -302,9 +302,11 @@ export default function App() {
   };
   const updateQuantity = (lineId: string, direction: -1 | 1) => {
     if (frozen || sending) return;
+    const current = cart.find(line => line.id === lineId);
+    if (!current) return;
     try {
-      setCart(lines => lines.map(line => line.id === lineId
-        ? changeCartQuantity(line, direction) : line));
+      const updated = changeCartQuantity(current, direction);
+      setCart(lines => lines.map(line => line.id === lineId ? updated : line));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không sửa được số lượng.");
     }
