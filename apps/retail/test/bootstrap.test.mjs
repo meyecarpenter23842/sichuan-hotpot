@@ -29,7 +29,7 @@ test("real branch-scoped staff and menu flow, no demo checkout", () => {
   assert.match(app, /setPendingSubmit\(frozen\)/);
   assert.match(app, /setPendingSubmit\(null\); setCart\(\[\]\)/);
   assert.match(app, /Duyệt đưa Bếp/);
-  assert.match(app, /Đợi nhân viên xác nhận/);
+  assert.match(read("../src/RetailTicketCard.tsx"), /Chờ xác nhận/);
   // L07 replaced the old promise with real server-backed settlement controls.
   assert.match(app, /<RetailSettlementPanel/);
   const settlement = read("../src/RetailSettlementPanel.tsx");
@@ -55,6 +55,27 @@ test("real image paths and sizes, modifiers, combo requirements respect backend 
   assert.match(sheet, /Có sẵn trong combo/);
   assert.match(sheet, /maxLength=\{500\}/);
 });
+test("L02 ticket groups, QR triage and invoice pictures follow server snapshots", () => {
+  const card = read("../src/RetailTicketCard.tsx");
+  const backend = read("../../api/src/dining/dining.service.ts");
+  const types = read("../src/pos-api.ts");
+  assert.match(card, /PENDING_APPROVAL/);
+  assert.match(card, /PREPARING/);
+  assert.match(card, /READY/);
+  assert.match(card, /SERVED/);
+  assert.match(card, /CANCELED/);
+  assert.match(card, /p\.id === item\.productId/);
+  assert.match(backend, /id: true, productId: true, productName: true/);
+  assert.match(types, /productId: string \| null; productName/);
+  for (const marker of ["retail-qr-queue", "retail-bill-pending", "retail-bill-accepted",
+    "retail-bill-excluded", "Duyệt QR (", "Món đã xác nhận (", "Đã thu",
+    "mobileCartBar", "Đang đồng bộ hóa đơn"]) assert.ok(app.includes(marker), marker);
+  assert.match(app, /canOrder\(role\) && desktop/);
+  assert.match(app, /queueTicket\.session\?\.table/);
+  assert.match(app, /review\(ticket\.id, "approve"\)/);
+  assert.match(app, /review\(ticket\.id, "reject"\)/);
+});
+
 test("tablet/desktop split and distinct mobile routes enforce tap accessibility", () => {
   assert.match(app, /const desktop = width >= 768/);
   assert.match(app, /width: "38%"/);

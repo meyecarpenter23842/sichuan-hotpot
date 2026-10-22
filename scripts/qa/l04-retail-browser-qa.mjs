@@ -53,7 +53,7 @@ try {
     }
   });
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  try { await page.getByText("Chọn bàn để phục vụ").waitFor({ timeout: 12000 }); }
+  try { await page.getByText("Bàn đang phục vụ").waitFor({ timeout: 12000 }); }
   catch (error) {
     console.log("L04_LOGIN_DIAGNOSTIC", (await page.locator("body").innerText()).slice(0, 1300));
     console.log("L04_PAGE_ERRORS", errors.slice(0, 8));
@@ -65,7 +65,10 @@ try {
   await page.getByRole("button", { name: "Chọn Lẩu Retail QA" }).waitFor();
   await page.getByRole("button", { name: "Chọn Lẩu Retail QA" }).click();
   await page.getByRole("button", { name: "Thêm 1 vào hóa đơn" }).click();
-  await page.getByRole("tab", { name: "Hóa đơn (1)" }).click();
+  await page.getByText("1 món trong giỏ bàn").waitFor();
+  await page.getByRole("button", { name: "Xem hóa đơn" }).click();
+  await page.getByTestId("retail-bill-accepted").waitFor();
+  await page.getByRole("tab", { name: "Hóa đơn (1)" }).waitFor();
   await page.getByRole("button", { name: "Xác nhận & gửi Bếp" }).click();
   await page.getByText("Đã gửi món xuống Bếp.").waitFor();
   const session = await db.diningSession.findFirstOrThrow({ where: {
@@ -103,16 +106,50 @@ try {
   assert.equal(guest.status, 201);
   const guestTicket = await guest.json();
   assert.equal(guestTicket.status, "PENDING_APPROVAL");
-  await device.getByRole("button", { name: "Duyệt đưa Bếp" }).waitFor({ timeout: 15000 });
+  // The QR request must stay PENDING until a staff member explicitly approves.
+  assert.equal((await db.diningTicket.findUniqueOrThrow({
+    where: { id: guestTicket.ticketId },
+  })).status, "PENDING_APPROVAL");
+  await device.getByRole("button", { name: "Duyệt QR (1)" }).waitFor({ timeout: 15000 });
+  await device.getByRole("button", { name: "Duyệt QR (1)" }).click();
+  await device.getByTestId("retail-qr-queue").waitFor();
+  await device.getByRole("button", { name: "Xem phiếu QR Bàn A1" }).click();
+  await device.getByText("Chi tiết Bàn A1").waitFor();
   await device.getByRole("button", { name: "Duyệt đưa Bếp" }).click();
   await device.getByText("Đã duyệt;", { exact: false }).waitFor();
   assert.equal((await db.diningTicket.findUniqueOrThrow({ where: { id: guestTicket.ticketId } })).status,
     "APPROVED");
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 2);
+  await device.getByText("Không có yêu cầu chờ").waitFor({ timeout: 15000 });
+  await device.getByRole("button", { name: "Bàn & Món" }).click();
+  await device.getByTestId("retail-bill-accepted").getByText("Món đã xác nhận (2)").waitFor();
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id,
+    status: "PENDING_APPROVAL" } }), 0, "no pending QR tickets after staff approval");
   for (const width of [320, 360, 390, 428, 768, 1024, 1280, 1440]) {
     await device.setViewportSize({ width, height: 820 });
-    assert.equal(await device.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true,
-      "Retail POS overflow at " + width);
+    // React Native Web useWindowDimensions updates after browser resize;
+    // wait for the *actual* responsive branch before judging real overflow.
+    if (width < 768) {
+      await device.getByRole("tab", { name: "Bàn", exact: true }).waitFor({ timeout: 7000 });
+      await device.getByTestId("retail-desk-menu").waitFor({ state: "detached", timeout: 7000 });
+    } else {
+      await device.getByTestId("retail-desk-menu").waitFor({ timeout: 7000 });
+    }
+    await device.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const layout = await device.evaluate(() => {
+      const extra = [...document.querySelectorAll("*")].map(node => {
+        const r = node.getBoundingClientRect();
+        return { tag: node.tagName, width: Math.round(r.width), x: Math.round(r.x),
+          right: Math.round(r.right), cls: String(node.getAttribute("class") ?? "").slice(0, 75),
+          text: (node.textContent ?? "").trim().slice(0, 45) };
+      }).filter(n => n.right > innerWidth + 1 || n.x < -1)
+        .sort((a, b) => b.right - a.right).slice(0, 7);
+      return { viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth, extra };
+    });
+    if (layout.scrollWidth > width + 1) console.log("L02_OVERFLOW_DIAGNOSTIC", width, JSON.stringify(layout));
+    await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
+    assert.equal(layout.scrollWidth <= width + 1, true, "Retail POS overflow at " + width);
     if (width >= 768) {
       const rail = await device.getByTestId("retail-table-strip").boundingBox();
       const order = await device.getByTestId("retail-desk-order").boundingBox();

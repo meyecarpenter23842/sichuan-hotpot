@@ -11,6 +11,7 @@ import {
 } from "./src/pos-api";
 import { clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
+import { RetailTicketCard, ticketGroup } from "./src/RetailTicketCard";
 import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
@@ -39,6 +40,8 @@ export default function App() {
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [bill, setBill] = useState<Bill | null>(null);
   const [page, setPage] = useState<Page>("tables");
+  const [workspace, setWorkspace] = useState<"pos" | "queue">("pos");
+  const [queueTicketId, setQueueTicketId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -65,6 +68,11 @@ export default function App() {
   const shownTables = tables.filter(t => (!areaId || t.areaId === areaId) &&
     (t.isActive || t.sessions.length > 0 || t.needsCleaning));
   const currentApprovals = approvals.filter(t => t.sessionId === sessionId);
+  const queueTicket = approvals.find(t => t.id === queueTicketId) ?? approvals[0] ?? null;
+  const queueTable = queueTicket && tables.find(t => t.sessions[0]?.id === queueTicket.sessionId);
+  const waitingTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "pending") ?? [];
+  const acceptedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "accepted") ?? [];
+  const excludedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "excluded") ?? [];
   const estimatedVnd = cart.reduce((n, x) => n + x.previewVnd, 0);
 
   const refresh = useCallback(async (showSpinner = false) => {
@@ -159,6 +167,7 @@ export default function App() {
     setSession(null); setToken(null); setBranches([]); setBranchId(null); setAreas([]);
     setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null);
     setCart([]); setPendingSubmit(null); setBill(null); setMessage(""); setError(""); setPage("tables");
+    setWorkspace("pos"); setQueueTicketId(null);
   };
   const branchChange = (value: string) => {
     if (pendingSubmit || cart.length > 0) {
@@ -169,6 +178,7 @@ export default function App() {
     ++requestVersion.current; setBranchId(value); setAreaId(null); setSelectedTableId(null);
     setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null);
     setPage("tables"); setShowBranchMenu(false); setError(""); setMessage("");
+    setWorkspace("pos"); setQueueTicketId(null);
   };
   const doAction = async (action: () => Promise<void>) => {
     if (lock.current) return;
@@ -186,6 +196,7 @@ export default function App() {
       setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return;
     }
     setSelectedTableId(t.id); setPage(t.sessions.length ? "menu" : "tables"); setBill(null);
+    setWorkspace("pos");
   };
   const openTable = () => {
     if (!branchId || !activeTable || !canOrder(role) || !online || activeTable.needsCleaning) return;
@@ -233,7 +244,7 @@ export default function App() {
     void doAction(async () => {
       await api(branchPath(branchId) + "/tickets/" + ticketId + "/" + decision,
         { method: "POST", ...(decision === "reject" ? { body: { reason: rejectReason.trim() } } : {}) });
-      setRejecting(null); setRejectReason("");
+      setRejecting(null); setRejectReason(""); setQueueTicketId(null);
       setMessage(decision === "approve" ? "Đã duyệt; phiếu sẽ hiện ở Bếp đúng một lần." : "Đã từ chối yêu cầu QR.");
       await refresh(true);
       if (sessionId) {
@@ -242,6 +253,14 @@ export default function App() {
       }
     });
   };
+  const productPhotos = useMemo(() => {
+    const photos = new Map<string, string>();
+    for (const group of catalog?.categories ?? []) for (const product of group.products) {
+      const imageUrl = productImage(product.imageKey);
+      if (imageUrl) photos.set(product.id, imageUrl);
+    }
+    return photos;
+  }, [catalog]);
   const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
     c.products.map(p => ({ ...p, categoryId: c.id }))).filter(p =>
       (!categoryId || p.categoryId === categoryId) &&
@@ -296,26 +315,68 @@ export default function App() {
     </>}
   </View>;
 
-  const approvalPanel = currentApprovals.length > 0 && canOrder(role) && <View style={st.approvals}>
-    <Text style={st.sectionTitle}>🔔 {currentApprovals.length} yêu cầu QR cần duyệt</Text>
-    {currentApprovals.map(t => <View key={t.id} style={st.approvalCard}>
-      <Text style={st.label}>QR · {hhmm(t.createdAt)} · Đợi nhân viên xác nhận</Text>
-      {t.items.map(x => <Text key={x.id} style={st.itemText}>
-        {x.quantity} × {x.productName}{x.variantName ? " · " + x.variantName : ""}</Text>)}
-      {!!t.customerNote && <Text style={st.caption}>Ghi chú: {t.customerNote}</Text>}
-      {rejecting === t.id ? <>
+  const reviewActions = (ticket: Ticket) => canOrder(role) && ticket.status === "PENDING_APPROVAL" ?
+    <View style={st.reviewActions}>
+      {rejecting === ticket.id ? <>
         <TextInput style={st.input} value={rejectReason} maxLength={500}
-          onChangeText={setRejectReason} placeholder="Lý do từ chối..." accessibilityLabel="Lý do từ chối"/>
-        <View style={st.row}><Button title="Quay lại" kind="ghost"
-          onPress={() => { setRejecting(null); setRejectReason(""); }} />
-          <Button title="Xác nhận từ chối" danger disabled={busy || !online ||
-            rejectReason.trim().length < 3} onPress={() => review(t.id, "reject")}/></View>
+          onChangeText={setRejectReason} placeholder="Lý do từ chối (ít nhất 3 ký tự)"
+          accessibilityLabel="Lý do từ chối"/>
+        <View style={st.row}>
+          <Button title="Quay lại" kind="ghost" onPress={() => { setRejecting(null); setRejectReason(""); }}/>
+          <Button title="Xác nhận từ chối" danger disabled={busy || !online || rejectReason.trim().length < 3}
+            onPress={() => review(ticket.id, "reject")}/>
+        </View>
       </> : <View style={st.row}>
-        <Button title="Duyệt đưa Bếp" disabled={busy || !online}
-          onPress={() => review(t.id, "approve")}/>
-        <Button title="Từ chối" kind="ghost" disabled={busy}
-          onPress={() => setRejecting(t.id)}/></View>}
-    </View>)}
+        <Button title="Duyệt đưa Bếp" disabled={busy || !online} onPress={() => review(ticket.id, "approve")}/>
+        <Button title="Từ chối" kind="ghost" disabled={busy || !online}
+          onPress={() => { setRejecting(ticket.id); setRejectReason(""); }}/>
+      </View>}
+    </View> : null;
+
+  const queuePanel = <View testID="retail-qr-queue" style={st.queueLayout}>
+    <View style={st.queueSidebar}>
+      <View style={st.queueHeading}>
+        <Text style={st.sectionTitle}>Yêu cầu chờ xác nhận</Text>
+        <Text style={st.queueBadge}>{approvals.length}</Text>
+      </View>
+      <ScrollView contentContainerStyle={st.queueRows} keyboardShouldPersistTaps="handled">
+        {!online && <Text style={st.warning}>Đang mất kết nối. Không thể duyệt yêu cầu.</Text>}
+        {!approvals.length && <View style={st.queueEmpty}>
+          <Text style={st.emptyTitle}>Không có yêu cầu chờ</Text>
+          <Text style={st.caption}>Yêu cầu QR mới của chi nhánh sẽ hiện ở đây.</Text>
+        </View>}
+        {approvals.map(t => <Pressable key={t.id} accessibilityRole="button"
+          accessibilityLabel={"Xem phiếu QR " + (t.session?.table.name ?? "không xác định")}
+          accessibilityState={{ selected: queueTicket?.id === t.id }}
+          onPress={() => { setQueueTicketId(t.id); setRejecting(null); setRejectReason(""); }}
+          style={[st.queueRow, queueTicket?.id === t.id && st.queueRowActive]}>
+          <View style={st.rowBetween}>
+            <Text style={st.queueTableName}>{t.session?.table.name ?? "Bàn"}</Text>
+            <Text style={st.queueBadgeSmall}>{t.items.reduce((n, i) => n + i.quantity, 0)} món</Text>
+          </View>
+          <Text style={st.caption}>QR · {hhmm(t.createdAt)}</Text>
+          <Text numberOfLines={2} style={st.itemText}>{t.items.map(i => i.quantity + " × " + i.productName).join(" · ")}</Text>
+        </Pressable>)}
+      </ScrollView>
+    </View>
+    <View style={st.queueDetails}>
+      {queueTicket ? <ScrollView keyboardShouldPersistTaps="handled"
+        contentContainerStyle={st.queueDetailScroll}>
+        <View style={st.rowBetween}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.sectionTitle}>Chi tiết {queueTable?.name ?? queueTicket.session?.table.name ?? "bàn"}</Text>
+            <Text style={st.caption}>Nhân viên xác nhận trước khi Bếp nhận món.</Text>
+          </View>
+          {queueTable && <Button title="Mở hóa đơn" kind="ghost" onPress={() => {
+            selectTable(queueTable); setPage("bill");
+          }}/>} 
+        </View>
+        <RetailTicketCard ticket={queueTicket} catalog={catalog} actions={reviewActions(queueTicket)}/>
+      </ScrollView> : <View style={st.queueDetailEmpty}>
+        <Text style={st.emptyTitle}>Chưa có phiếu cần xử lý</Text>
+        <Text style={st.caption}>Khi khách gửi yêu cầu qua QR, chọn bàn ở danh sách bên trái để xem món.</Text>
+      </View>}
+    </View>
   </View>;
 
   const ticketPanel = <View style={st.billPanel}>
@@ -328,26 +389,30 @@ export default function App() {
       <Text style={st.caption}>Chọn một bàn trong danh sách. Nhân viên phải mở phiên trước khi gọi món.</Text>
       {activeTable && canOrder(role) && <Button title="Mở phiên bàn" disabled={busy || !online} onPress={openTable}/>}
     </View> : <>
-      {approvalPanel}
-      <Text style={st.subhead}>Các đợt đã gọi</Text>
-      {!bill?.tickets.length ? <Text style={st.caption}>Chưa có món. Chọn món từ thực đơn để tạo phiếu đầu tiên.</Text> :
-        bill.tickets.map(t => <View key={t.id} style={st.ticket}>
-          <View style={st.rowBetween}>
-            <Text style={st.ticketHead}>#{t.id.slice(0, 8)} · {t.source === "QR" ? "Khách quét QR" : "Nhân viên"}</Text>
-            <Text style={st.caption}>{hhmm(t.createdAt)}</Text>
-          </View>
-          <Text style={st.status}>{t.status === "PENDING_APPROVAL" ? "Chờ duyệt" :
-            t.status === "APPROVED" ? "Đã gửi bếp" : t.status === "REJECTED" ? "Đã từ chối" : t.status}</Text>
-          {t.items.map(i => <View key={i.id} style={st.rowBetween}>
-            <Text style={[st.itemText, { flex: 1 }]}>{i.quantity} × {i.productName}{i.variantName ? " (" + i.variantName + ")" : ""}</Text>
-            <Text style={st.itemText}>{money(i.lineTotalVnd)}</Text>
-          </View>)}
-          {!!t.customerNote && <Text style={st.caption}>{t.customerNote}</Text>}
-        </View>)}
+      {!bill && <Text style={st.caption}>Đang đồng bộ hóa đơn từ máy chủ…</Text>}
+      {!!waitingTickets.length && <View testID="retail-bill-pending" style={st.ticketGroupPending}>
+        <Text style={st.groupPendingHeading}>Chờ xác nhận ({waitingTickets.reduce((n, t) => n + t.items.length, 0)})</Text>
+        {waitingTickets.map(t => <RetailTicketCard key={t.id} ticket={t} catalog={catalog}
+          actions={t.source === "QR" ? reviewActions(t) : null}/>)}
+      </View>}
+      <View testID="retail-bill-accepted" style={st.ticketGroup}>
+        <Text style={st.groupAcceptedHeading}>Món đã xác nhận ({acceptedTickets.reduce((n, t) => n + t.items.length, 0)})</Text>
+        {acceptedTickets.length ? acceptedTickets.map(t =>
+          <RetailTicketCard key={t.id} ticket={t} catalog={catalog}/>) :
+          <Text style={st.caption}>Chưa có món được xác nhận. Chọn món từ thực đơn hoặc duyệt phiếu QR.</Text>}
+      </View>
+      {!!excludedTickets.length && <View testID="retail-bill-excluded" style={st.ticketGroup}>
+        <Text style={st.subhead}>Đã từ chối / hủy ({excludedTickets.length} phiếu)</Text>
+        {excludedTickets.map(t => <RetailTicketCard key={t.id} ticket={t} catalog={catalog}/>)}
+      </View>}
       <Text style={st.subhead}>Món chuẩn bị gửi</Text>
       {!cart.length ? <Text style={st.caption}>Chưa chọn món trong giỏ.</Text> :
         cart.map(l => <View key={l.id} style={st.draftLine}>
-          <View style={{ flex: 1 }}>
+          {productPhotos.has(l.item.productId) ?
+            <Image source={{ uri: productPhotos.get(l.item.productId)! }}
+              style={st.draftPhoto} resizeMode="cover"/> :
+            <View style={st.draftPhotoEmpty}><Text>🍲</Text></View>}
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={st.itemText}>{l.item.quantity} × {l.name} {l.variantName ? "· " + l.variantName : ""}</Text>
             <Text style={st.caption}>{money(l.previewVnd)} · tạm tính</Text>
             {!!l.item.note && <Text style={st.caption}>{l.item.note}</Text>}
@@ -360,8 +425,10 @@ export default function App() {
         placeholderTextColor="#9D8C84" value={note} maxLength={500}
         editable={!pendingSubmit} onChangeText={setNote} accessibilityLabel="Ghi chú đơn tại bàn"/>}
       <View style={st.totals}>
-        <View style={st.rowBetween}><Text style={st.caption}>Đã xác nhận</Text>
+        <View style={st.rowBetween}><Text style={st.caption}>Món đã xác nhận</Text>
           <Text style={st.itemText}>{money(bill?.subtotalVnd ?? 0)}</Text></View>
+        <View style={st.rowBetween}><Text style={st.caption}>Đã thu</Text>
+          <Text style={st.itemText}>{money(bill?.paidVnd ?? 0)}</Text></View>
         <View style={st.rowBetween}><Text style={st.caption}>Còn thanh toán</Text>
           <Text style={st.amount}>{money(bill?.dueVnd ?? 0)}</Text></View>
         <View style={st.rowBetween}><Text style={st.caption}>Giỏ chưa gửi · tạm tính</Text>
@@ -450,12 +517,25 @@ export default function App() {
         </View>
       </View>
       <View style={st.qrToolbar}>
+        {canOrder(role) && desktop && <View style={st.workspaceTabs}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "pos" }}
+            style={[st.workspaceTab, workspace === "pos" && st.workspaceTabActive]}
+            onPress={() => setWorkspace("pos")}>
+            <Text style={[st.workspaceTabText, workspace === "pos" && st.workspaceTabTextActive]}>Bàn & Món</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "queue" }}
+            style={[st.workspaceTab, workspace === "queue" && st.workspaceTabActive]}
+            onPress={() => setWorkspace("queue")}>
+            <Text style={[st.workspaceTabText, workspace === "queue" && st.workspaceTabTextActive]}>Duyệt QR ({approvals.length})</Text>
+          </Pressable>
+        </View>}
           {canOrder(role) && <Pressable accessibilityRole="button"
             accessibilityLabel={"Chuông QR, " + approvals.length + " yêu cầu chờ duyệt"}
             style={st.iconButton} onPress={() => {
               const pending = approvals[0];
               const table = pending && tables.find(t => t.sessions[0]?.id === pending.sessionId);
-              if (table) { selectTable(table); setPage("bill"); }
+              if (desktop) { setQueueTicketId(pending?.id ?? null); setWorkspace("queue"); }
+              else if (table) { selectTable(table); setPage("bill"); }
               else { setAreaId(null); setPage("tables"); }
             }}>
             <Text style={st.iconText}>🔔 {approvals.length}</Text>
@@ -485,7 +565,7 @@ export default function App() {
         <Pressable accessibilityRole="button" onPress={() => setError("")}><Text style={st.caption}>Đóng ×</Text></Pressable></View>}
       {!!message && <View style={st.success}><Text style={st.successText}>{message}</Text>
         <Pressable accessibilityRole="button" onPress={() => setMessage("")}><Text style={st.caption}>×</Text></Pressable></View>}
-      {desktop ? <>
+      {desktop ? workspace === "queue" && canOrder(role) ? queuePanel : <>
         {tableStrip}
         <View style={st.desktop}>
           <ScrollView testID="retail-desk-order" style={st.leftScroll} contentContainerStyle={st.panelContent}
@@ -497,8 +577,8 @@ export default function App() {
         <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 30 }}>
           {page === "tables" ? <>
-            <View style={st.mobileIntro}><Text style={st.sectionTitle}>Chọn bàn để phục vụ</Text>
-              <Text style={st.caption}>Trạng thái được đồng bộ với các thiết bị khác.</Text></View>
+            <View style={st.mobileIntro}><Text style={st.sectionTitle}>Bàn đang phục vụ</Text>
+              <Text style={st.caption}>Chạm bàn để xem món, mở phiên hoặc thanh toán.</Text></View>
             {tableStrip}
             <View style={st.tableGrid}>{shownTables.map(t => {
               const count = t.sessions[0]?._count.tickets ?? 0;
@@ -507,7 +587,8 @@ export default function App() {
                   t.sessions.length ? ", đang có khách" : t.needsCleaning ? ", chờ dọn" : ", trống")}
                 accessibilityState={{ selected: selectedTableId === t.id }}
                 onPress={() => selectTable(t)}
-                style={[st.tableTile, count > 0 ? st.pendingTile : t.sessions.length ? st.openTile : t.needsCleaning ? st.pendingTile : st.freeTile]}>
+                style={[st.tableTile, count > 0 ? st.pendingTile : t.sessions.length ? st.openTile : t.needsCleaning ? st.pendingTile : st.freeTile,
+                  selectedTableId === t.id && st.mobileTileSelected]}>
                 <Text style={st.tableCode}>{t.code}</Text><Text style={st.itemText}>{t.name}</Text>
                 <Text style={st.caption}>{count ? "🔔 " + count + " chờ duyệt" :
                   t.sessions.length ? "Đang có khách" : t.needsCleaning ? "Chờ dọn" : "Trống"}</Text>
@@ -539,6 +620,13 @@ export default function App() {
             {ticketPanel}
           </>}
         </ScrollView>
+        {page === "menu" && sessionId && cart.length > 0 && <View style={st.mobileCartBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.label}>{cart.length} món trong giỏ bàn</Text>
+            <Text style={st.caption}>{money(estimatedVnd)} · chưa gửi Bếp</Text>
+          </View>
+          <Button title="Xem hóa đơn" onPress={() => setPage("bill")}/>
+        </View>}
         {sessionId && <View style={st.mobileNav}>
           {([["tables", "Bàn"], ["menu", "Chọn món"], ["bill", "Hóa đơn"]] as const).map(([id, name]) =>
             <Pressable key={id} accessibilityRole="tab" accessibilityState={{ selected: page === id }}
@@ -675,6 +763,48 @@ const st = StyleSheet.create({
   productBody: { padding: 10, gap: 5 },
   productName: { color: C.dark, fontSize: 13, fontWeight: "800", minHeight: 32 },
   productPrice: { color: C.redDark, fontWeight: "900", fontSize: 14 },
+  workspaceTabs: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 8 },
+  workspaceTab: { minHeight: 44, borderRadius: 9, borderWidth: 1,
+    borderColor: C.border, backgroundColor: C.paper, paddingHorizontal: 13,
+    justifyContent: "center", alignItems: "center" },
+  workspaceTabActive: { backgroundColor: C.redDark, borderColor: C.redDark },
+  workspaceTabText: { color: C.dark, fontSize: 12, fontWeight: "800" },
+  workspaceTabTextActive: { color: C.paper },
+  queueLayout: { flex: 1, flexDirection: "row", padding: 10, gap: 10, minHeight: 0, minWidth: 0 },
+  queueSidebar: { width: "35%", flexShrink: 0, minWidth: 0,
+    borderRadius: 14, borderWidth: 1, borderColor: C.border, backgroundColor: C.paper,
+    overflow: "hidden" },
+  queueHeading: { minHeight: 55, paddingHorizontal: 12, paddingVertical: 10,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8,
+    borderBottomWidth: 1, borderBottomColor: C.border },
+  queueBadge: { backgroundColor: C.redDark, color: "#FFFFFF", fontWeight: "900",
+    borderRadius: 9, paddingVertical: 5, paddingHorizontal: 9, overflow: "hidden" },
+  queueRows: { padding: 10, gap: 8, flexGrow: 1 },
+  queueRow: { borderWidth: 1, borderColor: C.border, backgroundColor: "#FFFFFF",
+    borderRadius: 11, padding: 12, gap: 6, minHeight: 95 },
+  queueRowActive: { borderColor: C.red, backgroundColor: "#FFF0EF" },
+  queueTableName: { color: C.redDark, fontSize: 14, fontWeight: "900" },
+  queueBadgeSmall: { color: "#A1232F", fontSize: 11, fontWeight: "800" },
+  queueEmpty: { minHeight: 150, justifyContent: "center", alignItems: "center",
+    gap: 7, paddingHorizontal: 12 },
+  queueDetails: { flex: 1, minWidth: 0, borderRadius: 14, borderWidth: 1,
+    borderColor: C.border, backgroundColor: C.paper, overflow: "hidden" },
+  queueDetailScroll: { flexGrow: 1, padding: 16, gap: 13 },
+  queueDetailEmpty: { flex: 1, minHeight: 150, justifyContent: "center",
+    alignItems: "center", padding: 20, gap: 8 },
+  reviewActions: { gap: 8, marginTop: 3 },
+  ticketGroup: { gap: 8 },
+  ticketGroupPending: { gap: 8, backgroundColor: "#FFF5F4",
+    borderRadius: 12, padding: 8 },
+  groupPendingHeading: { color: "#A3202D", fontSize: 13, fontWeight: "900" },
+  groupAcceptedHeading: { color: "#216C47", fontSize: 13, fontWeight: "900" },
+  draftPhoto: { width: 48, height: 48, borderRadius: 8, backgroundColor: C.soft },
+  draftPhotoEmpty: { width: 48, height: 48, borderRadius: 8, backgroundColor: C.soft,
+    alignItems: "center", justifyContent: "center" },
+  mobileTileSelected: { borderWidth: 2, borderColor: C.red },
+  mobileCartBar: { flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#FFF5F0", borderTopWidth: 1, borderColor: C.border,
+    paddingHorizontal: 12, paddingVertical: 7 },
   loginScreen: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
   loginCard: { width: "100%", maxWidth: 420, borderRadius: 18, backgroundColor: C.paper,
     borderWidth: 1, borderColor: C.border, padding: 24, gap: 15 },

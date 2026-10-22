@@ -21,7 +21,7 @@ const ticketSelect = {
   id: true, sessionId: true, source: true, status: true,
   createdAt: true, reviewedAt: true, customerNote: true, rejectionReason: true,
   items: { select: {
-    id: true, productName: true, variantName: true,
+    id: true, productId: true, productName: true, variantName: true,
     quantity: true, unitPriceVnd: true, lineTotalVnd: true,
     selectionSnapshot: true,
   } },
