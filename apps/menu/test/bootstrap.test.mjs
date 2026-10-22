@@ -95,6 +95,8 @@ test("P0 #277 photo topping quantities and independently orderable catalog produ
   assert.match(grid, /optionQuantity\(selected, o\.id\)/);
   assert.match(grid, /width < 500/);
   assert.match(cart, /setOptionQuantity/);
+  assert.doesNotMatch(cart, /selection\.length !== new Set\(selection\)\.size/);
+  assert.match(cart, /selection\.length > group\.maxSelect/);
   assert.match(cart, /Array\(desired\)\.fill\(id\)/);
   assert.match(sheet, /ToppingQuantityGrid/);
   assert.match(app, /🥬 Gọi topping lẻ/);
