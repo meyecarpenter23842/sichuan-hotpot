@@ -38,11 +38,12 @@ try {
     isPublished: true } });
   const product = await db.product.create({ data: { categoryId: category.id,
     name: "Lẩu Retail QA", priceVnd: 250_000, isAvailable: true } });
-  // Product cards must form a real 3-column grid at 1280+, not just render
-  // three empty placeholders in a screenshot.
+  // Product cards must form a real 4-column compact square-image grid at 1280+, not
+  // stretch into very wide landscape cards. Check real catalogue fixtures.
   await db.product.createMany({ data: [
     { categoryId: category.id, name: "Bò sốt tiêu QA", priceVnd: 185_000, isAvailable: true },
     { categoryId: category.id, name: "Trà sữa QA", priceVnd: 35_000, isAvailable: true },
+    { categoryId: category.id, name: "Topping nấm QA", priceVnd: 20_000, isAvailable: true },
   ] });
   await page.goto(web, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Tài khoản nhân viên" }).fill(username);
@@ -161,14 +162,22 @@ try {
       assert.ok(menu.x > order.x + order.width - 1,
         "invoice and menu must not overlap at " + width);
     }
+    if (width >= 768) {
+      const header = await device.getByTestId("retail-header-actions").boundingBox();
+      assert.ok(header && header.height <= 60, "controls stay on one compact red header at " + width);
+    }
     if (width >= 1280) {
-      const cards = await Promise.all(["Lẩu Retail QA", "Bò sốt tiêu QA", "Trà sữa QA"]
+      const cards = await Promise.all(["Lẩu Retail QA", "Bò sốt tiêu QA",
+        "Trà sữa QA", "Topping nấm QA"]
         .map(name => device.getByRole("button", { name: "Chọn " + name }).boundingBox()));
-      assert.ok(cards.every(Boolean), "three real product cards displayed at " + width);
+      assert.ok(cards.every(Boolean), "four real product cards displayed at " + width);
       assert.ok(cards.every(card => Math.abs(card.y - cards[0].y) < 2),
-        "three product cards must share the first row at " + width);
-      assert.ok(cards.every(card => card.width >= 120),
-        "product cards must remain readable at " + width);
+        "four product cards must share the first row at " + width);
+      assert.ok(cards.every(card => card.width >= 120 && card.width < 230),
+        "compact square product cards must remain readable at " + width);
+      const photo = await device.getByRole("button", { name: "Chọn Lẩu Retail QA" })
+        .locator("img, [role=img]").first().boundingBox().catch(() => null);
+      if (photo) assert.ok(Math.abs(photo.width - photo.height) <= 2, "product photo is square");
     }
     await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
   }
