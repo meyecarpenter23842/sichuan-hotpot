@@ -29,7 +29,7 @@ test("real branch-scoped staff and menu flow, no demo checkout", () => {
   assert.match(app, /setPendingSubmit\(frozen\)/);
   assert.match(app, /setPendingSubmit\(null\); setCart\(\[\]\)/);
   assert.match(app, /Duyệt đưa Bếp/);
-  assert.match(app, /Đợi nhân viên xác nhận/);
+  assert.match(read("../src/RetailTicketCard.tsx"), /Chờ xác nhận/);
   // L07 replaced the old promise with real server-backed settlement controls.
   assert.match(app, /<RetailSettlementPanel/);
   const settlement = read("../src/RetailSettlementPanel.tsx");
