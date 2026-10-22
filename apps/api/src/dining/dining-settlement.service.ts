@@ -231,7 +231,8 @@ export class DiningSettlementService {
         where: { id: ticket.sessionId }, select: { status: true },
       });
       if (session.status !== "OPEN") throw new ConflictException("DINING_CHECKOUT_ALREADY_STARTED");
-      if (ticket.status === "CANCELED") return { ticketId, status: "CANCELED" as const, replayed: true };
+      if (ticket.status === "CANCELED") return { ticketId, status: "CANCELED" as const,
+        sessionId: ticket.sessionId, replayed: true };
       // Prepared/served dishes cannot be erased; owner can issue audited refunds separately.
       if (ticket.status !== "APPROVED") throw new ConflictException("DINING_TICKET_ALREADY_PREPARING");
       const items = await tx.diningTicketItem.findMany({
