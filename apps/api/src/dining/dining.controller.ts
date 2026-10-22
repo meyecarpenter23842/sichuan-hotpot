@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Header, Headers, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Type } from "class-transformer";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsISO8601, IsIn, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from "class-validator";
 import { DiningService } from "./dining.service";
 
 class DiningLineInput {
@@ -55,6 +55,12 @@ export class DiningTicketEditInput {
 class TransferSessionInput {
   @IsUUID("4") expectedTableId!: string;
   @IsUUID("4") targetTableId!: string;
+}
+class KitchenProgressInput {
+  @IsIn(["APPROVED", "PREPARING", "READY"])
+  expectedStatus!: "APPROVED" | "PREPARING" | "READY";
+  @IsIn(["PREPARING", "READY", "SERVED"])
+  nextStatus!: "PREPARING" | "READY" | "SERVED";
 }
 class RejectTicketInput {
   @IsString() @Length(3, 500) reason!: string;
@@ -172,6 +178,14 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string, @Param("ticketId", ParseUUIDPipe) ticketId: string,
     @Body() input: RejectTicketInput) {
     return this.dining.review(auth, branchId, ticketId, "REJECTED", input.reason);
+  }
+  @Post("tickets/:ticketId/kitchen-status")
+  @Header("Cache-Control", "no-store")
+  kitchenStatus(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("ticketId", ParseUUIDPipe) ticketId: string,
+    @Body() input: KitchenProgressInput) {
+    return this.dining.advanceKitchen(auth, branchId, ticketId, input.expectedStatus, input.nextStatus);
   }
   @Get("kitchen")
   @Header("Cache-Control", "no-store")
