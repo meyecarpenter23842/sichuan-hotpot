@@ -57,7 +57,14 @@ test("real image paths and sizes, modifiers, combo requirements respect backend 
 });
 test("tablet/desktop split and distinct mobile routes enforce tap accessibility", () => {
   assert.match(app, /const desktop = width >= 768/);
-  assert.match(app, /width: "40%"/);
+  assert.match(app, /width: "38%"/);
+  assert.match(app, /rightScroll: \{ flex: 1, minWidth: 0/);
+  assert.match(app, /leftScroll: \{ width: "38%", flexGrow: 0, flexShrink: 0, minWidth: 0/);
+  assert.match(app, /retail-table-strip/);
+  assert.match(app, /retail-desk-menu/);
+  assert.match(app, /desktop && width >= 1200 && st\.productWide/);
+  assert.match(app, /productWide: \{ width: "31\.7%" \}/);
+  assert.match(app, /desktopTableRow/);
   assert.match(app, /page === "tables"/);
   assert.match(app, /page === "menu"/);
   assert.match(app, /accessibilityRole="tab"/);
