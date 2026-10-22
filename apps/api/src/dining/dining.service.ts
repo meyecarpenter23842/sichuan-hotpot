@@ -8,6 +8,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { OrderRealtimeService, type DiningChange } from "../orders/order-realtime.service";
 import { PushService } from "../push/push.service";
+import { qrInstructions } from "../payments/vietqr";
 import { priceCart, productSelect } from "../delivery/pricing";
 import type { DiningAreaCreateInput, DiningAreaUpdateInput, DiningTableCreateInput,
   DiningTableUpdateInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
@@ -695,8 +696,9 @@ export class DiningService {
       .reduce((sum, ticket) => sum + ticket.items.reduce((s, line) => s + line.lineTotalVnd, 0), 0);
     const paidVnd = session.payments.filter(p => p.status === "CONFIRMED")
       .reduce((s, p) => s + p.amountVnd, 0);
-    return { ...session, subtotalVnd, paidVnd,
-      dueVnd: Math.max(0, subtotalVnd - paidVnd) };
+    return { ...session, payments: session.payments.map(payment => ({
+      ...payment, qr: qrInstructions(payment.id, payment.amountVnd, payment),
+    })), subtotalVnd, paidVnd, dueVnd: Math.max(0, subtotalVnd - paidVnd) };
   }
 
   async staffBill(auth: string | undefined, branchId: string, sessionId: string) {
