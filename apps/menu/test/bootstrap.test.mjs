@@ -88,3 +88,16 @@ test("mobile first: safe area, tabs, loading/offline/empty and large hit targets
   assert.match(app, /width >= 768/);
   assert.match(api, /pub-63ed7b1c33514906ab6e2d82f41bffce\.r2\.dev/);
 });
+
+test("P0 #277 photo topping quantities and independently orderable catalog products", () => {
+  const grid = read("../src/ToppingQuantityGrid.tsx");
+  assert.match(grid, /productImage\(o\.imageKey\)/);
+  assert.match(grid, /optionQuantity\(selected, o\.id\)/);
+  assert.match(grid, /width < 500/);
+  assert.match(cart, /setOptionQuantity/);
+  assert.match(cart, /Array\(desired\)\.fill\(id\)/);
+  assert.match(sheet, /ToppingQuantityGrid/);
+  assert.match(app, /🥬 Gọi topping lẻ/);
+  assert.match(app, /toppingCategoryIds\.has\(p\.categoryId\)/);
+  assert.match(app, /cartSelectionLabels/);
+});
