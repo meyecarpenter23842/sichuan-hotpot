@@ -723,7 +723,7 @@ export class DiningService {
       });
       if (!ticket) throw new NotFoundException("DINING_TICKET_NOT_FOUND");
       if (ticket.status !== "PENDING_APPROVAL") {
-        if (ticket.status === decision) return { ticketId, status: decision, replayed: true };
+        if (ticket.status === decision) return { ticketId, status: decision, replayed: true, sessionId: ticket.sessionId };
         throw new ConflictException("DINING_TICKET_ALREADY_REVIEWED");
       }
       const locked = await tx.diningSession.updateMany({
