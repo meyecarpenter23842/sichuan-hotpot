@@ -15,6 +15,7 @@ class GroupPatchDto {
   @IsOptional() @IsInt() @Min(1) @Max(30) maxSelect?: number;
   @IsOptional() @IsInt() @Min(-1000) @Max(1000) sortOrder?: number;
   @IsOptional() @IsBoolean() isAvailable?: boolean;
+  @IsOptional() @IsBoolean() allowStandalone?: boolean;
 }
 class OptionDto {
   @IsString() @MinLength(1) @MaxLength(160) name!: string;
