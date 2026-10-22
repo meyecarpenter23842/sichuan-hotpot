@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const require = createRequire(import.meta.url);
 const { DiningService } = require("../../apps/api/dist/dining/dining.service.js");
 const { DiningSettlementService } = require("../../apps/api/dist/dining/dining-settlement.service.js");
+const { DiningReportService } = require("../../apps/api/dist/dining/dining-report.service.js");
 const allowed = "postgresql://hotpot_ci:hotpot_ci_only@127.0.0.1:5432/hotpot_ci?schema=public";
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.DATABASE_URL !== allowed) {
   throw new Error("L02 acceptance requires isolated CI localhost PostgreSQL");
@@ -25,6 +26,7 @@ const push = { notifyStaffDiningPending: async (branchId, ticketId) => {
 } };
 const service = new DiningService({ get database() { return prisma; } }, auth, realtime, push);
 const settlement = new DiningSettlementService({ get database() { return prisma; } }, auth, realtime);
+const diningReport = new DiningReportService({ get database() { return prisma; } }, auth);
 process.env.VIETQR_BANK_BIN = "970422";
 process.env.VIETQR_ACCOUNT_NO = "0123456789";
 process.env.VIETQR_ACCOUNT_NAME = "TEST QA ONLY";
@@ -307,6 +309,46 @@ try {
   assert.equal(payAudit.some(x => x.details.cashChangeVnd === 55_000), true,
     "cash tender and change are persisted as integer audit details");
   await service.close("cashier", branch.id, session.id);
+  // L08: 1 table / 3+ ticket requests is ONE paid invoice, regardless of order volume.
+  const vnToday = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+  const report = await diningReport.summary("owner", branch.id, vnToday, vnToday);
+  assert.equal(report.timezone, "Asia/Ho_Chi_Minh");
+  assert.equal(report.invoiceDateField, "closedAt");
+  assert.equal(report.collectedDateField, "confirmedAt");
+  assert.equal(report.shiftBasis, "NOT_AVAILABLE", "no invented POS shifts");
+  assert.equal(report.totals.settledSessionCount, 1, "one paid session is one invoice");
+  assert.equal(report.totals.closedInvoiceVnd, 745_000);
+  assert.equal(report.totals.cashCollectedVnd, 745_000);
+  assert.equal(report.totals.qrCollectedVnd, 745_000, "QR confirmed is recognized once");
+  assert.equal(report.totals.refundedVnd, 745_000, "refund belongs to refund day");
+  assert.equal(report.totals.netCollectedVnd, 745_000, "net receipts = cash + QR - refund");
+  assert.equal(report.totals.voidedTicketCount, 1, "void counts but does not inflate invoice");
+  assert.ok(report.totals.ticketCount >= 3);
+  const productPage = await diningReport.products("owner", branch.id, vnToday, vnToday, 0, 2);
+  assert.equal(productPage.limit, 2);
+  assert.equal(productPage.items.length, 2);
+  assert.equal(productPage.hasMore, true, "SQL pagination returns next page");
+  const allProducts = [...productPage.items,
+    ...(await diningReport.products("owner", branch.id, vnToday, vnToday, 1, 2)).items];
+  assert.equal(allProducts.reduce((sum, p) => sum + p.amountVnd, 0), 745_000,
+    "snapshot products reconcile to closed invoice, not rejected or voided ticket");
+  const collectorPage = await diningReport.collectors("owner", branch.id, vnToday, vnToday);
+  assert.equal(collectorPage.items.reduce((sum, p) => sum + p.collectedVnd, 0), 1_490_000,
+    "collectors show gross confirmed receipts with refunds disclosed separately");
+  await rejectsCode(diningReport.summary("waiter", branch.id, vnToday, vnToday),
+    "DINING_REPORT_FORBIDDEN");
+  await rejectsCode(diningReport.summary("cashier", branch.id, vnToday, vnToday),
+    "DINING_REPORT_FORBIDDEN");
+  await rejectsCode(diningReport.summary("kitchen", branch.id, vnToday, vnToday),
+    "DINING_REPORT_FORBIDDEN");
+  await rejectsCode(diningReport.summary("outsider", branch.id, vnToday, vnToday),
+    "DINING_REPORT_FORBIDDEN");
+  assert.equal((await diningReport.summary("owner", foreign.id, vnToday, vnToday))
+    .totals.closedInvoiceVnd, 0, "branch separation on SQL aggregates");
+  await rejectsCode(diningReport.summary("owner", branch.id, "2024-02-30", "2024-02-30"),
+    "INVALID_ORDER_DATE");
+  await rejectsCode(diningReport.products("owner", branch.id, vnToday, vnToday, 0, 60),
+    "DINING_REPORT_PAGE_INVALID");
   const awaitingClean = await prisma.diningTable.findUniqueOrThrow({ where: { id: table.id } });
   assert.equal(awaitingClean.needsCleaning, true, "closed table is not immediately free");
   await rejectsCode(service.open("waiter", branch.id, table.id), "DINING_TABLE_UNAVAILABLE");
@@ -402,6 +444,22 @@ try {
   assert.equal(savedTable.qrHandle, changed.qrHandle, "QR remains stable across ordinary edits");
   assert.equal((await prisma.order.count({ where: { branchId: branch.id } })), 0,
     "dine-in must not create delivery orders");
+  // UTC 16:59 is 23:59 in Vietnam, while UTC 17:00 begins the next VN day.
+  const confirmedCash = await prisma.diningPayment.findFirstOrThrow({
+    where: { sessionId: session.id, method: "CASH", status: "CONFIRMED" },
+    select: { id: true },
+  });
+  await prisma.diningPayment.update({ where: { id: confirmedCash.id },
+    data: { confirmedAt: new Date("2024-08-12T16:59:00.000Z") } });
+  assert.equal((await diningReport.summary("owner", branch.id, "2024-08-12", "2024-08-12"))
+    .totals.cashCollectedVnd, 745_000, "23:59 Vietnam stays on old local day");
+  await prisma.diningPayment.update({ where: { id: confirmedCash.id },
+    data: { confirmedAt: new Date("2024-08-12T17:00:00.000Z") } });
+  assert.equal((await diningReport.summary("owner", branch.id, "2024-08-13", "2024-08-13"))
+    .totals.cashCollectedVnd, 745_000, "00:00 VN correctly rolls to next day");
+  assert.equal((await diningReport.summary("owner", branch.id, "2024-08-12", "2024-08-12"))
+    .totals.cashCollectedVnd, 0, "no UTC/Vietnam midnight double count");
+  console.log("PASS L08 SQL paid-session invoice, refunds, net, products paging, staff, role/branch and VN-day boundaries");
   console.log("PASS L02/L06 dining auth, commit-only hints/push, exactly-once approval, kitchen lifecycle, guest scope, branch isolation, pricing and revoke");
 } finally {
   await prisma.$disconnect();
