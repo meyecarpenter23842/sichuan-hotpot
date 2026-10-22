@@ -127,8 +127,19 @@ try {
     status: "PENDING_APPROVAL" } }), 0, "no pending QR tickets after staff approval");
   for (const width of [320, 360, 390, 428, 768, 1024, 1280, 1440]) {
     await device.setViewportSize({ width, height: 820 });
-    assert.equal(await device.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true,
-      "Retail POS overflow at " + width);
+    const layout = await device.evaluate(() => {
+      const extra = [...document.querySelectorAll("*")].map(node => {
+        const r = node.getBoundingClientRect();
+        return { tag: node.tagName, width: Math.round(r.width), x: Math.round(r.x),
+          right: Math.round(r.right), cls: String(node.getAttribute("class") ?? "").slice(0, 75),
+          text: (node.textContent ?? "").trim().slice(0, 45) };
+      }).filter(n => n.right > innerWidth + 1 || n.x < -1)
+        .sort((a, b) => b.right - a.right).slice(0, 7);
+      return { viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth, extra };
+    });
+    if (layout.scrollWidth > width + 1) console.log("L02_OVERFLOW_DIAGNOSTIC", width, JSON.stringify(layout));
+    await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
+    assert.equal(layout.scrollWidth <= width + 1, true, "Retail POS overflow at " + width);
     if (width >= 768) {
       const rail = await device.getByTestId("retail-table-strip").boundingBox();
       const order = await device.getByTestId("retail-desk-order").boundingBox();
