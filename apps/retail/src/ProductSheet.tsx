@@ -3,7 +3,8 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { CartLine, Product } from "./pos-api";
 import { money, productImage } from "./pos-api";
-import { emptySelection, isSelectionValid, lineFromSelection, toggleMultiple, usableComboOptions } from "./pos-cart";
+import { emptySelection, isSelectionValid, lineFromSelection, setOptionQuantity, toggleMultiple, usableComboOptions } from "./pos-cart";
+import { ToppingQuantityGrid } from "./ToppingQuantityGrid";
 
 const ink = "#332322", accent = "#902C34", pale = "#F7F0EB", border = "#E7DDD7";
 export function ProductSheet({ product, onClose, onAdd }: {
@@ -26,15 +27,19 @@ export function ProductSheet({ product, onClose, onAdd }: {
   return <Modal visible transparent animationType="slide" onRequestClose={onClose}>
     <SafeAreaView style={st.backdrop} edges={["top", "bottom"]}>
       <View style={st.sheet}>
-        <View style={st.top}>
-          <Text style={st.title} numberOfLines={2}>{product.name}</Text>
+        <View style={st.hero}>
+          {image ? <Image source={{ uri: image }} style={st.heroImage} resizeMode="cover"/> :
+            <View style={st.heroFallback}><Text style={st.photoHint}>LẨU TỨ XUYÊN</Text></View>}
           <Pressable accessibilityRole="button" accessibilityLabel="Đóng chọn món"
-            style={st.close} onPress={onClose}><Text style={st.closeText}>✕</Text></Pressable>
+            style={st.heroClose} onPress={onClose}><Text style={st.closeText}>✕</Text></Pressable>
+        </View>
+        <View style={st.top}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={st.title} numberOfLines={2}>{product.name}</Text>
+            <Text style={st.price}>{money(product.priceVnd)} <Text style={st.hint}>giá gốc</Text></Text>
+          </View>
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={st.body}>
-          {image ? <Image source={{ uri: image }} style={st.photo} resizeMode="cover" /> :
-            <View style={st.photoEmpty}><Text style={st.photoHint}>LẨU TỨ XUYÊN</Text></View>}
-          <Text style={st.price}>{money(product.priceVnd)} <Text style={st.hint}>giá gốc</Text></Text>
           {!!product.description && <Text style={st.description}>{product.description}</Text>}
           {product.variants.some(v => v.isAvailable) && <View style={st.section}>
             <Text style={st.sectionName}>Chọn size</Text>
@@ -50,14 +55,14 @@ export function ProductSheet({ product, onClose, onAdd }: {
           {product.modifierGroups.map(g => <View key={g.id} style={st.section}>
             <View style={st.sectionTitle}>
               <Text style={st.sectionName}>{g.name}</Text>
-              <Text style={st.hint}>{g.minSelect > 0 ? "Bắt buộc" : "Tùy chọn"} · {g.minSelect}–{g.maxSelect}</Text>
+              <Text style={st.hint}>{g.minSelect > 0 ? "Bắt buộc" : "Tùy chọn"} · {g.minSelect}–{g.maxSelect} phần</Text>
             </View>
-            <View style={st.wrap}>
-              {g.options.filter(o => o.isAvailable).map(o => <Chip key={o.id}
-                text={o.name + (o.priceDeltaVnd ? " +" + money(o.priceDeltaVnd) : "")}
-                checked={(choice.modifiers[g.id] ?? []).includes(o.id)}
-                onPress={() => choose("modifiers", g.id, o.id, g.maxSelect)}/>)}
-            </View>
+            <ToppingQuantityGrid options={g.options}
+              selected={choice.modifiers[g.id] ?? []} max={g.maxSelect}
+              onQuantity={(id, quantity) => setChoice(previous => ({
+                ...previous, modifiers: { ...previous.modifiers,
+                  [g.id]: setOptionQuantity(previous.modifiers[g.id] ?? [], id, quantity, g.maxSelect) },
+              }))}/>
           </View>)}
           {product.kind === "COMBO" && product.comboFixedItems.length > 0 && <View style={st.section}>
             <Text style={st.sectionName}>Có sẵn trong combo</Text>
@@ -113,6 +118,13 @@ const st = StyleSheet.create({
   backdrop: { flex: 1, padding: 12, backgroundColor: "rgba(30,18,15,0.58)", justifyContent: "center" },
   sheet: { backgroundColor: "#FFFFFF", width: "100%", maxWidth: 570, maxHeight: "96%",
     alignSelf: "center", borderRadius: 18, overflow: "hidden" },
+  hero: { width: "100%", height: 165, backgroundColor: pale, position: "relative" },
+  heroImage: { width: "100%", height: "100%" },
+  heroFallback: { width: "100%", height: "100%", backgroundColor: pale,
+    alignItems: "center", justifyContent: "center" },
+  heroClose: { position: "absolute", top: 8, right: 8, minWidth: 44, minHeight: 44,
+    borderRadius: 22, backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center", justifyContent: "center" },
   top: { paddingHorizontal: 18, paddingVertical: 10, flexDirection: "row",
     alignItems: "center", borderBottomWidth: 1, borderColor: border, gap: 10 },
   title: { fontSize: 19, fontWeight: "800", color: ink, flex: 1 },
