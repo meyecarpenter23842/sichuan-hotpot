@@ -470,7 +470,8 @@ export default function App() {
           return <Pressable key={p.id} accessibilityRole="button"
             accessibilityLabel={"Chọn " + p.name} disabled={!p.isAvailable || !sessionId || !canOrder(role) ||
               !!pendingSubmit || busy || !online}
-            onPress={() => setSelectedProduct(p)} style={[st.product, desktop && width >= 1200 && st.productWide, !p.isAvailable && st.faded]}>
+            onPress={() => setSelectedProduct(p)} style={[st.product, desktop && width >= 1024 && st.productTablet,
+              desktop && width >= 1200 && st.productWide, !p.isAvailable && st.faded]}>
             {image ? <Image source={{ uri: image }} style={st.productPhoto} resizeMode="cover"/> :
               <View style={st.productEmpty}><Text style={st.productPlaceholder}>LẨU TỨ XUYÊN</Text></View>}
             <View style={st.productBody}>
@@ -503,20 +504,14 @@ export default function App() {
       </View>
     </View> : <>
       <View style={st.header}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={st.brand}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
+        <View style={desktop ? st.headerBrandDesktop : st.headerBrandMobile}>
+          <Text style={st.brand} numberOfLines={1}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
           <Pressable accessibilityRole="button" onPress={() => setShowBranchMenu(v => !v)}
             style={st.branchButton}><Text style={st.branchName} numberOfLines={1}>
               {branch?.name ?? "Chọn chi nhánh"} ▾</Text></Pressable>
         </View>
-        <View style={st.headerRight}>
-          <Text style={[st.connectionLabel, { color: online ? "#C4F2D5" : "#FFE3B2" }]}>
-            {online ? "● Online" : "○ Mất mạng"}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đăng xuất"
-            style={st.exit} onPress={logout}><Text style={st.exitText}>Thoát</Text></Pressable>
-        </View>
-      </View>
-      <View style={st.qrToolbar}>
+      <ScrollView testID="retail-header-actions" horizontal showsHorizontalScrollIndicator={false}
+        style={st.qrToolbar} contentContainerStyle={st.qrToolbarContent}>
         {canOrder(role) && desktop && <View style={st.workspaceTabs}>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "pos" }}
             style={[st.workspaceTab, workspace === "pos" && st.workspaceTabActive]}
@@ -556,8 +551,15 @@ export default function App() {
           <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ lại"
             style={st.iconButton} onPress={() => { void refresh(true); }}>
             <Text style={st.iconText}>{syncing ? "…" : "↻"}</Text></Pressable>
-
+      </ScrollView>
+        <View style={st.headerRight}>
+          <Text style={[st.connectionLabel, { color: online ? "#C4F2D5" : "#FFE3B2" }]}>
+            {online ? "● Online" : "○ Mất mạng"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đăng xuất"
+            style={st.exit} onPress={logout}><Text style={st.exitText}>Thoát</Text></Pressable>
+        </View>
       </View>
+
       {showBranchMenu && <View style={st.branchPicker}>{branches.map(b => <Pressable key={b.id}
         accessibilityRole="button" onPress={() => branchChange(b.id)} style={st.branchItem}>
         <Text style={st.itemText}>{b.name} · {b.staffRole}</Text></Pressable>)}</View>}
@@ -662,17 +664,21 @@ const st = StyleSheet.create({
   brand: { fontSize: 11, letterSpacing: 0.7, color: "#FFE7D7", fontWeight: "900" },
   branchButton: { minHeight: 28, justifyContent: "center" },
   branchName: { fontSize: 14, fontWeight: "800", color: "#FFFFFF" },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  headerBrandDesktop: { width: 196, flexShrink: 1, minWidth: 100 },
+  headerBrandMobile: { width: 110, flexShrink: 1, minWidth: 70 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 3, flexShrink: 0 },
   connectionLabel: { fontSize: 11, fontWeight: "800" },
-  qrToolbar: { paddingHorizontal: 12, paddingVertical: 3, backgroundColor: "#FFFBF7",
-    borderBottomWidth: 1, borderBottomColor: C.border,
-    flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 6 },
+  // A single red command bar; buttons scroll on narrow devices rather than
+  // expanding the viewport or hiding touch controls behind another toolbar.
+  qrToolbar: { flex: 1, minWidth: 0 },
+  qrToolbarContent: { flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 4 },
   iconButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#F5EBE5", borderRadius: 10 },
-  iconText: { fontSize: 19, color: C.redDark },
+    backgroundColor: "#873039", borderRadius: 9 },
+  iconText: { fontSize: 18, color: "#FFFFFF" },
   exit: { minHeight: 44, paddingHorizontal: 10, justifyContent: "center" },
   exitText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
-  branchPicker: { position: "absolute", zIndex: 90, top: 104, left: 12, minWidth: 230,
+  branchPicker: { position: "absolute", zIndex: 90, top: 58, left: 12, minWidth: 230,
     borderWidth: 1, borderColor: C.border, backgroundColor: C.paper,
     borderRadius: 12, padding: 6, elevation: 8 },
   branchItem: { minHeight: 44, paddingHorizontal: 13, justifyContent: "center" },
@@ -753,23 +759,24 @@ const st = StyleSheet.create({
   disabled: { opacity: 0.5 },
   products: { flexDirection: "row", flexWrap: "wrap", gap: 9, alignItems: "stretch" },
   product: { backgroundColor: C.paper, width: "48%", borderWidth: 1,
-    borderColor: C.border, borderRadius: 12, overflow: "hidden", minHeight: 210 },
-  productWide: { width: "31.7%" },
+    borderColor: C.border, borderRadius: 10, overflow: "hidden" },
+  productTablet: { width: "31.7%" },
+  productWide: { width: "23.7%" },
   faded: { opacity: 0.55 },
-  productPhoto: { width: "100%", height: 144 },
-  productEmpty: { width: "100%", height: 144, backgroundColor: C.soft,
+  productPhoto: { width: "100%", aspectRatio: 1 },
+  productEmpty: { width: "100%", aspectRatio: 1, backgroundColor: C.soft,
     alignItems: "center", justifyContent: "center" },
-  productPlaceholder: { color: "#A78074", fontSize: 11, fontWeight: "800" },
-  productBody: { padding: 10, gap: 5 },
-  productName: { color: C.dark, fontSize: 13, fontWeight: "800", minHeight: 32 },
-  productPrice: { color: C.redDark, fontWeight: "900", fontSize: 14 },
+  productPlaceholder: { color: "#A78074", fontSize: 10, fontWeight: "800" },
+  productBody: { padding: 8, gap: 3 },
+  productName: { color: C.dark, fontSize: 12, fontWeight: "800", minHeight: 30 },
+  productPrice: { color: C.redDark, fontWeight: "900", fontSize: 13 },
   workspaceTabs: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 8 },
   workspaceTab: { minHeight: 44, borderRadius: 9, borderWidth: 1,
-    borderColor: C.border, backgroundColor: C.paper, paddingHorizontal: 13,
+    borderColor: "#A64D54", backgroundColor: "#873039", paddingHorizontal: 10,
     justifyContent: "center", alignItems: "center" },
-  workspaceTabActive: { backgroundColor: C.redDark, borderColor: C.redDark },
-  workspaceTabText: { color: C.dark, fontSize: 12, fontWeight: "800" },
-  workspaceTabTextActive: { color: C.paper },
+  workspaceTabActive: { backgroundColor: "#FFF0EB", borderColor: "#FFF0EB" },
+  workspaceTabText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  workspaceTabTextActive: { color: C.redDark },
   queueLayout: { flex: 1, flexDirection: "row", padding: 10, gap: 10, minHeight: 0, minWidth: 0 },
   queueSidebar: { width: "35%", flexShrink: 0, minWidth: 0,
     borderRadius: 14, borderWidth: 1, borderColor: C.border, backgroundColor: C.paper,
