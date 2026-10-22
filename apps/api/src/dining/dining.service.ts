@@ -377,7 +377,7 @@ export class DiningService {
           _sum: { amountVnd: true },
         }),
       ]);
-      if ((eligible._sum.lineTotalVnd ?? 0) > (paid._sum.amountVnd ?? 0)) {
+      if ((eligible._sum.lineTotalVnd ?? 0) !== (paid._sum.amountVnd ?? 0)) {
         throw new ConflictException("DINING_BILL_UNPAID");
       }
       const closed = await tx.diningSession.updateMany({
