@@ -1,4 +1,4 @@
-import { api, branchPath } from "./pos-api";
+import { api } from "./pos-api";
 
 type PushConfig = { enabled: boolean; publicKey: string | null };
 function convertKey(value: string): ArrayBuffer {
@@ -19,7 +19,7 @@ export async function enableRetailDiningPush(branchId: string): Promise<void> {
   if (permission !== "granted") throw new Error("Chưa cấp quyền thông báo trình duyệt.");
   const config = await api<PushConfig>("/push/config");
   if (!config.enabled || !config.publicKey) throw new Error("VPS chưa có cấu hình VAPID cho Web Push.");
-  const registration = await navigator.serviceWorker.register("/hotpot-sw.js", { scope: "/" });
+  await navigator.serviceWorker.register("/hotpot-sw.js", { scope: "/" });
   const ready = await navigator.serviceWorker.ready;
   const sub = await ready.pushManager.getSubscription() ?? await ready.pushManager.subscribe({
     userVisibleOnly: true, applicationServerKey: convertKey(config.publicKey),
@@ -30,5 +30,4 @@ export async function enableRetailDiningPush(branchId: string): Promise<void> {
     scope: "STAFF", transport: "WEB_PUSH", branchId,
     token: sub.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth,
   } });
-  void registration;
 }
