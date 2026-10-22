@@ -15,8 +15,7 @@ export function isSelectionValid(product: Product, choice: Selection): string | 
   for (const group of product.modifierGroups) {
     const enabled = group.options.filter(o => o.isAvailable);
     const selection = choice.modifiers[group.id] ?? [];
-    if (selection.length !== new Set(selection).size ||
-      selection.length < group.minSelect || selection.length > group.maxSelect ||
+    if (selection.length < group.minSelect || selection.length > group.maxSelect ||
       selection.some(id => !enabled.some(o => o.id === id))) {
       return "Vui lòng chọn " + group.minSelect + "–" + group.maxSelect +
         " tùy chọn hợp lệ trong nhóm " + group.name + ".";
