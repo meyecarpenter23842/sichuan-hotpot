@@ -242,14 +242,14 @@ export class OrderRealtimeService implements OnModuleDestroy {
           return;
         }
         if (sub.role === "CUSTOMER" || sub.role === "DRIVER") return;
-        if (sub.role === "KITCHEN" && change.status === "PENDING_APPROVAL") return;
+        if (sub.role === "KITCHEN" && !["APPROVED", "PREPARING", "READY", "SERVED"].includes(change.status)) return;
         if (sub.role === "CASHIER" && change.status === "PENDING_APPROVAL") return;
         const current = await this.auth.principal(sub.authorization);
         if (current.id !== sub.actorId) throw new Error("SESSION_CHANGED");
         const staff = await this.authorizeStaff(sub.authorization, change.branchId);
         if (staff.actorId !== sub.actorId) throw new Error("ROLE_CHANGED");
         if (staff.role === "DRIVER" || staff.role === "CASHIER"
-          || (staff.role === "KITCHEN" && change.status === "PENDING_APPROVAL")) return;
+          || (staff.role === "KITCHEN" && !["APPROVED", "PREPARING", "READY", "SERVED"].includes(change.status))) return;
         if (client.socket.readyState === 1) client.socket.send(staffHint);
       } catch { client.socket.close(1008); }
     }));
