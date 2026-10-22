@@ -64,7 +64,7 @@ test("L02 ticket groups, QR triage and invoice pictures follow server snapshots"
   assert.match(card, /READY/);
   assert.match(card, /SERVED/);
   assert.match(card, /CANCELED/);
-  assert.match(card, /productId === item\.productId/);
+  assert.match(card, /p\.id === item\.productId/);
   assert.match(backend, /id: true, productId: true, productName: true/);
   assert.match(types, /productId: string \| null; productName/);
   for (const marker of ["retail-qr-queue", "retail-bill-pending", "retail-bill-accepted",
