@@ -75,7 +75,7 @@ test("L03 guest visual hierarchy uses real catalogue images and protected cart e
   assert.match(sheet, /Ghi chú chế biến/);
   const helper = read("../src/menu-cart.ts");
   assert.match(helper, /changeCartQuantity/);
-  assert.match(helper, /quantity < 1 \|\| current > 99/);
+  assert.match(helper, /current < 1 \|\| current > 99/);
   assert.match(helper, /previewVnd: perUnit \* quantity/);
 });
 test("mobile first: safe area, tabs, loading/offline/empty and large hit targets", () => {
