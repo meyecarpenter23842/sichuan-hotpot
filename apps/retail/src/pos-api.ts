@@ -23,7 +23,7 @@ export type Product = { id: string; categoryId?: string; name: string; descripti
 };
 export type Category = { id: string; name: string; products: Product[] };
 export type Menu = { id: string; name: string; categories: Category[] };
-export type TicketItem = { id: string; productName: string; variantName: string | null;
+export type TicketItem = { id: string; productId: string | null; productName: string; variantName: string | null;
   quantity: number; unitPriceVnd: number; lineTotalVnd: number; selectionSnapshot: unknown };
 export type Ticket = { id: string; sessionId: string; source: "QR" | "STAFF"; status: string;
   createdAt: string; reviewedAt: string | null; customerNote: string | null;
