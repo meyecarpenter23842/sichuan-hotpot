@@ -11,6 +11,7 @@ import {
 } from "./src/pos-api";
 import { clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
+import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
 import { enableRetailDiningPush } from "./src/dining-push";
@@ -62,7 +63,7 @@ export default function App() {
   const sessionId = activeTable?.sessions[0]?.id ?? null;
   const usableAreas = areas.filter(a => a.isActive);
   const shownTables = tables.filter(t => (!areaId || t.areaId === areaId) &&
-    (t.isActive || t.sessions.length > 0));
+    (t.isActive || t.sessions.length > 0 || t.needsCleaning));
   const currentApprovals = approvals.filter(t => t.sessionId === sessionId);
   const estimatedVnd = cart.reduce((n, x) => n + x.previewVnd, 0);
 
@@ -187,7 +188,7 @@ export default function App() {
     setSelectedTableId(t.id); setPage(t.sessions.length ? "menu" : "tables"); setBill(null);
   };
   const openTable = () => {
-    if (!branchId || !activeTable || !canOrder(role) || !online) return;
+    if (!branchId || !activeTable || !canOrder(role) || !online || activeTable.needsCleaning) return;
     const b = branchId, id = activeTable.id;
     void doAction(async () => {
       try {
@@ -266,12 +267,12 @@ export default function App() {
         const active = !!t.sessions.length;
         const waiting = t.sessions[0]?._count.tickets ?? 0;
         return <Pressable key={t.id} accessibilityRole="button"
-          accessibilityLabel={t.name + (waiting ? ", chờ duyệt " + waiting : active ? ", đang có khách" : ", trống")}
+          accessibilityLabel={t.name + (waiting ? ", chờ duyệt " + waiting : active ? ", đang có khách" : t.needsCleaning ? ", chờ dọn" : ", trống")}
           onPress={() => selectTable(t)} style={[st.tableChip,
             selectedTableId === t.id && st.tableSelected, waiting > 0 && st.tablePending]}>
           <Text style={[st.tableCode, selectedTableId === t.id && st.selectedText]}>{t.code}</Text>
           <Text style={[st.caption, selectedTableId === t.id && st.selectedText]}>
-            {waiting ? "🔔 " + waiting + " chờ" : active ? "Có khách" : "Trống"}
+            {waiting ? "🔔 " + waiting + " chờ" : active ? "Có khách" : t.needsCleaning ? "Chờ dọn" : "Trống"}
           </Text>
         </Pressable>;
       })}
@@ -349,13 +350,20 @@ export default function App() {
           <Text style={st.amount}>{money(bill?.dueVnd ?? 0)}</Text></View>
         <View style={st.rowBetween}><Text style={st.caption}>Giỏ chưa gửi · tạm tính</Text>
           <Text style={st.amount}>{money(estimatedVnd)}</Text></View>
-        <Text style={st.micro}>Giá cuối cùng tính trên máy chủ. Thanh toán/đóng bàn triển khai ở L07.</Text>
+        <Text style={st.micro}>Số tiền chốt trên máy chủ. Yêu cầu QR chưa duyệt không tính vào khoản thu.</Text>
         {canOrder(role) && <Button title={busy ? "Đang gửi…" :
             pendingSubmit ? "Thử gửi lại phiếu cũ" : "Xác nhận & gửi Bếp"}
           disabled={busy || !online || !cart.length} onPress={() => { void send(); }} />}
         {!canOrder(role) && <Text style={st.caption}>Vai trò thu ngân chỉ xem hóa đơn, không gọi món.</Text>}
         {!!pendingSubmit && <Text style={st.warning}>Chưa xác nhận kết quả gửi. Giỏ đã khóa; hãy thử lại bằng cùng mã để tránh tạo món trùng.</Text>}
       </View>
+      {branchId && activeTable && <RetailSettlementPanel key={sessionId}
+        branchId={branchId} sessionId={sessionId} table={activeTable} tables={tables}
+        role={role} bill={bill} onChanged={async () => {
+          await refresh(true);
+          try { setBill(await api<Bill>(branchPath(branchId) + "/sessions/" + sessionId)); }
+          catch { setMessage("Thao tác đã ghi nhận. Hóa đơn đồng bộ lại khi có kết nối."); }
+        }}/>}
     </>}
   </View>;
 
@@ -479,15 +487,23 @@ export default function App() {
             <View style={st.tableGrid}>{shownTables.map(t => {
               const count = t.sessions[0]?._count.tickets ?? 0;
               return <Pressable key={t.id} accessibilityRole="button" onPress={() => selectTable(t)}
-                style={[st.tableTile, count > 0 ? st.pendingTile : t.sessions.length ? st.openTile : st.freeTile]}>
+                style={[st.tableTile, count > 0 ? st.pendingTile : t.sessions.length ? st.openTile : t.needsCleaning ? st.pendingTile : st.freeTile]}>
                 <Text style={st.tableCode}>{t.code}</Text><Text style={st.itemText}>{t.name}</Text>
                 <Text style={st.caption}>{count ? "🔔 " + count + " chờ duyệt" :
-                  t.sessions.length ? "Đang có khách" : "Trống"}</Text>
+                  t.sessions.length ? "Đang có khách" : t.needsCleaning ? "Chờ dọn" : "Trống"}</Text>
               </Pressable>;
             })}</View>
             {activeTable && !sessionId && canOrder(role) && <View style={st.mobileAction}>
               <Text style={st.sectionTitle}>{activeTable.name}</Text>
-              <Button title="Mở phiên bàn" disabled={busy || !online} onPress={openTable}/>
+              {activeTable.needsCleaning ? <>
+                <Text style={st.warning}>Bàn chờ dọn, chưa nhận lượt khách mới.</Text>
+                <Button title="Đã dọn bàn" disabled={busy || !online}
+                  onPress={() => { if (!branchId) return; void doAction(async () => {
+                    await api(branchPath(branchId) + "/tables/" + activeTable.id + "/clean",
+                      { method: "POST" });
+                    await refresh(true); setMessage("Đã dọn bàn, sẵn sàng nhận khách.");
+                  }); }}/>
+              </> : <Button title="Mở phiên bàn" disabled={busy || !online} onPress={openTable}/>}
             </View>}
           </> : page === "menu" ? <>
             <View style={st.mobileSelected}><Text style={st.label}>{activeTable?.name ?? "Chọn bàn"}</Text>

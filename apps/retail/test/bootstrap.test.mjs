@@ -30,7 +30,17 @@ test("real branch-scoped staff and menu flow, no demo checkout", () => {
   assert.match(app, /setPendingSubmit\(null\); setCart\(\[\]\)/);
   assert.match(app, /Duyệt đưa Bếp/);
   assert.match(app, /Đợi nhân viên xác nhận/);
-  assert.match(app, /Thanh toán\/đóng bàn triển khai ở L07/);
+  // L07 replaced the old promise with real server-backed settlement controls.
+  assert.match(app, /<RetailSettlementPanel/);
+  const settlement = read("../src/RetailSettlementPanel.tsx");
+  assert.match(settlement, /"\/payments"/);
+  assert.match(settlement, /"\/checkout"/);
+  assert.match(settlement, /"\/close"/);
+  assert.match(settlement, /"\/transfer"/);
+  assert.match(settlement, /"\/confirm"/);
+  assert.match(settlement, /"\/refund"/);
+  // Cleaning is a table-list action, not part of the settlement form.
+  assert.match(app, /"\/clean"/);
   assert.doesNotMatch(app, /\/customer\/checkout|payment\/confirm|\/delivery\//);
 });
 test("real image paths and sizes, modifiers, combo requirements respect backend limits", () => {

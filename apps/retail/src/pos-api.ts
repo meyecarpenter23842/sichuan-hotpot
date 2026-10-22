@@ -6,7 +6,7 @@ export type Tokens = { accessToken: string; refreshToken: string; accessTokenExp
 export type Branch = { id: string; name: string; code: string; isActive: boolean; staffRole?: Role };
 export type Area = { id: string; name: string; sortOrder: number; isActive: boolean };
 export type DiningSession = { id: string; status: string; guestCount: number | null; openedAt: string; _count: { tickets: number } };
-export type Table = { id: string; code: string; name: string; areaId: string; isActive: boolean; sessions: DiningSession[] };
+export type Table = { id: string; code: string; name: string; areaId: string; isActive: boolean; needsCleaning: boolean; sessions: DiningSession[] };
 export type Option = { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean; imageKey?: string | null };
 export type Group = { id: string; name: string; minSelect: number; maxSelect: number; options: Option[]; isAvailable?: boolean };
 export type ComboOption = { id: string; priceDeltaVnd: number; quantity: number; variant: Option | null;
@@ -28,8 +28,17 @@ export type TicketItem = { id: string; productName: string; variantName: string 
 export type Ticket = { id: string; sessionId: string; source: "QR" | "STAFF"; status: string;
   createdAt: string; reviewedAt: string | null; customerNote: string | null;
   items: TicketItem[]; session?: { table: { code: string; name: string } } };
-export type Bill = { id: string; status: string; subtotalVnd: number; paidVnd: number;
-  dueVnd: number; openedAt: string; tickets: Ticket[] };
+export type DiningPayment = { id: string; method: "CASH" | "QR";
+  status: "PENDING" | "CONFIRMED" | "VOIDED" | "REFUNDED";
+  amountVnd: number; cashReceivedVnd: number | null;
+  createdAt: string; confirmedAt: string | null;
+  recordedById: string; confirmedById: string | null;
+  qr: { bankBin: string; accountNo: string; accountName: string;
+    transferReference: string; imageUrl: string; amountVnd: number } | null };
+export type Bill = { id: string; status: "OPEN" | "CHECKOUT" | "CLOSED";
+  subtotalVnd: number; paidVnd: number; dueVnd: number; openedAt: string;
+  closedAt: string | null; branch: { name: string }; table: { code: string; name: string };
+  payments: DiningPayment[]; tickets: Ticket[] };
 export type ItemInput = { productId: string; variantId: string | null; modifierIds: string[];
   comboOptionIds: string[]; quantity: number; note: string };
 export type CartLine = { id: string; name: string; variantName?: string; previewVnd: number; item: ItemInput };
@@ -42,6 +51,13 @@ const names: Record<string, string> = {
   DINING_SESSION_NOT_OPEN: "Phiên bàn đã đóng hoặc chuyển. Vui lòng chọn bàn lại.",
   DINING_SESSION_MOVED: "Phiên đã chuyển bàn. Tải lại sơ đồ.",
   DINING_BILL_UNPAID: "Bàn vẫn còn tiền chưa thanh toán.",
+  DINING_CHECKOUT_REQUIRED: "Chốt hóa đơn trước khi thu tiền hoặc đóng bàn.",
+  DINING_PENDING_QR_TICKETS: "Còn yêu cầu QR chờ duyệt. Xử lý trước khi chốt, chuyển hoặc đóng bàn.",
+  DINING_QR_PAYMENT_PENDING: "Có chuyển khoản QR chưa xác nhận. Xác nhận hoặc hủy trước.",
+  DINING_PAYMENT_EXCEEDS_DUE: "Số tiền lớn hơn số cần thu hoặc hóa đơn đã thay đổi.",
+  DINING_QR_BENEFICIARY_NOT_CONFIGURED: "Quán chưa cấu hình tài khoản ngân hàng VietQR.",
+  DINING_CASH_TENDER_INVALID: "Tiền khách đưa không hợp lệ hoặc chưa đủ.",
+  DINING_TABLE_UNAVAILABLE: "Bàn đang khóa hoặc chờ dọn.",
   DINING_TICKET_STALE: "Yêu cầu món đã thay đổi trên thiết bị khác.",
   DINING_TICKET_ALREADY_REVIEWED: "Yêu cầu này đã được nhân viên xử lý.",
   DINING_IDEMPOTENCY_REUSED: "Phiếu này đã được gửi với nội dung khác. Kiểm tra và thử lại.",

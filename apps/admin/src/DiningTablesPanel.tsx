@@ -10,19 +10,20 @@ import { loadOrderChime } from "./order-notifications";
 import { playDiningAlert } from "./dining-alert";
 import { Action, Field, Notice } from "./ui";
 import { type DiningArea } from "./DiningConfigurationPanel";
+import { AdminDiningSettlement, type DiningStaffBill } from "./AdminDiningSettlement";
 import { c } from "./theme";
 
 type LiveSession = { id: string; status: "OPEN" | "CHECKOUT" | "CLOSED";
   guestCount: number | null; openedAt: string;
   _count: { tickets: number } };
 type Table = { id: string; areaId: string; code: string; name: string; isActive: boolean;
+  needsCleaning: boolean;
   sessions: LiveSession[] };
 type Line = { id: string; productName: string; variantName: string | null;
   quantity: number; lineTotalVnd: number };
 type Ticket = { id: string; sessionId: string; customerNote: string | null; createdAt: string;
   items: Line[]; session: { table: { code: string; name: string } } };
-type Bill = { id: string; subtotalVnd: number; paidVnd: number; dueVnd: number;
-  status: string; tickets: { id: string; status: string; items: Line[] }[] };
+type Bill = DiningStaffBill;
 type Filter = "all" | "available" | "active" | "pending";
 type Display = "grid" | "list";
 const money = (n: number) => n.toLocaleString("vi-VN") + "đ";
@@ -169,13 +170,13 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
       .catch(() => setError("Không mở được trang Retail."));
   };
   const shown = tables.filter(t => (selectedArea === null || t.areaId === selectedArea) &&
-    (filter === "all" || (filter === "available" && !t.sessions.length && t.isActive) ||
+    (filter === "all" || (filter === "available" && !t.sessions.length && t.isActive && !t.needsCleaning) ||
       (filter === "active" && !!t.sessions.length) ||
       (filter === "pending" && (t.sessions[0]?._count.tickets ?? 0) > 0)));
   const areaName = (areaId: string) => areas.find(a => a.id === areaId)?.name ?? "Khu vực";
   const pendingCount = approvals.length;
   const counts = {
-    available: tables.filter(t => !t.sessions.length && t.isActive).length,
+    available: tables.filter(t => !t.sessions.length && t.isActive && !t.needsCleaning).length,
     active: tables.filter(t => t.sessions.length).length,
   };
   const columns = width >= 990 ? 4 : width >= 650 ? 3 : 2;
@@ -249,8 +250,8 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
         const session = table.sessions[0];
         const pending = session?._count.tickets ?? 0;
         const area = areas.find(a => a.id === table.areaId);
-        const locked = !table.isActive || !area?.isActive;
-        const status = locked ? "Tạm khóa" : pending ? "Chờ xác nhận" :
+        const locked = !table.isActive || !area?.isActive || table.needsCleaning;
+        const status = table.needsCleaning ? "Chờ dọn" : locked ? "Tạm khóa" : pending ? "Chờ xác nhận" :
           session?.status === "CHECKOUT" ? "Chờ thanh toán" : session ? "Đang phục vụ" : "Trống";
         const tone = locked ? s.locked : pending ? s.pending : session ? s.occupied : s.free;
         return <Pressable key={table.id} accessibilityRole="button"
@@ -281,10 +282,20 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
               <Action secondary label="Đóng" onPress={() => setSelected(null)} />
             </View>
             {activeSelected && !activeSelected.sessions.length ? <>
-              <Notice text={activeSelected.isActive
+              <Notice text={activeSelected.needsCleaning
+                ? "Bàn đã thanh toán và đóng. Xác nhận đã dọn trước khi nhận lượt khách mới."
+                : activeSelected.isActive
                 ? "Bàn trống. Nhân viên mở phiên trước khi gọi món hoặc khách quét QR."
                 : "Bàn đang bị tạm khóa. Mở khóa ở mục Thiết lập."} />
-              {canOpen && activeSelected.isActive &&
+              {activeSelected.needsCleaning && canOpen && <Action label="Đã dọn bàn"
+                disabled={busy} onPress={() => {
+                  if (busy) return; setBusy(true);
+                  void request(base + "/tables/" + activeSelected.id + "/clean", token, "POST")
+                    .then(async () => { await refresh(); setSelected(null); setNotice("Đã dọn bàn."); })
+                    .catch(cause => setError(cause instanceof Error ? cause.message : "Không cập nhật được."))
+                    .finally(() => setBusy(false));
+                }}/>}
+              {canOpen && activeSelected.isActive && !activeSelected.needsCleaning &&
                 areas.find(a => a.id === activeSelected.areaId)?.isActive &&
                 <Action disabled={busy} label="Mở phiên bàn" onPress={() => {
                   void open(activeSelected); setSelected(null);
@@ -308,6 +319,16 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
                       {i.quantity} × {i.productName} {i.variantName || ""} · {money(i.lineTotalVnd)}</Text>)}
                   </View>)}
                 </View> : <Action secondary label="Tải hóa đơn" onPress={() => { void inspect(activeSelected); }} />)}
+              {canBill && bill && activeSelected && <AdminDiningSettlement
+                key={activeSelected.sessions[0]?.id} token={token} branchId={branchId}
+                sessionId={activeSelected.sessions[0]!.id} tableId={activeSelected.id}
+                tables={tables} bill={bill} role={role}
+                onChanged={async () => {
+                  await refresh();
+                  try { setBill(await request<Bill>(base + "/sessions/" +
+                    activeSelected.sessions[0]!.id, token)); }
+                  catch { setNotice("Đã cập nhật. Hóa đơn sẽ đồng bộ lần tiếp theo."); }
+                }}/>}
               {canApprove && pendingForSelected.map(t =>
                 <View key={t.id} style={s.ticket}>
                   <Text style={s.smallTitle}>Yêu cầu QR chờ duyệt · {formatDate(t.createdAt)}</Text>

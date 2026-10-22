@@ -5,10 +5,11 @@ import { OrdersModule } from "../orders/orders.module";
 import { PushModule } from "../push/push.module";
 import { DiningGuestController, DiningStaffController } from "./dining.controller";
 import { DiningService } from "./dining.service";
+import { DiningSettlementService } from "./dining-settlement.service";
 
 @Module({
   imports: [AuthModule, OrdersModule, PushModule, ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }])],
   controllers: [DiningStaffController, DiningGuestController],
-  providers: [DiningService],
+  providers: [DiningService, DiningSettlementService],
 })
 export class DiningModule {}

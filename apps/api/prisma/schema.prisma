@@ -797,6 +797,7 @@ model DiningTable {
   code      String   @db.VarChar(40)
   name      String   @db.VarChar(120)
   qrHandle  String   @unique @db.VarChar(64)
+  needsCleaning Boolean @default(false)
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
@@ -910,6 +911,10 @@ model DiningPayment {
   method        DiningPaymentMethod
   status        DiningPaymentStatus @default(PENDING)
   amountVnd     Int
+  cashReceivedVnd Int?
+  qrBankBin     String? @db.VarChar(6)
+  qrAccountNo   String? @db.VarChar(19)
+  qrAccountName String? @db.VarChar(80)
   idempotencyKey String @db.VarChar(128)
   recordedById  String @db.Uuid
   confirmedById String? @db.Uuid
