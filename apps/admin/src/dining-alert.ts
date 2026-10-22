@@ -1,30 +1,31 @@
-// Foreground PWA alerts are best effort: browser autoplay and notification permissions apply.
+// Best-effort foreground sound; a user tap must unlock Web Audio on Safari/Chrome.
+let audio: AudioContext | null = null;
 export async function playDiningAlert(test = false): Promise<void> {
   if (typeof window === "undefined") return;
   const win = window as typeof window & { webkitAudioContext?: typeof AudioContext };
   const Audio = win.AudioContext ?? win.webkitAudioContext;
-  if (Audio) {
-    const context = new Audio();
-    try {
-      if (context.state === "suspended") await context.resume();
-      if (context.state === "running") {
-        for (const offset of [0, 0.18]) {
-          const tone = context.createOscillator();
-          const gain = context.createGain();
-          tone.type = "sine"; tone.frequency.value = 740;
-          gain.gain.setValueAtTime(0.0001, context.currentTime + offset);
-          gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + offset + 0.015);
-          gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + offset + 0.15);
-          tone.connect(gain); gain.connect(context.destination);
-          tone.start(context.currentTime + offset);
-          tone.stop(context.currentTime + offset + 0.16);
-        }
-      } else if (test) throw new Error("Safari/Chrome đang chặn tự phát âm. Chạm nút thử lại.");
-    } finally { void context.close().catch(() => undefined); }
-  } else if (test) {
-    throw new Error("Trình duyệt không hỗ trợ phát âm tại trang này.");
+  if (!Audio) {
+    if (test) throw new Error("Trình duyệt chưa hỗ trợ Web Audio.");
+    return;
   }
-  // No notification permission prompt on background changes: only direct user action can request it.
+  audio ??= new Audio();
+  if (test && audio.state === "suspended") await audio.resume();
+  if (audio.state !== "running") {
+    if (test) throw new Error("Safari/Chrome đang chặn âm thanh. Hãy chạm thử lại.");
+    return;
+  }
+  const when = audio.currentTime;
+  for (const offset of [0, 0.18]) {
+    const tone = audio.createOscillator();
+    const gain = audio.createGain();
+    tone.type = "sine"; tone.frequency.value = 740;
+    gain.gain.setValueAtTime(0.0001, when + offset);
+    gain.gain.exponentialRampToValueAtTime(0.16, when + offset + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + offset + 0.15);
+    tone.connect(gain); gain.connect(audio.destination);
+    tone.start(when + offset); tone.stop(when + offset + 0.16);
+  }
+  // No permission prompt on background events. On-screen Test never creates a ticket.
   if (test && typeof Notification !== "undefined" && Notification.permission === "granted") {
     new Notification("Thử chuông yêu cầu QR", { body: "Thông báo thử, không tạo đơn." });
   }
