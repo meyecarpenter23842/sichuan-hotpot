@@ -263,6 +263,19 @@ try {
   assert.equal(settlements.filter(x => x.status === "fulfilled").length, 1,
     "two cashiers cannot both collect the same balance");
   assert.equal((await service.staffBill("cashier", branch.id, session.id)).paidVnd, 745_000);
+  const winner = settlements.find(x => x.status === "fulfilled").value;
+  assert.equal((await settlement.record("cashier", branch.id, session.id, {
+    method: "CASH", amountVnd: 745_000, cashReceivedVnd: 800_000,
+    idempotencyKey: (await prisma.diningPayment.findUniqueOrThrow({
+      where: { id: winner.paymentId },
+    })).idempotencyKey,
+  })).replayed, true, "exact cash replay is safe after due reaches zero");
+  await rejectsCode(settlement.record("cashier", branch.id, session.id, {
+    method: "CASH", amountVnd: 745_000, cashReceivedVnd: 810_000,
+    idempotencyKey: (await prisma.diningPayment.findUniqueOrThrow({
+      where: { id: winner.paymentId },
+    })).idempotencyKey,
+  }), "DINING_PAYMENT_KEY_REUSED");
   const payAudit = await prisma.diningAuditEvent.findMany({
     where: { sessionId: session.id, action: "PAYMENT_RECORDED" },
   });
