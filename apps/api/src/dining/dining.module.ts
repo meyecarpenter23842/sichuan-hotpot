@@ -10,7 +10,7 @@ import { DiningReportService } from "./dining-report.service";
 import { DiningReportController } from "./dining-report.controller";
 
 @Module({
-  imports: [AuthModule, OrdersModule, PushModule, ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }])],
+  imports: [AuthModule, OrdersModule, PushModule, ThrottlerModule.forRoot([{ ttl: 60_000, limit: 600 }])],
   controllers: [DiningStaffController, DiningGuestController, DiningReportController],
   providers: [DiningService, DiningSettlementService, DiningReportService],
 })
