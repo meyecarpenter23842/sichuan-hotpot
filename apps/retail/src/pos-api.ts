@@ -30,7 +30,8 @@ export type Ticket = { id: string; sessionId: string; source: "QR" | "STAFF"; st
   items: TicketItem[]; session?: { table: { code: string; name: string } } };
 export type DiningPayment = { id: string; method: "CASH" | "QR";
   status: "PENDING" | "CONFIRMED" | "VOIDED" | "REFUNDED";
-  amountVnd: number; createdAt: string; confirmedAt: string | null;
+  amountVnd: number; cashReceivedVnd: number | null;
+  createdAt: string; confirmedAt: string | null;
   recordedById: string; confirmedById: string | null;
   qr: { bankBin: string; accountNo: string; accountName: string;
     transferReference: string; imageUrl: string; amountVnd: number } | null };
