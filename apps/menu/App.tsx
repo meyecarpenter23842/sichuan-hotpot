@@ -10,7 +10,7 @@ import {
   type CartLine, type GuestBill, type GuestGrant, type GuestTicket,
   type Locator, type Menu, type Product, type Receipt, type Submission,
 } from "./src/menu-api";
-import { clientKey } from "./src/menu-cart";
+import { changeCartQuantity, clientKey } from "./src/menu-cart";
 import { ProductSheet } from "./src/ProductSheet";
 
 const tone = {
@@ -49,6 +49,16 @@ function stateLabel(state: string) {
     case "REJECTED": return "Nhân viên đã từ chối";
     default: return "Đang cập nhật";
   }
+}
+function categoryIcon(name: string): string {
+  const value = name.toLocaleLowerCase("vi");
+  if (value.includes("lẩu")) return "🍲";
+  if (value.includes("topping") || value.includes("ăn kèm")) return "🥬";
+  if (value.includes("trà") || value.includes("sữa")) return "🧋";
+  if (value.includes("soda") || value.includes("nước") || value.includes("uống")) return "🥤";
+  if (value.includes("combo")) return "🍱";
+  if (value.includes("bò")) return "🥩";
+  return "🍽️";
 }
 function NavButton({ label, selected, onPress, count }: {
   label: string; selected: boolean; onPress: () => void; count?: number;
@@ -96,6 +106,20 @@ export default function App() {
   const sendingLock = useRef(false);
   const requestId = useRef(0);
   const totalDraft = cart.reduce((value, line) => value + line.previewVnd, 0);
+  const heroProduct = useMemo(() => {
+    const withPhotos = (catalog?.categories ?? []).flatMap(g => g.products)
+      .filter(p => p.isAvailable && !!productImage(p.imageKey));
+    return withPhotos.find(p => p.name.toLocaleLowerCase("vi").includes("lẩu")) ??
+      withPhotos[0] ?? null;
+  }, [catalog]);
+  const photoByProductId = useMemo(() => {
+    const images = new Map<string, string>();
+    for (const group of catalog?.categories ?? []) for (const product of group.products) {
+      const url = productImage(product.imageKey);
+      if (url) images.set(product.id, url);
+    }
+    return images;
+  }, [catalog]);
   const products = useMemo(() => (catalog?.categories ?? [])
     .flatMap(group => group.products.map(product => ({ ...product, categoryId: group.id })))
     .filter(p => (!category || p.categoryId === category) &&
@@ -276,6 +300,15 @@ export default function App() {
       }
     } finally { sendingLock.current = false; if (alive.current) setSending(false); }
   };
+  const updateQuantity = (lineId: string, direction: -1 | 1) => {
+    if (frozen || sending) return;
+    try {
+      setCart(lines => lines.map(line => line.id === lineId
+        ? changeCartQuantity(line, direction) : line));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không sửa được số lượng.");
+    }
+  };
   const add = (line: CartLine) => {
     if (frozen) return;
     setCart(prev => [...prev, line]); setSelectedProduct(null);
@@ -284,7 +317,7 @@ export default function App() {
   const canOrder = phase === "ready" && !!grant && online && !sending;
   return <SafeAreaProvider><SafeAreaView style={s.safe} edges={["top", "bottom"]}>
     <View style={s.header}>
-      <View style={s.brand}><Text style={s.brandSmall}>LẨU TỨ XUYÊN</Text>
+      <View style={s.brand}><Text style={s.brandSmall}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
         <Text style={s.brandTitle}>Gọi món tại bàn</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel="Kiểm tra kết nối và đơn"
         onPress={() => { if (guestRef.current) void sync(guestRef.current, true); else void connect(); }}
@@ -331,15 +364,34 @@ export default function App() {
         <ScrollView style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.scrollContent}>
           <View style={[s.page, wide && s.widePage]}>
             {screen === "menu" && <>
-              <View style={s.intro}><Text style={s.heading}>Hôm nay ăn gì?</Text>
-                <Text style={s.muted}>Chọn món yêu thích, nhân viên sẽ xác nhận trước khi chuyển Bếp.</Text></View>
+              <View testID="menu-qr-hero" style={s.hero}>
+                {heroProduct && productImage(heroProduct.imageKey) &&
+                  <Image source={{ uri: productImage(heroProduct.imageKey)! }}
+                    style={s.heroPhoto} resizeMode="cover"/>}
+                <View style={s.heroShade}>
+                  <Text style={s.heroEyebrow}>LẨU TỨ XUYÊN · {locator?.table ?? "GỌI MÓN TẠI BÀN"}</Text>
+                  <Text style={s.heroTitle}>Món ngon nóng hổi, gọi ngay tại bàn</Text>
+                  <Text style={s.heroBody}>Chọn món yêu thích, nhân viên sẽ xác nhận trước khi Bếp chuẩn bị.</Text>
+                  {heroProduct && <Text style={s.heroPrice}>
+                    {heroProduct.name} · {money(heroProduct.priceVnd)}
+                  </Text>}
+                </View>
+              </View>
               <TextInput style={s.search} placeholder="Tìm món, topping, trà sữa…" maxLength={100}
                 placeholderTextColor="#8B817D" value={search} onChangeText={setSearch} accessibilityLabel="Tìm món"/>
+              <Text style={s.sectionHeading}>Danh mục</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryBar}>
                 <Chip label="Tất cả" checked={!category} onPress={() => setCategory(null)}/>
-                {(catalog?.categories ?? []).map(g => <Chip key={g.id} label={g.name}
+                {(catalog?.categories ?? []).map(g => <Chip key={g.id}
+                  label={categoryIcon(g.name) + " " + g.name}
                   checked={category === g.id} onPress={() => setCategory(g.id)}/>)}
               </ScrollView>
+              <View style={s.menuHeading}>
+                <Text style={s.sectionHeading}>{category
+                  ? catalog?.categories.find(g => g.id === category)?.name ?? "Thực đơn"
+                  : "Món nổi bật"}</Text>
+                <Text style={s.micro}>{products.length} món</Text>
+              </View>
               {!products.length ? <Text style={s.empty}>Không có món phù hợp.</Text> :
                 <View style={s.grid}>{products.map(product => {
                   const image = productImage(product.imageKey);
@@ -353,8 +405,12 @@ export default function App() {
                     <View style={s.productBody}>
                       <Text numberOfLines={2} style={s.productName}>{product.name}</Text>
                       <Text style={s.price}>{money(product.priceVnd)}</Text>
-                      <Text style={s.micro}>{!product.isAvailable ? "Tạm hết hàng" :
-                        !canOrder ? "Chờ mở bàn" : product.kind === "COMBO" ? "Tùy chỉnh combo +" : "Chọn món +"}</Text>
+                      <View style={s.productBottom}>
+                        <Text style={[s.micro, { flex: 1 }]} numberOfLines={2}>{!product.isAvailable ? "Tạm hết hàng" :
+                          !canOrder ? "Chờ mở bàn" : product.kind === "COMBO" ? "Chọn combo" : "Tùy chỉnh món"}</Text>
+                        {canOrder && product.isAvailable && !frozen &&
+                          <Text style={s.productAdd}>＋</Text>}
+                      </View>
                     </View>
                   </Pressable>;
                 })}</View>}
@@ -365,17 +421,40 @@ export default function App() {
               {!cart.length ? <View style={s.emptyCard}><Text style={s.empty}>Chưa có món trong giỏ.</Text>
                 <Button secondary label="Xem thực đơn" onPress={() => setScreen("menu")}/></View> :
                 cart.map(line => <View key={line.id} style={s.cartLine}>
-                  <View style={{ flex: 1, gap: 5 }}>
-                    <Text style={s.productName}>{line.item.quantity} × {line.name}</Text>
-                    {!!line.variantName && <Text style={s.muted}>{line.variantName}</Text>}
-                    {!!line.item.note && <Text style={s.micro}>Ghi chú: {line.item.note}</Text>}
-                    <Text style={s.price}>{money(line.previewVnd)}</Text>
+                  {photoByProductId.has(line.item.productId) ?
+                    <Image source={{ uri: photoByProductId.get(line.item.productId)! }}
+                      style={s.cartPhoto} resizeMode="cover"/> :
+                    <View style={s.cartPhotoEmpty}><Text style={s.cartPhotoSymbol}>🍲</Text></View>}
+                  <View style={s.cartMain}>
+                    <View style={s.cartNameRow}>
+                      <Text style={[s.productName, { flex: 1 }]} numberOfLines={2}>{line.name}</Text>
+                      <Pressable accessibilityRole="button" accessibilityLabel={"Bỏ " + line.name}
+                        style={s.remove} disabled={!!frozen || sending}
+                        onPress={() => setCart(prev => prev.filter(item => item.id !== line.id))}>
+                        <Text style={s.removeText}>×</Text>
+                      </Pressable>
+                    </View>
+                    {!!line.variantName && <Text style={s.muted} numberOfLines={1}>{line.variantName}</Text>}
+                    {!!line.item.note && <Text style={s.micro} numberOfLines={2}>Ghi chú: {line.item.note}</Text>}
+                    <View style={s.cartBottom}>
+                      <View style={s.quantityControls}>
+                        <Pressable accessibilityRole="button" accessibilityLabel={"Giảm số lượng " + line.name}
+                          accessibilityState={{ disabled: !!frozen || sending || line.item.quantity <= 1 }}
+                          style={s.quantityButton} disabled={!!frozen || sending || line.item.quantity <= 1}
+                          onPress={() => updateQuantity(line.id, -1)}>
+                          <Text style={s.quantitySymbol}>−</Text>
+                        </Pressable>
+                        <Text style={s.quantityValue}>{line.item.quantity}</Text>
+                        <Pressable accessibilityRole="button" accessibilityLabel={"Tăng số lượng " + line.name}
+                          accessibilityState={{ disabled: !!frozen || sending || line.item.quantity >= 99 }}
+                          style={s.quantityButton} disabled={!!frozen || sending || line.item.quantity >= 99}
+                          onPress={() => updateQuantity(line.id, 1)}>
+                          <Text style={s.quantitySymbol}>＋</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={s.price}>{money(line.previewVnd)}</Text>
+                    </View>
                   </View>
-                  <Pressable accessibilityRole="button" accessibilityLabel={"Bỏ " + line.name}
-                    style={s.remove} disabled={!!frozen || sending}
-                    onPress={() => setCart(prev => prev.filter(item => item.id !== line.id))}>
-                    <Text style={s.removeText}>×</Text>
-                  </Pressable>
                 </View>)}
               {!!cart.length && <>
                 <Text style={s.fieldTitle}>Ghi chú chung cho quán</Text>
