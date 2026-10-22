@@ -911,6 +911,9 @@ model DiningPayment {
   method        DiningPaymentMethod
   status        DiningPaymentStatus @default(PENDING)
   amountVnd     Int
+  qrBankBin     String? @db.VarChar(6)
+  qrAccountNo   String? @db.VarChar(19)
+  qrAccountName String? @db.VarChar(80)
   idempotencyKey String @db.VarChar(128)
   recordedById  String @db.Uuid
   confirmedById String? @db.Uuid
