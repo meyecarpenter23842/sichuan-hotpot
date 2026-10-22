@@ -81,8 +81,13 @@ export async function watchAdminNotificationResponses(
 ): Promise<() => void> {
   const handle = (response: Awaited<ReturnType<typeof Notifications.getLastNotificationResponseAsync>>) => {
     const data = response?.notification.request.content.data;
-    if (!data || data.kind === "TEST" || typeof data.orderId !== "string" || !data.orderId) return;
-    onOpenOrder(data.orderId);
+    if (!data || data.kind === "TEST") return;
+    if (data.kind === "DINING_PENDING" && typeof data.url === "string") {
+      const ticket = data.url.match(/[?&]ticket=([0-9a-f-]{36})/i)?.[1] ?? "";
+      onOpenOrder("dining:" + ticket);
+      return;
+    }
+    if (typeof data.orderId === "string" && data.orderId) onOpenOrder(data.orderId);
   };
   handle(await Notifications.getLastNotificationResponseAsync());
   const subscription = Notifications.addNotificationResponseReceivedListener(handle);

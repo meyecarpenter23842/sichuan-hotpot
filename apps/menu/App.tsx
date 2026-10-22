@@ -4,6 +4,7 @@ import {
   Text, TextInput, View, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { watchGuestDining } from "./src/dining-live";
 import {
   getApi, MenuApiError, money, productImage, readQrHandle,
   type CartLine, type GuestBill, type GuestGrant, type GuestTicket,
@@ -220,6 +221,15 @@ export default function App() {
     });
     return () => { clearInterval(timer); sub.remove(); };
   }, [phase, sync]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !grant) return;
+    const credential = grant.credential;
+    return watchGuestDining(credential, grant.sessionId, () => {
+      const current = guestRef.current;
+      if (current?.credential === credential) void sync(current);
+    });
+  }, [grant?.credential, grant?.sessionId, phase, sync]);
 
   // Per-tab unsent cart survives Safari/Chrome reload, but never crosses a dining session.
   useEffect(() => {

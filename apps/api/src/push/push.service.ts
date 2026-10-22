@@ -18,13 +18,13 @@ export interface PushRegistration {
 type PushPayload = {
   title: string;
   body: string;
-  kind: "NEW_ORDER" | "ORDER_CONFIRMED" | "ORDER_STATUS" | "TEST";
+  kind: "NEW_ORDER" | "ORDER_CONFIRMED" | "ORDER_STATUS" | "DINING_PENDING" | "TEST";
   orderId?: string;
   testId?: string;
   url: string;
 };
 
-const STAFF_ROLES = ["OWNER", "MANAGER"] as const;
+const STAFF_ROLES = ["OWNER", "MANAGER", "WAITER"] as const;
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 // Mirrors apps/admin/src/push-client.native.ts. See native-order-sound contract test.
 const ADMIN_ORDER_CHANNEL_ID = "new-orders-v3";
@@ -218,6 +218,24 @@ export class PushService {
     }
     return { status: item.status, received: item.receivedAt !== null,
       failureCode: item.failureCode };
+  }
+
+  async notifyStaffDiningPending(branchId: string, ticketId: string): Promise<void> {
+    // Filter *before* FCM/Web Push: a kitchen/driver/cashier must not
+    // receive a pending QR ticket. Authorization is branch-specific.
+    const endpoints = await this.prisma.database.pushEndpoint.findMany({
+      where: { scope: "STAFF", branchId, OR: [
+        { user: { role: "OWNER" } },
+        { user: { branchMemberships: { some: {
+          branchId, role: { in: ["OWNER", "MANAGER", "WAITER"] },
+        } } } },
+      ] },
+    });
+    await this.deliver(endpoints, {
+      title: "Yêu cầu gọi món QR",
+      body: "Có yêu cầu mới tại bàn đang chờ duyệt.",
+      kind: "DINING_PENDING", url: "/?notification=dining&ticket=" + encodeURIComponent(ticketId),
+    }, true);
   }
 
   async notifyStaffNewOrder(branchId: string, orderId: string): Promise<void> {

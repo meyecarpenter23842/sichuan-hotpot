@@ -16,7 +16,13 @@ const auth = { principal: async key => {
   if (!row) throw new Error("TEST_AUTH_DENIED");
   return row;
 }};
-const service = new DiningService({ get database() { return prisma; } }, auth);
+const diningEvents = [];
+const pendingPushes = [];
+const realtime = { publishDining: async change => { diningEvents.push(change); } };
+const push = { notifyStaffDiningPending: async (branchId, ticketId) => {
+  pendingPushes.push({ branchId, ticketId });
+} };
+const service = new DiningService({ get database() { return prisma; } }, auth, realtime, push);
 const nonce = randomUUID().replaceAll("-", "");
 const line = (productId, quantity=1, variantId=null, modifierIds=[], comboOptionIds=[]) =>
   ({ productId, variantId, modifierIds, comboOptionIds, quantity });
@@ -141,6 +147,34 @@ try {
     service.review("owner", branch.id, qrTicket.ticketId, "APPROVED"),
   ]);
   assert.equal(approvals.filter(x => !x.replayed).length, 1, "one winner on concurrent approvals");
+  assert.equal(diningEvents.filter(e => e.ticketId === qrTicket.ticketId
+    && e.status === "PENDING_APPROVAL").length, 1, "one pending event per committed QR ticket");
+  assert.equal(pendingPushes.filter(p => p.ticketId === qrTicket.ticketId).length, 1,
+    "one staff push per accepted idempotency key");
+  assert.equal(diningEvents.filter(e => e.ticketId === qrTicket.ticketId
+    && e.status === "APPROVED").length, 1, "concurrent approval publishes exactly once");
+  await rejectsCode(service.advanceKitchen("cashier", branch.id, qrTicket.ticketId,
+    "APPROVED", "PREPARING"), "DINING_BRANCH_FORBIDDEN");
+  await rejectsCode(service.advanceKitchen("outsider", branch.id, qrTicket.ticketId,
+    "APPROVED", "PREPARING"), "DINING_BRANCH_FORBIDDEN");
+  await rejectsCode(service.advanceKitchen("kitchen", branch.id, qrTicket.ticketId,
+    "APPROVED", "SERVED"), "DINING_KITCHEN_TRANSITION_INVALID");
+  const work = await service.advanceKitchen("kitchen", branch.id, qrTicket.ticketId,
+    "APPROVED", "PREPARING");
+  assert.equal(work.status, "PREPARING");
+  assert.equal((await service.advanceKitchen("kitchen", branch.id, qrTicket.ticketId,
+    "APPROVED", "PREPARING")).replayed, true, "kitchen retry does not duplicate work");
+  assert.equal(diningEvents.filter(e => e.ticketId === qrTicket.ticketId
+    && e.status === "PREPARING").length, 1, "one hint for kitchen state transition");
+  await rejectsCode(service.advanceKitchen("kitchen", foreign.id, qrTicket.ticketId,
+    "PREPARING", "READY"), "DINING_BRANCH_FORBIDDEN");
+  await service.advanceKitchen("kitchen", branch.id, qrTicket.ticketId, "PREPARING", "READY");
+  assert.equal((await service.guestTickets(guestAuth))
+    .find(t => t.id === qrTicket.ticketId)?.status, "READY", "guest sees own ticket status");
+  await service.advanceKitchen("waiter", branch.id, qrTicket.ticketId, "READY", "SERVED");
+  assert.equal((await service.guestTickets("Dining " + isolatedGrant.credential))
+    .length, 0, "other guests cannot read ticket status");
+
   assert.equal((await service.kitchen("kitchen", branch.id)).filter(x => x.id === qrTicket.ticketId).length, 1,
     "exactly one durable kitchen item");
   assert.equal((await service.staffBill("cashier", branch.id, session.id)).subtotalVnd, 745_000);
@@ -272,7 +306,7 @@ try {
   assert.equal(savedTable.qrHandle, changed.qrHandle, "QR remains stable across ordinary edits");
   assert.equal((await prisma.order.count({ where: { branchId: branch.id } })), 0,
     "dine-in must not create delivery orders");
-  console.log("PASS L02 dining branch auth, concurrent open/approve, idempotent staff/QR, pricing, bill, kitchen, stock, close/revoke, transfer, pending edits");
+  console.log("PASS L02/L06 dining auth, commit-only hints/push, exactly-once approval, kitchen lifecycle, guest scope, branch isolation, pricing and revoke");
 } finally {
   await prisma.$disconnect();
 }

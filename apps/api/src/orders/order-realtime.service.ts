@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { AuthService } from "../auth/auth.service";
@@ -32,7 +32,13 @@ interface SocketServer {
 const SocketServerCtor = (require("ws") as {
   Server: new (options: { noServer: boolean; maxPayload: number; perMessageDeflate: boolean }) => SocketServer;
 }).Server;
-type Subscription = { authorization: string; actorId: string; role: string; branchId?: string };
+type Subscription = { authorization: string; actorId: string; role: string; branchId?: string;
+  sessionId?: string; grantId?: string };
+export interface DiningChange {
+  type: "dining.pending" | "dining.ticket" | "dining.kitchen";
+  branchId: string; sessionId: string; ticketId: string;
+  status: "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "PREPARING" | "READY" | "SERVED";
+}
 type Client = { socket: Socket; subscription: Subscription | null; alive: boolean; lastAuth: number };
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -104,8 +110,27 @@ export class OrderRealtimeService implements OnModuleDestroy {
     const value = input as Record<string, unknown>;
     if (value.type !== "subscribe" || typeof value.token !== "string" ||
       value.token.length < 10 || value.token.length > 4096 ||
-      !["staff", "customer"].includes(String(value.scope))) {
+      !["staff", "customer", "dining_guest"].includes(String(value.scope))) {
       throw new Error("BAD_SUBSCRIBE");
+    }
+    if (value.scope === "dining_guest") {
+      if (!/^[A-Za-z0-9_-]{40,128}$/.test(value.token)) throw new Error("BAD_GUEST_GRANT");
+      const tokenHash = createHash("sha256").update(value.token).digest("hex");
+      const grant = await this.prisma.database.diningGuestGrant.findUnique({
+        where: { tokenHash },
+        select: { id: true, branchId: true, sessionId: true, expiresAt: true,
+          revokedAt: true, session: { select: { status: true, closedAt: true } } },
+      });
+      if (!grant || grant.revokedAt || grant.expiresAt.getTime() <= Date.now()
+        || grant.session.status !== "OPEN" || grant.session.closedAt) {
+        throw new Error("GUEST_GRANT_EXPIRED");
+      }
+      client.subscription = { authorization: value.token, actorId: grant.id,
+        role: "DINING_GUEST", branchId: grant.branchId,
+        sessionId: grant.sessionId, grantId: grant.id };
+      client.lastAuth = Date.now();
+      if (client.socket.readyState === 1) client.socket.send(JSON.stringify({ type: "ready" }));
+      return;
     }
     const authorization = "Bearer " + value.token;
     const principal = await this.auth.principal(authorization);
@@ -138,7 +163,7 @@ export class OrderRealtimeService implements OnModuleDestroy {
       where: { branchId_userId: { branchId, userId: principal.id } },
       select: { role: true },
     });
-    if (!membership || !["OWNER", "MANAGER", "KITCHEN", "DRIVER"].includes(membership.role)) {
+    if (!membership || !["OWNER", "MANAGER", "KITCHEN", "DRIVER", "WAITER", "CASHIER"].includes(membership.role)) {
       throw new Error("BRANCH_FORBIDDEN");
     }
     return { actorId: principal.id, role: membership.role };
@@ -160,10 +185,12 @@ export class OrderRealtimeService implements OnModuleDestroy {
     await Promise.all([...this.clients].map(async client => {
       const subscription = client.subscription;
       if (!subscription || client.socket.readyState !== 1) return;
+      if (subscription.role === "DINING_GUEST") return;
       if (subscription.role === "CUSTOMER") {
         if (subscription.actorId !== change.customerId || change.type === "order.overdue") return;
       } else {
         if (subscription.branchId !== change.branchId) return;
+        if (["WAITER", "CASHIER"].includes(subscription.role)) return;
         if (subscription.role === "KITCHEN" && change.status === "PENDING") return;
         if (subscription.role === "DRIVER" && change.type === "order.overdue") return;
       }
@@ -174,7 +201,8 @@ export class OrderRealtimeService implements OnModuleDestroy {
         if (subscription.role !== "CUSTOMER") {
           const staff = await this.authorizeStaff(subscription.authorization, change.branchId);
           if (staff.actorId !== subscription.actorId) throw new Error("ROLE_CHANGED");
-          if (staff.role === "KITCHEN" && change.status === "PENDING") return;
+          if (["WAITER", "CASHIER"].includes(staff.role)) return;
+           if (staff.role === "KITCHEN" && change.status === "PENDING") return;
           if (staff.role === "DRIVER") {
             // Assignment may be revoked at any time. Never stream even order IDs
             // from other customers/branches to unassigned delivery personnel.
@@ -189,6 +217,41 @@ export class OrderRealtimeService implements OnModuleDestroy {
       } catch {
         client.socket.close(1008);
       }
+    }));
+  }
+
+  /** No prices/phone/customer fields ever traverse realtime; database remains authoritative. */
+  async publishDining(change: DiningChange): Promise<void> {
+    const staffHint = JSON.stringify({ ...change, eventId: randomUUID() });
+    const guestHint = JSON.stringify({ type: "dining.changed", branchId: change.branchId,
+      sessionId: change.sessionId, eventId: randomUUID() });
+    await Promise.all([...this.clients].map(async client => {
+      const sub = client.subscription;
+      if (!sub || client.socket.readyState !== 1 || sub.branchId !== change.branchId) return;
+      try {
+        if (sub.role === "DINING_GUEST") {
+          if (sub.sessionId !== change.sessionId || !sub.grantId) return;
+          const grant = await this.prisma.database.diningGuestGrant.findFirst({
+            where: { id: sub.grantId, sessionId: change.sessionId, branchId: change.branchId,
+              revokedAt: null, expiresAt: { gt: new Date() },
+              session: { status: "OPEN", closedAt: null } },
+            select: { id: true },
+          });
+          if (!grant) { client.socket.close(1008); return; }
+          if (client.socket.readyState === 1) client.socket.send(guestHint);
+          return;
+        }
+        if (sub.role === "CUSTOMER" || sub.role === "DRIVER") return;
+        if (sub.role === "KITCHEN" && !["APPROVED", "PREPARING", "READY", "SERVED"].includes(change.status)) return;
+        if (sub.role === "CASHIER" && change.status === "PENDING_APPROVAL") return;
+        const current = await this.auth.principal(sub.authorization);
+        if (current.id !== sub.actorId) throw new Error("SESSION_CHANGED");
+        const staff = await this.authorizeStaff(sub.authorization, change.branchId);
+        if (staff.actorId !== sub.actorId) throw new Error("ROLE_CHANGED");
+        if (staff.role === "DRIVER" || staff.role === "CASHIER"
+          || (staff.role === "KITCHEN" && !["APPROVED", "PREPARING", "READY", "SERVED"].includes(change.status))) return;
+        if (client.socket.readyState === 1) client.socket.send(staffHint);
+      } catch { client.socket.close(1008); }
     }));
   }
 

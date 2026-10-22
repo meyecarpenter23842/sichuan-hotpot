@@ -1,8 +1,10 @@
 const apiOrigin = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 
 export interface OrderRealtimeMessage {
-  type: "ready" | "order.created" | "order.status" | "order.updated" | "order.overdue";
+  type: "ready" | "order.created" | "order.status" | "order.updated" | "order.overdue" | "dining.pending" | "dining.ticket" | "dining.kitchen";
   orderId?: string;
+  ticketId?: string;
+  sessionId?: string;
   branchId?: string;
   status?: string;
   eventId?: string;
@@ -42,7 +44,7 @@ export function watchOrderEvents(options: {
           if (!data || typeof data !== "object" || !("type" in data)) return;
           const event = data as OrderRealtimeMessage;
           if (event.type === "ready") options.onReady();
-          else if (["order.created", "order.status", "order.updated", "order.overdue"].includes(event.type)
+          else if (["order.created", "order.status", "order.updated", "order.overdue", "dining.pending", "dining.ticket", "dining.kitchen"].includes(event.type)
             && event.branchId === options.branchId) options.onChange(event);
         } catch { /* Ignore malformed transport hints. */ }
       };

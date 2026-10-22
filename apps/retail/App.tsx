@@ -11,6 +11,9 @@ import {
 } from "./src/pos-api";
 import { clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
+import { watchRetailDining } from "./src/dining-live";
+import { playRetailQrAlert } from "./src/dining-alert";
+import { enableRetailDiningPush } from "./src/dining-push";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
   cream: "#FAF7F3", paper: "#FFFFFF", border: "#EAE1DA", soft: "#F5ECE6",
@@ -51,6 +54,8 @@ export default function App() {
   const [pendingSubmit, setPendingSubmit] = useState<{ sessionId: string; payload: Submission } | null>(null);
   const lock = useRef(false);
   const requestVersion = useRef(0);
+  const seenPending = useRef(new Set<string>());
+  const lastSoundAt = useRef(0);
   const branch = branches.find(b => b.id === branchId) ?? null;
   const role = branch?.staffRole ?? "";
   const activeTable = tables.find(t => t.id === selectedTableId) ?? null;
@@ -75,6 +80,7 @@ export default function App() {
       ]);
       if (version !== requestVersion.current) return;
       setAreas(a); setTables(t); setCatalog(m); setApprovals(q);
+      q.forEach(ticket => seenPending.current.add(ticket.id));
       setOnline(true); setError("");
     } catch (e) {
       if (version === requestVersion.current) {
@@ -85,12 +91,27 @@ export default function App() {
 
   useEffect(() => {
     if (!token || !branchId) return;
+    seenPending.current.clear(); lastSoundAt.current = 0;
     void refresh(true);
+    const stop = watchRetailDining(token, branchId, {
+      onReady: () => { void refresh(); },
+      onChange: hint => {
+        if (hint.type === "dining.pending" && hint.ticketId &&
+          !seenPending.current.has(hint.ticketId)) {
+          seenPending.current.add(hint.ticketId);
+          if (Date.now() - lastSoundAt.current > 2500) {
+            lastSoundAt.current = Date.now();
+            void playRetailQrAlert().catch(() => undefined);
+          }
+        }
+        void refresh();
+      },
+    });
     const timer = setInterval(() => { if (AppState.currentState === "active") void refresh(); }, 5000);
     const sub = AppState.addEventListener("change", s => {
       if (s === "active") void refresh(true);
     });
-    return () => { clearInterval(timer); sub.remove(); };
+    return () => { stop(); clearInterval(timer); sub.remove(); };
   }, [token, branchId, refresh]);
 
   useEffect(() => {
@@ -400,12 +421,38 @@ export default function App() {
         <View style={st.headerRight}>
           <Text style={[st.caption, { color: online ? C.olive : C.red }]}>
             {online ? "● Đã kết nối" : "○ Mất mạng"}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ lại"
-            style={st.iconButton} onPress={() => { void refresh(true); }}>
-            <Text style={st.iconText}>{syncing ? "…" : "↻"}</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Đăng xuất"
             style={st.exit} onPress={logout}><Text style={st.exitText}>Thoát</Text></Pressable>
         </View>
+      </View>
+      <View style={st.qrToolbar}>
+          {canOrder(role) && <Pressable accessibilityRole="button"
+            accessibilityLabel={"Chuông QR, " + approvals.length + " yêu cầu chờ duyệt"}
+            style={st.iconButton} onPress={() => {
+              const pending = approvals[0];
+              const table = pending && tables.find(t => t.sessions[0]?.id === pending.sessionId);
+              if (table) { selectTable(table); setPage("bill"); }
+              else { setAreaId(null); setPage("tables"); }
+            }}>
+            <Text style={st.iconText}>🔔 {approvals.length}</Text>
+          </Pressable>}
+          <Pressable accessibilityRole="button" accessibilityLabel="Test thông báo và âm QR"
+            style={st.iconButton} onPress={() => {
+              void playRetailQrAlert(true).then(() => {
+                setMessage("Đã phát thử chuông QR cục bộ. Không tạo đơn hay phiếu.");
+              }).catch(cause => setError(cause instanceof Error ? cause.message : "Không phát được âm thử."));
+            }}><Text style={st.iconText}>♫</Text></Pressable>
+          {canOrder(role) && branchId && <Pressable accessibilityRole="button"
+            accessibilityLabel="Bật thông báo QR khi Retail chạy nền"
+            style={st.iconButton} onPress={() => {
+              void enableRetailDiningPush(branchId)
+                .then(() => setMessage("Đã đăng ký Web Push cho chi nhánh này. Trình duyệt quyết định thời điểm phát âm khi chạy nền."))
+                .catch(cause => setError(cause instanceof Error ? cause.message : "Không bật được Web Push."));
+            }}><Text style={st.iconText}>♧</Text></Pressable>}
+          <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ lại"
+            style={st.iconButton} onPress={() => { void refresh(true); }}>
+            <Text style={st.iconText}>{syncing ? "…" : "↻"}</Text></Pressable>
+
       </View>
       {showBranchMenu && <View style={st.branchPicker}>{branches.map(b => <Pressable key={b.id}
         accessibilityRole="button" onPress={() => branchChange(b.id)} style={st.branchItem}>
@@ -486,18 +533,21 @@ function Button({ title, onPress, disabled, danger, kind }: {
 }
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.cream },
-  header: { minHeight: 76, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: C.paper,
+  header: { minHeight: 76, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: C.paper,
     borderBottomWidth: 1, borderColor: C.border, flexDirection: "row", alignItems: "center", gap: 10 },
   brand: { fontSize: 12, letterSpacing: 1.2, color: C.red, fontWeight: "900" },
   branchButton: { minHeight: 32, justifyContent: "center" },
-  branchName: { fontSize: 18, fontWeight: "800", color: C.dark },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  branchName: { fontSize: 15, fontWeight: "800", color: C.dark },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
+  qrToolbar: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: C.paper,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+    flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   iconButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center",
     backgroundColor: C.soft, borderRadius: 10 },
   iconText: { fontSize: 21, color: C.red },
   exit: { minHeight: 44, paddingHorizontal: 10, justifyContent: "center" },
   exitText: { color: C.red, fontWeight: "800", fontSize: 12 },
-  branchPicker: { position: "absolute", zIndex: 90, top: 76, left: 12, minWidth: 230,
+  branchPicker: { position: "absolute", zIndex: 90, top: 128, left: 12, minWidth: 230,
     borderWidth: 1, borderColor: C.border, backgroundColor: C.paper,
     borderRadius: 12, padding: 6, elevation: 8 },
   branchItem: { minHeight: 44, paddingHorizontal: 13, justifyContent: "center" },
