@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
-  api, branchPath, currentSession, money, productImage, setSession,
+  api, branchPath, currentSession, money, productImage, restoreSession, setSession,
   type Area, type Bill, type Branch, type CartLine, type Menu, type Principal,
   type Product, type Receipt, type Submission, type Table, type Ticket, type Tokens,
 } from "./src/pos-api";
@@ -30,6 +30,7 @@ export default function App() {
   const desktop = width >= 768;
   const [credential, setCredential] = useState({ username: "", password: "" });
   const [token, setToken] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [areaId, setAreaId] = useState<string | null>(null);
@@ -147,28 +148,53 @@ export default function App() {
     return () => { current = false; clearInterval(timer); };
   }, [token, branchId, sessionId]);
 
+  const activateStaff = useCallback(async (tokens: Tokens) => {
+    setSession(tokens);
+    const [person, scoped] = await Promise.all([
+      api<Principal>("/auth/me"),
+      api<Branch[]>("/admin/orders/branches"),
+    ]);
+    const allowed = scoped.filter(b => b.isActive && permitted.includes(b.staffRole ?? "")
+      && (person.role === "OWNER" || b.staffRole !== "OWNER"));
+    if (!allowed.length) {
+      throw new Error("Tài khoản không có quyền bán tại quán ở chi nhánh đang hoạt động.");
+    }
+    setBranches(allowed);
+    setBranchId(allowed[0]!.id);
+    setToken(currentSession()?.accessToken ?? tokens.accessToken);
+    setCredential(c => ({ ...c, password: "" }));
+    setPage("tables");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const existing = await restoreSession();
+        if (!existing || cancelled) return;
+        await activateStaff(existing);
+        if (cancelled) return;
+      } catch (cause) {
+        if (!cancelled) {
+          // Unreachable server is not proof of a revoked session.
+          // Keep encrypted credentials available for a later authenticated retry.
+          const network = cause instanceof Error && /kết nối|máy chủ/i.test(cause.message);
+          if (!network) setSession(null);
+          setError(network ? "Không kết nối được máy chủ. Phiên đã lưu vẫn an toàn; thử đăng nhập hoặc mở lại khi có mạng."
+            : "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.");
+        }
+      } finally { if (!cancelled) setRestoring(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [activateStaff]);
+
   const login = async () => {
-    if (lock.current || !credential.username.trim() || !credential.password) return;
+    if (lock.current || restoring || !credential.username.trim() || !credential.password) return;
     lock.current = true; setBusy(true); setError(""); setMessage("");
     try {
       const tokens = await api<Tokens>("/auth/login", { method: "POST", anonymous: true,
         body: { username: credential.username.trim(), password: credential.password } });
-      setSession(tokens);
-      const [person, scoped] = await Promise.all([
-        api<Principal>("/auth/me"),
-        api<Branch[]>("/admin/orders/branches"),
-      ]);
-      const allowed = scoped.filter(b => b.isActive && permitted.includes(b.staffRole ?? "")
-        && (person.role === "OWNER" || b.staffRole !== "OWNER"));
-      if (!allowed.length) {
-        setSession(null);
-        throw new Error("Tài khoản không có quyền bán tại quán ở chi nhánh đang hoạt động.");
-      }
-      setBranches(allowed);
-      setBranchId(allowed[0]!.id);
-      setToken(tokens.accessToken);
-      setCredential(c => ({ ...c, password: "" }));
-      setPage("tables");
+      await activateStaff(tokens);
     } catch (e) { setSession(null); setError(e instanceof Error ? e.message : "Không đăng nhập được."); }
     finally { lock.current = false; setBusy(false); }
   };
@@ -525,7 +551,7 @@ export default function App() {
           placeholder="Mật khẩu" accessibilityLabel="Mật khẩu"
           onSubmitEditing={() => { void login(); }}/>
         {!!error && <Text accessibilityRole="alert" style={st.warning}>{error}</Text>}
-        <Button title={busy ? "Đang xác thực…" : "Đăng nhập"} disabled={busy}
+        <Button title={restoring ? "Đang khôi phục phiên…" : busy ? "Đang xác thực…" : "Đăng nhập"} disabled={busy || restoring}
           onPress={() => { void login(); }}/>
         <Text style={st.micro}>Chỉ nhân viên có quyền mới được xem bàn, gọi món và duyệt QR.</Text>
       </View>

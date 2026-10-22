@@ -1,4 +1,5 @@
 import { API_ORIGIN, isValidApiOrigin } from "./api-origin";
+import { loadStoredSession, writeStoredSession } from "./session-storage";
 
 export type Role = "OWNER" | "MANAGER" | "WAITER" | "CASHIER" | "KITCHEN" | "DRIVER" | "CUSTOMER";
 export type Principal = { id: string; role: Role };
@@ -73,11 +74,23 @@ const names: Record<string, string> = {
 export class PosApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
-/** Tokens remain in memory only: POS never persists credentials to localStorage or an URL. */
+/** Web sessions stay in memory; Android persists encrypted credentials via SecureStore. */
 let active: Tokens | null = null;
 let rotation: Promise<Tokens | null> | null = null;
-export function setSession(tokens: Tokens | null) { active = tokens; }
+// Serialize writes to prevent an old login from overwriting a later logout/rotation.
+let writeTask: Promise<void> = Promise.resolve();
+export function setSession(tokens: Tokens | null) {
+  active = tokens;
+  writeTask = writeTask.catch(() => undefined).then(() => writeStoredSession(tokens));
+}
 export function currentSession() { return active; }
+export async function restoreSession(): Promise<Tokens | null> {
+  await writeTask.catch(() => undefined);
+  if (active) return active;
+  const saved = await loadStoredSession();
+  if (!active) active = saved;
+  return active;
+}
 async function rotate(): Promise<Tokens | null> {
   if (!active?.refreshToken) return null;
   if (rotation) return rotation;
@@ -86,9 +99,9 @@ async function rotate(): Promise<Tokens | null> {
     try {
       const next = await api<Tokens>("/auth/refresh", { method: "POST",
         body: { refreshToken: original.refreshToken }, anonymous: true });
-      if (active === original) active = next;
+      if (active === original) setSession(next);
       return active;
-    } catch { if (active === original) active = null; return null; }
+    } catch { if (active === original) setSession(null); return null; }
   })();
   try { return await rotation; } finally { rotation = null; }
 }
