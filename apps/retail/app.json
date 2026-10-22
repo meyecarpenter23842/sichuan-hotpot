@@ -20,7 +20,11 @@
     "newArchEnabled": true,
     "orientation": "default",
     "android": {
-      "package": "vn.sichuanhotpot.retail"
+      "package": "vn.sichuanhotpot.retail",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
     "plugins": [
       "expo-secure-store",
@@ -32,6 +36,12 @@
         }
       ],
       "./plugins/with-qr-sound.cjs"
-    ]
+    ],
+    "icon": "./assets/app-icon.png",
+    "splash": {
+      "image": "./assets/app-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    }
   }
 }

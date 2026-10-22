@@ -13,7 +13,8 @@
     "test": "node --test test/*.test.mjs",
     "build": "expo export --platform web --output-dir dist",
     "android": "expo start --android",
-    "android:prebuild": "node scripts/prebuild-android.mjs"
+    "android:prebuild": "npm run icons:generate && node scripts/prebuild-android.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "expo": "~54.0.37",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "eslint": "^9.35.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "pngjs": "3.4.0"
   }
 }
