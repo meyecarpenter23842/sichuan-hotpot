@@ -215,6 +215,28 @@ try {
     }
     await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + width + ".png" });
   }
+  // Browser-backed authenticated POS geometry supplements native login-only
+  // emulator screenshots. It does not certify Android touch or FCM behavior.
+  for (const [width, height, label] of [
+    [844, 390, "phone-landscape"], [768, 1024, "tablet-portrait"],
+    [1024, 600, "tablet-landscape"], [1280, 800, "large-tablet-landscape"],
+  ]) {
+    await device.setViewportSize({ width, height });
+    await device.getByTestId("retail-desk-menu").waitFor({ timeout: 7000 });
+    await device.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const rects = await Promise.all([
+      device.getByTestId("retail-desk-order").boundingBox(),
+      device.getByTestId("retail-desk-menu").boundingBox(),
+    ]);
+    assert.ok(rects.every(Boolean), label + " POS panels must render");
+    assert.ok(rects[1].x >= rects[0].x + rects[0].width - 1,
+      label + " order/menu panels cannot overlap");
+    assert.ok(await device.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      label + " authenticated POS cannot horizontally overflow");
+    await device.screenshot({ path: "apps/retail/qa-artifacts/pos-" + label + ".png" });
+  }
+  await device.setViewportSize({ width: 1280, height: 820 });
   // A separately configured, real-priced topping product can be ordered on an
   // already-open table. This creates a new STAFF ticket, not an edit to hotpot.
   await device.getByRole("button", { name: "🥬 Gọi topping lẻ" }).click();
