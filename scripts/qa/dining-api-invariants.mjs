@@ -214,7 +214,24 @@ try {
   assert.equal(available.isAvailable, false);
   await rejectsCode(service.guestTicket(guestAuth,
     input("no-stock-" + nonce, [line(beef.id)])), "PRODUCT_UNAVAILABLE");
-  await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_CHECKOUT_REQUIRED");
+  const voidCandidate = await service.staffTicket("waiter", branch.id, session.id,
+    input("void-" + nonce, [line(hotpot.id)]));
+  await rejectsCode(settlement.voidTicket("cashier", branch.id, voidCandidate.ticketId,
+    "Khách không lấy"), "DINING_BRANCH_FORBIDDEN");
+  await rejectsCode(settlement.voidTicket("owner", foreign.id, voidCandidate.ticketId,
+    "Sai chi nhánh"), "DINING_TICKET_NOT_FOUND");
+  const voided = await settlement.voidTicket("owner", branch.id, voidCandidate.ticketId,
+    "Khách đổi ý");
+  assert.equal(voided.status, "CANCELED");
+  assert.equal((await settlement.voidTicket("owner", branch.id, voidCandidate.ticketId,
+    "Khách đổi ý")).replayed, true);
+  assert.equal(diningEvents.filter(e => e.ticketId === voidCandidate.ticketId
+    && e.status === "CANCELED").length, 1, "void event not duplicated on replay");
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).subtotalVnd,
+    745_000, "voided approved ticket cannot enter the invoice");
+  await rejectsCode(settlement.voidTicket("owner", branch.id, qrTicket.ticketId,
+    "Đã làm xong"), "DINING_TICKET_ALREADY_PREPARING");
+    await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_CHECKOUT_REQUIRED");
   const checkout = await settlement.checkout("cashier", branch.id, session.id);
   assert.equal(checkout.status, "CHECKOUT");
   await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_BILL_UNPAID");
@@ -232,6 +249,14 @@ try {
   assert.equal((await settlement.record("cashier", branch.id, session.id, {
     method: "QR", amountVnd: 745_000, idempotencyKey: "qr-" + nonce,
   })).replayed, true, "repeated QR payment key never inserts another request");
+  const savedBank = process.env.VIETQR_ACCOUNT_NO;
+  delete process.env.VIETQR_ACCOUNT_NO;
+  const qrReplay = await settlement.record("cashier", branch.id, session.id, {
+    method: "QR", amountVnd: 745_000, idempotencyKey: "qr-" + nonce,
+  });
+  assert.equal(qrReplay.qr?.accountNo, savedBank,
+    "existing QR can be safely retried even after payee environment changes");
+  process.env.VIETQR_ACCOUNT_NO = savedBank;
   await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_QR_PAYMENT_PENDING");
   await rejectsCode(settlement.confirm("waiter", branch.id, qrPay.paymentId), "DINING_BRANCH_FORBIDDEN");
   const confirmations = await Promise.all([
