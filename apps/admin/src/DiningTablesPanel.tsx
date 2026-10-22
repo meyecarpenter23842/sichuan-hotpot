@@ -294,7 +294,7 @@ export function DiningTablesPanel({ token, branchId, role, selectedArea, onAreaC
                     .then(async () => { await refresh(); setSelected(null); setNotice("Đã dọn bàn."); })
                     .catch(cause => setError(cause instanceof Error ? cause.message : "Không cập nhật được."))
                     .finally(() => setBusy(false));
-                }}/>
+                }}/>}
               {canOpen && activeSelected.isActive && !activeSelected.needsCleaning &&
                 areas.find(a => a.id === activeSelected.areaId)?.isActive &&
                 <Action disabled={busy} label="Mở phiên bàn" onPress={() => {
