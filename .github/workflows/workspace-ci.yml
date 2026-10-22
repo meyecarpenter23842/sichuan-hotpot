@@ -204,6 +204,14 @@ jobs:
           path: apps/admin/qa-artifacts/*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Archive Menu QR L03 browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: menu-qr-browser-qa-screenshots
+          path: apps/menu/qa-artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Archive Retail L01 responsive browser screenshots
         if: always()
         uses: actions/upload-artifact@v4

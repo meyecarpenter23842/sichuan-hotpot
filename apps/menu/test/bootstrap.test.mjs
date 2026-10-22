@@ -59,6 +59,25 @@ test("no fake success; persist frozen request safely for network uncertainty and
   assert.match(sheet, /Có sẵn trong combo/);
   assert.match(sheet, /minHeight: 44/);
 });
+test("L03 guest visual hierarchy uses real catalogue images and protected cart edits", () => {
+  assert.match(app, /menu-qr-hero/);
+  assert.match(app, /heroProduct = useMemo/);
+  assert.match(app, /productImage\(heroProduct\.imageKey\)/);
+  assert.match(app, /photoByProductId\.get\(line\.item\.productId\)/);
+  assert.match(app, /categoryIcon\(g\.name\)/);
+  assert.match(app, /Giảm số lượng /);
+  assert.match(app, /Tăng số lượng /);
+  assert.match(app, /changeCartQuantity\(current, direction\)/);
+  assert.match(app, /if \(frozen \|\| sending\) return/);
+  assert.match(app, /previewVnd/);
+  assert.match(sheet, /floatingClose/);
+  assert.match(sheet, /Chọn size/);
+  assert.match(sheet, /Ghi chú chế biến/);
+  const helper = read("../src/menu-cart.ts");
+  assert.match(helper, /changeCartQuantity/);
+  assert.match(helper, /current < 1 \|\| current > 99/);
+  assert.match(helper, /previewVnd: perUnit \* quantity/);
+});
 test("mobile first: safe area, tabs, loading/offline/empty and large hit targets", () => {
   assert.match(app, /SafeAreaProvider/);
   assert.match(app, /keyboardShouldPersistTaps="handled"/);

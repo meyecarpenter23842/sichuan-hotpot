@@ -58,6 +58,22 @@ export function lineFromSelection(product: Product, choice: Selection, uid: stri
   return { id: uid, name: product.name, variantName: variant?.name,
     previewVnd: estimated, item };
 }
+/** Update an UNSENT cart line without changing the chosen product, options or line ID.
+ * Preview is informative only; the dining API always re-prices on submission. */
+export function changeCartQuantity(line: CartLine, direction: -1 | 1): CartLine {
+  const current = line.item.quantity;
+  if (!Number.isSafeInteger(current) || current < 1 || current > 99 ||
+      !Number.isSafeInteger(line.previewVnd) || line.previewVnd < 0 ||
+      line.previewVnd % current !== 0) {
+    throw new Error("Giỏ hàng đã thay đổi. Vui lòng chọn lại món.");
+  }
+  const quantity = Math.min(99, Math.max(1, current + direction));
+  const perUnit = line.previewVnd / current;
+  if (!Number.isSafeInteger(perUnit) || !Number.isSafeInteger(perUnit * quantity)) {
+    throw new Error("Giá dự kiến không hợp lệ. Vui lòng chọn lại món.");
+  }
+  return { ...line, item: { ...line.item, quantity }, previewVnd: perUnit * quantity };
+}
 export function toggleMultiple(current: string[], value: string, max: number) {
   if (current.includes(value)) return current.filter(id => id !== value);
   if (current.length >= max) return current;

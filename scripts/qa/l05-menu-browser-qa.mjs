@@ -57,11 +57,21 @@ try {
     branchId: branch.id, tableId: table.id, openedById: staff.id,
   } });
   await page.getByRole("button", { name: "Kiểm tra lại" }).click();
+  await page.getByTestId("menu-qr-hero").waitFor();
+  await page.getByText("Món ngon nóng hổi, gọi ngay tại bàn").waitFor();
+  await page.screenshot({ path: "apps/menu/qa-artifacts/home-390.png" });
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).waitFor();
   await page.getByRole("button", { name: "Chọn Lẩu QR QA" }).click();
   await page.getByRole("checkbox", { name: "Lớn +120.000đ" }).click();
   await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
   await page.getByRole("button", { name: "Xem giỏ →" }).click();
+  await page.getByRole("button", { name: "Tăng số lượng Lẩu QR QA" }).click();
+  await page.getByText("740.000đ").first().waitFor();
+  assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 0,
+    "editing an unsent cart may not create a kitchen ticket");
+  await page.getByRole("button", { name: "Giảm số lượng Lẩu QR QA" }).click();
+  await page.getByText("370.000đ").first().waitFor();
+  await page.screenshot({ path: "apps/menu/qa-artifacts/cart-390.png" });
   await page.getByRole("button", { name: "Gửi yêu cầu gọi món" }).click();
   await page.getByText("Đã gửi yêu cầu #", { exact: false }).waitFor();
   await page.getByText("Đang chờ nhân viên xác nhận", { exact: true }).waitFor();
@@ -114,11 +124,17 @@ try {
   await page.getByRole("button", { name: "Thêm 1 vào giỏ" }).click();
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("tab", { name: /Giỏ món/ }).click();
-  await page.getByText("1 × Lẩu QR QA").waitFor();
+  await page.getByText("Lẩu QR QA", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Tăng số lượng Lẩu QR QA" }).click();
+  // This second draft uses the DEFAULT 250k size, not the earlier 370k large
+  // variant. Quantity 2 must be 500k, never copy pricing from another line.
+  await page.getByText("500.000đ").first().waitFor();
   assert.equal(await db.diningTicket.count({ where: { sessionId: session.id } }), 1,
     "restoring an unsent cart must never create a server ticket");
-  for (const size of [320, 360, 390, 428, 768]) {
+  for (const size of [320, 360, 390, 428, 768, 1280]) {
     await page.setViewportSize({ width: size, height: size === 320 ? 568 : 844 });
+    await page.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       true, "Menu QR horizontal overflow at " + size);
     await page.screenshot({ path: "apps/menu/qa-artifacts/menu-" + size + ".png" });

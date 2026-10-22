@@ -10,7 +10,7 @@ import {
   type CartLine, type GuestBill, type GuestGrant, type GuestTicket,
   type Locator, type Menu, type Product, type Receipt, type Submission,
 } from "./src/menu-api";
-import { clientKey } from "./src/menu-cart";
+import { changeCartQuantity, clientKey } from "./src/menu-cart";
 import { ProductSheet } from "./src/ProductSheet";
 
 const tone = {
@@ -49,6 +49,16 @@ function stateLabel(state: string) {
     case "REJECTED": return "Nhân viên đã từ chối";
     default: return "Đang cập nhật";
   }
+}
+function categoryIcon(name: string): string {
+  const value = name.toLocaleLowerCase("vi");
+  if (value.includes("lẩu")) return "🍲";
+  if (value.includes("topping") || value.includes("ăn kèm")) return "🥬";
+  if (value.includes("trà") || value.includes("sữa")) return "🧋";
+  if (value.includes("soda") || value.includes("nước") || value.includes("uống")) return "🥤";
+  if (value.includes("combo")) return "🍱";
+  if (value.includes("bò")) return "🥩";
+  return "🍽️";
 }
 function NavButton({ label, selected, onPress, count }: {
   label: string; selected: boolean; onPress: () => void; count?: number;
@@ -96,6 +106,20 @@ export default function App() {
   const sendingLock = useRef(false);
   const requestId = useRef(0);
   const totalDraft = cart.reduce((value, line) => value + line.previewVnd, 0);
+  const heroProduct = useMemo(() => {
+    const withPhotos = (catalog?.categories ?? []).flatMap(g => g.products)
+      .filter(p => p.isAvailable && !!productImage(p.imageKey));
+    return withPhotos.find(p => p.name.toLocaleLowerCase("vi").includes("lẩu")) ??
+      withPhotos[0] ?? null;
+  }, [catalog]);
+  const photoByProductId = useMemo(() => {
+    const images = new Map<string, string>();
+    for (const group of catalog?.categories ?? []) for (const product of group.products) {
+      const url = productImage(product.imageKey);
+      if (url) images.set(product.id, url);
+    }
+    return images;
+  }, [catalog]);
   const products = useMemo(() => (catalog?.categories ?? [])
     .flatMap(group => group.products.map(product => ({ ...product, categoryId: group.id })))
     .filter(p => (!category || p.categoryId === category) &&
@@ -276,6 +300,17 @@ export default function App() {
       }
     } finally { sendingLock.current = false; if (alive.current) setSending(false); }
   };
+  const updateQuantity = (lineId: string, direction: -1 | 1) => {
+    if (frozen || sending) return;
+    const current = cart.find(line => line.id === lineId);
+    if (!current) return;
+    try {
+      const updated = changeCartQuantity(current, direction);
+      setCart(lines => lines.map(line => line.id === lineId ? updated : line));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không sửa được số lượng.");
+    }
+  };
   const add = (line: CartLine) => {
     if (frozen) return;
     setCart(prev => [...prev, line]); setSelectedProduct(null);
@@ -284,7 +319,7 @@ export default function App() {
   const canOrder = phase === "ready" && !!grant && online && !sending;
   return <SafeAreaProvider><SafeAreaView style={s.safe} edges={["top", "bottom"]}>
     <View style={s.header}>
-      <View style={s.brand}><Text style={s.brandSmall}>LẨU TỨ XUYÊN</Text>
+      <View style={s.brand}><Text style={s.brandSmall}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>
         <Text style={s.brandTitle}>Gọi món tại bàn</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel="Kiểm tra kết nối và đơn"
         onPress={() => { if (guestRef.current) void sync(guestRef.current, true); else void connect(); }}
@@ -331,15 +366,34 @@ export default function App() {
         <ScrollView style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.scrollContent}>
           <View style={[s.page, wide && s.widePage]}>
             {screen === "menu" && <>
-              <View style={s.intro}><Text style={s.heading}>Hôm nay ăn gì?</Text>
-                <Text style={s.muted}>Chọn món yêu thích, nhân viên sẽ xác nhận trước khi chuyển Bếp.</Text></View>
+              <View testID="menu-qr-hero" style={s.hero}>
+                {heroProduct && productImage(heroProduct.imageKey) &&
+                  <Image source={{ uri: productImage(heroProduct.imageKey)! }}
+                    style={s.heroPhoto} resizeMode="cover"/>}
+                <View style={s.heroShade}>
+                  <Text style={s.heroEyebrow}>LẨU TỨ XUYÊN · {locator?.table ?? "GỌI MÓN TẠI BÀN"}</Text>
+                  <Text style={s.heroTitle}>Món ngon nóng hổi, gọi ngay tại bàn</Text>
+                  <Text style={s.heroBody}>Chọn món yêu thích, nhân viên sẽ xác nhận trước khi Bếp chuẩn bị.</Text>
+                  {heroProduct && <Text style={s.heroPrice}>
+                    {heroProduct.name} · {money(heroProduct.priceVnd)}
+                  </Text>}
+                </View>
+              </View>
               <TextInput style={s.search} placeholder="Tìm món, topping, trà sữa…" maxLength={100}
                 placeholderTextColor="#8B817D" value={search} onChangeText={setSearch} accessibilityLabel="Tìm món"/>
+              <Text style={s.sectionHeading}>Danh mục</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryBar}>
                 <Chip label="Tất cả" checked={!category} onPress={() => setCategory(null)}/>
-                {(catalog?.categories ?? []).map(g => <Chip key={g.id} label={g.name}
+                {(catalog?.categories ?? []).map(g => <Chip key={g.id}
+                  label={categoryIcon(g.name) + " " + g.name}
                   checked={category === g.id} onPress={() => setCategory(g.id)}/>)}
               </ScrollView>
+              <View style={s.menuHeading}>
+                <Text style={s.sectionHeading}>{category
+                  ? catalog?.categories.find(g => g.id === category)?.name ?? "Thực đơn"
+                  : "Món nổi bật"}</Text>
+                <Text style={s.micro}>{products.length} món</Text>
+              </View>
               {!products.length ? <Text style={s.empty}>Không có món phù hợp.</Text> :
                 <View style={s.grid}>{products.map(product => {
                   const image = productImage(product.imageKey);
@@ -353,8 +407,12 @@ export default function App() {
                     <View style={s.productBody}>
                       <Text numberOfLines={2} style={s.productName}>{product.name}</Text>
                       <Text style={s.price}>{money(product.priceVnd)}</Text>
-                      <Text style={s.micro}>{!product.isAvailable ? "Tạm hết hàng" :
-                        !canOrder ? "Chờ mở bàn" : product.kind === "COMBO" ? "Tùy chỉnh combo +" : "Chọn món +"}</Text>
+                      <View style={s.productBottom}>
+                        <Text style={[s.micro, { flex: 1 }]} numberOfLines={2}>{!product.isAvailable ? "Tạm hết hàng" :
+                          !canOrder ? "Chờ mở bàn" : product.kind === "COMBO" ? "Chọn combo" : "Tùy chỉnh món"}</Text>
+                        {canOrder && product.isAvailable && !frozen &&
+                          <Text style={s.productAdd}>＋</Text>}
+                      </View>
                     </View>
                   </Pressable>;
                 })}</View>}
@@ -365,17 +423,40 @@ export default function App() {
               {!cart.length ? <View style={s.emptyCard}><Text style={s.empty}>Chưa có món trong giỏ.</Text>
                 <Button secondary label="Xem thực đơn" onPress={() => setScreen("menu")}/></View> :
                 cart.map(line => <View key={line.id} style={s.cartLine}>
-                  <View style={{ flex: 1, gap: 5 }}>
-                    <Text style={s.productName}>{line.item.quantity} × {line.name}</Text>
-                    {!!line.variantName && <Text style={s.muted}>{line.variantName}</Text>}
-                    {!!line.item.note && <Text style={s.micro}>Ghi chú: {line.item.note}</Text>}
-                    <Text style={s.price}>{money(line.previewVnd)}</Text>
+                  {photoByProductId.has(line.item.productId) ?
+                    <Image source={{ uri: photoByProductId.get(line.item.productId)! }}
+                      style={s.cartPhoto} resizeMode="cover"/> :
+                    <View style={s.cartPhotoEmpty}><Text style={s.cartPhotoSymbol}>🍲</Text></View>}
+                  <View style={s.cartMain}>
+                    <View style={s.cartNameRow}>
+                      <Text style={[s.productName, { flex: 1 }]} numberOfLines={2}>{line.name}</Text>
+                      <Pressable accessibilityRole="button" accessibilityLabel={"Bỏ " + line.name}
+                        style={s.remove} disabled={!!frozen || sending}
+                        onPress={() => setCart(prev => prev.filter(item => item.id !== line.id))}>
+                        <Text style={s.removeText}>×</Text>
+                      </Pressable>
+                    </View>
+                    {!!line.variantName && <Text style={s.muted} numberOfLines={1}>{line.variantName}</Text>}
+                    {!!line.item.note && <Text style={s.micro} numberOfLines={2}>Ghi chú: {line.item.note}</Text>}
+                    <View style={s.cartBottom}>
+                      <View style={s.quantityControls}>
+                        <Pressable accessibilityRole="button" accessibilityLabel={"Giảm số lượng " + line.name}
+                          accessibilityState={{ disabled: !!frozen || sending || line.item.quantity <= 1 }}
+                          style={s.quantityButton} disabled={!!frozen || sending || line.item.quantity <= 1}
+                          onPress={() => updateQuantity(line.id, -1)}>
+                          <Text style={s.quantitySymbol}>−</Text>
+                        </Pressable>
+                        <Text style={s.quantityValue}>{line.item.quantity}</Text>
+                        <Pressable accessibilityRole="button" accessibilityLabel={"Tăng số lượng " + line.name}
+                          accessibilityState={{ disabled: !!frozen || sending || line.item.quantity >= 99 }}
+                          style={s.quantityButton} disabled={!!frozen || sending || line.item.quantity >= 99}
+                          onPress={() => updateQuantity(line.id, 1)}>
+                          <Text style={s.quantitySymbol}>＋</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={s.price}>{money(line.previewVnd)}</Text>
+                    </View>
                   </View>
-                  <Pressable accessibilityRole="button" accessibilityLabel={"Bỏ " + line.name}
-                    style={s.remove} disabled={!!frozen || sending}
-                    onPress={() => setCart(prev => prev.filter(item => item.id !== line.id))}>
-                    <Text style={s.removeText}>×</Text>
-                  </Pressable>
                 </View>)}
               {!!cart.length && <>
                 <Text style={s.fieldTitle}>Ghi chú chung cho quán</Text>
@@ -442,17 +523,17 @@ function Chip({ label, checked, onPress }: { label: string; checked: boolean; on
 }
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tone.cream },
-  header: { minHeight: 66, paddingHorizontal: 16, paddingVertical: 11, backgroundColor: tone.white,
+  header: { minHeight: 54, paddingHorizontal: 14, paddingVertical: 5, backgroundColor: tone.wine,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    borderBottomWidth: 1, borderBottomColor: tone.border, gap: 10 },
+    borderBottomWidth: 1, borderBottomColor: "#91464E", gap: 10 },
   brand: { flex: 1, gap: 3 },
-  brandSmall: { color: tone.red, fontWeight: "900", letterSpacing: 1.2, fontSize: 11 },
-  brandTitle: { fontSize: 19, fontWeight: "900", color: tone.ink },
-  headerRefresh: { height: 44, width: 44, backgroundColor: tone.soft, borderRadius: 10,
+  brandSmall: { color: "#FFE9D4", fontWeight: "900", letterSpacing: 0.5, fontSize: 10 },
+  brandTitle: { fontSize: 15, fontWeight: "900", color: tone.white },
+  headerRefresh: { height: 44, width: 44, backgroundColor: "#85353D", borderRadius: 10,
     alignItems: "center", justifyContent: "center" },
-  headerRefreshText: { fontSize: 24, fontWeight: "800", color: tone.red },
-  tableBanner: { minHeight: 63, flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 16, paddingVertical: 9, backgroundColor: tone.wine, gap: 8 },
+  headerRefreshText: { fontSize: 24, fontWeight: "800", color: tone.white },
+  tableBanner: { minHeight: 54, flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 14, paddingVertical: 7, backgroundColor: "#7C242D", gap: 8 },
   tableName: { color: tone.white, fontSize: 15, fontWeight: "800" },
   shopName: { color: "#EBC6BA", fontSize: 11 },
   connection: { padding: 7, borderRadius: 8, minWidth: 92, alignItems: "center" },
@@ -479,10 +560,23 @@ const s = StyleSheet.create({
   navTextActive: { color: tone.red },
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: 30 },
-  page: { width: "100%", maxWidth: 1000, alignSelf: "center", padding: 12, gap: 14 },
+  page: { width: "100%", maxWidth: 1000, alignSelf: "center", padding: 12, gap: 13 },
   widePage: { paddingHorizontal: 24 },
   intro: { gap: 6, marginTop: 5 },
+  hero: { height: 214, borderRadius: 15, backgroundColor: "#642126",
+    overflow: "hidden", justifyContent: "flex-end", position: "relative" },
+  heroPhoto: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
+  heroShade: { backgroundColor: "rgba(42,16,16,0.73)", padding: 17, gap: 7, justifyContent: "flex-end",
+    minHeight: 154 },
+  heroEyebrow: { color: "#F9C6A2", fontSize: 10, letterSpacing: 0.9, fontWeight: "900" },
+  heroTitle: { color: tone.white, fontSize: 22, lineHeight: 27, fontWeight: "900",
+    maxWidth: 290 },
+  heroBody: { color: "#F7E5DF", fontSize: 12, lineHeight: 18, maxWidth: 300 },
+  heroPrice: { color: "#FFF1C5", fontSize: 12, fontWeight: "900" },
   heading: { fontSize: 21, fontWeight: "900", color: tone.ink },
+  sectionHeading: { color: tone.ink, fontSize: 16, fontWeight: "900" },
+  menuHeading: { flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", gap: 10 },
   search: { backgroundColor: tone.white, borderRadius: 11, borderWidth: 1,
     borderColor: tone.border, fontSize: 14, color: tone.ink, minHeight: 46, paddingHorizontal: 14 },
   categoryBar: { gap: 8, alignItems: "center", paddingVertical: 2 },
@@ -491,15 +585,20 @@ const s = StyleSheet.create({
   chipActive: { backgroundColor: tone.wine, borderColor: tone.wine },
   chipText: { color: tone.ink, fontSize: 12, fontWeight: "700" },
   chipTextActive: { color: tone.white },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  product: { width: "47%", backgroundColor: tone.white, borderRadius: 13,
-    borderWidth: 1, borderColor: tone.border, overflow: "hidden", minHeight: 206 },
-  productWide: { width: "31%" },
-  productImage: { width: "100%", height: 126 },
-  productFallback: { height: 126, backgroundColor: tone.soft,
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 9, alignItems: "stretch" },
+  product: { width: "48%", backgroundColor: tone.white, borderRadius: 13,
+    borderWidth: 1, borderColor: tone.border, overflow: "hidden", minHeight: 210 },
+  productWide: { width: "31.7%" },
+  productImage: { width: "100%", height: 143 },
+  productFallback: { height: 143, backgroundColor: tone.soft,
     justifyContent: "center", alignItems: "center" },
   fallbackText: { color: "#BA8777", fontSize: 11, fontWeight: "900" },
-  productBody: { padding: 10, gap: 6 },
+  productBody: { padding: 9, gap: 5, flexGrow: 1 },
+  productBottom: { flexDirection: "row", alignItems: "center", gap: 4,
+    justifyContent: "space-between" },
+  productAdd: { color: tone.white, backgroundColor: tone.red, borderRadius: 19,
+    fontSize: 19, lineHeight: 30, width: 30, height: 30, textAlign: "center",
+    overflow: "hidden", fontWeight: "900" },
   productName: { color: tone.ink, fontSize: 14, fontWeight: "800" },
   price: { color: tone.red, fontSize: 15, fontWeight: "900" },
   micro: { color: tone.muted, fontSize: 11, lineHeight: 17 },
@@ -507,8 +606,23 @@ const s = StyleSheet.create({
   empty: { color: tone.muted, fontSize: 14, lineHeight: 22 },
   emptyCard: { padding: 23, backgroundColor: tone.white, borderRadius: 12,
     gap: 14, alignItems: "flex-start" },
-  cartLine: { backgroundColor: tone.white, padding: 14, borderWidth: 1,
-    borderColor: tone.border, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 12 },
+  cartLine: { backgroundColor: tone.white, padding: 10, borderWidth: 1,
+    borderColor: tone.border, borderRadius: 12, flexDirection: "row", alignItems: "flex-start", gap: 9,
+    minWidth: 0 },
+  cartPhoto: { width: 68, height: 74, borderRadius: 9, backgroundColor: tone.soft },
+  cartPhotoEmpty: { width: 68, height: 74, borderRadius: 9,
+    backgroundColor: tone.soft, alignItems: "center", justifyContent: "center" },
+  cartPhotoSymbol: { fontSize: 26 },
+  cartMain: { flex: 1, minWidth: 0, gap: 4 },
+  cartNameRow: { flexDirection: "row", alignItems: "flex-start", gap: 3, minWidth: 0 },
+  cartBottom: { flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", flexWrap: "wrap", gap: 7 },
+  quantityControls: { flexDirection: "row", alignItems: "center", gap: 2 },
+  quantityButton: { minHeight: 44, minWidth: 44, backgroundColor: tone.soft,
+    borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  quantitySymbol: { color: tone.red, fontWeight: "900", fontSize: 18 },
+  quantityValue: { minWidth: 24, textAlign: "center", color: tone.ink,
+    fontSize: 14, fontWeight: "900" },
   remove: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   removeText: { fontSize: 22, color: tone.red },
   fieldTitle: { color: tone.ink, fontWeight: "800", fontSize: 14 },
