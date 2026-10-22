@@ -97,8 +97,8 @@ export function configureGeneratedAndroid(appDirectory) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repair = process.argv[2] === "--repair";
   const app = process.argv[repair ? 3 : 2];
-  if (!["customer", "admin"].includes(app)) {
-    throw new Error("Usage: node scripts/android/release-gradle.mjs [--repair] customer|admin");
+  if (!["customer", "admin", "retail"].includes(app)) {
+    throw new Error("Usage: node scripts/android/release-gradle.mjs [--repair] customer|admin|retail");
   }
   const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "apps", app);
   if (repair) configureGeneratedAndroid(appDirectory);

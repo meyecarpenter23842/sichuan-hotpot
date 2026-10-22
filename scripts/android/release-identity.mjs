@@ -4,6 +4,7 @@ import { join } from "node:path";
 const identities = Object.freeze({
   customer: { packageId: "vn.sichuanhotpot.customer", label: "Sichuan Hotpot" },
   admin: { packageId: "vn.sichuanhotpot.admin", label: "Hotpot Admin", legacyLabel: "Sichuan Hotpot Admin", iconBackground: "#1F3546" },
+  retail: { packageId: "vn.sichuanhotpot.retail", label: "Hotpot Retail" },
 });
 
 export function assertDistinctAndroidIdentities(customer, admin) {

@@ -11,11 +11,12 @@ import { synchronizeAndroidIdentity } from "./release-identity.mjs";
 import { assertAndroidReleaseEnv, resolveAndroidReleaseEnv } from "./release-env.mjs";
 import { assertFirebaseConfig } from "./firebase-config.mjs";
 import { readFileSync } from "node:fs";
+import { assertRetailSigningEnvironment, configureRetailSigning } from "./retail-signing.mjs";
 
 const require = createRequire(import.meta.url);
 const app = process.argv[2];
-if (!["customer", "admin"].includes(app) || process.argv.length !== 3) {
-  throw new Error("Usage: node scripts/android/build-release.mjs customer|admin");
+if (!["customer", "admin", "retail"].includes(app) || process.argv.length !== 3) {
+  throw new Error("Usage: node scripts/android/build-release.mjs customer|admin|retail");
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -48,6 +49,7 @@ try {
 const { environment: buildEnvironment, inheritedFromCustomer } =
   resolveAndroidReleaseEnv(repoRoot, app);
 const runtime = assertAndroidReleaseEnv(app, buildEnvironment);
+if (app === "retail") assertRetailSigningEnvironment(buildEnvironment);
 if (inheritedFromCustomer) {
   process.env.EXPO_PUBLIC_API_BASE_URL = buildEnvironment.EXPO_PUBLIC_API_BASE_URL;
   console.log("Admin Android: using the shared Customer API origin (no Admin override found).");
@@ -60,6 +62,7 @@ if (runtime.isCiPlaceholder) {
 // and repairs an existing #186 native project without --clean/prebuild.
 configureGeneratedAndroid(appDirectory);
 synchronizeAndroidIdentity(appDirectory, app);
+if (app === "retail") configureRetailSigning(appDirectory);
 
 const gradleDirectory = join(appDirectory, "android");
 const isWindows = process.platform === "win32";
@@ -82,4 +85,10 @@ else {
   const namedApk = join(dist, `sichuan-hotpot-${app}-release.apk`);
   copyFileSync(apk, namedApk);
   console.log(`Release APK (${app}): ${namedApk}`);
+  if (app === "retail") {
+    const checked = spawnSync(process.execPath, [join(repoRoot, "scripts", "android", "apk-fingerprint.mjs"), app],
+      { cwd: repoRoot, stdio: "inherit", env: buildEnvironment });
+    if (checked.error) throw checked.error;
+    if (checked.status !== 0) throw new Error("Retail APK signing certificate did not match the pinned release identity.");
+  }
 }

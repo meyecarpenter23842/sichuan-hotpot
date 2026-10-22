@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sichuan Hotpot retail Expo Web PWA foundation",
+  "description": "Sichuan Hotpot Retail Expo Web PWA and native Android POS",
   "main": "./index.ts",
   "scripts": {
-    "start": "expo start --web",
+    "start": "expo start",
     "web": "expo start --web",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test test/*.test.mjs",
-    "build": "expo export --platform web --output-dir dist"
+    "build": "expo export --platform web --output-dir dist",
+    "android": "expo start --android",
+    "android:prebuild": "node scripts/prebuild-android.mjs"
   },
   "dependencies": {
     "expo": "~54.0.37",

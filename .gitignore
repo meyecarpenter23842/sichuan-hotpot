@@ -11,3 +11,5 @@ apps/customer/public/apple-touch-icon.png
 # Native push credentials must stay out of Git.
 apps/*/google-services.json
 apps/*/GoogleService-Info.plist
+# Retail Native prebuild stays local/CI; never commit generated Gradle or signing artifacts.
+apps/retail/android/

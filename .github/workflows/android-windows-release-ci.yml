@@ -5,6 +5,7 @@ on:
     paths:
       - "apps/customer/**"
       - "apps/admin/**"
+      - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "scripts/test/android-release-env.test.mjs"
@@ -16,6 +17,7 @@ on:
     paths:
       - "apps/customer/**"
       - "apps/admin/**"
+      - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-release-gradle.test.mjs"
       - "scripts/test/android-release-env.test.mjs"
@@ -34,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [customer, admin]
+        app: [customer, admin, retail]
     env:
       CI: "1"
       HOTPOT_FIREBASE_CI_FIXTURE: "1"

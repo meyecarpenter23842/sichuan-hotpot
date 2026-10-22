@@ -15,6 +15,12 @@
     },
     "experiments": {
       "tsconfigPaths": true
+    },
+    "scheme": "sichuanhotpotretail",
+    "newArchEnabled": true,
+    "orientation": "default",
+    "android": {
+      "package": "vn.sichuanhotpot.retail"
     }
   }
 }

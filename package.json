@@ -25,7 +25,9 @@
     "prisma:validate": "prisma validate --schema apps/api/prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema apps/api/prisma/schema.prisma",
-    "prisma:migrate:status": "prisma migrate status --schema apps/api/prisma/schema.prisma"
+    "prisma:migrate:status": "prisma migrate status --schema apps/api/prisma/schema.prisma",
+    "android:release:retail": "node scripts/android/build-release.mjs retail",
+    "android:sha1:retail": "node scripts/android/apk-fingerprint.mjs retail"
   },
   "devDependencies": {
     "typescript": "5.9.3",
