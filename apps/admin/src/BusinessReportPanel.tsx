@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request } from "./api";
 import { Icon } from "./Icon";
+import { DiningReportSection } from "./DiningReportSection";
 import { HistoryDateFilter } from "./HistoryDateFilter";
 import {
   historyPeriodRange, showDay, type HistoryRange,
@@ -38,6 +39,7 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
   onDrillDown: (metric: ReportMetric, range: HistoryRange) => void;
 }) {
   const [report, setReport] = useState<BusinessReport | null>(null);
+  const [channel, setChannel] = useState<"DELIVERY" | "DINE_IN" | "ALL">("ALL");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -50,6 +52,7 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
     const current = ++sequence.current;
     setBusy(true); setError("");
     setReport(null);
+    if (channel === "DINE_IN") { setBusy(false); return; }
     void request<BusinessReport>("/admin/orders/" + branchId +
       "/business-report?from=" + encodeURIComponent(from) +
       "&to=" + encodeURIComponent(to), token)
@@ -65,7 +68,7 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
         if (live && current === sequence.current) setBusy(false);
       });
     return () => { live = false; sequence.current++; };
-  }, [branchId, token, from, to, revision]);
+  }, [branchId, token, from, to, revision, channel]);
 
   const totals = report?.totals;
   const period: HistoryRange = { period: "custom", from, to };
@@ -112,19 +115,32 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
       </Pressable>
     </View>
     <HistoryDateFilter report value={range} onChange={onRangeChange} />
+    <View style={s.channelRow} accessibilityLabel="Lọc kênh doanh thu">
+      {([
+        ["ALL", "Tổng"], ["DELIVERY", "Giao hàng"], ["DINE_IN", "Tại quán"],
+      ] as const).map(([id, label]) =>
+        <Pressable key={id} accessibilityRole="button"
+          accessibilityLabel={"Báo cáo kênh: " + label}
+          accessibilityState={{ selected: channel === id }}
+          onPress={() => setChannel(id)}
+          style={[s.channelButton, channel === id && s.channelActive]}>
+          <Text style={[s.channelText, channel === id && s.channelTextActive]}>
+            {label}</Text></Pressable>)}
+    </View>
     <Text style={s.caption}>Kỳ {showDay(from)} – {showDay(to)} · Giờ Việt Nam</Text>
-    {busy && <View style={s.center}>
+    {channel !== "DINE_IN" && <Text style={s.section}>Giao hàng · Giữ nguyên báo cáo hiện hành</Text>}
+    {channel !== "DINE_IN" && busy && <View style={s.center}>
       <ActivityIndicator color={c.red} />
       <Text style={s.caption}>Đang tổng hợp số liệu...</Text>
     </View>}
-    {!!error && <View style={s.error}>
+    {channel !== "DINE_IN" && !!error && <View style={s.error}>
       <Text style={s.errorText}>{error}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Thử tải lại báo cáo"
         onPress={refresh} style={s.retry}>
         <Text style={s.retryText}>Thử lại</Text>
       </Pressable>
     </View>}
-    {report && <View style={s.content}>
+    {channel !== "DINE_IN" && report && <View style={s.content}>
       {groups.map(group => <View key={group.title}>
         <Text style={s.section}>{group.title}</Text>
         {group.metrics.map(item => <Pressable key={item.label}
@@ -188,10 +204,21 @@ export function BusinessReportPanel({ token, branchId, range, onRangeChange, onC
         && totals.canceledCount === 0 && totals.failedCount === 0 &&
         <Text style={s.empty}>Chưa có đơn phát sinh trong kỳ này.</Text>}
     </View>}
+    {channel !== "DELIVERY" && <DiningReportSection token={token}
+      branchId={branchId} from={from} to={to}/>}
+    {channel === "ALL" && <Text style={s.disclaimer}>
+      Tổng hiển thị hai kênh riêng để tránh cộng nhầm dòng tiền tại quán theo ngày nhận với báo cáo giao hàng theo ngày giao. Chưa có thời điểm thu tiền giao hàng để tính một tổng thực thu hai kênh chính xác.
+    </Text>}
   </View>;
 }
 const s = StyleSheet.create({
   page: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 22, gap: 10 },
+  channelRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  channelButton: { minHeight: 44, flexGrow: 1, borderWidth: 1, borderColor: c.line,
+    borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  channelActive: { backgroundColor: c.soft, borderColor: c.redDeep },
+  channelText: { color: c.ink, fontSize: 12, fontWeight: "700" },
+  channelTextActive: { color: c.redDeep, fontWeight: "900" },
   head: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 8 },
   back: { flexDirection: "row", minHeight: 44, alignItems: "center", gap: 4 },
   backText: { color: c.redDeep, fontSize: 12, fontWeight: "800" },
