@@ -7,7 +7,7 @@ import { PrismaService } from "../database/prisma.service";
 
 interface GroupPayload {
   name: string; minSelect: number; maxSelect: number; sortOrder: number;
-  isAvailable?: boolean;
+  isAvailable?: boolean; allowStandalone?: boolean;
 }
 interface OptionPayload { name: string; priceDeltaVnd: number; isAvailable?: boolean; }
 
@@ -60,6 +60,15 @@ export class ModifierLibraryService {
       maxSelect: input.maxSelect ?? current.maxSelect,
       sortOrder: input.sortOrder ?? current.sortOrder };
     this.bounds(merged);
+    if (input.allowStandalone === true) {
+      if ((input.isAvailable ?? current.isAvailable) !== true ||
+        !current.imageKey || !current.options.some(o => o.isAvailable && o.imageKey)) {
+        throw new ConflictException("STANDALONE_TOPPING_REQUIRES_PUBLISHED_IMAGES");
+      }
+    }
+    if (input.isAvailable === false && current.allowStandalone && input.allowStandalone !== false) {
+      throw new ConflictException("DISABLE_STANDALONE_TOPPING_FIRST");
+    }
     if (input.isAvailable === true) {
       if (!current.imageKey || current.options.length === 0 || current.options.length < merged.minSelect
         || current.options.filter(o => o.isAvailable).length < merged.minSelect
@@ -71,7 +80,8 @@ export class ModifierLibraryService {
     return this.prisma.database.modifierGroup.update({
       where: { id }, data: { name: merged.name.trim(), minSelect: merged.minSelect,
         maxSelect: merged.maxSelect, sortOrder: merged.sortOrder,
-        ...(input.isAvailable === undefined ? {} : { isAvailable: input.isAvailable }) },
+        ...(input.isAvailable === undefined ? {} : { isAvailable: input.isAvailable }),
+        ...(input.allowStandalone === undefined ? {} : { allowStandalone: input.allowStandalone }) },
     });
   }
   async addOption(auth: string | undefined, branchId: string, groupId: string,

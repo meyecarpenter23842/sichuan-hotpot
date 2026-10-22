@@ -52,7 +52,8 @@ export function lineFromSelection(product: Product, choice: Selection, uid: stri
   const comboDelta = comboOptionIds.reduce((sum, id) =>
     sum + product.comboGroups.flatMap(usableComboOptions).find(o => o.id === id)!.priceDeltaVnd, 0);
   const estimated = (product.priceVnd + (variant?.priceDeltaVnd ?? 0) + delta + comboDelta) * choice.quantity;
-  const item: ItemInput = { productId: product.id, variantId: choice.variantId,
+  const item: ItemInput = { productId: product.id,
+    ...(product.standaloneTopping ? { standaloneTopping: true } : {}), variantId: choice.variantId,
     modifierIds, comboOptionIds, quantity: choice.quantity, note: choice.note.trim() };
   return { id: uid, name: product.name, variantName: variant?.name,
     previewVnd: estimated, item };

@@ -16,7 +16,7 @@ export interface CatalogOption { id: string; name: string; priceDeltaVnd: number
 export type CatalogVariant = CatalogOption;
 export interface CatalogGroup {
   id: string; name: string; minSelect: number; maxSelect: number; sortOrder: number;
-  isAvailable: boolean; imageKey?: string | null; usedByProductIds?: string[];
+  isAvailable: boolean; allowStandalone?: boolean; imageKey?: string | null; usedByProductIds?: string[];
   options: CatalogOption[];
 }
 export interface CatalogComboChild {

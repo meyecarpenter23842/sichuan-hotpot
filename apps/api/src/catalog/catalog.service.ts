@@ -26,6 +26,15 @@ export class CatalogService {
         code: true,
         name: true,
         isActive: true,
+        modifierLibrary: {
+          where: { allowStandalone: true, isAvailable: true, branchId },
+          select: { id: true, name: true,
+            options: { where: { isAvailable: true, imageKey: { not: null } },
+              select: { id: true, name: true, priceDeltaVnd: true, imageKey: true,
+                isAvailable: true }, orderBy: [{ name: "asc" }, { id: "asc" }] },
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        },
         categories: {
           where: { isPublished: true },
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -102,8 +111,15 @@ export class CatalogService {
       },
     });
     if (!branch) throw new NotFoundException("Store branch unavailable");
-    if (!branch.categories.length) return branch;
-    return { ...branch, categories: branch.categories.map(category => ({
+    const standaloneToppings = (branch.modifierLibrary ?? [])
+      .flatMap(group => group.options.map(option => ({
+        id: option.id, groupId: group.id, groupName: group.name,
+        name: option.name, priceVnd: option.priceDeltaVnd,
+        imageKey: option.imageKey, isAvailable: option.isAvailable,
+      })));
+    if (!branch.categories.length) return { ...branch, modifierLibrary: undefined, standaloneToppings };
+    return { ...branch, modifierLibrary: undefined, standaloneToppings,
+      categories: branch.categories.map(category => ({
       ...category, products: category.products.map(product => {
         const combined = new Map(product.modifierGroups.filter(g => g.branchId == null)
           .map(g => [g.id, g] as const));

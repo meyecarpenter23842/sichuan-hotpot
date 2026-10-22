@@ -369,6 +369,8 @@ model ProductVariant {
 // active attachments are an explicit M:N relation, never an implicit cross-branch lookup.
 model ModifierGroup {
   id          String   @id @default(uuid()) @db.Uuid
+  // Explicit opt-in: seasoning/spice groups must never appear as standalone dishes.
+  allowStandalone Boolean @default(false)
   productId   String?  @db.Uuid
   branchId    String?  @db.Uuid
   name        String   @db.VarChar(160)

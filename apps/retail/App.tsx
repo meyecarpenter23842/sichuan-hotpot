@@ -75,11 +75,15 @@ export default function App() {
   const acceptedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "accepted") ?? [];
   const excludedTickets = bill?.tickets.filter(t => ticketGroup(t.status) === "excluded") ?? [];
   const estimatedVnd = cart.reduce((n, x) => n + x.previewVnd, 0);
-  // Only separately priced CATALOG PRODUCTS are orderable on their own.
-  // A modifier option alone is not a billable product, so never fabricate price.
-  const toppingCategoryIds = useMemo(() => new Set((catalog?.categories ?? [])
-    .filter(group => /topping|ăn kèm|gọi thêm|món thêm/u.test(group.name.toLocaleLowerCase("vi")))
-    .map(group => group.id)), [catalog]);
+  // View models only: these UUIDs remain ModifierOption IDs.
+  // Backend persists them as null-product dining ticket lines, never duplicate Products.
+  const standaloneProducts = useMemo(() => (catalog?.standaloneToppings ?? []).map(option => ({
+    id: option.id, categoryId: "__standalone_topping__", standaloneTopping: true,
+    name: option.name, description: option.groupName, imageKey: option.imageKey,
+    priceVnd: option.priceVnd, isAvailable: option.isAvailable,
+    kind: "STANDARD" as const, variants: [], modifierGroups: [],
+    comboGroups: [], comboFixedItems: [],
+  })), [catalog]);
 
   const refresh = useCallback(async (showSpinner = false) => {
     if (!branchId || !currentSession()) return;
@@ -265,15 +269,19 @@ export default function App() {
       const imageUrl = productImage(product.imageKey);
       if (imageUrl) photos.set(product.id, imageUrl);
     }
+    for (const topping of catalog?.standaloneToppings ?? []) {
+      const imageUrl = productImage(topping.imageKey);
+      if (imageUrl) photos.set(topping.id, imageUrl);
+    }
     return photos;
   }, [catalog]);
-  const products = useMemo(() => (catalog?.categories ?? []).flatMap(c =>
-    c.products.map(p => ({ ...p, categoryId: c.id }))).filter(p =>
-      (!categoryId || p.categoryId === categoryId) &&
-      (!toppingOnly || toppingCategoryIds.has(p.categoryId)) &&
-      (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
-        .includes(search.toLocaleLowerCase("vi").trim()))),
-    [catalog, categoryId, search, toppingOnly, toppingCategoryIds]);
+  const products = useMemo(() => (
+    toppingOnly ? standaloneProducts : (catalog?.categories ?? []).flatMap(c =>
+      c.products.map(p => ({ ...p, categoryId: c.id })))
+  ).filter(p => (toppingOnly || !categoryId || p.categoryId === categoryId) &&
+    (!search.trim() || (p.name + " " + (p.description ?? "")).toLocaleLowerCase("vi")
+      .includes(search.toLocaleLowerCase("vi").trim()))),
+    [catalog, categoryId, search, toppingOnly, standaloneProducts]);
   const removeLine = (id: string) => {
     if (pendingSubmit) return;
     setCart(c => c.filter(x => x.id !== id));
@@ -479,9 +487,9 @@ export default function App() {
         active={!toppingOnly && categoryId === c.id}
         onPress={() => { setCategoryId(c.id); setToppingOnly(false); }}/>)}
     </ScrollView>
-    {toppingOnly && toppingCategoryIds.size === 0 &&
-      <Text style={st.warning}>Chưa có danh mục sản phẩm topping bán lẻ.
-        Hãy tạo món topping có giá và ảnh trong Admin để gọi riêng, không dùng giá tùy chọn của món lẩu.</Text>}
+    {toppingOnly && !standaloneProducts.length &&
+      <Text style={st.warning}>Chưa bật gọi lẻ cho nhóm topping nào.
+        Vào Admin → Thư viện nhóm tùy chọn → bật “Cho phép gọi topping lẻ tại bàn” cho nhóm thực phẩm.</Text>}
     {!catalog ? <Text style={st.caption}>Đang tải thực đơn…</Text> :
       products.length === 0 ? <Text style={st.caption}>Không tìm thấy món phù hợp.</Text> :
         <View style={st.products}>{products.map(p => {

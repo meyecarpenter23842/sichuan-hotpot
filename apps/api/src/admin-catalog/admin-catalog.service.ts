@@ -93,7 +93,7 @@ export class AdminCatalogService {
           orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           select: {
             id: true, name: true, minSelect: true, maxSelect: true, sortOrder: true,
-            isAvailable: true, imageKey: true, branchId: true,
+            isAvailable: true, allowStandalone: true, imageKey: true, branchId: true,
             assignments: { select: { productId: true, sortOrder: true } },
             options: { orderBy: [{ name: "asc" }, { id: "asc" }],
               select: { id: true, name: true, priceDeltaVnd: true,
