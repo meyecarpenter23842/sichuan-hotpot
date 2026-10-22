@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AppState, Image, Pressable, ScrollView, StyleSheet,
+  AppState, Image, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -16,7 +16,8 @@ import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
 import { loadFrozenTicket, writeFrozenTicket } from "./src/retail-recovery";
-import { enableRetailDiningPush } from "./src/dining-push";
+import { configureRetailNotifications, disableRetailDiningPush, enableRetailDiningPush,
+  refreshRetailDiningPushIfEnabled, watchRetailNotificationResponses } from "./src/dining-push";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
   cream: "#FAF7F3", paper: "#FFFFFF", border: "#EAE1DA", soft: "#F5ECE6",
@@ -112,6 +113,20 @@ export default function App() {
   }, [branchId, branches]);
 
   useEffect(() => {
+    configureRetailNotifications();
+  }, []);
+
+  useEffect(() => {
+    if (!token || !branchId) return;
+    const unwatch = watchRetailNotificationResponses(() => {
+      setWorkspace("queue"); setQueueTicketId(null);
+      if (width < 768) setPage("tables");
+      void refresh(true);
+    });
+    return () => { unwatch(); };
+  }, [token, branchId, refresh, width]);
+
+  useEffect(() => {
     if (!token || !branchId) return;
     seenPending.current.clear(); lastSoundAt.current = 0;
     void refresh(true);
@@ -175,6 +190,8 @@ export default function App() {
       setMessage("Có phiếu chưa rõ kết quả. Vui lòng kiểm tra và gửi lại bằng mã phiếu cũ.");
     }
     setToken(currentSession()?.accessToken ?? tokens.accessToken);
+    void refreshRetailDiningPushIfEnabled(recovered?.branchId ?? allowed[0]!.id)
+      .catch(() => undefined); // Server state is authoritative; manual push button shows errors.
     setCredential(c => ({ ...c, password: "" }));
     setPage(recovered ? "bill" : "tables");
   }, []);
@@ -212,6 +229,8 @@ export default function App() {
     finally { lock.current = false; setBusy(false); }
   };
   const logout = () => {
+    // Capture active token before synchronous credential deletion.
+    void disableRetailDiningPush().catch(() => undefined);
     ++requestVersion.current;
     setSession(null); setToken(null); setStaffId(null); setBranches([]); setBranchId(null); setAreas([]);
     setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null);
@@ -224,10 +243,12 @@ export default function App() {
       return;
     }
     if (value === branchId) { setShowBranchMenu(false); return; }
+    void disableRetailDiningPush().catch(() => undefined);
     ++requestVersion.current; setBranchId(value); setAreaId(null); setSelectedTableId(null);
     setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null); setToppingOnly(false);
     setPage("tables"); setShowBranchMenu(false); setError(""); setMessage("");
     setWorkspace("pos"); setQueueTicketId(null);
+    void refreshRetailDiningPushIfEnabled(value).catch(() => undefined);
   };
   const doAction = async (action: () => Promise<void>) => {
     if (lock.current) return;
@@ -608,18 +629,19 @@ export default function App() {
             }}>
             <Text style={st.iconText}>🔔 {approvals.length}</Text>
           </Pressable>}
-          <Pressable accessibilityRole="button" accessibilityLabel="Test thông báo và âm QR"
+          <Pressable accessibilityRole="button" accessibilityLabel="Thử âm chuông QR không cần tạo đơn"
             style={st.iconButton} onPress={() => {
               void playRetailQrAlert(true).then(() => {
-                setMessage("Đã phát thử chuông QR cục bộ. Không tạo đơn hay phiếu.");
+                setMessage(Platform.OS === "web" ? "Đã phát thử chuông QR cục bộ. Không tạo đơn hay phiếu." :
+                  "Đã yêu cầu phát chuông thử trên Android. Kiểm tra âm lượng và chế độ im lặng của thiết bị.");
               }).catch(cause => setError(cause instanceof Error ? cause.message : "Không phát được âm thử."));
             }}><Text style={st.iconText}>♫</Text></Pressable>
           {canOrder(role) && branchId && <Pressable accessibilityRole="button"
-            accessibilityLabel="Bật thông báo QR khi Retail chạy nền"
+            accessibilityLabel="Bật thông báo QR cho chi nhánh"
             style={st.iconButton} onPress={() => {
               void enableRetailDiningPush(branchId)
-                .then(() => setMessage("Đã đăng ký Web Push cho chi nhánh này. Trình duyệt quyết định thời điểm phát âm khi chạy nền."))
-                .catch(cause => setError(cause instanceof Error ? cause.message : "Không bật được Web Push."));
+                .then(() => setMessage("Đã đăng ký nhận thông báo QR cho chi nhánh này."))
+                .catch(cause => setError(cause instanceof Error ? cause.message : "Không bật được thông báo QR."));
             }}><Text style={st.iconText}>♧</Text></Pressable>}
           <Pressable accessibilityRole="button" accessibilityLabel="Đồng bộ lại"
             style={st.iconButton} onPress={() => { void refresh(true); }}>

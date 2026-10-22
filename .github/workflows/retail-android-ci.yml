@@ -7,11 +7,13 @@ on:
       - "scripts/android/**"
       - "scripts/test/android-retail-bootstrap.test.mjs"
       - "package.json"
+      - "sound-native-android.mp3"
       - "package-lock.json"
       - ".github/workflows/retail-android-ci.yml"
   push:
     branches: [main]
     paths:
+      - "sound-native-android.mp3"
       - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-retail-bootstrap.test.mjs"
@@ -77,6 +79,7 @@ jobs:
           grep -Fq 'vn.sichuanhotpot.retail' apps/retail/android/app/build.gradle
           grep -Fq 'RETAIL_SIGNING_CONTRACT_V1' apps/retail/android/app/build.gradle
           grep -Fq 'signingConfig signingConfigs.retailRelease' apps/retail/android/app/build.gradle
+          cmp sound-native-android.mp3 apps/retail/android/app/src/main/res/raw/retail_qr_alert.mp3
           grep -Fq 'android.intent.category.LAUNCHER' apps/retail/android/app/src/main/AndroidManifest.xml
           git diff --exit-code -- apps/retail/app.json
           chmod +x apps/retail/android/gradlew
@@ -91,6 +94,23 @@ jobs:
           apk="dist/android/sichuan-hotpot-retail-release.apk"
           test -s "$apk"
           unzip -Z1 "$apk" | grep -Fx 'assets/index.android.bundle'
+          found=0
+          while IFS= read -r entry; do
+            if unzip -p "$apk" "$entry" | cmp -s sound-native-android.mp3 -; then found=1; break; fi
+          done < <(unzip -Z1 "$apk" | grep -E '^res/.*\\.mp3
+          npm run android:sha1:retail
+          echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
+          echo "::warning::Do not distribute CI Retail APK; Firebase and API endpoint are synthetic."
+
+      - name: Archive non-distributable CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retail-android-CI-FIREBASE-FIXTURE-NOT-FOR-DISTRIBUTION
+          path: dist/android/sichuan-hotpot-retail-release.apk
+          if-no-files-found: error
+          retention-days: 7
+ || true)
+          test "$found" = "1"
           npm run android:sha1:retail
           echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
           echo "::warning::Do not distribute CI Retail APK; Firebase and API endpoint are synthetic."

@@ -23,7 +23,15 @@
       "package": "vn.sichuanhotpot.retail"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "retail-qr-v1",
+          "color": "#942B35"
+        }
+      ],
+      "./plugins/with-qr-sound.cjs"
     ]
   }
 }

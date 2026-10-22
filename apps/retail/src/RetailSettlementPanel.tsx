@@ -184,7 +184,7 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
           onPress={() => action("/sessions/" + sessionId + "/close", undefined,
             "Bàn đã đóng và chuyển sang chờ dọn.")}/>}
     </>}
-    {bill && <Button label="Xem / In hóa đơn" disabled={busy || Platform.OS !== "web"}
+    {bill && <Button label={Platform.OS === "web" ? "Xem / In hóa đơn" : "Chia sẻ hóa đơn"} disabled={busy}
       onPress={() => printDiningReceipt(bill)}/>}
   </View>;
 }
