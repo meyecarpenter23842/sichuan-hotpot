@@ -24,7 +24,7 @@ const push = { notifyStaffDiningPending: async (branchId, ticketId) => {
   pendingPushes.push({ branchId, ticketId });
 } };
 const service = new DiningService({ get database() { return prisma; } }, auth, realtime, push);
-const settlement = new DiningSettlementService({ get database() { return prisma; } }, auth);
+const settlement = new DiningSettlementService({ get database() { return prisma; } }, auth, realtime);
 process.env.VIETQR_BANK_BIN = "970422";
 process.env.VIETQR_ACCOUNT_NO = "0123456789";
 process.env.VIETQR_ACCOUNT_NAME = "TEST QA ONLY";
