@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 const require = createRequire(import.meta.url);
 const { DiningService } = require("../../apps/api/dist/dining/dining.service.js");
+const { DiningSettlementService } = require("../../apps/api/dist/dining/dining-settlement.service.js");
 const allowed = "postgresql://hotpot_ci:hotpot_ci_only@127.0.0.1:5432/hotpot_ci?schema=public";
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.DATABASE_URL !== allowed) {
   throw new Error("L02 acceptance requires isolated CI localhost PostgreSQL");
@@ -23,6 +24,10 @@ const push = { notifyStaffDiningPending: async (branchId, ticketId) => {
   pendingPushes.push({ branchId, ticketId });
 } };
 const service = new DiningService({ get database() { return prisma; } }, auth, realtime, push);
+const settlement = new DiningSettlementService({ get database() { return prisma; } }, auth);
+process.env.VIETQR_BANK_BIN = "970422";
+process.env.VIETQR_ACCOUNT_NO = "0123456789";
+process.env.VIETQR_ACCOUNT_NAME = "TEST QA ONLY";
 const nonce = randomUUID().replaceAll("-", "");
 const line = (productId, quantity=1, variantId=null, modifierIds=[], comboOptionIds=[]) =>
   ({ productId, variantId, modifierIds, comboOptionIds, quantity });
@@ -209,29 +214,80 @@ try {
   assert.equal(available.isAvailable, false);
   await rejectsCode(service.guestTicket(guestAuth,
     input("no-stock-" + nonce, [line(beef.id)])), "PRODUCT_UNAVAILABLE");
+  await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_CHECKOUT_REQUIRED");
+  const checkout = await settlement.checkout("cashier", branch.id, session.id);
+  assert.equal(checkout.status, "CHECKOUT");
   await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_BILL_UNPAID");
-  await prisma.diningPayment.create({ data: {
-    sessionId: session.id, branchId: branch.id, method: "CASH", amountVnd: 745_000,
-    idempotencyKey: "paid-" + nonce, recordedById: cashier.id,
-    confirmedById: cashier.id, confirmedAt: new Date(), status: "CONFIRMED",
-  } });
+  await rejectsCode(settlement.record("waiter", branch.id, session.id, {
+    method: "CASH", amountVnd: 745_000, cashReceivedVnd: 750_000,
+    idempotencyKey: "waiter-" + nonce,
+  }), "DINING_BRANCH_FORBIDDEN");
+  const qrPay = await settlement.record("cashier", branch.id, session.id, {
+    method: "QR", amountVnd: 745_000, idempotencyKey: "qr-" + nonce,
+  });
+  assert.equal(qrPay.status, "PENDING", "QR is never auto-confirmed");
+  assert.equal(qrPay.qr?.amountVnd, 745_000);
+  assert.equal(qrPay.qr?.transferReference.startsWith("LTX"), true);
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).paidVnd, 0);
+  assert.equal((await settlement.record("cashier", branch.id, session.id, {
+    method: "QR", amountVnd: 745_000, idempotencyKey: "qr-" + nonce,
+  })).replayed, true, "repeated QR payment key never inserts another request");
+  await rejectsCode(service.close("cashier", branch.id, session.id), "DINING_QR_PAYMENT_PENDING");
+  await rejectsCode(settlement.confirm("waiter", branch.id, qrPay.paymentId), "DINING_BRANCH_FORBIDDEN");
+  const confirmations = await Promise.all([
+    settlement.confirm("cashier", branch.id, qrPay.paymentId),
+    settlement.confirm("owner", branch.id, qrPay.paymentId),
+  ]);
+  assert.equal(confirmations.filter(p => !p.replayed).length, 1,
+    "two cashier confirmations settle exactly once");
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).paidVnd, 745_000);
+  const invoice = await service.staffBill("cashier", branch.id, session.id);
+  assert.equal(invoice.branch.name.startsWith("L02"), true);
+  assert.equal(invoice.table.code, "A1");
+  assert.equal(invoice.payments.length, 1);
+  assert.equal(invoice.payments[0].qr?.transferReference.startsWith("LTX"), true);
+  await rejectsCode(settlement.reverse("cashier", branch.id, qrPay.paymentId, "REFUNDED", "Nhầm tiền"),
+    "DINING_BRANCH_FORBIDDEN");
+  await settlement.reverse("owner", branch.id, qrPay.paymentId, "REFUNDED", "Hoàn nhầm phương thức");
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).paidVnd, 0);
+  const settlements = await Promise.allSettled([
+    settlement.record("cashier", branch.id, session.id, {
+      method: "CASH", amountVnd: 745_000, cashReceivedVnd: 800_000,
+      idempotencyKey: "cashA-" + nonce,
+    }),
+    settlement.record("owner", branch.id, session.id, {
+      method: "CASH", amountVnd: 745_000, cashReceivedVnd: 800_000,
+      idempotencyKey: "cashB-" + nonce,
+    }),
+  ]);
+  assert.equal(settlements.filter(x => x.status === "fulfilled").length, 1,
+    "two cashiers cannot both collect the same balance");
+  assert.equal((await service.staffBill("cashier", branch.id, session.id)).paidVnd, 745_000);
+  const payAudit = await prisma.diningAuditEvent.findMany({
+    where: { sessionId: session.id, action: "PAYMENT_RECORDED" },
+  });
+  assert.equal(payAudit.some(x => x.details.cashChangeVnd === 55_000), true,
+    "cash tender and change are persisted as integer audit details");
   await service.close("cashier", branch.id, session.id);
+  const awaitingClean = await prisma.diningTable.findUniqueOrThrow({ where: { id: table.id } });
+  assert.equal(awaitingClean.needsCleaning, true, "closed table is not immediately free");
+  await rejectsCode(service.open("waiter", branch.id, table.id), "DINING_TABLE_UNAVAILABLE");
+  await settlement.cleaned("waiter", branch.id, table.id);
   await rejectsCode(service.guestBill(guestAuth), "DINING_GUEST_EXPIRED");
   await rejectsCode(service.issueGrant("unknown-handle"), "DINING_QR_NOT_FOUND");
   const newSession = await service.open("waiter", branch.id, table.id, 2);
   assert.notEqual(newSession.id, session.id);
   const secondGrant = await service.issueGrant(nonce);
-  const stale = await Promise.allSettled([
-    service.guestTicket("Dining " + secondGrant.credential,
-      input("close-race-" + nonce, [line(hotpot.id)])),
-    service.close("owner", branch.id, newSession.id),
-  ]);
-  const current = await prisma.diningSession.findUnique({ where: { id: newSession.id } });
-  assert.equal(stale.length, 2);
-  assert.equal(current.status, "CLOSED", "session close wins after pending ticket or before it");
+  const pendingClose = await service.guestTicket("Dining " + secondGrant.credential,
+    input("close-race-" + nonce, [line(hotpot.id)]));
+  assert.equal(pendingClose.status, "PENDING_APPROVAL");
+  await rejectsCode(service.close("owner", branch.id, newSession.id), "DINING_PENDING_QR_TICKETS");
+  await service.review("waiter", branch.id, pendingClose.ticketId, "REJECTED", "Không sử dụng");
+  await service.close("owner", branch.id, newSession.id);
   assert.equal((await prisma.diningGuestGrant.count({
     where: { sessionId: newSession.id, revokedAt: null },
   })), 0, "all credentials revoked at close");
+  await settlement.cleaned("waiter", branch.id, table.id);
   const moving = await service.open("waiter", branch.id, table.id, 2);
   const oldGrant = await service.issueGrant(nonce);
   const target = await prisma.diningTable.create({ data: {
@@ -242,6 +298,7 @@ try {
   await rejectsCode(service.transfer("waiter", branch.id, moving.id, table.id, target.id),
     "DINING_TABLE_OCCUPIED");
   await service.close("cashier", branch.id, occupied.id);
+  await settlement.cleaned("waiter", branch.id, target.id);
   await service.transfer("waiter", branch.id, moving.id, table.id, target.id);
   await rejectsCode(service.transfer("waiter", branch.id, moving.id, table.id, target.id),
     "DINING_TABLE_MOVED");
@@ -294,6 +351,7 @@ try {
   const grant4 = await service.issueGrant(changed.qrHandle);
   assert.equal(grant4.sessionId, dine.id);
   await service.close("cashier", branch.id, dine.id);
+  await settlement.cleaned("waiter", branch.id, table2.id);
   await service.editTable("owner", branch.id, table2.id, { isActive: false });
   await service.editArea("owner", branch.id, garden.id, { isActive: false });
   await rejectsCode(service.locator(changed.qrHandle), "DINING_QR_NOT_FOUND");
