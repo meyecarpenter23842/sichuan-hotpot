@@ -3,6 +3,7 @@ import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "r
 import { api, branchPath, money, type Bill, type Table } from "./pos-api";
 import { clientKey } from "./pos-cart";
 import { printDiningReceipt } from "./dining-receipt";
+import { loadFrozenPayment, writeFrozenPayment } from "./retail-recovery";
 
 const C = { ink: "#322523", red: "#942B35", muted: "#80716C", border: "#EAE1DA",
   paper: "#FFFFFF", cream: "#FAF7F3", green: "#287C5C" };
@@ -20,6 +21,8 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
   const [cash, setCash] = useState("");
   const [reason, setReason] = useState("");
   const [targetId, setTargetId] = useState("");
+  const [restoringPayment, setRestoringPayment] = useState(true);
+  const [paymentRecoveryFailed, setPaymentRecoveryFailed] = useState(false);
   const [pending, setPending] = useState<{
     key: string; sessionId: string; method: "CASH" | "QR";
     amountVnd: number; cashReceivedVnd?: number;
@@ -36,8 +39,23 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
   const change = Number.isSafeInteger(tender) && tender >= due ? tender - due : null;
 
   useEffect(() => {
+    let mounted = true;
+    setRestoringPayment(true); setPaymentRecoveryFailed(false);
     setPending(null); setError(""); setInfo(""); setCash(""); setReason(""); setTargetId("");
-  }, [sessionId]);
+    void loadFrozenPayment(branchId, sessionId).then(saved => {
+      if (mounted && saved) {
+        setPending(saved);
+        setMethod(saved.method);
+        if (saved.cashReceivedVnd !== undefined) setCash(String(saved.cashReceivedVnd));
+      }
+    }).catch(() => {
+      if (mounted) {
+        setPaymentRecoveryFailed(true);
+        setError("Phiếu thu tiền đã lưu không đọc được. Cần xác minh trước khi tạo phiếu khác.");
+      }
+    }).finally(() => { if (mounted) setRestoringPayment(false); });
+    return () => { mounted = false; };
+  }, [branchId, sessionId]);
 
   const run = (action: () => Promise<void>) => {
     if (lock.current) return;
@@ -47,7 +65,7 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
   };
 
   const pay = () => {
-    if (!cashier || due <= 0 || !bill || bill.status !== "CHECKOUT") return;
+    if (restoringPayment || paymentRecoveryFailed || !cashier || due <= 0 || !bill || bill.status !== "CHECKOUT") return;
     const received = method === "CASH" ? tender : undefined;
     if (method === "CASH" && (!Number.isSafeInteger(received) ||
       received! < due || received! > 2_000_000_000)) {
@@ -61,12 +79,15 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
     if (draft.sessionId !== sessionId) { setError("Phiếu thuộc bàn khác."); return; }
     setPending(draft);
     run(async () => {
+      // An uncertain response must reuse the same settlement key across app restarts.
+      await writeFrozenPayment(branchId, sessionId, draft);
       const result = await api<Pay>(path + "/sessions/" + sessionId + "/payments", {
         method: "POST", body: {
           idempotencyKey: draft.key, method: draft.method, amountVnd: draft.amountVnd,
           ...(draft.cashReceivedVnd === undefined ? {} : { cashReceivedVnd: draft.cashReceivedVnd }),
         },
       });
+      await writeFrozenPayment(branchId, sessionId, null);
       setPending(null);
       setInfo(result.status === "PENDING"
         ? "Đã tạo QR chuyển khoản. CHƯA thu tiền; thu ngân phải kiểm tra giao dịch ngân hàng và xác nhận."
@@ -132,7 +153,7 @@ export function RetailSettlementPanel({ branchId, sessionId, table, tables, role
         </>}
         <Button label={pending ? "Gửi lại phiếu thanh toán cũ" :
           method === "CASH" ? "Ghi nhận tiền mặt" : "Tạo QR chờ xác nhận"}
-          disabled={busy || (method === "CASH" && change === null)} onPress={pay}/>
+          disabled={busy || restoringPayment || paymentRecoveryFailed || (method === "CASH" && change === null)} onPress={pay}/>
         {!!pending && <Text style={s.help}>Chưa rõ kết quả gửi. Giữ nguyên mã thanh toán khi thử lại, không tạo phiếu mới.</Text>}
       </>}
       {bill.payments.map(p => <View key={p.id} style={s.payment}>

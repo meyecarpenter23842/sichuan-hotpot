@@ -15,6 +15,7 @@ import { RetailTicketCard, ticketGroup } from "./src/RetailTicketCard";
 import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
 import { playRetailQrAlert } from "./src/dining-alert";
+import { loadFrozenTicket, writeFrozenTicket } from "./src/retail-recovery";
 import { enableRetailDiningPush } from "./src/dining-push";
 
 const C = { dark: "#302321", muted: "#80716C", red: "#942B35", redDark: "#7B1B26",
@@ -31,6 +32,7 @@ export default function App() {
   const [credential, setCredential] = useState({ username: "", password: "" });
   const [token, setToken] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(true);
+  const [staffId, setStaffId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [areaId, setAreaId] = useState<string | null>(null);
@@ -159,11 +161,22 @@ export default function App() {
     if (!allowed.length) {
       throw new Error("Tài khoản không có quyền bán tại quán ở chi nhánh đang hoạt động.");
     }
+    const stored = await loadFrozenTicket();
+    const recovered = stored && stored.staffId === person.id &&
+      allowed.some(b => b.id === stored.branchId) ? stored : null;
+    setStaffId(person.id);
     setBranches(allowed);
-    setBranchId(allowed[0]!.id);
+    setBranchId(recovered?.branchId ?? allowed[0]!.id);
+    if (recovered) {
+      setSelectedTableId(recovered.tableId);
+      setCart(recovered.cart);
+      setNote(recovered.note);
+      setPendingSubmit({ sessionId: recovered.sessionId, payload: recovered.payload });
+      setMessage("Có phiếu chưa rõ kết quả. Vui lòng kiểm tra và gửi lại bằng mã phiếu cũ.");
+    }
     setToken(currentSession()?.accessToken ?? tokens.accessToken);
     setCredential(c => ({ ...c, password: "" }));
-    setPage("tables");
+    setPage(recovered ? "bill" : "tables");
   }, []);
 
   useEffect(() => {
@@ -200,7 +213,7 @@ export default function App() {
   };
   const logout = () => {
     ++requestVersion.current;
-    setSession(null); setToken(null); setBranches([]); setBranchId(null); setAreas([]);
+    setSession(null); setToken(null); setStaffId(null); setBranches([]); setBranchId(null); setAreas([]);
     setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null);
     setCart([]); setPendingSubmit(null); setBill(null); setMessage(""); setError(""); setPage("tables");
     setWorkspace("pos"); setQueueTicketId(null);
@@ -249,7 +262,10 @@ export default function App() {
     });
   };
   const send = async () => {
-    if (!branchId || !sessionId || !canOrder(role) || !cart.length || !online) return;
+    if (!branchId || !sessionId || !staffId || !selectedTableId || !canOrder(role) || !cart.length || !online) return;
+    if (pendingSubmit && pendingSubmit.sessionId !== sessionId) {
+      setError("Phiếu chưa rõ kết quả thuộc phiên bàn trước. Không thể tạo yêu cầu mới."); return;
+    }
     const payload = pendingSubmit?.payload ?? {
       idempotencyKey: clientKey(), customerNote: note.trim(),
       items: cart.map(({ item }) => ({ ...item, modifierIds: [...item.modifierIds],
@@ -259,8 +275,12 @@ export default function App() {
     // Save the exact request before sending. Unknown network failures retain it for safe retry.
     setPendingSubmit(frozen);
     await doAction(async () => {
+      // Persist the exact key and request before HTTP: restart must never create a new ticket.
+      await writeFrozenTicket({ staffId, branchId, tableId: selectedTableId,
+        sessionId: frozen.sessionId, payload: frozen.payload, cart, note });
       const result = await api<Receipt>(branchPath(branchId) + "/sessions/" + frozen.sessionId + "/tickets",
         { method: "POST", body: frozen.payload });
+      await writeFrozenTicket(null);
       setPendingSubmit(null); setCart([]); setNote(""); setPage("bill");
       setMessage(result.replayed ? "Phiếu đã được ghi nhận trước đó, không tạo lại." : "Đã gửi món xuống Bếp.");
       await refresh(true);
