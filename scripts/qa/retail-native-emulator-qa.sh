@@ -5,6 +5,14 @@ set -euo pipefail
 apk="dist/android/sichuan-hotpot-retail-release.apk"
 mkdir -p apps/retail/qa-artifacts
 adb wait-for-device
+# The Android emulator is intentionally an AOSP image. Pixel Launcher from
+# google_apis can ANR and cover the app despite MainActivity being healthy.
+# Fail fast on accidental system-image regression; never treat an obscured
+# login screen as a passing UI screenshot.
+if adb shell pm list packages | grep -Fq 'package:com.google.android.apps.nexuslauncher'; then
+  echo "::error::Wrong emulator image: Pixel Launcher present; use target: default (AOSP)."
+  exit 1
+fi
 adb install -r "$apk"
 adb shell pm path vn.sichuanhotpot.retail | grep -Fq "package:"
 # Wait for the Android Activity window rather than racing the cold-booted AVD.
