@@ -86,14 +86,20 @@ test("emulator QA waits for Activity and preserves proof of a failed login rende
   assert.match(script, /Retail Android login screen was not visible/);
 });
 
-test("Retail emulator uses AOSP image so Pixel Launcher ANR cannot obscure POS", () => {
+test("Retail emulator isolates Android launcher ANRs without skipping POS UI assertions", () => {
   const workflow = readFileSync(new URL("../../.github/workflows/retail-android-ci.yml", import.meta.url), "utf8");
   const smoke = readFileSync(new URL("../qa/retail-native-emulator-qa.sh", import.meta.url), "utf8");
   assert.match(workflow, /^          target: default$/m);
   assert.doesNotMatch(workflow, /^          target: google_apis$/m);
   assert.match(smoke, /package:com\.google\.android\.apps\.nexuslauncher/);
   assert.match(smoke, /Wrong emulator image: Pixel Launcher present/);
-  // AOSP swap must not remove the real launch and four orientation assertions.
+  // AOSP eliminates Pixel Launcher, and disabling disposable Launcher3 prevents
+  // the same system ANR being rendered above the app on a saturated runner.
+  const isolate = smoke.indexOf('adb shell pm disable-user --user 0 "$launcher"');
+  const launch = smoke.indexOf("adb shell am start -W -n vn.sichuanhotpot.retail/.MainActivity");
+  assert.ok(isolate > 0 && launch > isolate);
+  assert.match(smoke, /pm list packages -d "\$launcher"/);
+  // The smoke must still actually launch Retail and verify all four UI screenshots.
   for (const orientation of ["phone-portrait", "phone-landscape", "tablet-landscape", "tablet-portrait"]) {
     assert.ok(smoke.includes("verify_login " + orientation));
   }
