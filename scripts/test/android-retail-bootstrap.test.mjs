@@ -55,6 +55,12 @@ test("Retail signer patches only release, not debug, and preserves existing work
   assert.throws(() => patchRetailSigningGradle(source.replace("signingConfigs.debug", "signingConfigs.another")), /layout/);
 });
 
+test("Retail preflight uses the same effective API/signing environment in Gradle", () => {
+  const code = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
+  assert.match(code, /spawnSync\(command, args, \{ cwd: gradleDirectory, stdio: "inherit", env: buildEnvironment \}\)/);
+  assert.match(code, /spawnSync\(process\.execPath, \[join\(repoRoot, "scripts", "android", "apk-fingerprint\.mjs"\), app\],[\s\S]*?env: buildEnvironment/);
+});
+
 test("Retail distribution occurs only after certificate verification succeeds", () => {
   const code = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
   const apkSigner = code.indexOf('join(repoRoot, "scripts", "android", "apk-fingerprint.mjs")');
@@ -71,4 +77,11 @@ test("Android emulator tablet mode uses portrait-native base dimensions before r
     "wm size is unrotated; landscape-size input plus rotation=1 makes a portrait screenshot");
   assert.match(script, /adb shell wm size 800x1280\s+adb shell wm density 160\s+adb shell settings put system user_rotation 1\s+sleep 5\s+verify_login tablet-landscape/);
   assert.match(script, /verify_login tablet-landscape\s+adb shell settings put system user_rotation 0\s+sleep 5\s+verify_login tablet-portrait/);
+});
+
+test("emulator QA waits for Activity and preserves proof of a failed login render", () => {
+  const script = readFileSync(new URL("../qa/retail-native-emulator-qa.sh", import.meta.url), "utf8");
+  assert.match(script, /adb shell am start -W -n vn\.sichuanhotpot\.retail\/\.MainActivity/);
+  assert.match(script, /android-\$\{mode\}-failure\.png/);
+  assert.match(script, /Retail Android login screen was not visible/);
 });

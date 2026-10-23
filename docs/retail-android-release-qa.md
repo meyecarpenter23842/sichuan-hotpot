@@ -30,6 +30,7 @@ npm ci --include=dev --ignore-scripts --no-audit --no-fund
 
 1. Register `vn.sichuanhotpot.retail` as a **separate Android client in the existing Firebase project**. Download its private per-build `google-services.json` to `apps/retail/google-services.json`; never commit it. Verify the project ID, package name and FCM permissions before building.
 2. Use the **existing approved Retail keystore and its original alias/certificate** from secure offline storage. Set `HOTPOT_RETAIL_KEYSTORE_PATH`, `HOTPOT_RETAIL_KEYSTORE_PASSWORD`, `HOTPOT_RETAIL_KEY_ALIAS`, `HOTPOT_RETAIL_KEY_PASSWORD` and `HOTPOT_RETAIL_EXPECTED_SHA256` via private environment/secret store. Do not output private values, overwrite or generate a new keystore. If no Retail release certificate has ever been approved, block release until the signing identity is agreed and safely backed up. The first release freezes that identity.
+   The verified release API/signing environment is passed consistently to Gradle; Retail production **rejects the Android Debug certificate** even if that SHA-256 was pinned by mistake. Do not expose signing passwords in issues or logs.
 3. Set the real HTTPS `EXPO_PUBLIC_API_BASE_URL` for Retail; ensure `CI`/`HOTPOT_FIREBASE_CI_FIXTURE` are **not set to `1`** when making a distributable APK.
 4. Run the commands below only after confirming the generated `apps/retail/android` tree has no uncommitted custom edits. Do **not** use `expo prebuild --clean`.
 
