@@ -48,7 +48,7 @@ test("release entrypoints validate and repair existing native Gradle before buil
   assert.equal(rootPackage.scripts["android:release:admin"], "node scripts/android/build-release.mjs admin");
   assert.match(runner, /configureGeneratedAndroid\(appDirectory\)/);
   assert.match(runner, /require\.resolve\("object\.assign\/polyfill"\)/);
-  assert.match(runner, /spawnSync\(command, args, \{ cwd: gradleDirectory, stdio: "inherit" \}\)/);
+  assert.match(runner, /spawnSync\(command, args, \{ cwd: gradleDirectory, stdio: "inherit", env: buildEnvironment \}\)/);
 });
 
 test("Expo embed entry resolves relative to Metro workspace root, not Gradle app root", () => {
