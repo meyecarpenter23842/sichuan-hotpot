@@ -408,7 +408,7 @@ export default function App() {
           {!shownTables.length && <Text style={st.caption}>Khu vực chưa có bàn.</Text>}
         </ScrollView>
       </View>
-    </ScrollView> : <>
+    </View> : <>
       <View style={st.sectionHead}>
         <Text style={st.sectionTitle}>Khu vực & bàn</Text>
         <Text style={st.caption}>{tables.filter(t => t.sessions.length > 0).length} đang phục vụ</Text>
@@ -615,7 +615,7 @@ export default function App() {
           onPress={() => { void login(); }}/>
         <Text style={st.micro}>Chỉ nhân viên có quyền mới được xem bàn, gọi món và duyệt QR.</Text>
       </View>
-    </View> : <>
+    </ScrollView> : <>
       <View style={st.header}>
         <View style={desktop ? st.headerBrandDesktop : st.headerBrandMobile}>
           <Text style={st.brand} numberOfLines={1}>LẨU TỨ XUYÊN & TRÀ SỮA</Text>

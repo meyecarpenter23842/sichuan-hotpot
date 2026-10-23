@@ -19,3 +19,12 @@ test("Retail keeps orientation unlocked and distinct fixed Android identity", ()
   assert.equal(cfg.orientation, "default");
   assert.equal(cfg.android.package, "vn.sichuanhotpot.retail");
 });
+
+test("Retail TSX parses as JSX; login ScrollView and desktop table View must be balanced", async () => {
+  const ts = await import("typescript");
+  const sourceFile = ts.createSourceFile("App.tsx", app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  assert.deepEqual(sourceFile.parseDiagnostics.map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n")), [],
+    "React Native app must be syntactically valid TSX");
+  assert.match(app, /<ScrollView style=\{\{ flex: 1 \}\} contentContainerStyle=\{st.loginScreen\}/);
+  assert.match(app, /<\/ScrollView> : <>/);
+});
