@@ -20,10 +20,29 @@
     "newArchEnabled": true,
     "orientation": "default",
     "android": {
-      "package": "vn.sichuanhotpot.retail"
+      "package": "vn.sichuanhotpot.retail",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "new-orders-v3",
+          "color": "#942B35"
+        }
+      ],
+      "./plugins/with-qr-sound.cjs"
+    ],
+    "icon": "./assets/app-icon.png",
+    "splash": {
+      "image": "./assets/app-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    }
   }
 }

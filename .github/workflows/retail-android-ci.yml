@@ -7,11 +7,13 @@ on:
       - "scripts/android/**"
       - "scripts/test/android-retail-bootstrap.test.mjs"
       - "package.json"
+      - "sound-native-android.mp3"
       - "package-lock.json"
       - ".github/workflows/retail-android-ci.yml"
   push:
     branches: [main]
     paths:
+      - "sound-native-android.mp3"
       - "apps/retail/**"
       - "scripts/android/**"
       - "scripts/test/android-retail-bootstrap.test.mjs"
@@ -77,6 +79,7 @@ jobs:
           grep -Fq 'vn.sichuanhotpot.retail' apps/retail/android/app/build.gradle
           grep -Fq 'RETAIL_SIGNING_CONTRACT_V1' apps/retail/android/app/build.gradle
           grep -Fq 'signingConfig signingConfigs.retailRelease' apps/retail/android/app/build.gradle
+          cmp sound-native-android.mp3 apps/retail/android/app/src/main/res/raw/new_order_alert.mp3
           grep -Fq 'android.intent.category.LAUNCHER' apps/retail/android/app/src/main/AndroidManifest.xml
           git diff --exit-code -- apps/retail/app.json
           chmod +x apps/retail/android/gradlew
@@ -91,6 +94,14 @@ jobs:
           apk="dist/android/sichuan-hotpot-retail-release.apk"
           test -s "$apk"
           unzip -Z1 "$apk" | grep -Fx 'assets/index.android.bundle'
+          found=0
+          while IFS= read -r entry; do
+            if unzip -p "$apk" "$entry" | cmp -s sound-native-android.mp3 -; then
+              found=1
+              break
+            fi
+          done < <(unzip -Z1 "$apk" | grep -E '^res/.*\.mp3$' || true)
+          test "$found" = "1"
           npm run android:sha1:retail
           echo "CI APK contains bundled JS and is signed by the disposable CI debug certificate."
           echo "::warning::Do not distribute CI Retail APK; Firebase and API endpoint are synthetic."
@@ -101,4 +112,53 @@ jobs:
           name: retail-android-CI-FIREBASE-FIXTURE-NOT-FOR-DISTRIBUTION
           path: dist/android/sichuan-hotpot-retail-release.apk
           if-no-files-found: error
+          retention-days: 7
+
+  retail-emulator-smoke:
+    name: Android API 35 device boot & rotation smoke (CI fixture)
+    runs-on: ubuntu-24.04
+    needs: retail-native
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download non-distributable Retail APK from native build
+        uses: actions/download-artifact@v4
+        with:
+          name: retail-android-CI-FIREBASE-FIXTURE-NOT-FOR-DISTRIBUTION
+          path: dist/android
+
+      - name: Check APK from actual prior CI job
+        run: |
+          test -s dist/android/sichuan-hotpot-retail-release.apk
+          echo "::warning::Emulator QA APK uses only fake Firebase/API values. NEVER distribute."
+
+      - name: Permit Android emulator KVM acceleration
+        shell: bash
+        run: |
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+
+      - name: Install, launch, rotate and screenshot Retail Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/qa/retail-native-emulator-qa.sh
+
+      - name: Archive actual Android emulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retail-android-emulator-phone-tablet-CI-FIXTURE
+          path: apps/retail/qa-artifacts/android-*.png
+          if-no-files-found: ignore
           retention-days: 7

@@ -31,3 +31,27 @@ export async function enableRetailDiningPush(branchId: string): Promise<void> {
     token: sub.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth,
   } });
 }
+
+/** Web PWA: browser notifications use its ServiceWorker, never the native module. */
+export function configureRetailNotifications(): void {}
+export function watchRetailNotificationResponses(_onOpen: () => void): () => void { return () => undefined; }
+export async function refreshRetailDiningPushIfEnabled(_branchId: string): Promise<void> {}
+export async function changeRetailDiningPushBranch(_branchId: string): Promise<void> {}
+export async function disableRetailDiningPush(): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  const ready = await navigator.serviceWorker.ready;
+  const previous = await ready.pushManager.getSubscription();
+  if (!previous) return;
+  // No credentials are written to browser storage. Subscription revocation is best effort.
+  try { await api("/push/subscriptions/remove", { method: "POST", body: { token: previous.endpoint } }); }
+  finally { await previous.unsubscribe(); }
+}
+
+/** Type-safe browser fallbacks for the Android-only native alert interface. */
+export async function isRetailPushRegistered(): Promise<boolean> { return false; }
+export async function testRetailNativeSound(): Promise<void> {
+  throw new Error("Âm thử này chỉ hỗ trợ Android Native.");
+}
+export async function playLocalRetailQrAlert(): Promise<void> {
+  throw new Error("Chuông QR này chỉ hỗ trợ Android Native.");
+}

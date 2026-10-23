@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-for (const app of ["customer", "admin"]) {
+for (const app of ["customer", "admin", "retail"]) {
   test(`${app} Android prebuild generates required icon assets itself`, () => {
     const pkg = JSON.parse(
       readFileSync(new URL(`../../apps/${app}/package.json`, import.meta.url), "utf8"),

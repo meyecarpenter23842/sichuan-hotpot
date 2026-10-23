@@ -13,3 +13,7 @@ apps/*/google-services.json
 apps/*/GoogleService-Info.plist
 # Retail Native prebuild stays local/CI; never commit generated Gradle or signing artifacts.
 apps/retail/android/
+# Retail Android icons generated deterministically from the approved brand artwork.
+apps/retail/assets/app-icon.png
+apps/retail/assets/adaptive-icon.png
+apps/retail/qa-artifacts/
