@@ -64,3 +64,11 @@ test("Retail distribution occurs only after certificate verification succeeds", 
     "A failed Retail signature must abort before writing dist/android");
   assert.match(code, /if \(app === "retail"\) \{\s+const checked/);
 });
+
+test("Android emulator tablet mode uses portrait-native base dimensions before rotation", () => {
+  const script = readFileSync(new URL("../qa/retail-native-emulator-qa.sh", import.meta.url), "utf8");
+  assert.doesNotMatch(script, /^adb shell wm size 1280x800$/m,
+    "wm size is unrotated; landscape-size input plus rotation=1 makes a portrait screenshot");
+  assert.match(script, /adb shell wm size 800x1280\s+adb shell wm density 160\s+adb shell settings put system user_rotation 1\s+sleep 5\s+verify_login tablet-landscape/);
+  assert.match(script, /verify_login tablet-landscape\s+adb shell settings put system user_rotation 0\s+sleep 5\s+verify_login tablet-portrait/);
+});

@@ -52,12 +52,15 @@ adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 3
 verify_login phone-landscape
-adb shell wm size 1280x800
+# Android wm size specifies the *natural*, unrotated display dimensions.
+# This Pixel AVD is portrait-native: 800x1280 + rotation=1 gives 1280x800.
+# Passing 1280x800 at rotation=1 incorrectly produces 800x1280 (portrait).
+adb shell wm size 800x1280
 adb shell wm density 160
+adb shell settings put system user_rotation 1
 sleep 5
 verify_login tablet-landscape
 adb shell settings put system user_rotation 0
-adb shell wm size 800x1280
 sleep 5
 verify_login tablet-portrait
 echo "Android emulator launcher + portrait/landscape smoke: PASS (login view only)"
