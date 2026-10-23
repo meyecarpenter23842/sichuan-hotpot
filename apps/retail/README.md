@@ -2,13 +2,15 @@
 
 Retail is the **same** Expo/React Native POS codebase for `https://retail.bepsi.click` and Android; both use the existing NestJS dining APIs, branches, tables, ticket state and server-calculated VND prices. Android is **not** a WebView of the PWA.
 
-## Android bootstrap (first batch, not yet a production APK)
+## Android implementation (L01–L03 merged; L04 release QA)
 
 - Package: `vn.sichuanhotpot.retail`; launcher: `Hotpot Retail`; scheme: `sichuanhotpotretail`. Neither Admin nor Customer IDs or signing setup was changed.
 - The `apps/retail/android` tree is generated locally and ignored by Git. The prebuild script **refuses** to destroy an existing native tree. Back up custom work and review before replacing it.
 - Android Firebase descriptor must be for **Retail** and the existing Firebase project. Keep `apps/retail/google-services.json` out of Git. The synthetic GitHub Actions descriptor builds an APK **incapable of receiving real FCM**.
 - Production Retail signing uses one separately preserved keystore and alias. The build validates the **pinned SHA-256** of its APK; a changed certificate is a hard error. Never regenerate/replace the keystore to fix a build. CI fixture signing is intentionally not suitable for distribution.
-- Web remains unchanged. Native token persistence, device sound, push, receipt sharing, phone/tablet acceptance, and physical upgrade testing are **subsequent batches of Issue #283**, not claimed complete in this bootstrap.
+- Native now uses SecureStore for credentials; frozen uncertain ticket/payment payloads preserve their idempotency keys across restart. FCM and local sound tests use native notification channels, while the PWA retains the web adapters. Android receipt uses the system Share sheet; no thermal printer integration is claimed.
+- Emulator CI boots the **fake-API** APK and captures phone/tablet portrait/landscape at the **login screen**. Authenticated POS viewport/QR/toppings regression runs separately through Playwright against an isolated CI database on Web. Neither proves real Android transactional flows.
+- L04 release QA and hands-on acceptance: see [docs/retail-android-release-qa.md](../../docs/retail-android-release-qa.md).
 
 ## PowerShell (Windows, from `F:\1_A_Disk_D\hotpot`)
 
@@ -42,7 +44,8 @@ Output: `dist/android/sichuan-hotpot-retail-release.apk`. Check embedded `assets
 
 - Source unit/lint/typecheck and web PWA regression: performed by workspace CI on the PR.
 - Linux native release bundle and Windows matrix: checked by dedicated GitHub Actions workflows; both use **CI-only Firebase fixture and disposable signing**.
-- Real phone and tablet portrait/landscape, Android keyboard/safe area, offline/reconnect, background/restart idempotency, FCM, sound, printer/share and upgrade: **NOT TESTED** in this first batch. Record later QA evidence for 320, 360, 390, 428, 768, 1024 and 1280dp.
+- Emulator CI: **PASS on #286** for login launch/rotation screenshots using a CI fixture. Authenticated POS Web Playwright: **PASS on #286** for widths 320/360/390/428/768/1024/1280/1440 and table/QR/topping flows.
+- Real phone/tablet Native: **NOT TESTED** for authenticated UX, keyboard/safe-area, offline/reconnect, background/restart, FCM foreground/background, local sound, receipt Share or in-place upgrade. Do not ship an APK until real Firebase/signing and the [manual checklist](../../docs/retail-android-release-qa.md) are verified.
 - No production deploy, real order creation or production DB migration is performed by the Android build.
 
 Refer to [Issue #283](https://github.com/meyecarpenter23842/sichuan-hotpot/issues/283) for all remaining native batches and acceptance requirements.
