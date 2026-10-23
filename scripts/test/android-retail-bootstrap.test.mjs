@@ -54,3 +54,13 @@ test("Retail signer patches only release, not debug, and preserves existing work
   assert.equal(patchRetailSigningGradle(patched), patched);
   assert.throws(() => patchRetailSigningGradle(source.replace("signingConfigs.debug", "signingConfigs.another")), /layout/);
 });
+
+test("Retail distribution occurs only after certificate verification succeeds", () => {
+  const code = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
+  const apkSigner = code.indexOf('join(repoRoot, "scripts", "android", "apk-fingerprint.mjs")');
+  const checkResult = code.indexOf('if (checked.status !== 0) throw new Error');
+  const publish = code.indexOf('copyFileSync(apk, namedApk)');
+  assert.ok(apkSigner > 0 && checkResult > apkSigner && publish > checkResult,
+    "A failed Retail signature must abort before writing dist/android");
+  assert.match(code, /if \(app === "retail"\) \{\s+const checked/);
+});

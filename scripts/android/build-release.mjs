@@ -80,15 +80,17 @@ else {
   // Publish stable app-specific file names. Android installs by applicationId,
   // not the source filename, but copying two generic app-release.apk files
   // into one folder can silently overwrite one of them.
-  const dist = join(repoRoot, "dist", "android");
-  mkdirSync(dist, { recursive: true });
-  const namedApk = join(dist, `sichuan-hotpot-${app}-release.apk`);
-  copyFileSync(apk, namedApk);
-  console.log(`Release APK (${app}): ${namedApk}`);
+  // Validate the freshly built Retail APK before publishing it into dist/android.
+  // A failed signature check must not copy a wrong-key APK to the release path.
   if (app === "retail") {
     const checked = spawnSync(process.execPath, [join(repoRoot, "scripts", "android", "apk-fingerprint.mjs"), app],
       { cwd: repoRoot, stdio: "inherit", env: buildEnvironment });
     if (checked.error) throw checked.error;
     if (checked.status !== 0) throw new Error("Retail APK signing certificate did not match the pinned release identity.");
   }
+  const dist = join(repoRoot, "dist", "android");
+  mkdirSync(dist, { recursive: true });
+  const namedApk = join(dist, `sichuan-hotpot-${app}-release.apk`);
+  copyFileSync(apk, namedApk);
+  console.log(`Release APK (${app}): ${namedApk}`);
 }
