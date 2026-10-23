@@ -149,7 +149,12 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
-          target: google_apis
+          # CI tests fake Firebase and login UI only; no Google APIs/FCM needed.
+          # The Google APIs Pixel 6 image intermittently displayed a SYSTEM
+          # "Pixel Launcher isn't responding" ANR over a healthy Retail Activity.
+          # Use the AOSP image without Pixel Launcher, keeping API level/profile
+          # and every real APK/login/rotation assertion unchanged.
+          target: default
           arch: x86_64
           profile: pixel_6
           disable-animations: true
