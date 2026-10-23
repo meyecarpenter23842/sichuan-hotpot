@@ -85,3 +85,16 @@ test("emulator QA waits for Activity and preserves proof of a failed login rende
   assert.match(script, /android-\$\{mode\}-failure\.png/);
   assert.match(script, /Retail Android login screen was not visible/);
 });
+
+test("Retail emulator uses AOSP image so Pixel Launcher ANR cannot obscure POS", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/retail-android-ci.yml", import.meta.url), "utf8");
+  const smoke = readFileSync(new URL("../qa/retail-native-emulator-qa.sh", import.meta.url), "utf8");
+  assert.match(workflow, /^          target: default$/m);
+  assert.doesNotMatch(workflow, /^          target: google_apis$/m);
+  assert.match(smoke, /package:com\.google\.android\.apps\.nexuslauncher/);
+  assert.match(smoke, /Wrong emulator image: Pixel Launcher present/);
+  // AOSP swap must not remove the real launch and four orientation assertions.
+  for (const orientation of ["phone-portrait", "phone-landscape", "tablet-landscape", "tablet-portrait"]) {
+    assert.ok(smoke.includes("verify_login " + orientation));
+  }
+});
