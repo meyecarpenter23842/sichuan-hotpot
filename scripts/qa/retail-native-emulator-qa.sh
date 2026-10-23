@@ -13,6 +13,20 @@ if adb shell pm list packages | grep -Fq 'package:com.google.android.apps.nexusl
   echo "::error::Wrong emulator image: Pixel Launcher present; use target: default (AOSP)."
   exit 1
 fi
+# The CI AOSP image runs a Launcher3/Quickstep Home process which sometimes
+# ANRs under the shared GitHub KVM runner, drawing a SYSTEM dialog over an
+# otherwise healthy Retail MainActivity. The smoke starts MainActivity via adb
+# directly and never exercises Home/Recents, so disable only the unnecessary
+# AOSP Home app on this disposable emulator before installing/opening Retail.
+# Never disable Android SystemUI, Retail, or production-device launchers.
+launcher="com.android.launcher3"
+if adb shell pm list packages "$launcher" | grep -Fq "package:$launcher"; then
+  adb shell pm disable-user --user 0 "$launcher"
+  adb shell pm list packages -d "$launcher" | grep -Fq "package:$launcher" || {
+    echo "::error::Unable to isolate AOSP launcher; refusing flaky/obscured Retail UI check"
+    exit 1
+  }
+fi
 adb install -r "$apk"
 adb shell pm path vn.sichuanhotpot.retail | grep -Fq "package:"
 # Wait for the Android Activity window rather than racing the cold-booted AVD.
