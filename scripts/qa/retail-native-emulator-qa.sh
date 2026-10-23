@@ -37,7 +37,7 @@ import sys
 image, mode = sys.argv[1:]
 with open(image, "rb") as handle:
     header = handle.read(24)
-if len(header) != 24 or header[:8] != b"\\x89PNG\\r\\n\\x1a\\n" or header[12:16] != b"IHDR":
+if len(header) != 24 or header[:8] != bytes.fromhex("89504e470d0a1a0a") or header[12:16] != b"IHDR":
     raise SystemExit("Android QA screenshot is not a valid PNG: " + mode)
 width, height = struct.unpack(">II", header[16:24])
 landscape = mode.endswith("landscape")
