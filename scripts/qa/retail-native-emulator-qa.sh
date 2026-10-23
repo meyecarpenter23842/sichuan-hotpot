@@ -7,7 +7,9 @@ mkdir -p apps/retail/qa-artifacts
 adb wait-for-device
 adb install -r "$apk"
 adb shell pm path vn.sichuanhotpot.retail | grep -Fq "package:"
-adb shell am start -n vn.sichuanhotpot.retail/.MainActivity
+# Wait for the Android Activity window rather than racing the cold-booted AVD.
+# This does not count as a login PASS; verify_login still checks visible text.
+adb shell am start -W -n vn.sichuanhotpot.retail/.MainActivity
 
 verify_login() {
   local mode="$1"
@@ -22,8 +24,19 @@ verify_login() {
     sleep 3
   done
   if [ "$ready" -ne 1 ]; then
-    adb logcat -d -t 300 | grep -E 'FATAL EXCEPTION|AndroidRuntime|ReactNativeJS' | tail -60 || true
-    echo "::error::Retail Android login screen was not visible ($mode)"
+    # Preserve evidence of the actual UI failure instead of silently archiving
+    # no artifacts. The workflow already uploads android-*.png on failure.
+    local failure_image="apps/retail/qa-artifacts/android-${mode}-failure.png"
+    adb exec-out screencap -p > "$failure_image" || rm -f "$failure_image"
+    echo "::group::Retail Android launch diagnostics ($mode)"
+    adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | head -12 || true
+    adb shell dumpsys activity activities | grep -E 'Resumed|topResumed' | head -12 || true
+    adb shell uiautomator dump /sdcard/retail-failure.xml >/dev/null 2>&1 || true
+    adb shell cat /sdcard/retail-failure.xml 2>/dev/null | head -c 2800 || true
+    echo ""
+    adb logcat -d -t 400 | grep -E 'FATAL EXCEPTION|AndroidRuntime|ReactNativeJS' | tail -60 || true
+    echo "::endgroup::"
+    echo "::error::Retail Android login screen was not visible ($mode); inspect uploaded failure screenshot"
     exit 1
   fi
   adb exec-out screencap -p > "apps/retail/qa-artifacts/android-${mode}.png"
