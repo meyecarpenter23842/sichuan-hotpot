@@ -55,6 +55,12 @@ test("Retail signer patches only release, not debug, and preserves existing work
   assert.throws(() => patchRetailSigningGradle(source.replace("signingConfigs.debug", "signingConfigs.another")), /layout/);
 });
 
+test("Retail preflight uses the same effective API/signing environment in Gradle", () => {
+  const code = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
+  assert.match(code, /spawnSync\(command, args, \{ cwd: gradleDirectory, stdio: "inherit", env: buildEnvironment \}\)/);
+  assert.match(code, /spawnSync\(process\.execPath, \[join\(repoRoot, "scripts", "android", "apk-fingerprint\.mjs"\), app\],[\s\S]*?env: buildEnvironment/);
+});
+
 test("Retail distribution occurs only after certificate verification succeeds", () => {
   const code = readFileSync(new URL("../android/build-release.mjs", import.meta.url), "utf8");
   const apkSigner = code.indexOf('join(repoRoot, "scripts", "android", "apk-fingerprint.mjs")');

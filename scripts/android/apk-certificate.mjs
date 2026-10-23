@@ -1,5 +1,18 @@
 // apksigner --print-certs labels differ by SDK and signature version:
 // "Signer #1 certificate ..." and "V2 Signer: certificate ...".
+// A pinned SHA protects upgrades, but pinning a disposable debug certificate
+// at the first production build must never turn it into an approved signer.
+export function assertRetailProductionSigner(output) {
+  const subjects = [...String(output).matchAll(/^\s*(?:Signer #\d+:?|V\d+ Signer:)\s+certificate DN:\s*(.+)$/gim)]
+    .map(match => match[1].trim());
+  if (subjects.length === 0) {
+    throw new Error("Retail production APK signer subject missing from apksigner verification.");
+  }
+  if (subjects.some(subject => /(?:^|,)\s*CN\s*=\s*Android Debug\s*(?:,|$)/i.test(subject))) {
+    throw new Error("Retail release uses an Android Debug certificate. Refusing distribution even if SHA-256 was pinned.");
+  }
+}
+
 export function parseApkCertificateFingerprints(output) {
   const results = new Map();
   const lines = String(output).split(/\r?\n/);

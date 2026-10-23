@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseApkCertificateFingerprints } from "./apk-certificate.mjs";
+import { parseApkCertificateFingerprints, assertRetailProductionSigner } from "./apk-certificate.mjs";
 
 const app = process.argv[2];
 if (!["customer", "admin", "retail"].includes(app)) {
@@ -58,6 +58,7 @@ console.log(`Android app: ${app}`);
 console.log(`APK certificate SHA-1: ${sha1.toUpperCase()}`);
 console.log(`APK certificate SHA-256: ${sha256.toUpperCase()}`);
 if (app === "retail" && !(process.env.CI === "1" && process.env.HOTPOT_FIREBASE_CI_FIXTURE === "1")) {
+  assertRetailProductionSigner(signerOutput);
   const expected = String(process.env.HOTPOT_RETAIL_EXPECTED_SHA256 || "").replaceAll(":", "").toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(expected) || sha256.replaceAll(":", "").toLowerCase() !== expected) {
     throw new Error("Retail signing SHA-256 missing or mismatched; refuse release/upgrade. Check the pinned certificate.");

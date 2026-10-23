@@ -71,7 +71,9 @@ const args = isWindows
   ? ["/d", "/s", "/c", "gradlew.bat :app:assembleRelease --no-daemon"]
   : [":app:assembleRelease", "--no-daemon"];
 console.log(`Building ${app} Android release APK using verified Expo Gradle configuration...`);
-const build = spawnSync(command, args, { cwd: gradleDirectory, stdio: "inherit" });
+// Gradle must consume the SAME validated environment as API/signing preflight,
+// including local private signing config when values did not come from the shell.
+const build = spawnSync(command, args, { cwd: gradleDirectory, stdio: "inherit", env: buildEnvironment });
 if (build.error) throw build.error;
 if (build.status !== 0) process.exitCode = build.status ?? 1;
 else {

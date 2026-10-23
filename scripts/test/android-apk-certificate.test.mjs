@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseApkCertificateFingerprints } from "../android/apk-certificate.mjs";
+import { parseApkCertificateFingerprints, assertRetailProductionSigner } from "../android/apk-certificate.mjs";
 
 const sha1 = "5e8f16062ea3cd2c4a0d547876baa6f38cabf625";
 const sha256 = "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c";
@@ -39,4 +39,17 @@ test("rejects missing, malformed and conflicting certificate fingerprints", () =
   assert.throws(() => parseApkCertificateFingerprints(`V2 Signer: certificate SHA-1 digest: ${sha1}
 V3 Signer: certificate SHA-1 digest: ${different}
 V2 Signer: certificate SHA-256 digest: ${sha256}`), /multiple signing certificate/);
+});
+
+test("Retail production rejects a debug certificate even if the SHA was pinned", () => {
+  assert.throws(() => assertRetailProductionSigner(
+    "V2 Signer: certificate DN: CN=Android Debug, OU=Android, O=Unknown"), /Android Debug certificate/);
+  assert.throws(() => assertRetailProductionSigner(
+    "Signer #1 certificate SHA-1 digest: " + sha1), /signer subject missing/);
+  assert.doesNotThrow(() => assertRetailProductionSigner(
+    "Signer #1 certificate DN: CN=Retail Production, OU=Sichuan Hotpot"));
+  assert.doesNotThrow(() => assertRetailProductionSigner(
+    "V2 Signer: certificate DN: CN=Retail Production, OU=Sichuan Hotpot"));
+  assert.throws(() => assertRetailProductionSigner(
+    "V1 Signer: certificate DN: CN=Retail Production\\nV2 Signer: certificate DN: CN=Android Debug".replace("\\n", "\n")), /Android Debug certificate/);
 });
