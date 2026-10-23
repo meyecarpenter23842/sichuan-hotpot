@@ -16,7 +16,8 @@ test("Native QR test uses local device sound, independent of orders", () => {
   const audio = src("src/dining-alert.native.ts");
   const notification = src("src/dining-push.native.ts");
   assert.match(audio, /testRetailNativeSound/);
-  assert.match(notification, /kind: "RETAIL_SOUND_TEST"/);
+  assert.match(notification, /data: \{ kind: test \? "RETAIL_SOUND_TEST" : "DINING_PENDING" \}/);
+  assert.match(notification, /testRetailNativeSound\(\): Promise<void> \{ return scheduleQrAlert\(true\); \}/);
   assert.match(notification, /new_order_alert\.mp3/);
   assert.match(notification, /CHANNEL_ID = "new-orders-v3"/);
 });
