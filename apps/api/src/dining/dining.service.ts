@@ -11,7 +11,7 @@ import { PushService } from "../push/push.service";
 import { qrInstructions } from "../payments/vietqr";
 import { priceDiningItems } from "./dining-pricing";
 import type { DiningAreaCreateInput, DiningAreaUpdateInput, DiningTableCreateInput,
-  DiningTableUpdateInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
+  DiningTableUpdateInput, DiningFloorPositionInput, DiningTicketEditInput, DiningTicketInput } from "./dining.controller";
 
 type Role = "OWNER" | "MANAGER" | "WAITER" | "CASHIER" | "KITCHEN";
 type Actor = { id: string; role: Role };
@@ -122,7 +122,7 @@ export class DiningService {
     return this.prisma.database.diningTable.findMany({
       where: { branchId }, orderBy: [{ area: { sortOrder: "asc" } }, { sortOrder: "asc" }],
       select: {
-        id: true, code: true, name: true, areaId: true, isActive: true, needsCleaning: true, sortOrder: true,
+        id: true, code: true, name: true, areaId: true, isActive: true, needsCleaning: true, sortOrder: true, floorRow: true, floorColumn: true,
         sessions: { where: { closedAt: null }, take: 1,
           select: { id: true, status: true, guestCount: true, openedAt: true,
             _count: { select: { tickets: { where: { status: "PENDING_APPROVAL" } } } } } },
@@ -148,7 +148,7 @@ export class DiningService {
       this.prisma.database.diningTable.findMany({
         where: { branchId }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
         select: { id: true, areaId: true, code: true, name: true, sortOrder: true,
-          qrHandle: true, isActive: true, sessions: {
+          qrHandle: true, isActive: true, floorRow: true, floorColumn: true, sessions: {
             where: { closedAt: null }, select: { id: true }, take: 1 },
         },
       }),
@@ -266,6 +266,49 @@ export class DiningService {
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
         throw new ConflictException("DINING_TABLE_CODE_EXISTS");
+      throw error;
+    }
+  }
+
+  // L04: server owns all layout writes. Compare-and-swap prevents a second
+  // editor from overwriting a layout that just changed on another device.
+  async moveFloorPosition(auth: string | undefined, branchId: string, areaId: string,
+    tableId: string, input: DiningFloorPositionInput) {
+    await this.staff(auth, branchId, ["OWNER", "MANAGER"]);
+    const complete = (a: unknown, b: unknown) =>
+      (a === null && b === null) || (Number.isInteger(a) && Number.isInteger(b));
+    if (!Object.hasOwn(input, "floorRow") || !Object.hasOwn(input, "floorColumn")
+      || !Object.hasOwn(input, "expectedRow") || !Object.hasOwn(input, "expectedColumn")
+      || !complete(input.floorRow, input.floorColumn)
+      || !complete(input.expectedRow, input.expectedColumn)) {
+      throw new BadRequestException("DINING_FLOOR_POSITION_INVALID");
+    }
+    if ((input.floorRow !== null && (input.floorRow < 0 || input.floorRow > 19))
+      || (input.floorColumn !== null && (input.floorColumn < 0 || input.floorColumn > 5))
+      || (input.expectedRow !== null && (input.expectedRow < 0 || input.expectedRow > 19))
+      || (input.expectedColumn !== null && (input.expectedColumn < 0 || input.expectedColumn > 5))) {
+      throw new BadRequestException("DINING_FLOOR_POSITION_INVALID");
+    }
+    try {
+      return await serializable(this.prisma.database, async tx => {
+        const found = await tx.diningTable.findFirst({
+          where: { id: tableId, branchId, areaId },
+          select: { id: true },
+        });
+        if (!found) throw new NotFoundException("DINING_TABLE_NOT_FOUND");
+        const updated = await tx.diningTable.updateMany({
+          where: { id: tableId, branchId, areaId,
+            floorRow: input.expectedRow, floorColumn: input.expectedColumn },
+          data: { floorRow: input.floorRow, floorColumn: input.floorColumn },
+        });
+        if (updated.count !== 1) throw new ConflictException("DINING_FLOOR_STALE");
+        return tx.diningTable.findUniqueOrThrow({ where: { id: tableId },
+          select: { id: true, areaId: true, floorRow: true, floorColumn: true } });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("DINING_FLOOR_OCCUPIED");
+      }
       throw error;
     }
   }
