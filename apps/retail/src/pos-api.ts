@@ -7,7 +7,8 @@ export type Tokens = { accessToken: string; refreshToken: string; accessTokenExp
 export type Branch = { id: string; name: string; code: string; isActive: boolean; staffRole?: Role };
 export type Area = { id: string; name: string; sortOrder: number; isActive: boolean };
 export type DiningSession = { id: string; status: string; guestCount: number | null; openedAt: string; _count: { tickets: number } };
-export type Table = { id: string; code: string; name: string; areaId: string; isActive: boolean; needsCleaning: boolean; sessions: DiningSession[] };
+export type Table = { id: string; code: string; name: string; areaId: string; isActive: boolean; needsCleaning: boolean;
+  floorRow: number | null; floorColumn: number | null; sessions: DiningSession[] };
 export type Option = { id: string; name: string; priceDeltaVnd: number; isAvailable: boolean; imageKey?: string | null };
 export type Group = { id: string; name: string; minSelect: number; maxSelect: number; options: Option[]; isAvailable?: boolean };
 export type ComboOption = { id: string; priceDeltaVnd: number; quantity: number; variant: Option | null;
@@ -61,6 +62,9 @@ const names: Record<string, string> = {
   DINING_QR_BENEFICIARY_NOT_CONFIGURED: "Quán chưa cấu hình tài khoản ngân hàng VietQR.",
   DINING_CASH_TENDER_INVALID: "Tiền khách đưa không hợp lệ hoặc chưa đủ.",
   DINING_TABLE_UNAVAILABLE: "Bàn đang khóa hoặc chờ dọn.",
+  DINING_FLOOR_STALE: "Sơ đồ vừa được thay đổi trên thiết bị khác. Đã tải lại để chọn vị trí mới.",
+  DINING_FLOOR_OCCUPIED: "Vị trí này đã có bàn. Tải lại sơ đồ rồi chọn ô khác.",
+  DINING_FLOOR_POSITION_INVALID: "Vị trí bàn không hợp lệ.",
   DINING_TICKET_STALE: "Yêu cầu món đã thay đổi trên thiết bị khác.",
   DINING_TICKET_ALREADY_REVIEWED: "Yêu cầu này đã được nhân viên xử lý.",
   DINING_IDEMPOTENCY_REUSED: "Phiếu này đã được gửi với nội dung khác. Kiểm tra và thử lại.",
