@@ -85,7 +85,7 @@ test("incomplete, out of bounds or missing optimistic position is invalid", asyn
   }
   assert.deepEqual(calls, []);
   await service.moveFloorPosition("Bearer test", branchId, areaId, tableId, move(null, null, 2, 3));
-  assert.deepEqual(calls.at(-2)[2], { floorRow: null, floorColumn: null });
+  assert.deepEqual(calls.at(-1)[2], { floorRow: null, floorColumn: null });
 });
 
 test("DB uniqueness collision is an explicit conflict, not a synthetic 0 or retry", async () => {
