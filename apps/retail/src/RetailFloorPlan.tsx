@@ -64,9 +64,11 @@ export function RetailFloorPlan({ areas, tables, areaId, setAreaId, role, online
   const positions = useMemo(() => new Map(visible.filter(hasFloorPosition)
     .map(t => [String(t.floorRow) + ":" + String(t.floorColumn), t] as const)), [visible]);
   const unplaced = visible.filter(t => !hasFloorPosition(t));
-  const rows = Math.max(4, Math.min(FLOOR_MAX_ROWS, extraRows,
-    Math.max(Math.ceil(visible.length / FLOOR_COLUMNS) + 1,
-      ...visible.filter(hasFloorPosition).map(t => (t.floorRow ?? 0) + 2))));
+  // Saved table coordinates always win over the user's temporary row count.
+  // Hiding any persisted row would make a real table disappear from the map.
+  const rows = Math.min(FLOOR_MAX_ROWS, Math.max(4, extraRows,
+    Math.ceil(visible.length / FLOOR_COLUMNS) + 1,
+    ...visible.filter(hasFloorPosition).map(t => (t.floorRow ?? 0) + 2)));
   const counters = { free: 0, occupied: 0, pending: 0, cleaning: 0, disabled: 0 };
   visible.forEach(t => { counters[floorStatus(t)]++; });
 
