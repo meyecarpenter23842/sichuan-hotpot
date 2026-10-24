@@ -45,6 +45,12 @@ export class DiningTableUpdateInput {
   @IsOptional() @IsInt() @Min(0) @Max(9999) sortOrder?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
+export class DiningFloorPositionInput {
+  @IsOptional() @IsInt() @Min(0) @Max(19) floorRow!: number | null;
+  @IsOptional() @IsInt() @Min(0) @Max(5) floorColumn!: number | null;
+  @IsOptional() @IsInt() @Min(0) @Max(19) expectedRow!: number | null;
+  @IsOptional() @IsInt() @Min(0) @Max(5) expectedColumn!: number | null;
+}
 class OpenSessionInput {
   @IsOptional() @IsInt() @Min(1) @Max(100) guestCount?: number;
 }
@@ -124,6 +130,14 @@ export class DiningStaffController {
     @Param("branchId", ParseUUIDPipe) branchId: string,
     @Param("tableId", ParseUUIDPipe) tableId: string, @Body() input: DiningTableUpdateInput) {
     return this.dining.editTable(auth, branchId, tableId, input);
+  }
+  @Patch("areas/:areaId/tables/:tableId/floor-position")
+  @Header("Cache-Control", "no-store")
+  moveFloorPosition(@Headers("authorization") auth: string | undefined,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Param("areaId", ParseUUIDPipe) areaId: string,
+    @Param("tableId", ParseUUIDPipe) tableId: string, @Body() input: DiningFloorPositionInput) {
+    return this.dining.moveFloorPosition(auth, branchId, areaId, tableId, input);
   }
   @Post("tables/:tableId/rotate-qr")
   @Header("Cache-Control", "no-store")

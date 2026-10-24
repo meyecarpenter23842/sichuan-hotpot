@@ -11,6 +11,7 @@ import {
 } from "./src/pos-api";
 import { cartSelectionLabels, clientKey } from "./src/pos-cart";
 import { ProductSheet } from "./src/ProductSheet";
+import { RetailFloorPlan } from "./src/RetailFloorPlan";
 import { RetailTicketCard, ticketGroup } from "./src/RetailTicketCard";
 import { RetailSettlementPanel } from "./src/RetailSettlementPanel";
 import { watchRetailDining } from "./src/dining-live";
@@ -37,6 +38,8 @@ export default function App() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [areaId, setAreaId] = useState<string | null>(null);
+  const [floorAreaId, setFloorAreaId] = useState<string | null>(null);
+  const [tableMode, setTableMode] = useState<"list" | "floor">("list");
   const [areas, setAreas] = useState<Area[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [catalog, setCatalog] = useState<Menu | null>(null);
@@ -44,7 +47,7 @@ export default function App() {
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [bill, setBill] = useState<Bill | null>(null);
   const [page, setPage] = useState<Page>("tables");
-  const [workspace, setWorkspace] = useState<"pos" | "queue">("pos");
+  const [workspace, setWorkspace] = useState<"pos" | "queue" | "floor">("pos");
   const [queueTicketId, setQueueTicketId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [toppingOnly, setToppingOnly] = useState(false);
@@ -252,7 +255,7 @@ export default function App() {
     void disableRetailDiningPush().catch(() => undefined);
     ++requestVersion.current;
     setSession(null); setToken(null); setStaffId(null); setBranches([]); setBranchId(null); setAreas([]);
-    setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null);
+    setTables([]); setApprovals([]); setCatalog(null); setSelectedTableId(null); setFloorAreaId(null); setTableMode("list");
     setCart([]); setPendingSubmit(null); setBill(null); setMessage(""); setError(""); setPage("tables");
     setWorkspace("pos"); setQueueTicketId(null);
   };
@@ -264,7 +267,7 @@ export default function App() {
     if (value === branchId) { setShowBranchMenu(false); return; }
     void changeRetailDiningPushBranch(value).catch(cause =>
       setError(cause instanceof Error ? cause.message : "Không chuyển được đăng ký thông báo chi nhánh."));
-    ++requestVersion.current; setBranchId(value); setAreaId(null); setSelectedTableId(null);
+    ++requestVersion.current; setBranchId(value); setAreaId(null); setFloorAreaId(null); setTableMode("list"); setSelectedTableId(null);
     setTables([]); setCatalog(null); setBill(null); setCart([]); setSearch(""); setCategoryId(null); setToppingOnly(false);
     setPage("tables"); setShowBranchMenu(false); setError(""); setMessage("");
     setWorkspace("pos"); setQueueTicketId(null);
@@ -276,17 +279,40 @@ export default function App() {
     catch (e) { setError(e instanceof Error ? e.message : "Thao tác thất bại."); }
     finally { lock.current = false; setBusy(false); }
   };
-  const selectTable = (t: Table) => {
+  const selectTable = (t: Table): boolean => {
     if (t.id !== selectedTableId && cart.length > 0) {
       setError("Giỏ đang thuộc bàn trước. Hoàn tất hoặc bỏ món trước khi chọn bàn khác.");
-      return;
+      return false;
     }
     if (pendingSubmit && pendingSubmit.sessionId !== t.sessions[0]?.id) {
-      setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return;
+      setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return false;
     }
     setSelectedTableId(t.id); setPage(t.sessions.length ? "menu" : "tables"); setBill(null);
     setWorkspace("pos");
+    return true;
   };
+  const moveFloorTable = async (table: Table, row: number | null, column: number | null): Promise<boolean> => {
+    if (!branchId || !online || !["OWNER", "MANAGER"].includes(role) || busy) return false;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await api(branchPath(branchId) + "/areas/" + table.areaId + "/tables/" + table.id + "/floor-position", {
+        method: "PATCH", body: { floorRow: row, floorColumn: column,
+          expectedRow: table.floorRow, expectedColumn: table.floorColumn },
+      });
+      await refresh(true);
+      setMessage("Đã lưu vị trí bàn trên sơ đồ cho toàn bộ thiết bị.");
+      return true;
+    } catch (cause) {
+      await refresh(true);
+      setError(cause instanceof Error ? cause.message : "Không thể lưu vị trí bàn.");
+      return false;
+    } finally { setBusy(false); }
+  };
+  const floorPlan = <RetailFloorPlan key={branchId ?? "no-branch"}
+    areas={usableAreas} tables={tables} areaId={floorAreaId}
+    setAreaId={setFloorAreaId} role={role} online={online && !busy}
+    onView={t => { if (selectTable(t)) { setAreaId(t.areaId); setTableMode("list"); } }} onMove={moveFloorTable}/>
+
   const openTable = () => {
     if (!branchId || !activeTable || !canOrder(role) || !online || activeTable.needsCleaning) return;
     const b = branchId, id = activeTable.id;
@@ -625,17 +651,22 @@ export default function App() {
         </View>
       <ScrollView testID="retail-header-actions" horizontal showsHorizontalScrollIndicator={false}
         style={st.qrToolbar} contentContainerStyle={st.qrToolbarContent}>
-        {canOrder(role) && desktop && <View style={st.workspaceTabs}>
+        {desktop && <View style={st.workspaceTabs}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "floor" }}
+            style={[st.workspaceTab, workspace === "floor" && st.workspaceTabActive]}
+            onPress={() => setWorkspace("floor")}>
+            <Text style={[st.workspaceTabText, workspace === "floor" && st.workspaceTabTextActive]}>Sơ đồ bàn</Text>
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "pos" }}
             style={[st.workspaceTab, workspace === "pos" && st.workspaceTabActive]}
             onPress={() => setWorkspace("pos")}>
             <Text style={[st.workspaceTabText, workspace === "pos" && st.workspaceTabTextActive]}>Bàn & Món</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "queue" }}
+          {canOrder(role) && <Pressable accessibilityRole="button" accessibilityState={{ selected: workspace === "queue" }}
             style={[st.workspaceTab, workspace === "queue" && st.workspaceTabActive]}
             onPress={() => setWorkspace("queue")}>
             <Text style={[st.workspaceTabText, workspace === "queue" && st.workspaceTabTextActive]}>Duyệt QR ({approvals.length})</Text>
-          </Pressable>
+          </Pressable>}
         </View>}
           {canOrder(role) && <Pressable accessibilityRole="button"
             accessibilityLabel={"Chuông QR, " + approvals.length + " yêu cầu chờ duyệt"}
@@ -681,7 +712,9 @@ export default function App() {
         <Pressable accessibilityRole="button" onPress={() => setError("")}><Text style={st.caption}>Đóng ×</Text></Pressable></View>}
       {!!message && <View style={st.success}><Text style={st.successText}>{message}</Text>
         <Pressable accessibilityRole="button" onPress={() => setMessage("")}><Text style={st.caption}>×</Text></Pressable></View>}
-      {desktop ? workspace === "queue" && canOrder(role) ? queuePanel : <>
+      {desktop ? workspace === "floor" ? <ScrollView testID="retail-desk-floor" style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 32 }}>{floorPlan}</ScrollView> :
+        workspace === "queue" && canOrder(role) ? queuePanel : <>
         {tableStrip}
         <View style={st.desktop}>
           <ScrollView testID="retail-desk-order" style={st.leftScroll} contentContainerStyle={st.panelContent}
@@ -695,6 +728,11 @@ export default function App() {
           {page === "tables" ? <>
             <View style={st.mobileIntro}><Text style={st.sectionTitle}>Bàn đang phục vụ</Text>
               <Text style={st.caption}>Chạm bàn để xem món, mở phiên hoặc thanh toán.</Text></View>
+            <View style={st.floorModeBar}>
+              <Chip label="Danh sách bàn" active={tableMode === "list"} onPress={() => setTableMode("list")}/>
+              <Chip label="Sơ đồ bàn" active={tableMode === "floor"} onPress={() => setTableMode("floor")}/>
+            </View>
+            {tableMode === "floor" ? floorPlan : <>
             {tableStrip}
             <View style={st.tableGrid}>{shownTables.map(t => {
               const count = t.sessions[0]?._count.tickets ?? 0;
@@ -710,7 +748,8 @@ export default function App() {
                   t.sessions.length ? "Đang có khách" : t.needsCleaning ? "Chờ dọn" : "Trống"}</Text>
               </Pressable>;
             })}</View>
-            {activeTable && !sessionId && canOrder(role) && <View style={st.mobileAction}>
+            </>}
+            {tableMode === "list" && activeTable && !sessionId && canOrder(role) && <View style={st.mobileAction}>
               <Text style={st.sectionTitle}>{activeTable.name}</Text>
               {activeTable.needsCleaning ? <>
                 <Text style={st.warning}>Bàn chờ dọn, chưa nhận lượt khách mới.</Text>
@@ -814,6 +853,7 @@ const st = StyleSheet.create({
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   sectionTitle: { fontSize: 16, color: C.dark, fontWeight: "800" },
   caption: { fontSize: 12, lineHeight: 18, color: C.muted },
+  floorModeBar: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 12, paddingVertical: 6 },
   tableSection: { paddingHorizontal: 12, paddingVertical: 8, gap: 7,
     backgroundColor: "#FFFDFB", borderBottomWidth: 1, borderColor: C.border },
   desktopTableRow: { flexDirection: "row", alignItems: "stretch", gap: 12, minWidth: 0 },
