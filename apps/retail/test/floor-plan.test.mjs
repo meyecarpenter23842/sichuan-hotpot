@@ -22,6 +22,8 @@ test("floor plan is separate responsive view while existing list, menu, invoice 
 
 test("slots use persisted UUID coordinates, never table index; supports unplaced and scroll", () => {
   assert.match(floor, /export const FLOOR_COLUMNS = 6/);
+  assert.match(floor, /Math\.min\(FLOOR_MAX_ROWS, Math\.max\(4, extraRows,/);
+  assert.match(floor, /visible\.filter\(hasFloorPosition\)\.map\(t => \(t\.floorRow/);
   assert.match(floor, /t\.floorRow/);
   assert.match(floor, /t\.floorColumn/);
   assert.match(floor, /key=\{table\.id\}/);
