@@ -70,7 +70,8 @@ test("L02 ticket groups, QR triage and invoice pictures follow server snapshots"
   for (const marker of ["retail-qr-queue", "retail-bill-pending", "retail-bill-accepted",
     "retail-bill-excluded", "Duyệt QR (", "Món đã xác nhận (", "Đã thu",
     "mobileCartBar", "Đang đồng bộ hóa đơn"]) assert.ok(app.includes(marker), marker);
-  assert.match(app, /canOrder\(role\) && desktop/);
+  assert.match(app, /desktop && <View style=\{st\.workspaceTabs\}>/);
+  assert.match(app, /\{canOrder\(role\) && <Pressable accessibilityRole="button" accessibilityState=\{\{ selected: workspace === "queue" \}\}/);
   assert.match(app, /queueTicket\.session\?\.table/);
   assert.match(app, /review\(ticket\.id, "approve"\)/);
   assert.match(app, /review\(ticket\.id, "reject"\)/);
