@@ -290,7 +290,7 @@ export class DiningService {
       throw new BadRequestException("DINING_FLOOR_POSITION_INVALID");
     }
     try {
-      return await serializable(this.prisma.database, async tx => {
+      return await this.prisma.database.$transaction(async tx => {
         const found = await tx.diningTable.findFirst({
           where: { id: tableId, branchId, areaId },
           select: { id: true },
@@ -304,10 +304,13 @@ export class DiningService {
         if (updated.count !== 1) throw new ConflictException("DINING_FLOOR_STALE");
         return tx.diningTable.findUniqueOrThrow({ where: { id: tableId },
           select: { id: true, areaId: true, floorRow: true, floorColumn: true } });
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("DINING_FLOOR_OCCUPIED");
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        throw new ConflictException("DINING_FLOOR_STALE");
       }
       throw error;
     }
