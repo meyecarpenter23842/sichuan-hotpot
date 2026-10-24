@@ -279,16 +279,17 @@ export default function App() {
     catch (e) { setError(e instanceof Error ? e.message : "Thao tác thất bại."); }
     finally { lock.current = false; setBusy(false); }
   };
-  const selectTable = (t: Table) => {
+  const selectTable = (t: Table): boolean => {
     if (t.id !== selectedTableId && cart.length > 0) {
       setError("Giỏ đang thuộc bàn trước. Hoàn tất hoặc bỏ món trước khi chọn bàn khác.");
-      return;
+      return false;
     }
     if (pendingSubmit && pendingSubmit.sessionId !== t.sessions[0]?.id) {
-      setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return;
+      setError("Hãy xử lý phiếu đang chờ kết quả trước khi đổi bàn."); return false;
     }
     setSelectedTableId(t.id); setPage(t.sessions.length ? "menu" : "tables"); setBill(null);
     setWorkspace("pos");
+    return true;
   };
   const moveFloorTable = async (table: Table, row: number | null, column: number | null): Promise<boolean> => {
     if (!branchId || !online || !["OWNER", "MANAGER"].includes(role) || busy) return false;
@@ -310,7 +311,7 @@ export default function App() {
   const floorPlan = <RetailFloorPlan key={branchId ?? "no-branch"}
     areas={usableAreas} tables={tables} areaId={floorAreaId}
     setAreaId={setFloorAreaId} role={role} online={online && !busy}
-    onView={t => { selectTable(t); setTableMode("list"); }} onMove={moveFloorTable}/>;
+    onView={t => { if (selectTable(t)) { setAreaId(t.areaId); setTableMode("list"); } }} onMove={moveFloorTable}/>
 
   const openTable = () => {
     if (!branchId || !activeTable || !canOrder(role) || !online || activeTable.needsCleaning) return;
