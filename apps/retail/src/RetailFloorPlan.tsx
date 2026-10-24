@@ -59,11 +59,12 @@ export function RetailFloorPlan({ areas, tables, areaId, setAreaId, role, online
   const [editing, setEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const [extraRows, setExtraRows] = useState(4);
   const selected = visible.find(t => t.id === selectedId) ?? null;
   const positions = useMemo(() => new Map(visible.filter(hasFloorPosition)
     .map(t => [String(t.floorRow) + ":" + String(t.floorColumn), t] as const)), [visible]);
   const unplaced = visible.filter(t => !hasFloorPosition(t));
-  const rows = Math.max(4, Math.min(FLOOR_MAX_ROWS,
+  const rows = Math.max(4, Math.min(FLOOR_MAX_ROWS, extraRows,
     Math.max(Math.ceil(visible.length / FLOOR_COLUMNS) + 1,
       ...visible.filter(hasFloorPosition).map(t => (t.floorRow ?? 0) + 2))));
   const counters = { free: 0, occupied: 0, pending: 0, cleaning: 0, disabled: 0 };
@@ -164,7 +165,14 @@ export function RetailFloorPlan({ areas, tables, areaId, setAreaId, role, online
             </View>)}
         </View>
       </ScrollView>
-      <Text style={styles.scrollHint}>Sơ đồ có thể vuốt ngang trên màn hình nhỏ. Bố cục 6 cột giữ nguyên giữa các thiết bị.</Text>
+      <View style={styles.boardHelp}>
+        <Text style={styles.scrollHint}>Sơ đồ có thể vuốt ngang trên màn hình nhỏ. Vị trí đã lưu không đổi giữa các thiết bị.</Text>
+        {editing && rows < FLOOR_MAX_ROWS && <Pressable accessibilityRole="button"
+          disabled={moving || !online} style={styles.addRows}
+          onPress={() => setExtraRows(v => Math.min(FLOOR_MAX_ROWS, Math.max(v, rows) + 2))}>
+          <Text style={styles.clearText}>+ Thêm hàng</Text>
+        </Pressable>}
+      </View>
       <View style={styles.unplacedHead}>
         <Text style={styles.unplacedTitle}>Bàn chưa xếp vị trí ({unplaced.length})</Text>
         <Text style={styles.legendText}>{editing ? "Chọn bàn để đặt lên sơ đồ" : "Vẫn có thể chạm để mở bàn"}</Text>
@@ -218,7 +226,9 @@ const styles = StyleSheet.create({
     borderColor: "#E2D9D2", borderRadius: 10, alignItems: "center", justifyContent: "center" },
   targetSlot: { backgroundColor: "#E9F5ED", borderColor: "#248057" },
   emptyText: { fontSize: 21, color: "#9E9189" },
-  scrollHint: { fontSize: 11, color: "#81736C" },
+  scrollHint: { fontSize: 11, color: "#81736C", flexShrink: 1 },
+  boardHelp: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
+  addRows: { minHeight: 44, paddingHorizontal: 10, backgroundColor: "#FAF0E8", borderRadius: 8, justifyContent: "center" },
   unplacedHead: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7 },
   unplacedTitle: { fontWeight: "800", fontSize: 13, color: "#302321" },
   unplaced: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
