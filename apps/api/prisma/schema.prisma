@@ -800,6 +800,10 @@ model DiningTable {
   name      String   @db.VarChar(120)
   qrHandle  String   @unique @db.VarChar(64)
   needsCleaning Boolean @default(false)
+  // Optional persisted floor-map position. NULL/NULL means not yet placed.
+  // Occupancy/QR/session logic must never depend on these display coordinates.
+  floorRow Int?
+  floorColumn Int?
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
